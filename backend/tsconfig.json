@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@goin/shared": ["../shared/src/index.ts"]
+    },
+    "baseUrl": "."
+  },
+  "include": ["src/**/*", "../shared/src/**/*"]
+}
