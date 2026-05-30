@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vitest/globals", "@testing-library/jest-dom"],
+    "noEmit": true,
+    "paths": {
+      "@goin/shared": ["../shared/src/index.ts"],
+      "@goin/backend/router": ["../backend/src/trpc/router.ts"]
+    },
+    "baseUrl": "."
+  },
+  "include": ["src/**/*", "../shared/src/**/*", "../backend/src/trpc/router.ts", "../backend/src/trpc/trpc.ts", "../backend/src/trpc/context.ts", "../backend/src/services/venue-store.ts", "../backend/src/data/default-venues.ts"]
+}
