@@ -27,6 +27,20 @@ shared/     Shared TypeScript types (Venue, Event, Folder, EventFilters)
 ```bash
 npm install
 cp .env.example .env       # fill in DATABASE_URL, ANTHROPIC_API_KEY, RESEND_API_KEY
+docker compose up -d       # local Postgres on :5432 (user/pass/db: goin)
+npm run db:migrate         # create the folders + venues tables
+```
+
+`DATABASE_URL` for local dev: `postgresql://goin:goin@localhost:5432/goin`.
+Folders persist to Postgres when this is set; without it, the backend falls
+back to an in-memory store (handy for fast unit tests).
+
+Database scripts:
+
+```bash
+npm run db:migrate         # apply backend/drizzle/*.sql
+npm run db:reset           # drop tables and re-apply
+npm run db:studio          # drizzle-kit studio
 ```
 
 ## Run
