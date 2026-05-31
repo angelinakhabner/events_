@@ -1,32 +1,53 @@
-import { useState } from 'react';
-import { trpc } from '../trpc';
-import { VenueList } from '../components/VenueList';
-import type { Category } from '@goin/shared';
+import { useMemo, useState } from 'react';
+import type { EventFilters } from '@goin/shared';
+import { trpc } from '../lib/trpc';
+import { FilterBar } from '../components/FilterBar';
+import { EventList } from '../components/EventList';
+import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 
 export function HomePage() {
-  const [category, setCategory] = useState<Category | ''>('');
-  const venues = trpc.getVenues.useQuery(category ? { category } : undefined);
+  const [filters, setFilters] = useState<EventFilters>({});
+
+  const eventsQuery = trpc.events.listDefault.useQuery({ filters });
+  const venuesQuery = trpc.venues.list.useQuery();
+
+  const venueMap = useMemo(
+    () => new Map((venuesQuery.data ?? []).map((v) => [v.id, v])),
+    [venuesQuery.data],
+  );
 
   return (
     <section>
-      <h2>Curated venues</h2>
-      <p>A default set of cultural venues. Filter, browse, or add your own.</p>
+      <div className="mb-10">
+        <h1 className="font-serif text-4xl tracking-tight">What&rsquo;s on</h1>
+        <p className="mt-2 text-muted max-w-prose">
+          A curated default set of cultural events. Filter, browse, then add your own venues
+          and group them into folders in <a href="/my" className="link-accent">/my</a>.
+        </p>
+      </div>
 
-      <label style={{ display: 'block', marginBottom: 12 }}>
-        Category:{' '}
-        <select value={category} onChange={(e) => setCategory(e.target.value as Category | '')}>
-          <option value="">All</option>
-          <option value="cinema">Cinema</option>
-          <option value="theatre">Theatre</option>
-          <option value="exhibition">Exhibition</option>
-          <option value="comedy">Comedy</option>
-          <option value="music">Music</option>
-        </select>
-      </label>
+      <div className="border-y border-rule">
+        <FilterBar filters={filters} onChange={setFilters} />
+      </div>
 
-      {venues.isLoading && <p>Loading…</p>}
-      {venues.error && <p role="alert">Failed to load venues</p>}
-      {venues.data && <VenueList venues={venues.data} />}
+      <div className="mt-10">
+        {eventsQuery.isLoading ? <SkeletonList /> : null}
+        {eventsQuery.error ? (
+          <ErrorState
+            message="Couldn't load events."
+            onRetry={() => eventsQuery.refetch()}
+          />
+        ) : null}
+        {eventsQuery.data && eventsQuery.data.length === 0 ? (
+          <EmptyState
+            title="No events match your filters"
+            action={{ label: 'Reset filters', onClick: () => setFilters({}) }}
+          />
+        ) : null}
+        {eventsQuery.data && eventsQuery.data.length > 0 ? (
+          <EventList events={eventsQuery.data} venues={venueMap} />
+        ) : null}
+      </div>
     </section>
   );
 }
