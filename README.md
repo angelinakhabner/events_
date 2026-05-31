@@ -74,15 +74,18 @@ npm run lint
 ## Deploying the frontend to GitHub Pages
 
 The workflow at `.github/workflows/deploy-frontend.yml` runs after CI passes
-on `main`, builds `frontend/`, and pushes `dist/` to the `gh-pages` branch.
+on `main`, builds `frontend/`, and deploys `dist/` to GitHub Pages via the
+official `actions/configure-pages` → `actions/upload-pages-artifact` →
+`actions/deploy-pages` pipeline.
 
 One-time setup in the repo:
 
-1. **Settings → Pages →** *Source: Deploy from a branch*, *Branch: `gh-pages` / `/ (root)`*.
+1. **Settings → Pages →** *Source: **GitHub Actions***.
 2. **Settings → Secrets and variables → Actions → Variables → New variable**
    `VITE_API_URL` = the Railway backend URL (e.g. `https://goin-backend.up.railway.app`).
-3. Push to `main`. Once the `CI` workflow goes green, `Deploy frontend` runs and
-   the site appears at `https://<owner>.github.io/<repo>/`.
+3. Push to `main`. Once `CI` goes green, `Deploy frontend` runs and the site
+   appears at `https://<owner>.github.io/<repo>/`. You can also trigger it
+   manually from **Actions → Deploy frontend → Run workflow**.
 
 The Vite `base` is set from `VITE_BASE_PATH` (the workflow passes
 `/<repo>/`); locally it falls back to `/events_/`. In dev, the Vite proxy
