@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-paper text-ink antialiased font-sans;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  a { @apply text-ink underline-offset-4; }
+  button { @apply font-sans; }
+}
+
+@layer components {
+  .tag {
+    @apply text-[10px] tracking-[0.14em] uppercase text-muted;
+  }
+  .rule {
+    @apply border-t border-rule;
+  }
+  .link-accent {
+    @apply text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent;
+  }
+}

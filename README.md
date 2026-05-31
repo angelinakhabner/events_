@@ -71,7 +71,25 @@ npm run lint
 - No auth in MVP. The `folders.userId` column and `MyPage` route exist
   so auth slots in without reshaping the data model.
 
-## Deploying to Railway
+## Deploying the frontend to GitHub Pages
+
+The workflow at `.github/workflows/deploy-frontend.yml` runs after CI passes
+on `main`, builds `frontend/`, and pushes `dist/` to the `gh-pages` branch.
+
+One-time setup in the repo:
+
+1. **Settings → Pages →** *Source: Deploy from a branch*, *Branch: `gh-pages` / `/ (root)`*.
+2. **Settings → Secrets and variables → Actions → Variables → New variable**
+   `VITE_API_URL` = the Railway backend URL (e.g. `https://goin-backend.up.railway.app`).
+3. Push to `main`. Once the `CI` workflow goes green, `Deploy frontend` runs and
+   the site appears at `https://<owner>.github.io/<repo>/`.
+
+The Vite `base` is set from `VITE_BASE_PATH` (the workflow passes
+`/<repo>/`); locally it falls back to `/events_/`. In dev, the Vite proxy
+forwards `/trpc` to `http://localhost:3001`, so `VITE_API_URL` can stay
+empty in `.env`. In production it must be the Railway URL.
+
+## Deploying the backend to Railway
 
 1. Create a Postgres plugin → copy `DATABASE_URL`.
 2. Deploy `backend/` as a service (build: `npm --workspace backend run build`,
