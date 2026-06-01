@@ -127,9 +127,16 @@ export class DbFolderStore implements FolderStore {
   }
 
   async delete(deviceId: string, id: string): Promise<boolean> {
-    const rows = await getDb()
+    const db = getDb();
+    const [existing] = await db
+      .select({ deviceId: foldersTable.deviceId })
+      .from(foldersTable)
+      .where(eq(foldersTable.id, id));
+    if (!existing) return false;
+    if (existing.deviceId !== deviceId) throw new Error('Forbidden');
+    const rows = await db
       .delete(foldersTable)
-      .where(and(eq(foldersTable.id, id), eq(foldersTable.deviceId, deviceId)))
+      .where(eq(foldersTable.id, id))
       .returning({ id: foldersTable.id });
     return rows.length > 0;
   }

@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import postgres from 'postgres';
 import { createApp } from '../../app.js';
 
 const app = createApp();
@@ -27,6 +28,21 @@ function post(deviceId: string, body: unknown): RequestInit {
 }
 
 describe('API integration', () => {
+  // When CI runs us against a real Postgres, reset between runs so partition
+  // tests don't see residue. With no DATABASE_URL the in-memory store starts
+  // empty on every spawn, so the cleanup is a no-op.
+  beforeAll(async () => {
+    if (!process.env.DATABASE_URL) return;
+    const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+    try { await sql`TRUNCATE folders RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
+  });
+
+  afterAll(async () => {
+    if (!process.env.DATABASE_URL) return;
+    const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+    try { await sql`TRUNCATE folders RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
+  });
+
   it('GET /health returns ok', async () => {
     const { status, body } = await call<{ ok: boolean }>('/health');
     expect(status).toBe(200);
