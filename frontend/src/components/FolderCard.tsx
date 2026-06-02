@@ -15,6 +15,7 @@ interface Props {
 export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDelete, children }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(folder.name);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const venuesInFolder = venues.filter((v) => folder.venueIds.includes(v.id));
 
   const submit = () => {
@@ -58,14 +59,33 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
           <button type="button" onClick={onToggle} className="link-accent bg-transparent border-0 cursor-pointer">
             {expanded ? 'Hide events' : 'Show events'}
           </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
-            aria-label={`Delete folder ${folder.name}`}
-          >
-            Delete
-          </button>
+          {confirmingDelete ? (
+            <span className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => { setConfirmingDelete(false); onDelete(); }}
+                className="text-accent bg-transparent border-0 cursor-pointer"
+              >
+                Confirm delete
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+              aria-label={`Delete folder ${folder.name}`}
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
       {expanded ? <div className="mt-6">{children}</div> : null}
