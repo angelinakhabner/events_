@@ -108,8 +108,17 @@ empty in `.env`. In production it must be the Railway URL.
 
 ## Deploying the backend to Railway
 
-1. Create a Postgres plugin → copy `DATABASE_URL`.
-2. Deploy `backend/` as a service (build: `npm --workspace backend run build`,
-   start: `npm --workspace backend run start`).
-3. Set env vars: `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `DATABASE_URL`, `NODE_ENV=production`.
-4. Health check path: `/health`.
+See **[`docs/RAILWAY.md`](docs/RAILWAY.md)** for the step-by-step (Postgres
+plugin, env vars, public domain, wiring the Pages frontend, verification,
+and troubleshooting).
+
+Short version:
+1. New Railway project → add Postgres plugin.
+2. Deploy this repo as a service — `railway.json` already pins the build
+   (`npm ci && npm --workspace backend run build`) and start
+   (`npm --workspace backend run db:migrate && npm --workspace backend run start`)
+   commands and `/health` as the healthcheck.
+3. Env vars: `DATABASE_URL=${{ Postgres.DATABASE_URL }}`, `ANTHROPIC_API_KEY`,
+   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `NODE_ENV=production`.
+4. Generate a public domain → set `VITE_API_URL` (repo Actions variable) to it
+   → re-run the **Deploy frontend** workflow.
