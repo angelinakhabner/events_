@@ -32,6 +32,18 @@ describe('NewFolderModal', () => {
     });
   });
 
+  it('renders a server error when serverError prop is provided', () => {
+    render(
+      <NewFolderModal
+        venues={venues}
+        onCancel={() => {}}
+        onSubmit={() => {}}
+        serverError="UNAUTHORIZED"
+      />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/couldn.+create folder.*UNAUTHORIZED/i);
+  });
+
   it('calls onCancel when the cancel button is pressed', async () => {
     const onCancel = vi.fn();
     render(<NewFolderModal venues={venues} onCancel={onCancel} onSubmit={() => {}} />);
