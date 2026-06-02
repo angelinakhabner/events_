@@ -14,9 +14,10 @@ interface Props {
   onCancel: () => void;
   onSubmit: (payload: NewFolderPayload) => void;
   submitting?: boolean;
+  serverError?: string | null;
 }
 
-export function NewFolderModal({ venues, onCancel, onSubmit, submitting }: Props) {
+export function NewFolderModal({ venues, onCancel, onSubmit, submitting, serverError }: Props) {
   const [name, setName] = useState('');
   const [venueIds, setVenueIds] = useState<string[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -107,6 +108,12 @@ export function NewFolderModal({ venues, onCancel, onSubmit, submitting }: Props
             })}
           </div>
         </fieldset>
+
+        {serverError ? (
+          <p role="alert" className="mt-8 text-sm text-accent">
+            Couldn&rsquo;t create folder: {serverError}
+          </p>
+        ) : null}
 
         <div className="mt-10 flex justify-end gap-6 text-sm">
           <button type="button" onClick={onCancel} className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer">

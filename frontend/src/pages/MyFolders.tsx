@@ -76,9 +76,10 @@ export function MyFoldersPage() {
       {modalOpen ? (
         <NewFolderModal
           venues={venues}
-          onCancel={() => setModalOpen(false)}
+          onCancel={() => { setModalOpen(false); create.reset(); }}
           onSubmit={submit}
           submitting={create.isPending}
+          serverError={create.error?.message ?? null}
         />
       ) : null}
     </section>
