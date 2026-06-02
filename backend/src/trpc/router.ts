@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { router, publicProcedure } from './trpc.js';
+import { TRPCError } from '@trpc/server';
+import { router, publicProcedure, deviceProcedure } from './trpc.js';
 import { generateDefaultEvents } from '../data/default-events.js';
 import { filterEvents } from '../services/filters.js';
 
@@ -55,9 +56,9 @@ const events = router({
 });
 
 const folders = router({
-  listMine: publicProcedure.query(({ ctx }) => ctx.folders.list()),
+  listMine: deviceProcedure.query(({ ctx }) => ctx.folders.list(ctx.deviceId)),
 
-  create: publicProcedure
+  create: deviceProcedure
     .input(
       z.object({
         name: z.string().min(1).max(80),
@@ -65,9 +66,11 @@ const folders = router({
         filters: eventFiltersSchema.default({}),
       }),
     )
-    .mutation(({ ctx, input }) => ctx.folders.create(input)),
+    .mutation(({ ctx, input }) =>
+      ctx.folders.create({ deviceId: ctx.deviceId, ...input }),
+    ),
 
-  update: publicProcedure
+  update: deviceProcedure
     .input(
       z.object({
         id: z.string(),
@@ -76,17 +79,32 @@ const folders = router({
         filters: eventFiltersSchema.optional(),
       }),
     )
-    .mutation(({ ctx, input }) => ctx.folders.update(input)),
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await ctx.folders.update({ deviceId: ctx.deviceId, ...input });
+      } catch (e) {
+        throw mapStoreError(e);
+      }
+    }),
 
-  delete: publicProcedure
+  delete: deviceProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ ctx, input }) => ({ ok: ctx.folders.delete(input.id) })),
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const ok = await ctx.folders.delete(ctx.deviceId, input.id);
+        return { success: ok };
+      } catch (e) {
+        throw mapStoreError(e);
+      }
+    }),
 
-  getEvents: publicProcedure
+  getEvents: deviceProcedure
     .input(z.object({ folderId: z.string() }))
-    .query(({ ctx, input }) => {
-      const folder = ctx.folders.get(input.folderId);
-      if (!folder) throw new Error(`Folder ${input.folderId} not found`);
+    .query(async ({ ctx, input }) => {
+      const folder = await ctx.folders.get(ctx.deviceId, input.folderId);
+      if (!folder) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `Folder ${input.folderId} not found` });
+      }
       const all = generateDefaultEvents();
       const venueMap = new Map(ctx.venues.list().map((v) => [v.id, v]));
       const scoped = folder.venueIds.length
@@ -95,6 +113,13 @@ const folders = router({
       return filterEvents(scoped, venueMap, folder.filters);
     }),
 });
+
+function mapStoreError(e: unknown): TRPCError {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/forbidden/i.test(msg)) return new TRPCError({ code: 'UNAUTHORIZED', message: msg });
+  if (/not found/i.test(msg)) return new TRPCError({ code: 'NOT_FOUND', message: msg });
+  return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: msg });
+}
 
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),

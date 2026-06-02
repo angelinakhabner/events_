@@ -43,6 +43,35 @@ describe('FolderCard', () => {
     expect(onRename).toHaveBeenCalledWith('Renamed');
   });
 
+  it('requires a confirmation click before calling onDelete', async () => {
+    const onDelete = vi.fn();
+    render(
+      <FolderCard
+        folder={folder()} venues={venues} expanded={false}
+        onToggle={() => {}} onRename={() => {}} onDelete={onDelete}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /delete folder/i }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /confirm delete/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels the delete confirmation', async () => {
+    const onDelete = vi.fn();
+    render(
+      <FolderCard
+        folder={folder()} venues={venues} expanded={false}
+        onToggle={() => {}} onRename={() => {}} onDelete={onDelete}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /delete folder/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /confirm delete/i })).not.toBeInTheDocument();
+  });
+
   it('renders children only when expanded', () => {
     const { rerender } = render(
       <FolderCard folder={folder()} venues={venues} expanded={false}

@@ -2,6 +2,7 @@ import { createTRPCReact } from '@trpc/react-query';
 import { httpBatchLink } from '@trpc/client';
 import { QueryClient } from '@tanstack/react-query';
 import type { AppRouter } from '../../../backend/src/trpc/router';
+import { getDeviceId } from './device-id';
 
 export const trpc = createTRPCReact<AppRouter>();
 
@@ -16,6 +17,13 @@ export function makeQueryClient() {
 export function makeTrpcClient() {
   const base = import.meta.env.VITE_API_URL ?? '';
   return trpc.createClient({
-    links: [httpBatchLink({ url: `${base}/trpc` })],
+    links: [
+      httpBatchLink({
+        url: `${base}/trpc`,
+        headers() {
+          return { 'x-device-id': getDeviceId() };
+        },
+      }),
+    ],
   });
 }

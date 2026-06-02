@@ -18,7 +18,10 @@
     "lint": "eslint .",
     "test": "npm --workspace backend run test && npm --workspace frontend run test",
     "test:backend": "npm --workspace backend run test",
-    "test:frontend": "npm --workspace frontend run test"
+    "test:frontend": "npm --workspace frontend run test",
+    "db:migrate": "npm --workspace backend run db:migrate",
+    "db:reset": "npm --workspace backend run db:reset",
+    "db:studio": "drizzle-kit studio"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
