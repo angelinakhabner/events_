@@ -1,13 +1,13 @@
 {
-  "$schema": "https://railway.com/railway.schema.json",
+  "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
     "buildCommand": "npm ci && npm --workspace backend run build"
   },
   "deploy": {
-    "startCommand": "npm --workspace backend run db:migrate && npm --workspace backend run start",
+    "startCommand": "npm --workspace backend run start",
     "healthcheckPath": "/health",
-    "healthcheckTimeout": 30,
+    "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

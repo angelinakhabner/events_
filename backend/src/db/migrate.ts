@@ -1,11 +1,20 @@
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { env } from '../config.js';
 
+// Drizzle migrations live at backend/drizzle/*.sql. Resolve relative to the
+// running script so it works whether we're running TS source
+// (backend/src/db/migrate.ts) or the compiled output
+// (backend/dist/backend/src/db/migrate.js).
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const migrationsDir = path.resolve(__dirname, '../../drizzle');
+const candidates = [
+  path.resolve(__dirname, '../../drizzle'),         // source: backend/src/db -> backend/drizzle
+  path.resolve(__dirname, '../../../../drizzle'),   // compiled: backend/dist/backend/src/db -> backend/drizzle
+];
+const migrationsDir = candidates.find((p) => existsSync(p)) ?? candidates[0]!;
 
 export async function runMigrations(databaseUrl = env.DATABASE_URL): Promise<void> {
   if (!databaseUrl) throw new Error('DATABASE_URL is required to run migrations');

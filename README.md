@@ -116,7 +116,7 @@ Short version:
 1. New Railway project → add Postgres plugin.
 2. Deploy this repo as a service — `railway.json` already pins the build
    (`npm ci && npm --workspace backend run build`) and start
-   (`npm --workspace backend run db:migrate && npm --workspace backend run start`)
+   (`npm --workspace backend run start`, which itself chains the migration)
    commands and `/health` as the healthcheck.
 3. Env vars: `DATABASE_URL=${{ Postgres.DATABASE_URL }}`, `ANTHROPIC_API_KEY`,
    `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `NODE_ENV=production`.

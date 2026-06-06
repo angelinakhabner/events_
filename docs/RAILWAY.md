@@ -38,7 +38,7 @@ Time: ~15 minutes. No CLI required.
 3. Click the new service → **Settings** tab. Confirm:
    - **Root Directory**: leave **blank** (the monorepo root). Railway needs the root because the build/start commands use `npm --workspace backend`.
    - **Build Command**: leave blank — `railway.json` provides `npm ci && npm --workspace backend run build`.
-   - **Start Command**: leave blank — `railway.json` provides `npm --workspace backend run db:migrate && npm --workspace backend run start`. The migration runs on every deploy and is idempotent (the SQL uses `CREATE TABLE IF NOT EXISTS`).
+   - **Start Command**: leave blank — `railway.json` provides `npm --workspace backend run start`. The start script itself chains the migration before `node` so it runs on every deploy and is idempotent (the SQL uses `CREATE TABLE IF NOT EXISTS`).
    - **Healthcheck Path**: `/health` (also from `railway.json`).
    - **Watch Paths**: optionally `backend/**` so frontend-only commits don't trigger a redeploy.
 
