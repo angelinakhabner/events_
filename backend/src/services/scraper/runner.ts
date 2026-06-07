@@ -41,7 +41,10 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // subsequent SELECT couldn't find the just-updated row. Use raw SQL via
     // db.execute and RETURNING to guarantee a single round-trip that both
     // persists and returns the row.
-    const finishedAt = new Date();
+    // Pass the timestamp as an ISO string — postgres-js's prepared-statement
+    // bind path doesn't accept raw Date objects inside drizzle's sql template
+    // (it does inside typed .values({}) inserts). Postgres parses ISO 8601 fine.
+    const finishedAt = new Date().toISOString();
     const status = patch.status ?? 'failed';
     const eventsFound = patch.eventsFound ?? null;
     const errorMessage = patch.errorMessage ?? null;
@@ -52,14 +55,14 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         events_found = ${eventsFound},
         error_message = ${errorMessage},
         raw_hash = ${rawHash},
-        finished_at = ${finishedAt}
+        finished_at = ${finishedAt}::timestamptz
       WHERE id = ${run.id}
       RETURNING id, venue_id, started_at, finished_at, status, events_found, error_message, raw_hash
     `);
     const rows = unwrapRows<RawScrapeRunRow>(updateResult);
     if (!rows[0]) {
       console.warn(`[scraper] scrape_runs row ${run.id} not updated`);
-      return toScrapeRun({ ...run, status, eventsFound, errorMessage, rawHash, finishedAt } as typeof schema.scrapeRuns.$inferSelect);
+      return toScrapeRun({ ...run, status, eventsFound, errorMessage, rawHash, finishedAt: new Date(finishedAt) } as typeof schema.scrapeRuns.$inferSelect);
     }
     return rawToScrapeRun(rows[0]);
   };
