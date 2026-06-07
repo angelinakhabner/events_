@@ -42,6 +42,11 @@ const fakeDb = {
         }),
         limit: (_n: number) => {
           if (table === '__venues__') return state.venues.slice(0, 1);
+          if (table === '__scrapeRuns__') {
+            // For finalize's re-fetch — return the most recently inserted run.
+            const r = state.runs[state.runs.length - 1];
+            return r ? [r] : [];
+          }
           return [];
         },
       }),
@@ -70,16 +75,15 @@ const fakeDb = {
   }),
   update: (table: any) => ({
     set: (patch: any) => ({
-      where: (_w: any) => ({
-        returning: () => {
-          if (table === '__scrapeRuns__') {
-            const r = state.runs[state.runs.length - 1]!;
-            Object.assign(r, patch);
-            return [r];
-          }
-          return [];
-        },
-      }),
+      where: (_w: any) => {
+        // Apply the patch synchronously so the chained `await` resolves
+        // after the in-memory mutation. Runner no longer calls .returning().
+        if (table === '__scrapeRuns__') {
+          const r = state.runs[state.runs.length - 1]!;
+          Object.assign(r, patch);
+        }
+        return Promise.resolve();
+      },
     }),
   }),
   execute: async (_sql: any) => ({ rows: [{ inserted: true }] }),

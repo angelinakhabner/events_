@@ -36,12 +36,24 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
   if (!run) throw new Error('Failed to create scrape_runs row');
 
   const finalize = async (patch: Partial<typeof schema.scrapeRuns.$inferInsert>): Promise<ScrapeRun> => {
-    const [updated] = await db
+    // Do the update without relying on .returning() — re-SELECT the row
+    // afterwards. .returning() has been observed to yield an empty array on
+    // the very first drizzle call in a fresh vitest worker, causing the
+    // returned ScrapeRun to fall back to the original `running` row.
+    await db
       .update(schema.scrapeRuns)
       .set({ ...patch, finishedAt: new Date() })
+      .where(eq(schema.scrapeRuns.id, run.id));
+    const rows = await db
+      .select()
+      .from(schema.scrapeRuns)
       .where(eq(schema.scrapeRuns.id, run.id))
-      .returning();
-    return toScrapeRun(updated ?? run);
+      .limit(1);
+    if (!rows[0]) {
+      console.warn(`[scraper] scrape_runs row ${run.id} disappeared after update`);
+      return toScrapeRun({ ...run, ...patch, finishedAt: new Date() } as typeof schema.scrapeRuns.$inferSelect);
+    }
+    return toScrapeRun(rows[0]);
   };
 
   try {
