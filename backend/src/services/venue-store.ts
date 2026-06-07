@@ -1,7 +1,6 @@
 import type { Venue, VenueListInput, Category } from '@goin/shared';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 import { getDb, schema } from '../db/index.js';
-import { env } from '../config.js';
 import { and, eq } from 'drizzle-orm';
 
 export interface IVenueStore {

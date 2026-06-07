@@ -27,16 +27,16 @@ export async function saveEvents(
   let updated = 0;
 
   for (const e of events) {
-    const row = {
+    const values = {
       venueId: venue.id,
       title: e.title,
       description: e.description,
       startsAt: new Date(e.starts_at),
-      endsAt: null as Date | null,
+      endsAt: null,
       category: venue.category,
       language: e.language ?? venue.language ?? null,
       director: e.director,
-      cast: e.cast,
+      cast: e.cast ?? null,
       durationMinutes: e.duration_minutes,
       priceMin: e.price_min,
       priceMax: e.price_max,
@@ -46,47 +46,49 @@ export async function saveEvents(
       updatedAt: now,
     };
 
-    // Drizzle doesn't yet support partial-index targets natively, so use raw SQL.
-    const result = await db.execute(sql`
-      INSERT INTO events (
-        venue_id, title, description, starts_at, ends_at, category, language,
-        director, "cast", duration_minutes, price_min, price_max,
-        source_url, source_id, scraped_at, updated_at
-      ) VALUES (
-        ${row.venueId}::uuid, ${row.title}, ${row.description}, ${row.startsAt}, ${row.endsAt},
-        ${row.category}, ${row.language}, ${row.director}, ${row.cast as string[] | null},
-        ${row.durationMinutes}, ${row.priceMin}, ${row.priceMax},
-        ${row.sourceUrl}, ${row.sourceId}, ${row.scrapedAt}, ${row.updatedAt}
-      )
-      ON CONFLICT ${row.sourceId
-        ? sql`(venue_id, source_id) WHERE source_id IS NOT NULL`
-        : sql`(venue_id, source_url, starts_at) WHERE source_id IS NULL`}
-      DO UPDATE SET
-        title = EXCLUDED.title,
-        description = EXCLUDED.description,
-        starts_at = EXCLUDED.starts_at,
-        ends_at = EXCLUDED.ends_at,
-        language = EXCLUDED.language,
-        director = EXCLUDED.director,
-        "cast" = EXCLUDED."cast",
-        duration_minutes = EXCLUDED.duration_minutes,
-        price_min = EXCLUDED.price_min,
-        price_max = EXCLUDED.price_max,
-        source_url = EXCLUDED.source_url,
-        scraped_at = EXCLUDED.scraped_at,
-        updated_at = EXCLUDED.updated_at
-      RETURNING (xmax = 0) AS inserted
-    `);
+    const set = {
+      title: values.title,
+      description: values.description,
+      startsAt: values.startsAt,
+      endsAt: values.endsAt,
+      language: values.language,
+      director: values.director,
+      cast: values.cast,
+      durationMinutes: values.durationMinutes,
+      priceMin: values.priceMin,
+      priceMax: values.priceMax,
+      sourceUrl: values.sourceUrl,
+      scrapedAt: values.scrapedAt,
+      updatedAt: values.updatedAt,
+    };
 
-    const rows = (result as unknown as { rows?: { inserted: boolean }[] }).rows
-      ?? (result as unknown as { inserted: boolean }[]);
-    const first = Array.isArray(rows) ? rows[0] : undefined;
-    if (first?.inserted) inserted++;
+    // Drizzle's onConflictDoUpdate accepts a `target` of columns and a
+    // `targetWhere` predicate, which matches the partial unique indexes
+    // declared in 0001_events.sql.
+    const returning = { id: schema.events.id, isInsert: sql<boolean>`(xmax = 0)` };
+    const result = await (values.sourceId
+      ? db
+          .insert(schema.events)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [schema.events.venueId, schema.events.sourceId],
+            targetWhere: sql`source_id IS NOT NULL`,
+            set,
+          })
+          .returning(returning)
+      : db
+          .insert(schema.events)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [schema.events.venueId, schema.events.sourceUrl, schema.events.startsAt],
+            targetWhere: sql`source_id IS NULL`,
+            set,
+          })
+          .returning(returning));
+
+    if (result[0]?.isInsert) inserted++;
     else updated++;
   }
 
-  // Reference unused schema to keep the import alive for callers that
-  // type-check against it.
-  void schema;
   return { inserted, updated };
 }

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { getDb, schema } from '../db/index.js';
+import { getDb } from '../db/index.js';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 
 export async function seed(): Promise<void> {
