@@ -9,7 +9,7 @@ interface Props {
 export function EventCard({ event, venue }: Props) {
   return (
     <a
-      href={event.link}
+      href={event.sourceUrl}
       target="_blank"
       rel="noreferrer"
       className="group block py-6 no-underline"

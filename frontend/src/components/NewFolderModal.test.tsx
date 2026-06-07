@@ -5,8 +5,8 @@ import { NewFolderModal } from './NewFolderModal';
 import type { Venue } from '@goin/shared';
 
 const venues: Venue[] = [
-  { id: 'v1', name: 'Kino Muranów', url: 'https://m', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', createdAt: '' },
-  { id: 'v2', name: 'Teatr Powszechny', url: 'https://t', city: 'Warsaw', country: 'Poland', category: 'theatre', language: 'pl', createdAt: '' },
+  { id: 'v1', name: 'Kino Muranów', url: 'https://m', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },
+  { id: 'v2', name: 'Teatr Powszechny', url: 'https://t', city: 'Warsaw', country: 'Poland', category: 'theatre', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },
 ];
 
 describe('NewFolderModal', () => {

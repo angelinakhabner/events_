@@ -1,8 +1,10 @@
 import type { Category, EventFilters } from '@goin/shared';
 
-const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+const TZ = 'Europe/Warsaw';
+const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ });
+const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ });
+const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: TZ });
+const shortDateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: TZ });
 
 export function formatDayKey(iso: string): string {
   return dayKeyFmt.format(new Date(iso));
@@ -14,6 +16,10 @@ export function formatDayLabel(iso: string): string {
 
 export function formatTime(iso: string): string {
   return timeFmt.format(new Date(iso));
+}
+
+export function formatShortDate(iso: string): string {
+  return shortDateFmt.format(new Date(iso));
 }
 
 export function categoryLabel(c: Category): string {

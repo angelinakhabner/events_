@@ -7,13 +7,17 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/backend/src/db/migrate.js && node dist/backend/src/index.js",
+    "start": "node dist/backend/src/db/migrate.js && node dist/backend/src/scripts/seed.js && node dist/backend/src/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --dir src/__tests__/integration",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:reset": "tsx src/db/migrate.ts reset"
+    "db:reset": "tsx src/db/migrate.ts reset",
+    "db:seed": "tsx src/scripts/seed.ts",
+    "scrape:all": "node dist/backend/src/scripts/scrape-all.js",
+    "scrape:all:dev": "tsx src/scripts/scrape-all.ts",
+    "scrape:one": "tsx src/scripts/scrape-one.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -21,6 +25,9 @@
     "@hono/node-server": "^1.13.7",
     "@hono/trpc-server": "^0.3.4",
     "@trpc/server": "^11.0.0-rc.660",
+    "cheerio": "^1.2.0",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
     "drizzle-orm": "^0.36.4",
     "hono": "^4.6.12",
     "postgres": "^3.4.5",

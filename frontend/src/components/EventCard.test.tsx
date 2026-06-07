@@ -5,13 +5,14 @@ import type { Event, Venue } from '@goin/shared';
 
 const venue: Venue = {
   id: 'v', name: 'Kino X', url: 'https://x', city: 'Warsaw', country: 'Poland',
-  category: 'cinema', language: 'pl', createdAt: '',
+  category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '',
 };
 
 const event: Event = {
   id: 'e1', venueId: 'v', title: 'Perfect Days', description: 'A film about a man and his routines.',
   startsAt: '2026-06-01T18:00:00.000Z', endsAt: null, durationMinutes: 124, director: null, cast: [],
-  genre: null, priceMin: 28, priceMax: 32, link: 'https://example.com', scrapedAt: '',
+  category: 'cinema', language: 'pl',
+  priceMin: 28, priceMax: 32, sourceUrl: 'https://example.com', sourceId: null, scrapedAt: '',
 };
 
 describe('EventCard', () => {

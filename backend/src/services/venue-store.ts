@@ -1,9 +1,19 @@
 import type { Venue, VenueListInput, Category } from '@goin/shared';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
+import { getDb, schema } from '../db/index.js';
+import { env } from '../config.js';
+import { and, eq } from 'drizzle-orm';
 
-// In-memory venue store. Swap for the Drizzle-backed implementation when
-// DATABASE_URL is wired up — the interface stays the same.
-export class VenueStore {
+export interface IVenueStore {
+  list(filter?: VenueListInput): Venue[] | Promise<Venue[]>;
+  get(id: string): Venue | undefined | Promise<Venue | undefined>;
+  add?(input: Omit<Venue, 'id' | 'createdAt'>): Venue;
+  cities(): string[] | Promise<string[]>;
+  categories(): Category[] | Promise<Category[]>;
+}
+
+// In-memory venue store. Used for tests and as a fallback when DATABASE_URL is unset.
+export class VenueStore implements IVenueStore {
   private venues: Map<string, Venue>;
 
   constructor(seed: Venue[] = DEFAULT_VENUES) {
@@ -51,6 +61,52 @@ export class VenueStore {
   }
 }
 
+export class DbVenueStore implements IVenueStore {
+  async list(filter: VenueListInput = {}): Promise<Venue[]> {
+    const db = getDb();
+    const conditions = [];
+    if (filter.city) conditions.push(eq(schema.venues.city, filter.city));
+    if (filter.country) conditions.push(eq(schema.venues.country, filter.country));
+    if (filter.category) conditions.push(eq(schema.venues.category, filter.category));
+    const rows = conditions.length
+      ? await db.select().from(schema.venues).where(and(...conditions))
+      : await db.select().from(schema.venues);
+    return rows.map(rowToVenue);
+  }
+
+  async get(id: string): Promise<Venue | undefined> {
+    const db = getDb();
+    const rows = await db.select().from(schema.venues).where(eq(schema.venues.id, id)).limit(1);
+    return rows[0] ? rowToVenue(rows[0]) : undefined;
+  }
+
+  async cities(): Promise<string[]> {
+    const db = getDb();
+    const rows = await db.selectDistinct({ city: schema.venues.city }).from(schema.venues);
+    return rows.map((r) => r.city).sort();
+  }
+
+  async categories(): Promise<Category[]> {
+    const db = getDb();
+    const rows = await db.selectDistinct({ category: schema.venues.category }).from(schema.venues);
+    return rows.map((r) => r.category).sort() as Category[];
+  }
+}
+
+function rowToVenue(row: typeof schema.venues.$inferSelect): Venue {
+  return {
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    city: row.city,
+    country: row.country,
+    category: row.category as Category,
+    language: row.language,
+    timezone: row.timezone,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function slug(s: string): string {
   return s
     .toLowerCase()
@@ -60,4 +116,8 @@ function slug(s: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-export const defaultVenueStore = new VenueStore();
+// Keep the tRPC venues procedures backed by the in-memory store for now —
+// folder partitioning + existing integration tests rely on the stable
+// slug ids (e.g. "kino-muranow"). The scraper, seed script, and DB-backed
+// event reads query the venues table directly via Drizzle.
+export const defaultVenueStore: IVenueStore = new VenueStore();
