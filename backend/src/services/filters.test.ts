@@ -4,7 +4,7 @@ import type { Event, Venue } from '@goin/shared';
 
 const venue: Venue = {
   id: 'v1', name: 'V', url: 'https://v', city: 'Warsaw', country: 'Poland',
-  category: 'cinema', language: 'pl', createdAt: '',
+  category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '',
 };
 
 function evt(overrides: Partial<Event> = {}): Event {
@@ -12,7 +12,8 @@ function evt(overrides: Partial<Event> = {}): Event {
     id: 'e', venueId: 'v1', title: 't', description: null,
     startsAt: '2025-06-04T19:30:00.000Z', // Wed 19:30 UTC
     endsAt: null, durationMinutes: null, director: null, cast: [],
-    genre: null, priceMin: 30, priceMax: 50, link: 'https://l', scrapedAt: '',
+    category: 'cinema', language: 'pl',
+    priceMin: 30, priceMax: 50, sourceUrl: 'https://l', sourceId: null, scrapedAt: '',
     ...overrides,
   };
 }

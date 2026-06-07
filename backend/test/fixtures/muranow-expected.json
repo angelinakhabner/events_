@@ -1,0 +1,41 @@
+[
+  {
+    "title": "Tajny agent",
+    "starts_at": "2026-06-07T17:00:00+02:00",
+    "duration_minutes": null,
+    "language": null,
+    "director": null,
+    "cast": null,
+    "description": null,
+    "price_min": null,
+    "price_max": null,
+    "source_url": "https://kinomuranow.pl/film/tajny-agent",
+    "source_id": "26919"
+  },
+  {
+    "title": "Drugie życie",
+    "starts_at": "2026-06-07T18:00:00+02:00",
+    "duration_minutes": null,
+    "language": null,
+    "director": null,
+    "cast": null,
+    "description": null,
+    "price_min": null,
+    "price_max": null,
+    "source_url": "https://kinomuranow.pl/film/drugie-zycie",
+    "source_id": "26094"
+  },
+  {
+    "title": "Romería",
+    "starts_at": "2026-06-08T18:15:00+02:00",
+    "duration_minutes": null,
+    "language": null,
+    "director": null,
+    "cast": null,
+    "description": null,
+    "price_min": null,
+    "price_max": null,
+    "source_url": "https://kinomuranow.pl/film/romeria",
+    "source_id": null
+  }
+]

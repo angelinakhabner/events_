@@ -37,10 +37,12 @@ export function generateDefaultEvents(now: Date = new Date()): Event[] {
       durationMinutes: t.durationMinutes,
       director: t.director,
       cast: [],
-      genre: t.genre,
+      category: venue?.category ?? 'other',
+      language: venue?.language ?? null,
       priceMin: t.priceMin,
       priceMax: t.priceMax,
-      link: venue?.url ?? '',
+      sourceUrl: venue?.url ?? '',
+      sourceId: null,
       scrapedAt: baseMidnight.toISOString(),
     };
   });

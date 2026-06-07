@@ -3,6 +3,9 @@ import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, deviceProcedure } from './trpc.js';
 import { generateDefaultEvents } from '../data/default-events.js';
 import { filterEvents } from '../services/filters.js';
+import { defaultEventStore } from '../services/event-store.js';
+import { scrapeVenue } from '../services/scraper/runner.js';
+import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
 
@@ -37,9 +40,15 @@ const venues = router({
         country: z.string().min(1),
         category: categorySchema,
         language: z.string().default('en'),
+        timezone: z.string().default('Europe/Warsaw'),
       }),
     )
-    .mutation(({ ctx, input }) => ctx.venues.add(input)),
+    .mutation(({ ctx, input }) => {
+      if (!ctx.venues.add) {
+        throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'add is not supported by this store' });
+      }
+      return ctx.venues.add(input);
+    }),
   cities: publicProcedure.query(({ ctx }) => ctx.venues.cities()),
   categories: publicProcedure.query(({ ctx }) => ctx.venues.categories()),
 });
@@ -47,11 +56,33 @@ const venues = router({
 const events = router({
   listDefault: publicProcedure
     .input(z.object({ filters: eventFiltersSchema.optional() }).optional())
-    .query(({ ctx, input }) => {
-      const all = generateDefaultEvents();
+    .query(async ({ input }) => {
+      // Reads only from DB. NEVER triggers scraping — that happens via cron
+      // (scrape:all) or the admin.triggerScrape procedure.
+      if (!env.DATABASE_URL) return [];
+      const rows = await defaultEventStore.listUpcoming({ city: 'Warsaw', limit: 100 });
       const filters = input?.filters ?? {};
-      const venueMap = new Map(ctx.venues.list().map((v) => [v.id, v]));
-      return filterEvents(all, venueMap, filters);
+      // Re-use the existing filter logic. Venues map left empty so per-venue
+      // filters (city/country) don't strip rows we already scoped by city.
+      return filterEvents(rows, new Map(), filters);
+    }),
+
+  listByVenue: publicProcedure
+    .input(z.object({ venueId: z.string() }))
+    .query(async ({ input }) => {
+      if (!env.DATABASE_URL) return [];
+      return defaultEventStore.listUpcoming({ venueId: input.venueId, limit: 200 });
+    }),
+});
+
+const admin = router({
+  triggerScrape: publicProcedure
+    .input(z.object({ venueId: z.string(), force: z.boolean().optional() }))
+    .mutation(async ({ input }) => {
+      if (!env.DATABASE_URL) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'DATABASE_URL not configured' });
+      }
+      return scrapeVenue(input.venueId, { force: input.force });
     }),
 });
 
@@ -106,7 +137,8 @@ const folders = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: `Folder ${input.folderId} not found` });
       }
       const all = generateDefaultEvents();
-      const venueMap = new Map(ctx.venues.list().map((v) => [v.id, v]));
+      const venues = await ctx.venues.list();
+      const venueMap = new Map(venues.map((v) => [v.id, v]));
       const scoped = folder.venueIds.length
         ? all.filter((e) => folder.venueIds.includes(e.venueId))
         : all;
@@ -126,6 +158,7 @@ export const appRouter = router({
   venues,
   events,
   folders,
+  admin,
 });
 
 export type AppRouter = typeof appRouter;

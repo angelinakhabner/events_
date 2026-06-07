@@ -38,7 +38,10 @@ export async function dropAll(databaseUrl = env.DATABASE_URL): Promise<void> {
   const sql = postgres(databaseUrl, { max: 1 });
   try {
     await sql.unsafe(
-      `DROP TABLE IF EXISTS "folders" CASCADE; DROP TABLE IF EXISTS "venues" CASCADE;`,
+      `DROP TABLE IF EXISTS "scrape_runs" CASCADE;
+       DROP TABLE IF EXISTS "events" CASCADE;
+       DROP TABLE IF EXISTS "folders" CASCADE;
+       DROP TABLE IF EXISTS "venues" CASCADE;`,
     );
     console.log('dropped tables');
   } finally {

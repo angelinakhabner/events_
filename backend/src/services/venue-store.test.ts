@@ -3,9 +3,9 @@ import { VenueStore } from './venue-store.js';
 import type { Venue } from '@goin/shared';
 
 const sample: Venue[] = [
-  { id: 'a', name: 'A', url: 'https://a', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', createdAt: '' },
-  { id: 'b', name: 'B', url: 'https://b', city: 'Berlin', country: 'Germany', category: 'theatre', language: 'de', createdAt: '' },
-  { id: 'c', name: 'C', url: 'https://c', city: 'Warsaw', country: 'Poland', category: 'theatre', language: 'pl', createdAt: '' },
+  { id: 'a', name: 'A', url: 'https://a', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },
+  { id: 'b', name: 'B', url: 'https://b', city: 'Berlin', country: 'Germany', category: 'theatre', language: 'de', timezone: 'Europe/Berlin', createdAt: '' },
+  { id: 'c', name: 'C', url: 'https://c', city: 'Warsaw', country: 'Poland', category: 'theatre', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },
 ];
 
 describe('VenueStore', () => {
@@ -32,6 +32,7 @@ describe('VenueStore', () => {
       country: 'Czechia',
       category: 'cinema',
       language: 'cs',
+      timezone: 'Europe/Prague',
     });
     expect(v.id).toBe('kino-praha');
     expect(store.list({ city: 'Prague' })).toHaveLength(1);

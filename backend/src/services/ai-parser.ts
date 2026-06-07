@@ -34,7 +34,10 @@ function client(): Anthropic {
 export async function parseEventsFromHtml(html: string, sourceUrl: string): Promise<ParsedEvent[]> {
   const trimmed = html.slice(0, 80_000);
   const resp = await client().messages.create({
-    model: 'claude-opus-4-7',
+    // Sonnet 4.6 — best balance of accuracy/cost for structured HTML extraction.
+    // Opus is overkill for this task; Haiku risks reliability on messy HTML
+    // with Polish content and ambiguous date formats.
+    model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     system: PROMPT,
     messages: [

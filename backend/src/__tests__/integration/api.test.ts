@@ -34,13 +34,13 @@ describe('API integration', () => {
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) return;
     const sql = postgres(process.env.DATABASE_URL, { max: 1 });
-    try { await sql`TRUNCATE folders RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
+    try { await sql`TRUNCATE folders, events, scrape_runs RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
   });
 
   afterAll(async () => {
     if (!process.env.DATABASE_URL) return;
     const sql = postgres(process.env.DATABASE_URL, { max: 1 });
-    try { await sql`TRUNCATE folders RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
+    try { await sql`TRUNCATE folders, events, scrape_runs RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
   });
 
   it('GET /health returns ok', async () => {

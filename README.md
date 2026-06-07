@@ -106,6 +106,46 @@ The Vite `base` is set from `VITE_BASE_PATH` (the workflow passes
 forwards `/trpc` to `http://localhost:3001`, so `VITE_API_URL` can stay
 empty in `.env`. In production it must be the Railway URL.
 
+## Scraping pipeline
+
+One scheduled scrape per day pulls each venue's repertoire, extracts events
+with Claude Sonnet 4.6, and upserts them into Postgres. The frontend reads
+from the DB on every request — refreshing the page slides the time window
+forward without re-scraping.
+
+### Local
+
+```bash
+npm --workspace backend run db:seed         # idempotent: inserts default venues
+npm --workspace backend run scrape:one muranow   # force-scrape one venue (real API)
+npm --workspace backend run scrape:all:dev       # scrape all venues
+```
+
+### Railway Cron
+
+Add a **Cron job** in the Railway dashboard pointed at this service:
+
+- **Schedule:** `0 7 * * *` (07:00 daily; Railway runs cron in UTC, but
+  the perceived "morning refresh" lines up with the start of the day in
+  Europe/Warsaw since CET/CEST is UTC+1/+2 and we tolerate that small drift).
+- **Command:** `npm --workspace backend run scrape:all`
+
+That's it — `scrape:all` reads all venues from the DB, calls Claude for
+each (skipping when HTML hash is unchanged), and writes new/updated events.
+Failures are recorded in the `scrape_runs` table; tail Railway logs for live
+output.
+
+### Manual smoke test
+
+After deploy, exercise the live pipeline:
+
+```bash
+npm --workspace backend run scrape:one muranow
+```
+
+This hits the real Muranów page and the real Claude API. Inspect the
+resulting `scrape_runs` row and the new `events` rows.
+
 ## Deploying the backend to Railway
 
 See **[`docs/RAILWAY.md`](docs/RAILWAY.md)** for the step-by-step (Postgres

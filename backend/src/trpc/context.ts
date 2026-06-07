@@ -1,9 +1,9 @@
 import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch';
-import { defaultVenueStore, VenueStore } from '../services/venue-store.js';
+import { defaultVenueStore, type IVenueStore } from '../services/venue-store.js';
 import { defaultFolderStore, type FolderStore } from '../services/folder-store.js';
 
 export interface AppContext {
-  venues: VenueStore;
+  venues: IVenueStore;
   folders: FolderStore;
   deviceId: string | null;
 }

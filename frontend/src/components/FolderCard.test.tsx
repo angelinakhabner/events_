@@ -5,7 +5,7 @@ import { FolderCard } from './FolderCard';
 import type { Folder, Venue } from '@goin/shared';
 
 const venues: Venue[] = [
-  { id: 'v1', name: 'Kino X', url: 'https://x', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', createdAt: '' },
+  { id: 'v1', name: 'Kino X', url: 'https://x', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },
 ];
 
 function folder(overrides: Partial<Folder> = {}): Folder {
