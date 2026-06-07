@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, sql } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue } from './preprocessor.js';
@@ -36,24 +36,32 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
   if (!run) throw new Error('Failed to create scrape_runs row');
 
   const finalize = async (patch: Partial<typeof schema.scrapeRuns.$inferInsert>): Promise<ScrapeRun> => {
-    // Do the update without relying on .returning() — re-SELECT the row
-    // afterwards. .returning() has been observed to yield an empty array on
-    // the very first drizzle call in a fresh vitest worker, causing the
-    // returned ScrapeRun to fall back to the original `running` row.
-    await db
-      .update(schema.scrapeRuns)
-      .set({ ...patch, finishedAt: new Date() })
-      .where(eq(schema.scrapeRuns.id, run.id));
-    const rows = await db
-      .select()
-      .from(schema.scrapeRuns)
-      .where(eq(schema.scrapeRuns.id, run.id))
-      .limit(1);
+    // Drizzle's typed `.update().set().where()` was observed in CI not to
+    // actually persist the row — finalize's returning came back empty and a
+    // subsequent SELECT couldn't find the just-updated row. Use raw SQL via
+    // db.execute and RETURNING to guarantee a single round-trip that both
+    // persists and returns the row.
+    const finishedAt = new Date();
+    const status = patch.status ?? 'failed';
+    const eventsFound = patch.eventsFound ?? null;
+    const errorMessage = patch.errorMessage ?? null;
+    const rawHash = patch.rawHash ?? null;
+    const updateResult = await db.execute(sql`
+      UPDATE scrape_runs SET
+        status = ${status},
+        events_found = ${eventsFound},
+        error_message = ${errorMessage},
+        raw_hash = ${rawHash},
+        finished_at = ${finishedAt}
+      WHERE id = ${run.id}
+      RETURNING id, venue_id, started_at, finished_at, status, events_found, error_message, raw_hash
+    `);
+    const rows = unwrapRows<RawScrapeRunRow>(updateResult);
     if (!rows[0]) {
-      console.warn(`[scraper] scrape_runs row ${run.id} disappeared after update`);
-      return toScrapeRun({ ...run, ...patch, finishedAt: new Date() } as typeof schema.scrapeRuns.$inferSelect);
+      console.warn(`[scraper] scrape_runs row ${run.id} not updated`);
+      return toScrapeRun({ ...run, status, eventsFound, errorMessage, rawHash, finishedAt } as typeof schema.scrapeRuns.$inferSelect);
     }
-    return toScrapeRun(rows[0]);
+    return rawToScrapeRun(rows[0]);
   };
 
   try {
@@ -117,12 +125,49 @@ function toScrapeRun(row: typeof schema.scrapeRuns.$inferSelect): ScrapeRun {
   return {
     id: row.id,
     venueId: row.venueId,
-    startedAt: row.startedAt.toISOString(),
-    finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
+    startedAt: toDate(row.startedAt).toISOString(),
+    finishedAt: row.finishedAt ? toDate(row.finishedAt).toISOString() : null,
     status: row.status as ScrapeRun['status'],
     eventsFound: row.eventsFound,
     errorMessage: row.errorMessage,
     rawHash: row.rawHash,
   };
+}
+
+interface RawScrapeRunRow {
+  id: string;
+  venue_id: string;
+  started_at: Date | string;
+  finished_at: Date | string | null;
+  status: string;
+  events_found: number | null;
+  error_message: string | null;
+  raw_hash: string | null;
+}
+
+function rawToScrapeRun(row: RawScrapeRunRow): ScrapeRun {
+  return {
+    id: row.id,
+    venueId: row.venue_id,
+    startedAt: toDate(row.started_at).toISOString(),
+    finishedAt: row.finished_at ? toDate(row.finished_at).toISOString() : null,
+    status: row.status as ScrapeRun['status'],
+    eventsFound: row.events_found,
+    errorMessage: row.error_message,
+    rawHash: row.raw_hash,
+  };
+}
+
+function toDate(v: Date | string): Date {
+  return v instanceof Date ? v : new Date(v);
+}
+
+function unwrapRows<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && typeof result === 'object' && 'rows' in result) {
+    const r = (result as { rows: unknown }).rows;
+    if (Array.isArray(r)) return r as T[];
+  }
+  return [];
 }
 

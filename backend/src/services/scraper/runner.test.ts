@@ -73,20 +73,35 @@ const fakeDb = {
       },
     }),
   }),
-  update: (table: any) => ({
-    set: (patch: any) => ({
-      where: (_w: any) => {
-        // Apply the patch synchronously so the chained `await` resolves
-        // after the in-memory mutation. Runner no longer calls .returning().
-        if (table === '__scrapeRuns__') {
-          const r = state.runs[state.runs.length - 1]!;
-          Object.assign(r, patch);
-        }
-        return Promise.resolve();
-      },
+  update: (_table: any) => ({
+    set: (_patch: any) => ({
+      where: (_w: any) => Promise.resolve(),
     }),
   }),
-  execute: async (_sql: any) => ({ rows: [{ inserted: true }] }),
+  // Runner now uses db.execute(sql`UPDATE scrape_runs ... RETURNING ...`).
+  // Extract the bound Param values from drizzle's sql template chunks
+  // (in finalize's order: status, eventsFound, errorMessage, rawHash,
+  // finishedAt, id) and apply them to the most recent run.
+  execute: async (frag: any) => {
+    // Our mocked drizzle-orm `sql` tag stores values under `__params`.
+    const params: any[] = Array.isArray(frag?.__params) ? frag.__params : [];
+    const [status, eventsFound, errorMessage, rawHash, finishedAt, id] = params;
+    if (id) {
+      const r = state.runs.find((x) => x.id === id);
+      if (r) {
+        Object.assign(r, { status, eventsFound, errorMessage, rawHash, finishedAt });
+        return {
+          rows: [{
+            id: r.id, venue_id: r.venueId, started_at: r.startedAt,
+            finished_at: r.finishedAt, status: r.status,
+            events_found: r.eventsFound, error_message: r.errorMessage,
+            raw_hash: r.rawHash,
+          }],
+        };
+      }
+    }
+    return { rows: [{ inserted: true }] };
+  },
 };
 
 vi.mock('../../db/index.js', () => ({
@@ -101,7 +116,8 @@ vi.mock('../../db/index.js', () => ({
 // Mock drizzle-orm helpers since runner imports them and our schema is just strings.
 vi.mock('drizzle-orm', async () => {
   return {
-    sql: (..._a: any[]) => ({}),
+    // Preserve the interpolated values so the fake db can read them back.
+    sql: (_strings: TemplateStringsArray, ...values: unknown[]) => ({ __params: values }),
     eq: (..._a: any[]) => ({}),
     desc: (..._a: any[]) => ({}),
     and: (..._a: any[]) => ({}),
