@@ -39,6 +39,6 @@ describe('generateDefaultEvents', () => {
 
   it('links each event to its venue url', () => {
     const events = generateDefaultEvents(EPOCH);
-    expect(events[0]!.link).toMatch(/^https?:\/\//);
+    expect(events[0]!.sourceUrl).toMatch(/^https?:\/\//);
   });
 });
