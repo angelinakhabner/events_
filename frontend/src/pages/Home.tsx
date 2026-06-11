@@ -1,14 +1,15 @@
-import { useMemo, useState } from 'react';
-import type { EventFilters } from '@goin/shared';
+import { useMemo } from 'react';
 import { trpc } from '../lib/trpc';
-import { FilterBar } from '../components/FilterBar';
-import { EventList } from '../components/EventList';
+import { EventBuckets } from '../components/EventBuckets';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 
-export function HomePage() {
-  const [filters, setFilters] = useState<EventFilters>({});
+const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
-  const eventsQuery = trpc.events.listDefault.useQuery({ filters });
+export function HomePage() {
+  const eventsQuery = trpc.events.listDefault.useQuery(undefined, {
+    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
+  });
   const venuesQuery = trpc.venues.list.useQuery();
 
   const venueMap = useMemo(
@@ -16,21 +17,18 @@ export function HomePage() {
     [venuesQuery.data],
   );
 
+  const events = eventsQuery.data ?? [];
+
   return (
     <section>
       <div className="mb-10">
         <h1 className="font-serif text-4xl tracking-tight">What&rsquo;s on</h1>
         <p className="mt-2 text-muted max-w-prose">
-          A curated default set of cultural events. Filter, browse, then add your own venues
-          and group them into folders in <a href="/my" className="link-accent">/my</a>.
+          Live screenings in Warsaw, refreshed every few minutes.
         </p>
       </div>
 
-      <div className="border-y border-rule">
-        <FilterBar filters={filters} onChange={setFilters} />
-      </div>
-
-      <div className="mt-10">
+      <div className="mt-2">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
         {eventsQuery.error ? (
           <ErrorState
@@ -38,15 +36,10 @@ export function HomePage() {
             onRetry={() => eventsQuery.refetch()}
           />
         ) : null}
-        {eventsQuery.data && eventsQuery.data.length === 0 ? (
-          <EmptyState
-            title="No events match your filters"
-            action={{ label: 'Reset filters', onClick: () => setFilters({}) }}
-          />
+        {!eventsQuery.isLoading && !eventsQuery.error && events.length === 0 ? (
+          <EmptyState title="No upcoming events." />
         ) : null}
-        {eventsQuery.data && eventsQuery.data.length > 0 ? (
-          <EventList events={eventsQuery.data} venues={venueMap} />
-        ) : null}
+        {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
       </div>
     </section>
   );

@@ -70,6 +70,32 @@ npm run typecheck
 npm run lint
 ```
 
+## Environment variables
+
+| Variable | Local value | Railway value | Purpose |
+|---|---|---|---|
+| `NODE_ENV` | `development` | `production` | Runtime mode |
+| `PORT` | `3001` | injected by Railway | Backend HTTP port (server binds `0.0.0.0`) |
+| `DATABASE_URL` | `postgresql://goin:goin@localhost:5432/goin` | `${{ Postgres.DATABASE_URL }}` | Postgres connection. Unset ⇒ in-memory folder store |
+| `ANTHROPIC_API_KEY` | `sk-ant-…` (optional locally) | `sk-ant-…` | Claude API key for AI event parsing |
+| `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
+| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email |
+| `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | set as a **GitHub Actions repo variable**, baked into the Pages build | Backend base URL the frontend calls |
+| `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/<repo>/` | Vite `base` for the GitHub Pages subpath |
+
+`ANTHROPIC_API_KEY` and `RESEND_API_KEY` are read lazily — the server boots and
+serves venues/folders/default events without them; only AI parsing and email
+calls fail if they're missing. CI uses a throwaway set (`backend/.env.test`)
+against the CI Postgres service.
+
+## Scheduled scraping (not yet wired)
+
+There is **no cron / scheduled scrape today.** `services/scraper.ts` (fetch) and
+`services/ai-parser.ts` (Claude parse) exist but are not yet orchestrated or
+persisted — Home serves a deterministic default event set
+(`data/default-events.ts`). Wiring fetch → parse → persist on a schedule is the
+next milestone; see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ## Architecture notes
 
 - `VenueStore` is an in-memory implementation behind a small interface so
@@ -105,6 +131,55 @@ The Vite `base` is set from `VITE_BASE_PATH` (the workflow passes
 `/<repo>/`); locally it falls back to `/events_/`. In dev, the Vite proxy
 forwards `/trpc` to `http://localhost:3001`, so `VITE_API_URL` can stay
 empty in `.env`. In production it must be the Railway URL.
+
+## Scraping pipeline
+
+One scheduled scrape per day pulls each venue's repertoire, extracts events
+with Claude Sonnet 4.6, and upserts them into Postgres. The frontend reads
+from the DB on every request — refreshing the page slides the time window
+forward without re-scraping.
+
+### Local
+
+```bash
+npm --workspace backend run db:seed         # idempotent: inserts default venues
+npm --workspace backend run scrape:one muranow   # force-scrape one venue (real API)
+npm --workspace backend run scrape:all:dev       # scrape all venues
+```
+
+### Scheduling on Railway (no cron required)
+
+Railway's cron feature isn't available on all plans, so the daily scrape
+runs **inside the backend server process** via an in-process scheduler
+(`backend/src/services/scheduler.ts`). Enable it with two env vars on the
+backend service:
+
+| Variable | Value | Meaning |
+|---|---|---|
+| `SCRAPE_CRON_ENABLED` | `true` | turn the scheduler on (off by default so dev/test servers don't scrape) |
+| `SCRAPE_CRON_HOUR` | `7` (default) | hour of day in **Europe/Warsaw** to run |
+
+On boot the server logs `[scheduler] next scrape in X.Xh`, fires at the
+configured hour, then re-arms for the next day. DST is handled — the
+target is computed against the Europe/Warsaw wall clock, not UTC.
+
+`scrape:all` is still available as a CLI (`npm --workspace backend run
+scrape:all`) if you later move to Railway cron or any external scheduler —
+in that case set `SCRAPE_CRON_ENABLED=false` to avoid double scraping.
+
+Failures are recorded in the `scrape_runs` table; tail Railway logs for
+live output.
+
+### Manual smoke test
+
+After deploy, exercise the live pipeline:
+
+```bash
+npm --workspace backend run scrape:one muranow
+```
+
+This hits the real Muranów page and the real Claude API. Inspect the
+resulting `scrape_runs` row and the new `events` rows.
 
 ## Deploying the backend to Railway
 

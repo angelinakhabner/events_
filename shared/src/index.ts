@@ -14,6 +14,7 @@ export interface Venue {
   country: string;
   category: Category;
   language: string;
+  timezone: string;
   createdAt: string;
 }
 
@@ -24,13 +25,16 @@ export interface Event {
   description: string | null;
   startsAt: string;
   endsAt: string | null;
-  durationMinutes: number | null;
+  category: Category;
+  language: string | null;
   director: string | null;
   cast: string[];
-  genre: string | null;
+  durationMinutes: number | null;
+  /** In grosze (1/100 PLN). e.g. 2200 = 22 PLN. */
   priceMin: number | null;
   priceMax: number | null;
-  link: string;
+  sourceUrl: string;
+  sourceId: string | null;
   scrapedAt: string;
 }
 
@@ -57,4 +61,15 @@ export interface VenueListInput {
   city?: string;
   country?: string;
   category?: Category;
+}
+
+export interface ScrapeRun {
+  id: string;
+  venueId: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: 'running' | 'success' | 'failed' | 'skipped_unchanged';
+  eventsFound: number | null;
+  errorMessage: string | null;
+  rawHash: string | null;
 }
