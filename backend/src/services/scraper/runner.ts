@@ -129,19 +129,6 @@ function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }
 
-function toScrapeRun(row: typeof schema.scrapeRuns.$inferSelect): ScrapeRun {
-  return {
-    id: row.id,
-    venueId: row.venueId,
-    startedAt: toDate(row.startedAt).toISOString(),
-    finishedAt: row.finishedAt ? toDate(row.finishedAt).toISOString() : null,
-    status: row.status as ScrapeRun['status'],
-    eventsFound: row.eventsFound,
-    errorMessage: row.errorMessage,
-    rawHash: row.rawHash,
-  };
-}
-
 interface RawScrapeRunRow {
   id: string;
   venue_id: string;

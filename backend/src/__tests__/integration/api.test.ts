@@ -34,13 +34,21 @@ describe('API integration', () => {
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) return;
     const sql = postgres(process.env.DATABASE_URL, { max: 1 });
-    try { await sql`TRUNCATE folders, events, scrape_runs RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
+    // Only truncate folders — this suite doesn't touch events/scrape_runs,
+    // and vitest runs test files in parallel against the same Postgres, so
+    // truncating those tables here would wipe rows out from under the
+    // scraper integration suite mid-run.
+    try { await sql`TRUNCATE folders RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
   });
 
   afterAll(async () => {
     if (!process.env.DATABASE_URL) return;
     const sql = postgres(process.env.DATABASE_URL, { max: 1 });
-    try { await sql`TRUNCATE folders, events, scrape_runs RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
+    // Only truncate folders — this suite doesn't touch events/scrape_runs,
+    // and vitest runs test files in parallel against the same Postgres, so
+    // truncating those tables here would wipe rows out from under the
+    // scraper integration suite mid-run.
+    try { await sql`TRUNCATE folders RESTART IDENTITY CASCADE`; } finally { await sql.end(); }
   });
 
   it('GET /health returns ok', async () => {

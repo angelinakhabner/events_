@@ -147,19 +147,28 @@ npm --workspace backend run scrape:one muranow   # force-scrape one venue (real 
 npm --workspace backend run scrape:all:dev       # scrape all venues
 ```
 
-### Railway Cron
+### Scheduling on Railway (no cron required)
 
-Add a **Cron job** in the Railway dashboard pointed at this service:
+Railway's cron feature isn't available on all plans, so the daily scrape
+runs **inside the backend server process** via an in-process scheduler
+(`backend/src/services/scheduler.ts`). Enable it with two env vars on the
+backend service:
 
-- **Schedule:** `0 7 * * *` (07:00 daily; Railway runs cron in UTC, but
-  the perceived "morning refresh" lines up with the start of the day in
-  Europe/Warsaw since CET/CEST is UTC+1/+2 and we tolerate that small drift).
-- **Command:** `npm --workspace backend run scrape:all`
+| Variable | Value | Meaning |
+|---|---|---|
+| `SCRAPE_CRON_ENABLED` | `true` | turn the scheduler on (off by default so dev/test servers don't scrape) |
+| `SCRAPE_CRON_HOUR` | `7` (default) | hour of day in **Europe/Warsaw** to run |
 
-That's it — `scrape:all` reads all venues from the DB, calls Claude for
-each (skipping when HTML hash is unchanged), and writes new/updated events.
-Failures are recorded in the `scrape_runs` table; tail Railway logs for live
-output.
+On boot the server logs `[scheduler] next scrape in X.Xh`, fires at the
+configured hour, then re-arms for the next day. DST is handled — the
+target is computed against the Europe/Warsaw wall clock, not UTC.
+
+`scrape:all` is still available as a CLI (`npm --workspace backend run
+scrape:all`) if you later move to Railway cron or any external scheduler —
+in that case set `SCRAPE_CRON_ENABLED=false` to avoid double scraping.
+
+Failures are recorded in the `scrape_runs` table; tail Railway logs for
+live output.
 
 ### Manual smoke test
 
