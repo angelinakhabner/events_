@@ -70,6 +70,32 @@ npm run typecheck
 npm run lint
 ```
 
+## Environment variables
+
+| Variable | Local value | Railway value | Purpose |
+|---|---|---|---|
+| `NODE_ENV` | `development` | `production` | Runtime mode |
+| `PORT` | `3001` | injected by Railway | Backend HTTP port (server binds `0.0.0.0`) |
+| `DATABASE_URL` | `postgresql://goin:goin@localhost:5432/goin` | `${{ Postgres.DATABASE_URL }}` | Postgres connection. Unset ⇒ in-memory folder store |
+| `ANTHROPIC_API_KEY` | `sk-ant-…` (optional locally) | `sk-ant-…` | Claude API key for AI event parsing |
+| `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
+| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email |
+| `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | set as a **GitHub Actions repo variable**, baked into the Pages build | Backend base URL the frontend calls |
+| `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/<repo>/` | Vite `base` for the GitHub Pages subpath |
+
+`ANTHROPIC_API_KEY` and `RESEND_API_KEY` are read lazily — the server boots and
+serves venues/folders/default events without them; only AI parsing and email
+calls fail if they're missing. CI uses a throwaway set (`backend/.env.test`)
+against the CI Postgres service.
+
+## Scheduled scraping (not yet wired)
+
+There is **no cron / scheduled scrape today.** `services/scraper.ts` (fetch) and
+`services/ai-parser.ts` (Claude parse) exist but are not yet orchestrated or
+persisted — Home serves a deterministic default event set
+(`data/default-events.ts`). Wiring fetch → parse → persist on a schedule is the
+next milestone; see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ## Architecture notes
 
 - `VenueStore` is an in-memory implementation behind a small interface so
