@@ -84,12 +84,14 @@ const fakeDb = {
   // finishedAt, id) and apply them to the most recent run.
   execute: async (frag: any) => {
     // Our mocked drizzle-orm `sql` tag stores values under `__params`.
+    // finalize now issues two execute calls:
+    //   UPDATE: [status, eventsFound, errorMessage, rawHash, finishedAt, id]
+    //   SELECT: [id]
     const params: any[] = Array.isArray(frag?.__params) ? frag.__params : [];
-    const [status, eventsFound, errorMessage, rawHash, finishedAt, id] = params;
-    if (id) {
+    if (params.length === 1) {
+      const id = params[0];
       const r = state.runs.find((x) => x.id === id);
       if (r) {
-        Object.assign(r, { status, eventsFound, errorMessage, rawHash, finishedAt });
         return {
           rows: [{
             id: r.id, venue_id: r.venueId, started_at: r.startedAt,
@@ -99,6 +101,15 @@ const fakeDb = {
           }],
         };
       }
+      return { rows: [] };
+    }
+    if (params.length === 6) {
+      const [status, eventsFound, errorMessage, rawHash, finishedAt, id] = params;
+      const r = state.runs.find((x) => x.id === id);
+      if (r) {
+        Object.assign(r, { status, eventsFound, errorMessage, rawHash, finishedAt });
+      }
+      return { rows: [] };
     }
     return { rows: [{ inserted: true }] };
   },

@@ -36,35 +36,40 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
   if (!run) throw new Error('Failed to create scrape_runs row');
 
   const finalize = async (patch: Partial<typeof schema.scrapeRuns.$inferInsert>): Promise<ScrapeRun> => {
-    // Drizzle's typed `.update().set().where()` was observed in CI not to
-    // actually persist the row — finalize's returning came back empty and a
-    // subsequent SELECT couldn't find the just-updated row. Use raw SQL via
-    // db.execute and RETURNING to guarantee a single round-trip that both
-    // persists and returns the row.
+    // The UPDATE … RETURNING path was observed to flake in CI: the RETURNING
+    // result occasionally came back empty even though the row genuinely
+    // existed. Decouple the write from the read: explicit UPDATE, then a
+    // separate SELECT for the canonical state. Cast id to ::uuid so postgres
+    // doesn't have to infer the WHERE column type from a bound text param.
     // Pass the timestamp as an ISO string — postgres-js's prepared-statement
     // bind path doesn't accept raw Date objects inside drizzle's sql template
-    // (it does inside typed .values({}) inserts). Postgres parses ISO 8601 fine.
+    // (it does inside typed .values({}) inserts).
     const finishedAt = new Date().toISOString();
     const status = patch.status ?? 'failed';
     const eventsFound = patch.eventsFound ?? null;
     const errorMessage = patch.errorMessage ?? null;
     const rawHash = patch.rawHash ?? null;
-    const updateResult = await db.execute(sql`
+
+    await db.execute(sql`
       UPDATE scrape_runs SET
         status = ${status},
         events_found = ${eventsFound},
         error_message = ${errorMessage},
         raw_hash = ${rawHash},
         finished_at = ${finishedAt}::timestamptz
-      WHERE id = ${run.id}
-      RETURNING id, venue_id, started_at, finished_at, status, events_found, error_message, raw_hash
+      WHERE id = ${run.id}::uuid
     `);
-    const rows = unwrapRows<RawScrapeRunRow>(updateResult);
-    if (!rows[0]) {
-      console.warn(`[scraper] scrape_runs row ${run.id} not updated`);
-      return toScrapeRun({ ...run, status, eventsFound, errorMessage, rawHash, finishedAt: new Date(finishedAt) } as typeof schema.scrapeRuns.$inferSelect);
-    }
-    return rawToScrapeRun(rows[0]);
+    const selectResult = await db.execute(sql`
+      SELECT id, venue_id, started_at, finished_at, status, events_found, error_message, raw_hash
+      FROM scrape_runs WHERE id = ${run.id}::uuid LIMIT 1
+    `);
+    const rows = unwrapRows<RawScrapeRunRow>(selectResult);
+    if (rows[0]) return rawToScrapeRun(rows[0]);
+
+    // Read-after-write returned nothing — the row was deleted or never
+    // existed. Surface this loudly rather than synthesizing a fake success
+    // row, which would mask DB inconsistency.
+    throw new Error(`scrape_runs row ${run.id} missing after UPDATE (status=${status})`);
   };
 
   try {
