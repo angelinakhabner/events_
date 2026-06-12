@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { jsonrepair } from 'jsonrepair';
 import type { Venue } from '@goin/shared';
 import { env } from '../../config.js';
 
@@ -138,7 +139,42 @@ export function parseJsonArray(text: string): unknown[] {
       `Extractor response did not contain a JSON array (length=${raw.length}, preview: ${JSON.stringify(preview)})`,
     );
   }
-  const json = JSON.parse(raw.slice(start, end + 1));
-  if (!Array.isArray(json)) throw new Error('Extractor response is not a JSON array');
-  return json;
+  const slice = raw.slice(start, end + 1);
+
+  // Try strict parse first. Cheap when the output is clean.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(slice);
+  } catch (strictErr) {
+    // Fall back to a repair pass. Production scrapes hit this often when
+    // Polish event titles or descriptions contain bare double-quotes (e.g.
+    // characters in cast lists, names quoted with "..."). jsonrepair fixes
+    // unescaped quotes, trailing commas, single quotes, smart quotes,
+    // missing brackets — common LLM JSON drift.
+    try {
+      const repaired = jsonrepair(slice);
+      parsed = JSON.parse(repaired);
+      // Only claim recovery once we know it actually produced an array.
+      // Otherwise the next line throws "not a JSON array" and an earlier
+      // "recovered N entries" log would be misleading.
+      if (Array.isArray(parsed)) {
+        console.warn(
+          `[extractor] strict JSON.parse failed (${(strictErr as Error).message}); recovered ${parsed.length} entries via jsonrepair`,
+        );
+      }
+    } catch (repairErr) {
+      const previewAt = (strictErr as Error).message.match(/position (\d+)/)?.[1];
+      const pos = previewAt ? Number(previewAt) : -1;
+      const around =
+        pos >= 0
+          ? `near pos ${pos}: ${JSON.stringify(slice.slice(Math.max(0, pos - 80), pos + 80))}`
+          : `head: ${JSON.stringify(slice.slice(0, 200))}`;
+      throw new Error(
+        `Extractor JSON could not be parsed or repaired: ${(strictErr as Error).message}; repair also failed: ${(repairErr as Error).message}; ${around}`,
+      );
+    }
+  }
+
+  if (!Array.isArray(parsed)) throw new Error('Extractor response is not a JSON array');
+  return parsed;
 }

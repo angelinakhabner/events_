@@ -27,12 +27,16 @@ export async function fetchVenueHTML(url: string, opts: FetchOptions = {}): Prom
     // Node's undici fetch throws a generic "fetch failed" and tucks the real
     // reason (ECONNRESET, ENOTFOUND, certificate, AbortError, ...) into the
     // `cause` chain. Surface it so deploy logs are debuggable.
-    if (e instanceof Error && (e.name === 'AbortError' || /aborted/i.test(e.message))) {
-      throw new Error(`Failed to fetch ${url}: timeout after ${timeoutMs}ms`);
-    }
-    if (e instanceof Error && 'cause' in e && e.cause) {
-      const cause = e.cause as { code?: string; message?: string };
-      throw new Error(`Failed to fetch ${url}: ${e.message} (${cause.code ?? ''} ${cause.message ?? ''})`.trim());
+    if (e instanceof Error) {
+      const cause = (e.cause ?? null) as { name?: string; code?: string; message?: string } | null;
+      // Node wraps abort as TypeError('fetch failed', { cause: DOMException 'AbortError' }),
+      // so check both the outer error and its cause for the abort signature.
+      if (e.name === 'AbortError' || cause?.name === 'AbortError' || /aborted/i.test(e.message)) {
+        throw new Error(`Failed to fetch ${url}: timeout after ${timeoutMs}ms`);
+      }
+      if (cause) {
+        throw new Error(`Failed to fetch ${url}: ${e.message} (${cause.code ?? ''} ${cause.message ?? ''})`.trim());
+      }
     }
     throw e;
   } finally {
