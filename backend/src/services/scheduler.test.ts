@@ -1,5 +1,43 @@
-import { describe, it, expect } from 'vitest';
-import { msUntilNextWarsawHour } from './scheduler.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { msUntilNextWarsawHour, readVenueGapMs } from './scheduler.js';
+
+describe('readVenueGapMs', () => {
+  const originalValue = process.env.SCRAPE_VENUE_GAP_MS;
+  afterEach(() => {
+    if (originalValue === undefined) delete process.env.SCRAPE_VENUE_GAP_MS;
+    else process.env.SCRAPE_VENUE_GAP_MS = originalValue;
+  });
+
+  it('defaults to 65000ms when the env var is unset', () => {
+    delete process.env.SCRAPE_VENUE_GAP_MS;
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+
+  it('defaults to 65000ms when the env var is the empty string', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '';
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+
+  it('defaults when the env var is non-numeric', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = 'abc';
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+
+  it('honours an explicit 0 to disable the gap', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '0';
+    expect(readVenueGapMs()).toBe(0);
+  });
+
+  it('parses a valid override', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '120000';
+    expect(readVenueGapMs()).toBe(120_000);
+  });
+
+  it('rejects negative values', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '-5000';
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+});
 
 describe('msUntilNextWarsawHour', () => {
   it('targets 07:00 CEST (05:00 UTC) in summer', () => {

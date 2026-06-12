@@ -154,9 +154,14 @@ export function parseJsonArray(text: string): unknown[] {
     try {
       const repaired = jsonrepair(slice);
       parsed = JSON.parse(repaired);
-      console.warn(
-        `[extractor] strict JSON.parse failed (${(strictErr as Error).message}); recovered ${(parsed as unknown[])?.length ?? '?'} entries via jsonrepair`,
-      );
+      // Only claim recovery once we know it actually produced an array.
+      // Otherwise the next line throws "not a JSON array" and an earlier
+      // "recovered N entries" log would be misleading.
+      if (Array.isArray(parsed)) {
+        console.warn(
+          `[extractor] strict JSON.parse failed (${(strictErr as Error).message}); recovered ${parsed.length} entries via jsonrepair`,
+        );
+      }
     } catch (repairErr) {
       const previewAt = (strictErr as Error).message.match(/position (\d+)/)?.[1];
       const pos = previewAt ? Number(previewAt) : -1;
