@@ -8,7 +8,14 @@ import { env } from '../../config.js';
 // date formats. Sonnet 4.6 handles structured extraction with high fidelity
 // at a fraction of Opus cost.
 export const MODEL = 'claude-sonnet-4-6';
-const MAX_TOKENS = 8000;
+// Sonnet 4.6 supports 64k output tokens. A single venue's repertoire can
+// easily produce 12-15k tokens (Muranów's ~143 screenings ≈ 50KB JSON), so
+// 8000 was below the floor and we saw silent mid-array truncation: the
+// response started with `[` but never reached the closing `]`, and the
+// parser threw "did not contain a JSON array". 16k is enough headroom for
+// most venues; if any blow past it the explicit `stop_reason` check below
+// will surface that instead of a misleading parse error.
+const MAX_TOKENS = 16_000;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
@@ -22,7 +29,11 @@ export interface ExtractorClient {
 class AnthropicExtractor implements ExtractorClient {
   private client: Anthropic;
   constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+    // maxRetries: 6 lets the SDK honour Anthropic's `retry-after` header for
+    // 429 / 5xx (default is 2, which loses scrapes when a same-minute burst
+    // pushes us past the 30k input-tokens/minute org cap). With backoff the
+    // worst case adds a few minutes to the daily sweep — acceptable for cron.
+    this.client = new Anthropic({ apiKey, maxRetries: 6 });
   }
   async extract({ system, user }: { system: string; user: string }): Promise<string> {
     const resp = await this.client.messages.create({
@@ -31,10 +42,17 @@ class AnthropicExtractor implements ExtractorClient {
       system,
       messages: [{ role: 'user', content: user }],
     });
-    return resp.content
+    const text = resp.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('');
+    if (resp.stop_reason === 'max_tokens') {
+      throw new Error(
+        `Extractor hit max_tokens (${MAX_TOKENS}) — response truncated at ${text.length} chars. ` +
+          `Raise MAX_TOKENS or split the venue page. Input usage: ${resp.usage.input_tokens}t, output: ${resp.usage.output_tokens}t.`,
+      );
+    }
+    return text;
   }
 }
 
@@ -115,7 +133,10 @@ export function parseJsonArray(text: string): unknown[] {
   const start = raw.indexOf('[');
   const end = raw.lastIndexOf(']');
   if (start === -1 || end === -1 || end < start) {
-    throw new Error('Extractor response did not contain a JSON array');
+    const preview = raw.length > 400 ? `${raw.slice(0, 200)} ... ${raw.slice(-200)}` : raw;
+    throw new Error(
+      `Extractor response did not contain a JSON array (length=${raw.length}, preview: ${JSON.stringify(preview)})`,
+    );
   }
   const json = JSON.parse(raw.slice(start, end + 1));
   if (!Array.isArray(json)) throw new Error('Extractor response is not a JSON array');
