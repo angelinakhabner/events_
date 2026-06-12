@@ -43,16 +43,27 @@ export function startScrapeScheduler(opts: { hour?: number } = {}): { stop: () =
   };
 }
 
+// Anthropic org cap is 30k input tokens / minute. A single venue's prompt can
+// be 30-80k tokens, so even one request can consume the bucket. The SDK
+// already retries 429s with backoff, but a pause between venues makes the
+// retries shorter (we wait off-the-clock instead of inside a backoff loop).
+// Tunable via SCRAPE_VENUE_GAP_MS env if you need to push through faster.
+const VENUE_GAP_MS = Number(process.env.SCRAPE_VENUE_GAP_MS ?? 65_000);
+
 export async function scrapeAllVenues(): Promise<void> {
   const db = getDb();
   const venues = await db.select().from(schema.venues);
   console.log(`[scheduler] scraping ${venues.length} venue(s)...`);
-  for (const v of venues) {
+  for (let i = 0; i < venues.length; i++) {
+    const v = venues[i]!;
     try {
       const run = await scrapeVenue(v.id);
       console.log(`[scheduler] ${v.name}: ${run.status} (${run.eventsFound ?? '-'} events)`);
     } catch (e) {
       console.error(`[scheduler] ${v.name} threw:`, e instanceof Error ? e.message : e);
+    }
+    if (i < venues.length - 1 && VENUE_GAP_MS > 0) {
+      await new Promise((r) => setTimeout(r, VENUE_GAP_MS));
     }
   }
 }
