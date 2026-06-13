@@ -22,7 +22,10 @@ const MAX_TOKENS = 16_000;
 // that should invalidate previously-cached scrape results. The runner mixes
 // this into the raw_hash comparison so a re-deploy with a tuned prompt
 // re-extracts existing pages instead of silently keeping stale outputs.
-export const EXTRACTOR_VERSION = 2;
+// v3: enricher pass now fills `description` from each event's source_url.
+// Bumping invalidates the previous run's raw_hash so the next sweep re-runs
+// the full pipeline and back-fills descriptions on the existing event rows.
+export const EXTRACTOR_VERSION = 3;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
