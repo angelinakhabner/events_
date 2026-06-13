@@ -30,6 +30,18 @@ describe('matchesEvent', () => {
     expect(matchesEvent(evt(), venue, { categories: ['cinema'] })).toBe(true);
   });
 
+  it('filters by event.category when no venue is supplied', () => {
+    // events.listDefault passes an empty venues map; categories must still apply.
+    expect(matchesEvent(evt({ category: 'theatre' }), undefined, { categories: ['theatre'] })).toBe(true);
+    expect(matchesEvent(evt({ category: 'theatre' }), undefined, { categories: ['cinema'] })).toBe(false);
+  });
+
+  it('event.category overrides venue.category when both are present', () => {
+    // After scrape, the event row carries its own category. Trust the event.
+    expect(matchesEvent(evt({ category: 'theatre' }), venue, { categories: ['cinema'] })).toBe(false);
+    expect(matchesEvent(evt({ category: 'theatre' }), venue, { categories: ['theatre'] })).toBe(true);
+  });
+
   it('filters by city case-insensitively', () => {
     expect(matchesEvent(evt(), venue, { cities: ['warsaw'] })).toBe(true);
     expect(matchesEvent(evt(), venue, { cities: ['Berlin'] })).toBe(false);
@@ -77,7 +89,11 @@ describe('matchesEvent', () => {
     expect(matchesEvent(evt({ priceMin: null, priceMax: null }), venue, { priceMax: 10 })).toBe(true);
   });
 
-  it('does not exclude on a venue-scoped filter when the venue is unknown', () => {
-    expect(matchesEvent(evt(), undefined, { categories: ['theatre'] })).toBe(true);
+  it('does not exclude on city/country filter when the venue is unknown', () => {
+    // City and country only come from the venue — no event-level fallback. When
+    // the venues map doesn't know this event's venue, we let it through rather
+    // than dropping it (events.listDefault is already pre-scoped to a city).
+    expect(matchesEvent(evt(), undefined, { cities: ['Berlin'] })).toBe(true);
+    expect(matchesEvent(evt(), undefined, { countries: ['Germany'] })).toBe(true);
   });
 });

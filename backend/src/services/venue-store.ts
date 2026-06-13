@@ -115,8 +115,11 @@ function slug(s: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-// Keep the tRPC venues procedures backed by the in-memory store for now —
-// folder partitioning + existing integration tests rely on the stable
-// slug ids (e.g. "kino-muranow"). The scraper, seed script, and DB-backed
-// event reads query the venues table directly via Drizzle.
-export const defaultVenueStore: IVenueStore = new VenueStore();
+// When DATABASE_URL is set we serve venues from the DB so the venue ids
+// returned to the frontend match the venue_id column on events. Without this,
+// Home loads events scraped against DB venues (UUIDs) but the venue map from
+// venues.list was the slug-id seed — so every card rendered "Unknown venue".
+// Local dev / test still falls back to the slug-id store.
+export const defaultVenueStore: IVenueStore = process.env.DATABASE_URL
+  ? new DbVenueStore()
+  : new VenueStore();

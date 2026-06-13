@@ -1,15 +1,19 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import type { Category } from '@goin/shared';
 import { trpc } from '../lib/trpc';
 import { EventBuckets } from '../components/EventBuckets';
+import { CategoryBar } from '../components/CategoryBar';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export function HomePage() {
-  const eventsQuery = trpc.events.listDefault.useQuery(undefined, {
-    refetchInterval: REFETCH_INTERVAL_MS,
-    refetchOnWindowFocus: true,
-  });
+  const [category, setCategory] = useState<Category | null>(null);
+
+  const eventsQuery = trpc.events.listDefault.useQuery(
+    category ? { filters: { categories: [category] } } : undefined,
+    { refetchInterval: REFETCH_INTERVAL_MS, refetchOnWindowFocus: true },
+  );
   const venuesQuery = trpc.venues.list.useQuery();
 
   const venueMap = useMemo(
@@ -21,14 +25,16 @@ export function HomePage() {
 
   return (
     <section>
-      <div className="mb-10">
+      <div className="mb-6">
         <h1 className="font-serif text-4xl tracking-tight">What&rsquo;s on</h1>
         <p className="mt-2 text-muted max-w-prose">
           Live screenings in Warsaw, refreshed every few minutes.
         </p>
       </div>
 
-      <div className="mt-2">
+      <CategoryBar selected={category} onChange={setCategory} />
+
+      <div className="mt-6">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
         {eventsQuery.error ? (
           <ErrorState
@@ -37,7 +43,10 @@ export function HomePage() {
           />
         ) : null}
         {!eventsQuery.isLoading && !eventsQuery.error && events.length === 0 ? (
-          <EmptyState title="No upcoming events." />
+          <EmptyState
+            title="No upcoming events in this category."
+            action={category ? { label: 'Show all', onClick: () => setCategory(null) } : undefined}
+          />
         ) : null}
         {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
       </div>
