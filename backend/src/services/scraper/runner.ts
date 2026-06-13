@@ -3,7 +3,7 @@ import { eq, desc, and, sql } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue } from './preprocessor.js';
-import { extractEvents, type ExtractorClient } from './extractor.js';
+import { extractEvents, EXTRACTOR_VERSION, type ExtractorClient } from './extractor.js';
 import { validateEvents } from './validator.js';
 import { saveEvents } from './persister.js';
 import type { Venue, ScrapeRun } from '@goin/shared';
@@ -74,7 +74,12 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
 
   try {
     const html = opts.htmlOverride ?? (await fetchVenueHTML(venue.url, { fetcher: opts.fetcher }));
-    const rawHash = sha256(html);
+    // Include EXTRACTOR_VERSION so a prompt/schema change forces a re-scrape
+    // of every venue on the next sweep even when the underlying HTML hasn't
+    // changed. Bytes-identical pages will produce a different hash after a
+    // version bump → previous successful run's rawHash won't match → we
+    // re-extract with the new prompt.
+    const rawHash = sha256(`v${EXTRACTOR_VERSION}\n${html}`);
 
     if (!opts.force) {
       const prev = await db
@@ -111,6 +116,14 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       console.warn(`[scraper] ${venue.name}: ${invalid.length} invalid entries skipped`,
         invalid.slice(0, 3).map((i) => i.error));
     }
+    // Observability: count rows where Claude fell back to the venue's own
+    // calendar URL instead of finding a per-event page. We still save them
+    // (they're better than no link) but a high ratio means the prompt or
+    // preprocessor needs another pass for that venue.
+    const fallbackCount = countCalendarFallbacks(valid, venue.url);
+    if (fallbackCount > 0) {
+      console.warn(`[scraper] ${venue.name}: ${fallbackCount}/${valid.length} events used the venue calendar URL as source_url`);
+    }
     await saveEvents(venueForVenueOps, valid);
 
     return await finalize({
@@ -127,6 +140,24 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
 
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+/**
+ * How many extracted events used the venue's own calendar URL as their
+ * source_url? Matches with a small bit of normalisation so trailing slashes
+ * and case don't trick us. The field is the validator-emitted `source_url`
+ * (snake_case) so callers can pass valid entries straight through.
+ */
+export function countCalendarFallbacks(
+  events: Array<{ source_url: string }>,
+  venueUrl: string,
+): number {
+  const target = normaliseUrl(venueUrl);
+  return events.filter((e) => normaliseUrl(e.source_url) === target).length;
+}
+
+function normaliseUrl(u: string): string {
+  return u.trim().toLowerCase().replace(/\/+$/, '');
 }
 
 interface RawScrapeRunRow {

@@ -202,4 +202,57 @@ describe('scrapeVenue runner', () => {
     expect(run.status).toBe('failed');
     expect(run.errorMessage).toMatch(/network exploded/);
   });
+
+  it('re-runs the pipeline when a prior success was stored under a different hash version', async () => {
+    // Simulate a successful run cached under an old version's hash. Same HTML
+    // arriving now should produce a NEW hash (because EXTRACTOR_VERSION is
+    // mixed in), so the cache check misses and Claude runs again.
+    const html = HTML_SAMPLE;
+    state.runs.push({
+      id: 'stale',
+      venueId: 'venue-1',
+      startedAt: new Date(),
+      finishedAt: new Date(),
+      status: 'success',
+      eventsFound: 0,
+      errorMessage: null,
+      rawHash: 'hash-from-an-older-extractor-version', // deliberately wrong
+    });
+    const extractor = { extract: vi.fn(async () => '[]') };
+    const run = await scrapeVenue('venue-1', { htmlOverride: html, extractor });
+    expect(run.status).toBe('success');
+    expect(extractor.extract).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('countCalendarFallbacks', () => {
+  it('counts events whose source_url matches the venue url', async () => {
+    const { countCalendarFallbacks } = await import('./runner.js');
+    const events = [
+      { source_url: 'https://venue.example/repertuar' },
+      { source_url: 'https://venue.example/film/a' },
+      { source_url: 'https://venue.example/film/b' },
+    ];
+    expect(countCalendarFallbacks(events, 'https://venue.example/repertuar')).toBe(1);
+  });
+
+  it('normalises trailing slash and case', async () => {
+    const { countCalendarFallbacks } = await import('./runner.js');
+    expect(
+      countCalendarFallbacks(
+        [{ source_url: 'HTTPS://Venue.example/Repertuar/' }],
+        'https://venue.example/repertuar',
+      ),
+    ).toBe(1);
+  });
+
+  it('returns 0 when every event has a per-event URL', async () => {
+    const { countCalendarFallbacks } = await import('./runner.js');
+    expect(
+      countCalendarFallbacks(
+        [{ source_url: 'https://v/film/a' }, { source_url: 'https://v/film/b' }],
+        'https://v/repertuar',
+      ),
+    ).toBe(0);
+  });
 });
