@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseJsonArray } from './extractor.js';
+import { parseJsonArray, extractEvents, EXTRACTOR_VERSION } from './extractor.js';
+import type { Venue } from '@goin/shared';
 
 describe('parseJsonArray', () => {
   it('parses strict, clean JSON', () => {
@@ -62,5 +63,37 @@ describe('parseJsonArray', () => {
       }
     }
     warn.mockRestore();
+  });
+});
+
+describe('extractEvents prompt shape', () => {
+  const venue: Pick<Venue, 'name' | 'city' | 'timezone' | 'category' | 'url'> = {
+    name: 'Test Venue',
+    city: 'Warsaw',
+    timezone: 'Europe/Warsaw',
+    category: 'cinema',
+    url: 'https://venue.example/repertuar',
+  };
+
+  it('instructs Claude to use per-event URLs and reject the calendar URL', async () => {
+    let captured = '';
+    const client = {
+      extract: async ({ user }: { user: string; system: string }) => {
+        captured = user;
+        return '[]';
+      },
+    };
+    await extractEvents('<html/>', venue, new Date('2026-06-13T00:00:00Z'), { client });
+    // Per-event URL guidance must be present.
+    expect(captured).toMatch(/SOURCE_URL/);
+    // The venue's own calendar URL must be explicitly called out as forbidden.
+    expect(captured).toContain('https://venue.example/repertuar');
+    expect(captured).toMatch(/NEVER use the venue's calendar/i);
+    expect(captured).toMatch(/\/film\/<slug>|\/spektakl\/<slug>|\/wystawa\/<slug>/);
+  });
+
+  it('exports an EXTRACTOR_VERSION that the runner can use to bust the hash cache', () => {
+    expect(EXTRACTOR_VERSION).toBeTypeOf('number');
+    expect(EXTRACTOR_VERSION).toBeGreaterThanOrEqual(1);
   });
 });

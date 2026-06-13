@@ -18,6 +18,12 @@ export const MODEL = 'claude-sonnet-4-6';
 // will surface that instead of a misleading parse error.
 const MAX_TOKENS = 16_000;
 
+// Bump this constant whenever the prompt or output schema changes in a way
+// that should invalidate previously-cached scrape results. The runner mixes
+// this into the raw_hash comparison so a re-deploy with a tuned prompt
+// re-extracts existing pages instead of silently keeping stale outputs.
+export const EXTRACTOR_VERSION = 2;
+
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
   'Output only valid JSON arrays. Never invent data. Never add prose ' +
@@ -108,9 +114,16 @@ SCHEMA (JSON array, each object matching this exactly):
   "description": string | null (1-2 sentences max),
   "price_min": number | null (in grosze — integer),
   "price_max": number | null,
-  "source_url": string,
+  "source_url": string (see SOURCE_URL rules below),
   "source_id": string | null (the venue's internal id for this screening, e.g. from data-id attributes; null if not present)
 }
+
+SOURCE_URL — read this carefully:
+- It MUST be the deepest stable page that describes THIS event itself: a per-film page, per-performance page, per-exhibition page. Look for <a> hrefs inside the screening block — typically /film/<slug>, /spektakl/<slug>, /wystawa/<slug>, or similar.
+- NEVER use the venue's calendar / repertoire / "co gramy" / "program" page (e.g. ${venue.url}). That is a listing, not the event.
+- If multiple screenings of the same film share one /film/<slug> page, that's fine — return that URL for each screening.
+- If the page only links to an external ticket system for this seance, prefer the venue's own film/event page; only use the ticket URL if no per-event page exists.
+- If you genuinely cannot find a per-event link in the HTML, return the venue URL but expect the row to be flagged.
 
 RULES:
 - Only future events (starts_at >= today 00:00 in venue timezone)
