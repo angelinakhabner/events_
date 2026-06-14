@@ -5,6 +5,7 @@ import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue } from './preprocessor.js';
 import { extractEvents, EXTRACTOR_VERSION, type ExtractorClient } from './extractor.js';
 import { validateEvents } from './validator.js';
+import { enrichDescriptions } from './enricher.js';
 import { saveEvents } from './persister.js';
 import type { Venue, ScrapeRun } from '@goin/shared';
 
@@ -123,6 +124,19 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     const fallbackCount = countCalendarFallbacks(valid, venue.url);
     if (fallbackCount > 0) {
       console.warn(`[scraper] ${venue.name}: ${fallbackCount}/${valid.length} events used the venue calendar URL as source_url`);
+    }
+    // Enrich descriptions by fetching each per-event page. Grouped by URL so
+    // 80 unique films at Muranów costs ~80 GETs, not ~150. Concurrency-limited
+    // (3 parallel) so we stay polite to venue servers. Failures don't fail
+    // the scrape — title + time are still saved.
+    const enrich = await enrichDescriptions(valid, {
+      venueUrl: venue.url,
+      fetcher: opts.fetcher,
+    });
+    if (enrich.enriched > 0 || enrich.failed > 0) {
+      console.log(
+        `[scraper] ${venue.name}: enriched ${enrich.enriched} description(s) (${enrich.failed} failed, ${enrich.skipped} skipped)`,
+      );
     }
     await saveEvents(venueForVenueOps, valid);
 
