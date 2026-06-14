@@ -37,7 +37,7 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'klub-komediowy',
     name: 'Klub Komediowy',
-    url: 'https://klubkomediowy.pl/',
+    url: 'https://komediowy.pl/',
     city: 'Warsaw',
     country: 'PL',
     category: 'comedy',
