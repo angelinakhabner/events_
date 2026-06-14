@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue } from './preprocessor.js';
@@ -77,10 +77,15 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     const rawHash = sha256(html);
 
     if (!opts.force) {
+      // Treat a prior empty success as "already seen this HTML" too, so an
+      // unchanged JS-rendered shell that yields no events isn't re-billed daily.
       const prev = await db
         .select()
         .from(schema.scrapeRuns)
-        .where(and(eq(schema.scrapeRuns.venueId, venueId), eq(schema.scrapeRuns.status, 'success')))
+        .where(and(
+          eq(schema.scrapeRuns.venueId, venueId),
+          inArray(schema.scrapeRuns.status, ['success', 'success_empty']),
+        ))
         .orderBy(desc(schema.scrapeRuns.startedAt))
         .limit(1);
       if (prev[0]?.rawHash === rawHash) {
@@ -106,12 +111,28 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       client: opts.extractor,
       hint,
     });
-    const { valid, invalid } = validateEvents(raw);
+    const { valid, invalid } = validateEvents(raw, {
+      category: venue.category,
+      timezone: venue.timezone,
+    });
     if (invalid.length) {
       console.warn(`[scraper] ${venue.name}: ${invalid.length} invalid entries skipped`,
         invalid.slice(0, 3).map((i) => i.error));
     }
     await saveEvents(venueForVenueOps, valid);
+
+    // A scrape that yields zero usable events is almost never a real "nothing
+    // is on" — it's a JS-rendered page, a blocked request, a selector drift, or
+    // (as with the midnight guard) extracted rows we had to reject. Record it as
+    // a distinct status so it's visible and doesn't masquerade as a healthy run.
+    // Existing events are left untouched (saveEvents no-ops on empty input).
+    if (valid.length === 0) {
+      console.warn(
+        `[scraper] ${venue.name}: 0 usable events from ${Array.isArray(raw) ? raw.length : 0} extracted ` +
+        `(${invalid.length} rejected) — recording success_empty`,
+      );
+      return await finalize({ status: 'success_empty', eventsFound: 0, rawHash });
+    }
 
     return await finalize({
       status: 'success',

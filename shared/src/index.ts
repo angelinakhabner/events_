@@ -68,7 +68,7 @@ export interface ScrapeRun {
   venueId: string;
   startedAt: string;
   finishedAt: string | null;
-  status: 'running' | 'success' | 'failed' | 'skipped_unchanged';
+  status: 'running' | 'success' | 'success_empty' | 'failed' | 'skipped_unchanged';
   eventsFound: number | null;
   errorMessage: string | null;
   rawHash: string | null;
