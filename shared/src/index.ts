@@ -21,6 +21,10 @@ export interface Venue {
 export interface Event {
   id: string;
   venueId: string;
+  /** Inline venue summary — populated by events.listDefault and listByVenue
+   *  so the frontend doesn't need a separate venues.list join. Optional so
+   *  pure unit tests and mock data can construct events without a venue. */
+  venue?: EventVenue;
   title: string;
   description: string | null;
   startsAt: string;
@@ -36,6 +40,15 @@ export interface Event {
   sourceUrl: string;
   sourceId: string | null;
   scrapedAt: string;
+}
+
+/** Subset of Venue carried inline on Event responses. */
+export interface EventVenue {
+  id: string;
+  name: string;
+  category: Category;
+  city: string;
+  country: string;
 }
 
 export interface Folder {
