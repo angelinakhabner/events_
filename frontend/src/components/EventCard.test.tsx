@@ -32,8 +32,25 @@ describe('EventCard', () => {
     expect(link).toHaveAttribute('rel', 'noreferrer');
   });
 
-  it('falls back to "Unknown venue" when venue is missing', () => {
+  it('falls back to "Unknown venue" when no venue is supplied', () => {
     render(<EventCard event={event} venue={undefined} />);
     expect(screen.getByText('Unknown venue')).toBeInTheDocument();
+  });
+
+  it('prefers the inline event.venue over the prop fallback', () => {
+    // Simulates the prod path: the API embeds the venue on each event so
+    // the card can't drift from a separately-fetched venues.list.
+    const inline = { id: 'v-uuid', name: 'Kino Inline', category: 'theatre' as const, city: 'Warsaw', country: 'PL' };
+    render(<EventCard event={{ ...event, venue: inline }} venue={venue} />);
+    expect(screen.getByText(/Kino Inline/)).toBeInTheDocument();
+    expect(screen.queryByText(/Kino X/)).not.toBeInTheDocument();
+    expect(screen.getByText(/theatre/i)).toBeInTheDocument();
+  });
+
+  it('uses the inline venue alone when no fallback prop is given', () => {
+    const inline = { id: 'v-uuid', name: 'Standalone', category: 'cinema' as const, city: 'Warsaw', country: 'PL' };
+    render(<EventCard event={{ ...event, venue: inline }} />);
+    expect(screen.getByText(/Standalone/)).toBeInTheDocument();
+    expect(screen.queryByText('Unknown venue')).not.toBeInTheDocument();
   });
 });
