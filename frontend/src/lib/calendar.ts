@@ -1,69 +1,55 @@
-import type { Event, Venue } from '@goin/shared';
+import type { Event } from '@goin/shared';
 
+/** Two hours as a sensible default when an event has no end time or duration. */
 const DEFAULT_DURATION_MIN = 120;
 
-/** Resolved start/end for an event, with a sensible fallback end time. */
-export interface CalendarTimes {
-  start: Date;
-  end: Date;
-}
-
-export function calendarTimes(event: Event): CalendarTimes {
+/** Compute the event's ends-at timestamp, falling back to start + duration
+ *  or a 2-hour window when neither is present. */
+export function eventEndsAt(event: Pick<Event, 'startsAt' | 'endsAt' | 'durationMinutes'>): Date {
+  if (event.endsAt) return new Date(event.endsAt);
   const start = new Date(event.startsAt);
-  let end: Date;
-  if (event.endsAt) {
-    end = new Date(event.endsAt);
-  } else if (event.durationMinutes && event.durationMinutes > 0) {
-    end = new Date(start.getTime() + event.durationMinutes * 60_000);
-  } else {
-    end = new Date(start.getTime() + DEFAULT_DURATION_MIN * 60_000);
-  }
-  return { start, end };
+  const minutes = event.durationMinutes ?? DEFAULT_DURATION_MIN;
+  return new Date(start.getTime() + minutes * 60_000);
 }
 
-/** UTC timestamp in iCalendar basic format: YYYYMMDDTHHMMSSZ. */
-export function toCalDate(date: Date): string {
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+/** YYYYMMDDTHHmmssZ — the basic-format ICS / Google Calendar wants. */
+export function toBasicUtc(d: Date): string {
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
-function eventLocation(venue: Venue | undefined): string {
-  if (!venue) return '';
-  return [venue.name, venue.city, venue.country].filter(Boolean).join(', ');
-}
-
-function eventDescription(event: Event, venue: Venue | undefined): string {
-  const parts: string[] = [];
-  if (event.description) parts.push(event.description);
-  if (venue) parts.push(`Venue: ${eventLocation(venue)}`);
-  if (event.sourceUrl) parts.push(`More info: ${event.sourceUrl}`);
-  return parts.join('\n\n');
-}
-
-/** A Google Calendar "add event" URL that opens a pre-filled event template. */
-export function googleCalendarUrl(event: Event, venue: Venue | undefined): string {
-  const { start, end } = calendarTimes(event);
+/** Build a Google Calendar "event template" URL — opens a pre-filled compose. */
+export function googleCalendarUrl(
+  event: Pick<Event, 'title' | 'description' | 'sourceUrl' | 'startsAt' | 'endsAt' | 'durationMinutes' | 'venue'>,
+): string {
+  const start = toBasicUtc(new Date(event.startsAt));
+  const end = toBasicUtc(eventEndsAt(event));
+  const details = [event.description, event.sourceUrl].filter(Boolean).join('\n\n');
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: event.title,
-    dates: `${toCalDate(start)}/${toCalDate(end)}`,
-    details: eventDescription(event, venue),
-    location: eventLocation(venue),
+    dates: `${start}/${end}`,
+    details,
   });
+  if (event.venue?.name) params.set('location', event.venue.name);
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-/** Escape a value for an iCalendar text field (RFC 5545 §3.3.11). */
-function escapeIcs(value: string): string {
-  return value
+/** Escape a string for an iCalendar TEXT property per RFC 5545 §3.3.11. */
+export function icsEscape(s: string): string {
+  return s
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\r?\n/g, '\\n');
+    .replace(/\r\n|\r|\n/g, '\\n');
 }
 
-/** Build an iCalendar (.ics) document for a single event. */
-export function buildIcs(event: Event, venue: Venue | undefined, now: Date = new Date()): string {
-  const { start, end } = calendarTimes(event);
+/** Build an .ics (iCalendar) document for one event. Suitable for Apple
+ *  Calendar, Outlook, and "import" flows in Google Calendar. */
+export function buildIcs(
+  event: Pick<Event, 'id' | 'title' | 'description' | 'sourceUrl' | 'startsAt' | 'endsAt' | 'durationMinutes' | 'venue'>,
+  options: { now?: Date } = {},
+): string {
+  const now = options.now ?? new Date();
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -71,45 +57,45 @@ export function buildIcs(event: Event, venue: Venue | undefined, now: Date = new
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
-    `UID:${event.id}@goin`,
-    `DTSTAMP:${toCalDate(now)}`,
-    `DTSTART:${toCalDate(start)}`,
-    `DTEND:${toCalDate(end)}`,
-    `SUMMARY:${escapeIcs(event.title)}`,
-    `DESCRIPTION:${escapeIcs(eventDescription(event, venue))}`,
-    `LOCATION:${escapeIcs(eventLocation(venue))}`,
-    `URL:${event.sourceUrl}`,
-    'END:VEVENT',
-    'END:VCALENDAR',
+    `UID:goin-${event.id}@goin.app`,
+    `DTSTAMP:${toBasicUtc(now)}`,
+    `DTSTART:${toBasicUtc(new Date(event.startsAt))}`,
+    `DTEND:${toBasicUtc(eventEndsAt(event))}`,
+    `SUMMARY:${icsEscape(event.title)}`,
   ];
+  if (event.description) lines.push(`DESCRIPTION:${icsEscape(event.description)}`);
+  if (event.venue?.name) lines.push(`LOCATION:${icsEscape(event.venue.name)}`);
+  lines.push(`URL:${event.sourceUrl}`);
+  lines.push('END:VEVENT', 'END:VCALENDAR');
+  // RFC 5545 wants CRLF between lines.
   return lines.join('\r\n');
 }
 
-/** Safe filename for the downloaded .ics, e.g. "perfect-days.ics". */
-export function icsFilename(event: Event): string {
-  const slug = event.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return `${slug || 'event'}.ics`;
-}
-
-/** Trigger a client-side download of the event's .ics file. */
-export function downloadIcs(event: Event, venue: Venue | undefined): void {
-  const blob = new Blob([buildIcs(event, venue)], { type: 'text/calendar;charset=utf-8' });
+/** Trigger a download of the event as an .ics file. */
+export function downloadIcs(
+  event: Pick<Event, 'id' | 'title' | 'description' | 'sourceUrl' | 'startsAt' | 'endsAt' | 'durationMinutes' | 'venue'>,
+): void {
+  const blob = new Blob([buildIcs(event)], { type: 'text/calendar;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = icsFilename(event);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${slugifyForFilename(event.title)}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    // Free the blob next tick so the click handler can use it first.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
-/** Playful invitation copy used for the share action. */
-export function invitationText(event: Event, venue: Venue | undefined): string {
-  const where = venue ? ` at ${venue.name}` : '';
-  return `I invite you to share "${event.title}"${where} with me. Want to come?`;
+function slugifyForFilename(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9-]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .toLowerCase()
+    .slice(0, 60) || 'event';
 }

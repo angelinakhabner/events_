@@ -83,6 +83,62 @@ describe('validateEvents', () => {
     expect(r.valid[0]!.title).toBe('Drugie życie');
   });
 
+  it('rejects local-midnight starts for timed venues (missing showtime)', () => {
+    const entry = {
+      title: 'Rozmowa',
+      starts_at: '2026-06-16T00:00:00+02:00', // 00:00 Warsaw
+      duration_minutes: null,
+      language: null,
+      director: null,
+      cast: null,
+      description: null,
+      price_min: null,
+      price_max: null,
+      source_url: 'https://kinoteka.pl/film/rozmowa',
+      source_id: null,
+    };
+    const r = validateEvents([entry], { category: 'cinema', timezone: 'Europe/Warsaw' });
+    expect(r.valid).toHaveLength(0);
+    expect(r.invalid).toHaveLength(1);
+    expect(r.invalid[0]!.error).toMatch(/midnight/i);
+  });
+
+  it('allows local-midnight starts for all-day exhibitions', () => {
+    const entry = {
+      title: 'After the Future',
+      starts_at: '2026-06-16T00:00:00+02:00',
+      duration_minutes: null,
+      language: null,
+      director: null,
+      cast: null,
+      description: null,
+      price_min: null,
+      price_max: null,
+      source_url: 'https://zacheta.art.pl/wystawa',
+      source_id: null,
+    };
+    const r = validateEvents([entry], { category: 'exhibition', timezone: 'Europe/Warsaw' });
+    expect(r.valid).toHaveLength(1);
+  });
+
+  it('keeps real evening showtimes for timed venues', () => {
+    const entry = {
+      title: 'Dzień objawienia',
+      starts_at: '2026-06-16T11:00:00+02:00',
+      duration_minutes: null,
+      language: null,
+      director: null,
+      cast: null,
+      description: null,
+      price_min: null,
+      price_max: null,
+      source_url: 'https://kinoteka.pl/film/dzien',
+      source_id: null,
+    };
+    const r = validateEvents([entry], { category: 'cinema', timezone: 'Europe/Warsaw' });
+    expect(r.valid).toHaveLength(1);
+  });
+
   it('treats missing source_id as null', () => {
     const r = validateEvents([
       {

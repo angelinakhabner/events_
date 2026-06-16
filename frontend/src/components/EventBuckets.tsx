@@ -79,7 +79,7 @@ function EventRow({
           {event.description ? (
             <p className="mt-2 text-sm text-ink/70 line-clamp-2 max-w-prose">{event.description}</p>
           ) : null}
-          <EventActions event={event} venue={venue} />
+          <EventActions event={event} />
         </div>
       </div>
     </div>

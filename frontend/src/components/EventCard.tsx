@@ -1,38 +1,44 @@
 import type { Event, Venue } from '@goin/shared';
 import { categoryLabel, formatTime } from '../lib/format';
+import { EventActions } from './EventActions';
 
 interface Props {
   event: Event;
-  venue: Venue | undefined;
+  /** Fallback venue when `event.venue` isn't populated (mocks / older callers). */
+  venue?: Venue;
 }
 
 export function EventCard({ event, venue }: Props) {
+  const v = event.venue ?? venue;
   return (
-    <a
-      href={event.sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-      className="group block py-6 no-underline"
-    >
+    <article className="py-6">
       <div className="flex items-baseline gap-6">
         <div className="w-16 shrink-0 text-sm tabular-nums text-muted">
           {formatTime(event.startsAt)}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-serif text-xl leading-snug text-ink group-hover:text-accent transition-colors">
-            {event.title}
+          <h3 className="font-serif text-xl leading-snug">
+            <a
+              href={event.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-ink hover:text-accent transition-colors no-underline"
+            >
+              {event.title}
+            </a>
           </h3>
           <div className="mt-1 text-sm text-muted">
-            {venue?.name ?? 'Unknown venue'}
-            {venue ? <> · <span className="tag">{categoryLabel(venue.category)}</span></> : null}
+            {v?.name ?? 'Unknown venue'}
+            {v ? <> · <span className="tag">{categoryLabel(v.category)}</span></> : null}
           </div>
           {event.description ? (
             <p className="mt-2 text-sm text-ink/70 line-clamp-2 max-w-prose">
               {event.description}
             </p>
           ) : null}
+          <EventActions event={event} />
         </div>
       </div>
-    </a>
+    </article>
   );
 }

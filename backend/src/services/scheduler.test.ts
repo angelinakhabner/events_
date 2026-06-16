@@ -1,5 +1,68 @@
-import { describe, it, expect } from 'vitest';
-import { msUntilNextWarsawHour } from './scheduler.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { msUntilNextWarsawHour, isRetryableScrapeError, readVenueGapMs } from './scheduler.js';
+
+describe('isRetryableScrapeError', () => {
+  it('retries on out-of-credits (the message the SDK surfaces for a 400)', () => {
+    const msg =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}';
+    expect(isRetryableScrapeError(msg)).toBe(true);
+  });
+
+  it('retries on rate limit (429) and overloaded (529)', () => {
+    expect(isRetryableScrapeError('429 {"error":{"type":"rate_limit_error"}}')).toBe(true);
+    expect(isRetryableScrapeError('529 {"error":{"type":"overloaded_error"}}')).toBe(true);
+  });
+
+  it('does NOT retry real bugs (changed HTML / bad parse / generic 400)', () => {
+    expect(isRetryableScrapeError('Extractor response did not contain a JSON array')).toBe(false);
+    expect(isRetryableScrapeError('AI returned invalid event payload: ...')).toBe(false);
+    expect(isRetryableScrapeError('400 {"error":{"type":"invalid_request_error","message":"max_tokens too large"}}')).toBe(false);
+  });
+
+  it('handles null / empty messages', () => {
+    expect(isRetryableScrapeError(null)).toBe(false);
+    expect(isRetryableScrapeError(undefined)).toBe(false);
+    expect(isRetryableScrapeError('')).toBe(false);
+  });
+});
+
+describe('readVenueGapMs', () => {
+  const originalValue = process.env.SCRAPE_VENUE_GAP_MS;
+  afterEach(() => {
+    if (originalValue === undefined) delete process.env.SCRAPE_VENUE_GAP_MS;
+    else process.env.SCRAPE_VENUE_GAP_MS = originalValue;
+  });
+
+  it('defaults to 65000ms when the env var is unset', () => {
+    delete process.env.SCRAPE_VENUE_GAP_MS;
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+
+  it('defaults to 65000ms when the env var is the empty string', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '';
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+
+  it('defaults when the env var is non-numeric', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = 'abc';
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+
+  it('honours an explicit 0 to disable the gap', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '0';
+    expect(readVenueGapMs()).toBe(0);
+  });
+
+  it('parses a valid override', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '120000';
+    expect(readVenueGapMs()).toBe(120_000);
+  });
+
+  it('rejects negative values', () => {
+    process.env.SCRAPE_VENUE_GAP_MS = '-5000';
+    expect(readVenueGapMs()).toBe(65_000);
+  });
+});
 
 describe('msUntilNextWarsawHour', () => {
   it('targets 07:00 CEST (05:00 UTC) in summer', () => {
