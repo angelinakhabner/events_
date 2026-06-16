@@ -23,14 +23,14 @@ const MAX_TOKENS = 16_000;
 // this into the raw_hash comparison so a re-deploy with a tuned prompt
 // re-extracts existing pages instead of silently keeping stale outputs.
 // v3: enricher pass now fills `description` from each event's source_url.
-// v4: extraction now goes through a forced `record_events` tool call instead of
-// free-text JSON. Tool-call inputs are returned by the API as already-parsed
-// structured data, so the model's text-level escaping mistakes (a straight `"`
-// closing a Polish „…" title mid-string) can no longer corrupt the payload —
-// that class of failure took out Teatr Studio, Zachęta, Klub Komediowy and
-// Filharmonia, and silently dropped events at Kinoteka/Iluzjon. Bumping
-// invalidates the previous run's raw_hash so the next sweep re-extracts.
-export const EXTRACTOR_VERSION = 4;
+// v4: forced record_events tool call (structured JSON, no escaping bugs).
+// v5: bound extraction to a rolling N-day window (default 7). A cinema's full
+// repertoire (Muranów ~100+ screenings) overflowed the 16k output budget and
+// truncated the tool call mid-array, failing the whole venue. A week's worth
+// fits comfortably, so we keep one bounded call per venue at the current
+// budget — and a week is a week for any user-added source. Bumping the version
+// invalidates raw_hash so the next sweep re-extracts.
+export const EXTRACTOR_VERSION = 5;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
@@ -126,7 +126,7 @@ export function toolResponseToJson(resp: Anthropic.Message): string {
   if (resp.stop_reason === 'max_tokens') {
     throw new Error(
       `Extractor hit max_tokens (${MAX_TOKENS}) — tool input truncated. ` +
-        `Raise MAX_TOKENS or split the venue page. Input usage: ${resp.usage.input_tokens}t, output: ${resp.usage.output_tokens}t.`,
+        `Narrow the scrape window or raise MAX_TOKENS. Input usage: ${resp.usage.input_tokens}t, output: ${resp.usage.output_tokens}t.`,
     );
   }
   const toolUse = resp.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
@@ -151,9 +151,15 @@ function defaultClient(): ExtractorClient {
   return _defaultClient;
 }
 
+/** Default scrape horizon in days. Keeps a venue's output small enough to fit
+ *  one bounded LLM call; refreshed each sweep so the window rolls forward. */
+export const DEFAULT_WINDOW_DAYS = 7;
+
 export interface ExtractOptions {
   client?: ExtractorClient;
   hint?: string | null;
+  /** Only extract events occurring within this many days from `today`. */
+  windowDays?: number;
 }
 
 export async function extractEvents(
@@ -167,9 +173,12 @@ export async function extractEvents(
   const dateStr = today.toISOString().slice(0, 10);
   const year = today.getFullYear();
 
+  const windowDays = opts.windowDays ?? DEFAULT_WINDOW_DAYS;
+  const windowEnd = new Date(today.getTime() + windowDays * 86_400_000).toISOString().slice(0, 10);
+
   const hintBlock = opts.hint ? `\n- Page hint: ${opts.hint}` : '';
 
-  const user = `Extract all upcoming events from this venue's HTML.
+  const user = `Extract events happening in the next ${windowDays} days from this venue's HTML.
 
 CONTEXT:
 - Venue: ${venue.name}
@@ -177,7 +186,8 @@ CONTEXT:
 - Timezone: ${tz}
 - Category: ${venue.category}
 - Page URL: ${venue.url}
-- Today's date: ${dateStr}${hintBlock}
+- Today's date: ${dateStr}
+- Window: today (${dateStr}) through ${windowEnd}, inclusive${hintBlock}
 
 EACH SCREENING/PERFORMANCE IS ONE EVENT ROW.
 If a film plays 3 times today and 2 times tomorrow, return 5 event objects.
@@ -205,9 +215,14 @@ SOURCE_URL — read this carefully:
 - If you genuinely cannot find a per-event link in the HTML, return the venue URL but expect the row to be flagged.
 
 RULES:
-- Only future events (starts_at >= today 00:00 in venue timezone)
+- ONLY events occurring from today (${dateStr}) through ${windowEnd}, inclusive, in venue timezone.
+  Skip anything dated after ${windowEnd}. EXCEPTION: an exhibition currently on
+  display counts even if it opened before today.
 - If a field is not on the page, return null. NEVER guess.
 - starts_at MUST carry the real clock time shown for that screening/performance.
+  PREFER the exact start time from any structured data block at the top of the input
+  (JSON-LD "startDate" / __NEXT_DATA__) over a time parsed from the HTML — it is the
+  reliable source for showtimes on JS-rendered pages.
   If you cannot find a specific time, OMIT the event entirely — do NOT emit
   00:00 / midnight as a placeholder. (Exception: all-day exhibitions may use 00:00.)
 - Year defaults to ${year} unless stated.
