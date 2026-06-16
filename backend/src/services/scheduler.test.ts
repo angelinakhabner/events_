@@ -1,5 +1,30 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { msUntilNextWarsawHour, readVenueGapMs } from './scheduler.js';
+import { msUntilNextWarsawHour, isRetryableScrapeError, readVenueGapMs } from './scheduler.js';
+
+describe('isRetryableScrapeError', () => {
+  it('retries on out-of-credits (the message the SDK surfaces for a 400)', () => {
+    const msg =
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}';
+    expect(isRetryableScrapeError(msg)).toBe(true);
+  });
+
+  it('retries on rate limit (429) and overloaded (529)', () => {
+    expect(isRetryableScrapeError('429 {"error":{"type":"rate_limit_error"}}')).toBe(true);
+    expect(isRetryableScrapeError('529 {"error":{"type":"overloaded_error"}}')).toBe(true);
+  });
+
+  it('does NOT retry real bugs (changed HTML / bad parse / generic 400)', () => {
+    expect(isRetryableScrapeError('Extractor response did not contain a JSON array')).toBe(false);
+    expect(isRetryableScrapeError('AI returned invalid event payload: ...')).toBe(false);
+    expect(isRetryableScrapeError('400 {"error":{"type":"invalid_request_error","message":"max_tokens too large"}}')).toBe(false);
+  });
+
+  it('handles null / empty messages', () => {
+    expect(isRetryableScrapeError(null)).toBe(false);
+    expect(isRetryableScrapeError(undefined)).toBe(false);
+    expect(isRetryableScrapeError('')).toBe(false);
+  });
+});
 
 describe('readVenueGapMs', () => {
   const originalValue = process.env.SCRAPE_VENUE_GAP_MS;

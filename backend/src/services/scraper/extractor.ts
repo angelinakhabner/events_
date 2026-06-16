@@ -131,6 +131,9 @@ SOURCE_URL — read this carefully:
 RULES:
 - Only future events (starts_at >= today 00:00 in venue timezone)
 - If a field is not on the page, return null. NEVER guess.
+- starts_at MUST carry the real clock time shown for that screening/performance.
+  If you cannot find a specific time, OMIT the event entirely — do NOT emit
+  00:00 / midnight as a placeholder. (Exception: all-day exhibitions may use 00:00.)
 - Year defaults to ${year} unless stated.
 - Polish dates are common (e.g. "8 czerwca", "dziś", "jutro") — resolve them relative to today's date.
 - Output ONLY the JSON array. No prose, no code fences, no explanation.
