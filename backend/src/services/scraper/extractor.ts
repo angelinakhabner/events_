@@ -23,14 +23,56 @@ const MAX_TOKENS = 16_000;
 // this into the raw_hash comparison so a re-deploy with a tuned prompt
 // re-extracts existing pages instead of silently keeping stale outputs.
 // v3: enricher pass now fills `description` from each event's source_url.
-// Bumping invalidates the previous run's raw_hash so the next sweep re-runs
-// the full pipeline and back-fills descriptions on the existing event rows.
-export const EXTRACTOR_VERSION = 3;
+// v4: extraction now goes through a forced `record_events` tool call instead of
+// free-text JSON. Tool-call inputs are returned by the API as already-parsed
+// structured data, so the model's text-level escaping mistakes (a straight `"`
+// closing a Polish „…" title mid-string) can no longer corrupt the payload —
+// that class of failure took out Teatr Studio, Zachęta, Klub Komediowy and
+// Filharmonia, and silently dropped events at Kinoteka/Iluzjon. Bumping
+// invalidates the previous run's raw_hash so the next sweep re-extracts.
+export const EXTRACTOR_VERSION = 4;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
-  'Output only valid JSON arrays. Never invent data. Never add prose ' +
-  'or markdown. If a field is not in the source, return null.';
+  'Record every event you find by calling the record_events tool. ' +
+  'Never invent data. If a field is not in the source, use null.';
+
+// Single tool the model is forced to call. The API returns tool_use `input` as
+// structured JSON, which is the whole point — it bypasses free-text JSON
+// generation and the escaping bugs that come with it.
+const EVENT_TOOL: Anthropic.Tool = {
+  name: 'record_events',
+  description: 'Record every extracted event. Call exactly once, passing all events in the `events` array.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      events: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            starts_at: {
+              type: 'string',
+              description: 'ISO 8601 with timezone offset, e.g. "2026-06-08T18:00:00+02:00"',
+            },
+            duration_minutes: { type: ['integer', 'null'] },
+            language: { type: ['string', 'null'] },
+            director: { type: ['string', 'null'] },
+            cast: { type: ['array', 'null'], items: { type: 'string' } },
+            description: { type: ['string', 'null'], description: '1-2 sentences max' },
+            price_min: { type: ['integer', 'null'], description: 'in grosze (integer)' },
+            price_max: { type: ['integer', 'null'] },
+            source_url: { type: 'string' },
+            source_id: { type: ['string', 'null'] },
+          },
+          required: ['title', 'starts_at', 'source_url'],
+        },
+      },
+    },
+    required: ['events'],
+  },
+};
 
 export interface ExtractorClient {
   extract(args: { system: string; user: string }): Promise<string>;
@@ -50,20 +92,38 @@ class AnthropicExtractor implements ExtractorClient {
       model: MODEL,
       max_tokens: MAX_TOKENS,
       system,
+      tools: [EVENT_TOOL],
+      // Force the call so the model can't answer in prose and skip the tool.
+      tool_choice: { type: 'tool', name: EVENT_TOOL.name },
       messages: [{ role: 'user', content: user }],
     });
-    const text = resp.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
-    if (resp.stop_reason === 'max_tokens') {
-      throw new Error(
-        `Extractor hit max_tokens (${MAX_TOKENS}) — response truncated at ${text.length} chars. ` +
-          `Raise MAX_TOKENS or split the venue page. Input usage: ${resp.usage.input_tokens}t, output: ${resp.usage.output_tokens}t.`,
-      );
-    }
-    return text;
+    return toolResponseToJson(resp);
   }
+}
+
+/**
+ * Pull the events array out of a forced `record_events` tool call and return it
+ * as a JSON string (so the existing `parseJsonArray` path stays the single
+ * parser). Exported for unit testing without a live client.
+ */
+export function toolResponseToJson(resp: Anthropic.Message): string {
+  if (resp.stop_reason === 'max_tokens') {
+    throw new Error(
+      `Extractor hit max_tokens (${MAX_TOKENS}) — tool input truncated. ` +
+        `Raise MAX_TOKENS or split the venue page. Input usage: ${resp.usage.input_tokens}t, output: ${resp.usage.output_tokens}t.`,
+    );
+  }
+  const toolUse = resp.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+  if (!toolUse) {
+    throw new Error('Extractor returned no tool_use block (expected a forced record_events call)');
+  }
+  // input is `unknown`; accept the {events:[...]} shape and, defensively, a bare array.
+  const input = toolUse.input as { events?: unknown } | unknown[];
+  const events = Array.isArray(input) ? input : input.events;
+  if (!Array.isArray(events)) {
+    throw new Error('Extractor tool_use input did not contain an events array');
+  }
+  return JSON.stringify(events);
 }
 
 let _defaultClient: ExtractorClient | null = null;
@@ -106,7 +166,7 @@ CONTEXT:
 EACH SCREENING/PERFORMANCE IS ONE EVENT ROW.
 If a film plays 3 times today and 2 times tomorrow, return 5 event objects.
 
-SCHEMA (JSON array, each object matching this exactly):
+SCHEMA (one object per event, passed in the record_events tool's events array):
 {
   "title": string,
   "starts_at": string (ISO 8601 WITH timezone offset, e.g. "2026-06-08T18:00:00+02:00"),
@@ -136,7 +196,7 @@ RULES:
   00:00 / midnight as a placeholder. (Exception: all-day exhibitions may use 00:00.)
 - Year defaults to ${year} unless stated.
 - Polish dates are common (e.g. "8 czerwca", "dziś", "jutro") — resolve them relative to today's date.
-- Output ONLY the JSON array. No prose, no code fences, no explanation.
+- Call the record_events tool exactly once with every event in its events array. Do not write any prose.
 
 HTML:
 ${cleanedHtml}`;
