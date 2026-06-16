@@ -146,6 +146,35 @@ describe('extractEvents prompt shape', () => {
     expect(captured).toMatch(/\/film\/<slug>|\/spektakl\/<slug>|\/wystawa\/<slug>/);
   });
 
+  it('bounds extraction to a rolling window and prefers structured-data times', async () => {
+    let captured = '';
+    const client = {
+      extract: async ({ user }: { user: string; system: string }) => {
+        captured = user;
+        return '[]';
+      },
+    };
+    // today = 2026-06-13 → default 7-day window ends 2026-06-20.
+    await extractEvents('<html/>', venue, new Date('2026-06-13T00:00:00Z'), { client });
+    expect(captured).toMatch(/next 7 days/);
+    expect(captured).toContain('2026-06-20');
+    expect(captured).toMatch(/Skip anything dated after 2026-06-20/);
+    expect(captured).toMatch(/PREFER the exact start time from any structured data/);
+  });
+
+  it('honours a custom windowDays', async () => {
+    let captured = '';
+    const client = {
+      extract: async ({ user }: { user: string; system: string }) => {
+        captured = user;
+        return '[]';
+      },
+    };
+    await extractEvents('<html/>', venue, new Date('2026-06-13T00:00:00Z'), { client, windowDays: 3 });
+    expect(captured).toMatch(/next 3 days/);
+    expect(captured).toContain('2026-06-16'); // 2026-06-13 + 3 days
+  });
+
   it('exports an EXTRACTOR_VERSION that the runner can use to bust the hash cache', () => {
     expect(EXTRACTOR_VERSION).toBeTypeOf('number');
     expect(EXTRACTOR_VERSION).toBeGreaterThanOrEqual(1);
