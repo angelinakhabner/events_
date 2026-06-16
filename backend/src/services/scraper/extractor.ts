@@ -66,7 +66,23 @@ const EVENT_TOOL: Anthropic.Tool = {
             source_url: { type: 'string' },
             source_id: { type: ['string', 'null'] },
           },
-          required: ['title', 'starts_at', 'source_url'],
+          // Every key is required-but-nullable: the validator's EventSchema uses
+          // .nullable() (not .optional()), so a *missing* key fails validation
+          // and the event is dropped. Listing all keys here forces the model to
+          // emit each one (value or null), matching that contract.
+          required: [
+            'title',
+            'starts_at',
+            'duration_minutes',
+            'language',
+            'director',
+            'cast',
+            'description',
+            'price_min',
+            'price_max',
+            'source_url',
+            'source_id',
+          ],
         },
       },
     },
