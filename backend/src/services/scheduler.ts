@@ -98,6 +98,24 @@ export function startScrapeScheduler(opts: { hour?: number } = {}): { stop: () =
   };
 }
 
+// Anthropic org cap is 30k input tokens / minute. A single venue's prompt can
+// be 30-80k tokens, so even one request can consume the bucket. The SDK
+// already retries 429s with backoff, but a pause between venues makes the
+// retries shorter (we wait off-the-clock instead of inside a backoff loop).
+// Tunable via SCRAPE_VENUE_GAP_MS env if you need to push through faster.
+const DEFAULT_VENUE_GAP_MS = 65_000;
+
+/** Read SCRAPE_VENUE_GAP_MS fresh each sweep so Railway variable edits take
+ *  effect on the next cron tick without a redeploy. Empty/invalid → default;
+ *  explicit `0` disables the gap (back-to-back, accept the 429 risk). */
+export function readVenueGapMs(): number {
+  const raw = process.env.SCRAPE_VENUE_GAP_MS;
+  if (raw === undefined || raw === '') return DEFAULT_VENUE_GAP_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_VENUE_GAP_MS;
+  return n;
+}
+
 export async function scrapeAllVenues(): Promise<void> {
   const db = getDb();
   const venues = await db.select().from(schema.venues);
@@ -108,12 +126,20 @@ export async function scrapeAllVenues(): Promise<void> {
 type VenueRow = typeof schema.venues.$inferSelect;
 
 async function scrapeVenues(venues: Pick<VenueRow, 'id' | 'name'>[]): Promise<void> {
-  for (const v of venues) {
+  const gapMs = readVenueGapMs();
+  console.log(`[scheduler] gap ${gapMs}ms between venues`);
+  for (let i = 0; i < venues.length; i++) {
+    const v = venues[i]!;
     try {
       const run = await scrapeVenue(v.id);
       console.log(`[scheduler] ${v.name}: ${run.status} (${run.eventsFound ?? '-'} events)`);
     } catch (e) {
+      // scrapeVenue swallows its own errors and returns status='failed', so
+      // this catches only unexpected throws from the runner's finalize path.
       console.error(`[scheduler] ${v.name} threw:`, e instanceof Error ? e.message : e);
+    }
+    if (i < venues.length - 1 && gapMs > 0) {
+      await new Promise((r) => setTimeout(r, gapMs));
     }
   }
 }

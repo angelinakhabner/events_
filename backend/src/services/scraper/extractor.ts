@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { jsonrepair } from 'jsonrepair';
 import type { Venue } from '@goin/shared';
 import { env } from '../../config.js';
 
@@ -8,7 +9,23 @@ import { env } from '../../config.js';
 // date formats. Sonnet 4.6 handles structured extraction with high fidelity
 // at a fraction of Opus cost.
 export const MODEL = 'claude-sonnet-4-6';
-const MAX_TOKENS = 8000;
+// Sonnet 4.6 supports 64k output tokens. A single venue's repertoire can
+// easily produce 12-15k tokens (Muranów's ~143 screenings ≈ 50KB JSON), so
+// 8000 was below the floor and we saw silent mid-array truncation: the
+// response started with `[` but never reached the closing `]`, and the
+// parser threw "did not contain a JSON array". 16k is enough headroom for
+// most venues; if any blow past it the explicit `stop_reason` check below
+// will surface that instead of a misleading parse error.
+const MAX_TOKENS = 16_000;
+
+// Bump this constant whenever the prompt or output schema changes in a way
+// that should invalidate previously-cached scrape results. The runner mixes
+// this into the raw_hash comparison so a re-deploy with a tuned prompt
+// re-extracts existing pages instead of silently keeping stale outputs.
+// v3: enricher pass now fills `description` from each event's source_url.
+// Bumping invalidates the previous run's raw_hash so the next sweep re-runs
+// the full pipeline and back-fills descriptions on the existing event rows.
+export const EXTRACTOR_VERSION = 3;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
@@ -22,7 +39,11 @@ export interface ExtractorClient {
 class AnthropicExtractor implements ExtractorClient {
   private client: Anthropic;
   constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+    // maxRetries: 6 lets the SDK honour Anthropic's `retry-after` header for
+    // 429 / 5xx (default is 2, which loses scrapes when a same-minute burst
+    // pushes us past the 30k input-tokens/minute org cap). With backoff the
+    // worst case adds a few minutes to the daily sweep — acceptable for cron.
+    this.client = new Anthropic({ apiKey, maxRetries: 6 });
   }
   async extract({ system, user }: { system: string; user: string }): Promise<string> {
     const resp = await this.client.messages.create({
@@ -31,10 +52,17 @@ class AnthropicExtractor implements ExtractorClient {
       system,
       messages: [{ role: 'user', content: user }],
     });
-    return resp.content
+    const text = resp.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('');
+    if (resp.stop_reason === 'max_tokens') {
+      throw new Error(
+        `Extractor hit max_tokens (${MAX_TOKENS}) — response truncated at ${text.length} chars. ` +
+          `Raise MAX_TOKENS or split the venue page. Input usage: ${resp.usage.input_tokens}t, output: ${resp.usage.output_tokens}t.`,
+      );
+    }
+    return text;
   }
 }
 
@@ -89,9 +117,16 @@ SCHEMA (JSON array, each object matching this exactly):
   "description": string | null (1-2 sentences max),
   "price_min": number | null (in grosze — integer),
   "price_max": number | null,
-  "source_url": string,
+  "source_url": string (see SOURCE_URL rules below),
   "source_id": string | null (the venue's internal id for this screening, e.g. from data-id attributes; null if not present)
 }
+
+SOURCE_URL — read this carefully:
+- It MUST be the deepest stable page that describes THIS event itself: a per-film page, per-performance page, per-exhibition page. Look for <a> hrefs inside the screening block — typically /film/<slug>, /spektakl/<slug>, /wystawa/<slug>, or similar.
+- NEVER use the venue's calendar / repertoire / "co gramy" / "program" page (e.g. ${venue.url}). That is a listing, not the event.
+- If multiple screenings of the same film share one /film/<slug> page, that's fine — return that URL for each screening.
+- If the page only links to an external ticket system for this seance, prefer the venue's own film/event page; only use the ticket URL if no per-event page exists.
+- If you genuinely cannot find a per-event link in the HTML, return the venue URL but expect the row to be flagged.
 
 RULES:
 - Only future events (starts_at >= today 00:00 in venue timezone)
@@ -118,9 +153,47 @@ export function parseJsonArray(text: string): unknown[] {
   const start = raw.indexOf('[');
   const end = raw.lastIndexOf(']');
   if (start === -1 || end === -1 || end < start) {
-    throw new Error('Extractor response did not contain a JSON array');
+    const preview = raw.length > 400 ? `${raw.slice(0, 200)} ... ${raw.slice(-200)}` : raw;
+    throw new Error(
+      `Extractor response did not contain a JSON array (length=${raw.length}, preview: ${JSON.stringify(preview)})`,
+    );
   }
-  const json = JSON.parse(raw.slice(start, end + 1));
-  if (!Array.isArray(json)) throw new Error('Extractor response is not a JSON array');
-  return json;
+  const slice = raw.slice(start, end + 1);
+
+  // Try strict parse first. Cheap when the output is clean.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(slice);
+  } catch (strictErr) {
+    // Fall back to a repair pass. Production scrapes hit this often when
+    // Polish event titles or descriptions contain bare double-quotes (e.g.
+    // characters in cast lists, names quoted with "..."). jsonrepair fixes
+    // unescaped quotes, trailing commas, single quotes, smart quotes,
+    // missing brackets — common LLM JSON drift.
+    try {
+      const repaired = jsonrepair(slice);
+      parsed = JSON.parse(repaired);
+      // Only claim recovery once we know it actually produced an array.
+      // Otherwise the next line throws "not a JSON array" and an earlier
+      // "recovered N entries" log would be misleading.
+      if (Array.isArray(parsed)) {
+        console.warn(
+          `[extractor] strict JSON.parse failed (${(strictErr as Error).message}); recovered ${parsed.length} entries via jsonrepair`,
+        );
+      }
+    } catch (repairErr) {
+      const previewAt = (strictErr as Error).message.match(/position (\d+)/)?.[1];
+      const pos = previewAt ? Number(previewAt) : -1;
+      const around =
+        pos >= 0
+          ? `near pos ${pos}: ${JSON.stringify(slice.slice(Math.max(0, pos - 80), pos + 80))}`
+          : `head: ${JSON.stringify(slice.slice(0, 200))}`;
+      throw new Error(
+        `Extractor JSON could not be parsed or repaired: ${(strictErr as Error).message}; repair also failed: ${(repairErr as Error).message}; ${around}`,
+      );
+    }
+  }
+
+  if (!Array.isArray(parsed)) throw new Error('Extractor response is not a JSON array');
+  return parsed;
 }
