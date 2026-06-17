@@ -1,6 +1,7 @@
 import type { Event, Venue } from '@goin/shared';
 import { categoryLabel, formatTime } from '../lib/format';
 import { EventActions } from './EventActions';
+import { ExpandableText } from './ExpandableText';
 
 interface Props {
   event: Event;
@@ -32,9 +33,7 @@ export function EventCard({ event, venue }: Props) {
             {v ? <> · <span className="tag">{categoryLabel(v.category)}</span></> : null}
           </div>
           {event.description ? (
-            <p className="mt-2 text-sm text-ink/70 line-clamp-2 max-w-prose">
-              {event.description}
-            </p>
+            <ExpandableText text={event.description} className="mt-2" />
           ) : null}
           <EventActions event={event} />
         </div>
