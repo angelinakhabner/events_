@@ -14,10 +14,11 @@ function event(id: string, startsAt: string): Event {
 // now: Mon 15 Jun 2026, 14:00 Warsaw (12:00 UTC, CEST = UTC+2).
 const now = new Date('2026-06-15T12:00:00.000Z');
 const events = [
-  event('mon', '2026-06-15T18:00:00.000Z'), // 15 Jun
-  event('tue', '2026-06-16T18:00:00.000Z'), // 16 Jun
+  event('mon', '2026-06-15T18:00:00.000Z'), // 15 Jun (today)
+  event('tue', '2026-06-16T18:00:00.000Z'), // 16 Jun (tomorrow)
   event('wed', '2026-06-17T18:00:00.000Z'), // 17 Jun
   event('thu', '2026-06-18T18:00:00.000Z'), // 18 Jun
+  event('fri', '2026-06-19T18:00:00.000Z'), // 19 Jun (4 days out)
 ];
 
 function ids(range: DateRange) {
@@ -26,15 +27,15 @@ function ids(range: DateRange) {
 
 describe('filterEventsByDate', () => {
   it('passes everything through for "all"', () => {
-    expect(ids({ kind: 'all' })).toEqual(['mon', 'tue', 'wed', 'thu']);
+    expect(ids({ kind: 'all' })).toEqual(['mon', 'tue', 'wed', 'thu', 'fri']);
   });
 
   it('keeps only today for "today"', () => {
     expect(ids({ kind: 'today' })).toEqual(['mon']);
   });
 
-  it('keeps today + the next two days for "next3"', () => {
-    expect(ids({ kind: 'next3' })).toEqual(['mon', 'tue', 'wed']);
+  it('keeps the three days starting tomorrow for "next3" (excludes today)', () => {
+    expect(ids({ kind: 'next3' })).toEqual(['tue', 'wed', 'thu']);
   });
 
   it('keeps only the chosen day for "date"', () => {

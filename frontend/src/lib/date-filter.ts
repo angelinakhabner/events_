@@ -16,8 +16,8 @@ function allowedDayKeys(range: DateRange, now: Date): Set<string> {
     case 'today':
       return new Set([warsawDayKey(now)]);
     case 'next3':
-      // Today plus the following two days — a rolling 3-day window.
-      return new Set([0, 1, 2].map((d) => warsawDayKey(new Date(now.getTime() + d * DAY_MS))));
+      // The three days starting tomorrow (excludes today).
+      return new Set([1, 2, 3].map((d) => warsawDayKey(new Date(now.getTime() + d * DAY_MS))));
     case 'date':
       return new Set([range.date]);
     case 'all':
