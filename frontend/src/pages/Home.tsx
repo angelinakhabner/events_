@@ -3,12 +3,15 @@ import type { Category } from '@goin/shared';
 import { trpc } from '../lib/trpc';
 import { EventBuckets } from '../components/EventBuckets';
 import { CategoryBar } from '../components/CategoryBar';
+import { DateFilterBar } from '../components/DateFilterBar';
+import { filterEventsByDate, type DateRange } from '../lib/date-filter';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export function HomePage() {
   const [category, setCategory] = useState<Category | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange>({ kind: 'all' });
 
   const eventsQuery = trpc.events.listDefault.useQuery(
     category ? { filters: { categories: [category] } } : undefined,
@@ -21,7 +24,12 @@ export function HomePage() {
     [venuesQuery.data],
   );
 
-  const events = eventsQuery.data ?? [];
+  const events = useMemo(
+    () => filterEventsByDate(eventsQuery.data ?? [], dateRange),
+    [eventsQuery.data, dateRange],
+  );
+
+  const isFiltered = category !== null || dateRange.kind !== 'all';
 
   return (
     <section>
@@ -33,6 +41,7 @@ export function HomePage() {
       </div>
 
       <CategoryBar selected={category} onChange={setCategory} />
+      <DateFilterBar value={dateRange} onChange={setDateRange} />
 
       <div className="mt-6">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
@@ -44,8 +53,18 @@ export function HomePage() {
         ) : null}
         {!eventsQuery.isLoading && !eventsQuery.error && events.length === 0 ? (
           <EmptyState
-            title="No upcoming events in this category."
-            action={category ? { label: 'Show all', onClick: () => setCategory(null) } : undefined}
+            title="No upcoming events for these filters."
+            action={
+              isFiltered
+                ? {
+                    label: 'Clear filters',
+                    onClick: () => {
+                      setCategory(null);
+                      setDateRange({ kind: 'all' });
+                    },
+                  }
+                : undefined
+            }
           />
         ) : null}
         {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
