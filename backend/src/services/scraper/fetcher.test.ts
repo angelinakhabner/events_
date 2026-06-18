@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { fetchVenueHTML } from './fetcher.js';
+import { fetchVenueHTML, firecrawlScrape } from './fetcher.js';
+
+const FC = { apiKey: 'fc-test', apiUrl: 'https://fc.example' };
 
 describe('fetchVenueHTML', () => {
   it('returns body text on a 2xx response', async () => {
@@ -121,5 +123,56 @@ describe('fetchVenueHTML', () => {
     }) as unknown as typeof fetch;
     await fetchVenueHTML('https://example/x', { fetcher: fakeFetch, insecureTLS: true });
     expect(firstInsecure).toBe(true);
+  });
+
+  it('routes through Firecrawl when a config is provided (POST /v1/scrape with auth)', async () => {
+    let calledUrl = '';
+    let auth = '';
+    let body: Record<string, unknown> = {};
+    const fakeFetch = (async (u: string, init: RequestInit) => {
+      calledUrl = String(u);
+      auth = (init.headers as Record<string, string>).Authorization ?? '';
+      body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ success: true, data: { rawHtml: '<html>rendered</html>' } }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const html = await fetchVenueHTML('https://polin.example/kalendarium', { fetcher: fakeFetch, firecrawl: FC });
+    expect(html).toBe('<html>rendered</html>');
+    expect(calledUrl).toBe('https://fc.example/v1/scrape');
+    expect(auth).toBe('Bearer fc-test');
+    expect(body.url).toBe('https://polin.example/kalendarium');
+  });
+
+  it('falls back to native fetch when Firecrawl errors (never takes the scrape down)', async () => {
+    const fakeFetch = (async (u: string) => {
+      if (String(u).includes('/v1/scrape')) return new Response('nope', { status: 500 }); // Firecrawl down
+      return new Response('<html>native</html>', { status: 200 }); // native target
+    }) as unknown as typeof fetch;
+
+    const html = await fetchVenueHTML('https://venue.example/x', { fetcher: fakeFetch, firecrawl: FC });
+    expect(html).toBe('<html>native</html>');
+  });
+});
+
+describe('firecrawlScrape', () => {
+  it('prefers rawHtml, then html, then markdown', async () => {
+    const make = (data: unknown) =>
+      (async () => new Response(JSON.stringify({ success: true, data }), { status: 200 })) as unknown as typeof fetch;
+    expect(await firecrawlScrape('https://x', FC, { fetcher: make({ rawHtml: 'R', html: 'H', markdown: 'M' }) })).toBe('R');
+    expect(await firecrawlScrape('https://x', FC, { fetcher: make({ html: 'H', markdown: 'M' }) })).toBe('H');
+    expect(await firecrawlScrape('https://x', FC, { fetcher: make({ markdown: 'M' }) })).toBe('M');
+  });
+
+  it('throws on a non-2xx Firecrawl response', async () => {
+    const fakeFetch = (async () => new Response('err', { status: 402 })) as typeof fetch;
+    await expect(firecrawlScrape('https://x', FC, { fetcher: fakeFetch })).rejects.toThrow(/Firecrawl HTTP 402/);
+  });
+
+  it('throws when Firecrawl returns no content', async () => {
+    const fakeFetch = (async () =>
+      new Response(JSON.stringify({ success: true, data: {} }), { status: 200 })) as unknown as typeof fetch;
+    await expect(firecrawlScrape('https://x', FC, { fetcher: fakeFetch })).rejects.toThrow(/no content/);
   });
 });
