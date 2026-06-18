@@ -74,7 +74,12 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
   };
 
   try {
-    const html = opts.htmlOverride ?? (await fetchVenueHTML(venue.url, { fetcher: opts.fetcher }));
+    // Resolve {{YYYY-MM}} / {{YYYY-MM-DD}} placeholders against the scrape's
+    // "now" so date-parameterised listing URLs (Powszechny's month, MSN's from=)
+    // never go stale. No placeholder → returned unchanged.
+    const today = opts.now ?? new Date();
+    const fetchUrl = resolveVenueUrl(venue.url, today, venue.timezone);
+    const html = opts.htmlOverride ?? (await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher }));
     // Include EXTRACTOR_VERSION so a prompt/schema change forces a re-scrape
     // of every venue on the next sweep even when the underlying HTML hasn't
     // changed. Bytes-identical pages will produce a different hash after a
@@ -102,7 +107,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     const venueForVenueOps: Venue = {
       id: venue.id,
       name: venue.name,
-      url: venue.url,
+      url: fetchUrl,
       city: venue.city,
       country: venue.country,
       category: venue.category as Venue['category'],
@@ -112,7 +117,6 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     };
 
     const { cleaned, hint } = preprocessForVenue(html, venueForVenueOps);
-    const today = opts.now ?? new Date();
     const raw = await extractEvents(cleaned, venueForVenueOps, today, {
       client: opts.extractor,
       hint,
@@ -129,7 +133,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // calendar URL instead of finding a per-event page. We still save them
     // (they're better than no link) but a high ratio means the prompt or
     // preprocessor needs another pass for that venue.
-    const fallbackCount = countCalendarFallbacks(valid, venue.url);
+    const fallbackCount = countCalendarFallbacks(valid, fetchUrl);
     if (fallbackCount > 0) {
       console.warn(`[scraper] ${venue.name}: ${fallbackCount}/${valid.length} events used the venue calendar URL as source_url`);
     }
@@ -138,7 +142,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // (3 parallel) so we stay polite to venue servers. Failures don't fail
     // the scrape — title + time are still saved.
     const enrich = await enrichDescriptions(valid, {
-      venueUrl: venue.url,
+      venueUrl: fetchUrl,
       fetcher: opts.fetcher,
     });
     if (enrich.enriched > 0 || enrich.failed > 0) {
@@ -175,6 +179,28 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
 
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+/**
+ * Substitute date placeholders in a venue URL against `today`, formatted in the
+ * venue's timezone. Lets a source carry a date-parameterised listing URL that
+ * never goes stale — `…?miesiac={{YYYY-MM}}`, `…?from={{YYYY-MM-DD}}`. Also
+ * available to user-added sources. URLs with no placeholder are returned as-is.
+ */
+export function resolveVenueUrl(url: string, today: Date, timezone = 'Europe/Warsaw'): string {
+  if (!url.includes('{{')) return url;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(today);
+  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const [y, m, d] = [part('year'), part('month'), part('day')];
+  return url
+    .replace(/\{\{YYYY-MM-DD\}\}/g, `${y}-${m}-${d}`)
+    .replace(/\{\{YYYY-MM\}\}/g, `${y}-${m}`)
+    .replace(/\{\{YYYY\}\}/g, y);
 }
 
 /**

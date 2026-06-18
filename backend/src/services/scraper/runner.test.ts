@@ -294,3 +294,27 @@ describe('countCalendarFallbacks', () => {
     ).toBe(0);
   });
 });
+
+describe('resolveVenueUrl', () => {
+  // 2026-06-18T22:00Z is already 2026-06-19 00:00 in Warsaw (CEST, +02:00) —
+  // confirms formatting uses the venue timezone, not UTC.
+  const now = new Date('2026-06-18T22:00:00.000Z');
+
+  it('substitutes {{YYYY-MM}} with the current month in the venue timezone', async () => {
+    const { resolveVenueUrl } = await import('./runner.js');
+    expect(resolveVenueUrl('https://powszechny.com/pl/repertuar?miesiac={{YYYY-MM}}', now, 'Europe/Warsaw'))
+      .toBe('https://powszechny.com/pl/repertuar?miesiac=2026-06');
+  });
+
+  it('substitutes {{YYYY-MM-DD}} with the venue-local date', async () => {
+    const { resolveVenueUrl } = await import('./runner.js');
+    expect(resolveVenueUrl('https://artmuseum.pl/en/program-1?from={{YYYY-MM-DD}}&type=all', now, 'Europe/Warsaw'))
+      .toBe('https://artmuseum.pl/en/program-1?from=2026-06-19&type=all');
+  });
+
+  it('returns the URL unchanged when there is no placeholder', async () => {
+    const { resolveVenueUrl } = await import('./runner.js');
+    const url = 'https://zacheta.art.pl/en';
+    expect(resolveVenueUrl(url, now, 'Europe/Warsaw')).toBe(url);
+  });
+});
