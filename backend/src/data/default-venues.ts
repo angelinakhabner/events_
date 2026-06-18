@@ -27,7 +27,7 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'kinoteka',
     name: 'Kinoteka',
-    url: 'https://kinoteka.pl/',
+    url: 'https://kinoteka.pl/repertuar/',
     category: 'cinema',
     ...PL,
   },
@@ -105,13 +105,6 @@ export const DEFAULT_VENUES: Venue[] = [
     id: 'muzeum-narodowe',
     name: 'Muzeum Narodowe',
     url: 'https://mnw.art.pl/wystawy',
-    category: 'exhibition',
-    ...PL,
-  },
-  {
-    id: 'muzeum-powstania',
-    name: 'Muzeum Powstania Warszawskiego',
-    url: 'https://1944.pl/wydarzenia',
     category: 'exhibition',
     ...PL,
   },

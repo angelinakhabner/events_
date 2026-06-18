@@ -19,3 +19,9 @@ UPDATE venues SET url = 'https://polin.pl/en/kalendarium'                       
 UPDATE venues SET url = 'https://artmuseum.pl/en/program-1?from={{YYYY-MM-DD}}&type=all' WHERE url = 'https://artmuseum.pl/pl/wystawy';
 UPDATE venues SET url = 'https://zacheta.art.pl/en'                                  WHERE url = 'https://zacheta.art.pl/';
 UPDATE venues SET url = 'https://u-jazdowski.pl/en/wydarzenia'                       WHERE url = 'https://u-jazdowski.pl/program';
+UPDATE venues SET url = 'https://kinoteka.pl/repertuar/'                             WHERE url = 'https://kinoteka.pl/';
+
+-- Drop Muzeum Powstania Warszawskiego: its listing URL moved and no working
+-- replacement is available. The events/scrape_runs FKs are ON DELETE CASCADE,
+-- so this also removes its events and run history. Idempotent (0 rows after).
+DELETE FROM venues WHERE url = 'https://1944.pl/wydarzenia';
