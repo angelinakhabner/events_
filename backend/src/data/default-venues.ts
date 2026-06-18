@@ -20,7 +20,7 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'kino-iluzjon',
     name: 'Kino Iluzjon',
-    url: 'https://iluzjon.fn.org.pl/repertuar/',
+    url: 'https://www.iluzjon.fn.org.pl/repertuar.html',
     category: 'cinema',
     ...PL,
   },
@@ -36,7 +36,9 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'teatr-powszechny',
     name: 'Teatr Powszechny',
-    url: 'https://www.powszechny.com/',
+    // {{YYYY-MM}} is substituted with the current month at fetch time so the
+    // repertoire URL never goes stale (see resolveVenueUrl in the runner).
+    url: 'https://powszechny.com/pl/repertuar?miesiac={{YYYY-MM}}',
     category: 'theatre',
     ...PL,
   },
@@ -57,7 +59,7 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'teatr-studio',
     name: 'Teatr Studio',
-    url: 'https://teatrstudio.pl/repertuar/',
+    url: 'https://teatrstudio.pl/pl/teatr/kategorie-wydarzen/spektakl/',
     category: 'theatre',
     ...PL,
   },
@@ -73,28 +75,29 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'zacheta',
     name: 'Zachęta — National Gallery of Art',
-    url: 'https://zacheta.art.pl/',
+    url: 'https://zacheta.art.pl/en',
     category: 'exhibition',
     ...PL,
   },
   {
     id: 'msn',
     name: 'Muzeum Sztuki Nowoczesnej',
-    url: 'https://artmuseum.pl/pl/wystawy',
+    // {{YYYY-MM-DD}} → today's date at fetch time (see resolveVenueUrl).
+    url: 'https://artmuseum.pl/en/program-1?from={{YYYY-MM-DD}}&type=all',
     category: 'exhibition',
     ...PL,
   },
   {
     id: 'csw-zamek-ujazdowski',
     name: 'CSW Zamek Ujazdowski',
-    url: 'https://u-jazdowski.pl/program',
+    url: 'https://u-jazdowski.pl/en/wydarzenia',
     category: 'exhibition',
     ...PL,
   },
   {
     id: 'polin',
     name: 'POLIN',
-    url: 'https://polin.pl/pl/wydarzenia',
+    url: 'https://polin.pl/en/kalendarium',
     category: 'exhibition',
     ...PL,
   },
@@ -115,7 +118,7 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'krolikarnia',
     name: 'Królikarnia',
-    url: 'https://krolikarnia.mnw.art.pl/',
+    url: 'https://krolikarnia.mnw.art.pl/wystawy/',
     category: 'exhibition',
     ...PL,
   },
@@ -124,7 +127,7 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'klub-komediowy',
     name: 'Klub Komediowy',
-    url: 'https://komediowy.pl/',
+    url: 'https://komediowy.pl/repertuar/',
     category: 'comedy',
     ...PL,
   },
@@ -140,7 +143,7 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'jazzmine',
     name: 'Jazzmine',
-    url: 'https://jazzmine.pl/',
+    url: 'https://jassmine.com/koncerty/',
     category: 'music',
     ...PL,
   },
