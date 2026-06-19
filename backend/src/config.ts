@@ -5,8 +5,17 @@ const Env = z.object({
   PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  // When set, the scraper renders venue *listing* pages through Firecrawl
+  // (JS execution + anti-bot) instead of a plain fetch, falling back to native
+  // fetch on any Firecrawl error. Absent → native fetch only (today's behaviour).
+  // Enrichment (per-event detail pages) always stays on native fetch — cost.
+  FIRECRAWL_API_KEY: z.string().optional(),
+  FIRECRAWL_API_URL: z.string().default('https://api.firecrawl.dev'),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default('hello@goin.app'),
+  // When set, enables the /admin/* debug endpoints (manual scrape trigger,
+  // venue list). Callers must pass ?token=<this>. Unset → endpoints disabled.
+  ADMIN_TOKEN: z.string().optional(),
   SCRAPE_CRON_ENABLED: z
     .string()
     .optional()

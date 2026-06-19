@@ -1,6 +1,8 @@
 import type { Event, Venue } from '@goin/shared';
 import { bucketEvents, type Bucket, type BucketKey } from '../lib/buckets';
 import { categoryLabel, formatShortDate, formatTime } from '../lib/format';
+import { EventActions } from './EventActions';
+import { ExpandableText } from './ExpandableText';
 
 interface Props {
   events: Event[];
@@ -47,12 +49,7 @@ function EventRow({
   const lang = event.language;
   const showLang = lang && (!defaultLang || lang.toLowerCase() !== defaultLang.toLowerCase());
   return (
-    <a
-      href={event.sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-      className="group block py-6 no-underline"
-    >
+    <div className="group block py-6">
       <div className="flex items-baseline gap-6">
         <div className="w-24 shrink-0 text-sm tabular-nums text-muted">
           <div className={highlight ? 'text-accent font-semibold' : ''}>{formatTime(event.startsAt)}</div>
@@ -62,9 +59,16 @@ function EventRow({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
-            <h3 className="font-serif text-xl leading-snug text-ink group-hover:text-accent transition-colors">
-              {event.title}
-            </h3>
+            <a
+              href={event.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="no-underline"
+            >
+              <h3 className="font-serif text-xl leading-snug text-ink group-hover:text-accent transition-colors">
+                {event.title}
+              </h3>
+            </a>
             {bucketKey === 'soon' ? <span className="tag text-accent">Soon</span> : null}
           </div>
           <div className="mt-1 text-sm text-muted flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -74,10 +78,11 @@ function EventRow({
             {showLang ? <span className="tag uppercase">{lang}</span> : null}
           </div>
           {event.description ? (
-            <p className="mt-2 text-sm text-ink/70 line-clamp-2 max-w-prose">{event.description}</p>
+            <ExpandableText text={event.description} className="mt-2" />
           ) : null}
+          <EventActions event={event} />
         </div>
       </div>
-    </a>
+    </div>
   );
 }

@@ -43,6 +43,12 @@ jobs:
       - name: Run database migrations
         run: npm run db:migrate
 
+      - name: Seed default venues
+        # Mirrors the production start chain (migrate → seed → serve). Several
+        # integration tests assume venues.list returns the Warsaw seed; without
+        # this step the DB-backed venue store returns 0 rows in CI.
+        run: npm --workspace backend run db:seed
+
       - name: Type check
         run: npm run typecheck
 
