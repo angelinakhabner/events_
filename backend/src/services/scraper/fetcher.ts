@@ -99,10 +99,12 @@ export async function fetchVenueHTML(url: string, opts: FetchOptions = {}): Prom
   // any error so a Firecrawl outage never takes the scrape down.
   if (opts.firecrawl) {
     try {
-      return await firecrawlScrape(url, opts.firecrawl, {
+      const html = await firecrawlScrape(url, opts.firecrawl, {
         fetcher,
         timeoutMs: opts.firecrawlTimeoutMs ?? 60_000,
       });
+      console.log(`[fetcher] rendered ${url} via Firecrawl (${html.length} chars)`);
+      return html;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`[fetcher] Firecrawl failed for ${url} (${msg}); falling back to native fetch`);

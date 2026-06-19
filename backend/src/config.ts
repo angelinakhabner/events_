@@ -13,6 +13,9 @@ const Env = z.object({
   FIRECRAWL_API_URL: z.string().default('https://api.firecrawl.dev'),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default('hello@goin.app'),
+  // When set, enables the /admin/* debug endpoints (manual scrape trigger,
+  // venue list). Callers must pass ?token=<this>. Unset → endpoints disabled.
+  ADMIN_TOKEN: z.string().optional(),
   SCRAPE_CRON_ENABLED: z
     .string()
     .optional()
