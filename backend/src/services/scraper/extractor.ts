@@ -9,14 +9,12 @@ import { env } from '../../config.js';
 // date formats. Sonnet 4.6 handles structured extraction with high fidelity
 // at a fraction of Opus cost.
 export const MODEL = 'claude-sonnet-4-6';
-// Sonnet 4.6 supports 64k output tokens. A single venue's repertoire can
-// easily produce 12-15k tokens (Muranów's ~143 screenings ≈ 50KB JSON), so
-// 8000 was below the floor and we saw silent mid-array truncation: the
-// response started with `[` but never reached the closing `]`, and the
-// parser threw "did not contain a JSON array". 16k is enough headroom for
-// most venues; if any blow past it the explicit `stop_reason` check below
-// will surface that instead of a misleading parse error.
-const MAX_TOKENS = 16_000;
+// Sonnet 4.6 supports 64k output tokens. Even with the 7-day window, the
+// biggest venue (Kino Muranów) overflowed 16k — a real sweep showed
+// `input 121452t, output 16000t` (truncated). 48k gives ample headroom; you
+// only pay for tokens actually generated, the cap is just a ceiling. Requests
+// this large must stream (see extract()) to avoid SDK HTTP timeouts.
+const MAX_TOKENS = 48_000;
 
 // Bump this constant whenever the prompt or output schema changes in a way
 // that should invalidate previously-cached scrape results. The runner mixes
@@ -104,15 +102,19 @@ class AnthropicExtractor implements ExtractorClient {
     this.client = new Anthropic({ apiKey, maxRetries: 6 });
   }
   async extract({ system, user }: { system: string; user: string }): Promise<string> {
-    const resp = await this.client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system,
-      tools: [EVENT_TOOL],
-      // Force the call so the model can't answer in prose and skip the tool.
-      tool_choice: { type: 'tool', name: EVENT_TOOL.name },
-      messages: [{ role: 'user', content: user }],
-    });
+    // Stream and assemble the final message: at MAX_TOKENS this large a
+    // non-streaming request risks an SDK HTTP timeout before the body lands.
+    const resp = await this.client.messages
+      .stream({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system,
+        tools: [EVENT_TOOL],
+        // Force the call so the model can't answer in prose and skip the tool.
+        tool_choice: { type: 'tool', name: EVENT_TOOL.name },
+        messages: [{ role: 'user', content: user }],
+      })
+      .finalMessage();
     return toolResponseToJson(resp);
   }
 }
@@ -135,9 +137,17 @@ export function toolResponseToJson(resp: Anthropic.Message): string {
   }
   // input is `unknown`; accept the {events:[...]} shape and, defensively, a bare array.
   const input = toolUse.input as { events?: unknown } | unknown[];
-  const events = Array.isArray(input) ? input : input.events;
+  const events = Array.isArray(input) ? input : input?.events;
   if (!Array.isArray(events)) {
-    throw new Error('Extractor tool_use input did not contain an events array');
+    // Recurring on some venues (e.g. Klub Komediowy) without hitting max_tokens.
+    // Surface what the model actually returned so we can finally diagnose it:
+    // the top-level keys, the value type of `events`, and token counts.
+    const keys = input && typeof input === 'object' ? Object.keys(input) : [];
+    throw new Error(
+      `Extractor tool_use input had no events array ` +
+        `(input keys: [${keys.join(', ')}], events type: ${typeof (input as { events?: unknown })?.events}, ` +
+        `output_tokens: ${resp.usage.output_tokens}, stop_reason: ${resp.stop_reason})`,
+    );
   }
   return JSON.stringify(events);
 }

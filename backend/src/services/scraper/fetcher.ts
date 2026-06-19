@@ -1,5 +1,11 @@
 import { Agent } from 'undici';
 
+export interface FirecrawlConfig {
+  apiKey: string;
+  /** Base API URL; defaults to https://api.firecrawl.dev. */
+  apiUrl?: string;
+}
+
 export interface FetchOptions {
   timeoutMs?: number;
   acceptLanguage?: string;
@@ -12,6 +18,14 @@ export interface FetchOptions {
    * also auto-retry once on the specific chain-verification errors — see below.
    */
   insecureTLS?: boolean;
+  /**
+   * When provided, render the page through Firecrawl (JS + anti-bot) instead of
+   * a plain fetch, falling back to native fetch on any Firecrawl error. Only the
+   * runner's listing fetch passes this; enrichment stays native to control cost.
+   */
+  firecrawl?: FirecrawlConfig;
+  /** Firecrawl render timeout (rendering is slower than a plain GET). */
+  firecrawlTimeoutMs?: number;
 }
 
 // A browser-like User-Agent. Many venue sites sit behind a WAF (Cloudflare etc.)
@@ -80,6 +94,23 @@ export async function fetchVenueHTML(url: string, opts: FetchOptions = {}): Prom
     headers = {},
     insecureTLS = false,
   } = opts;
+
+  // Firecrawl path (opt-in): render via Firecrawl, fall back to native fetch on
+  // any error so a Firecrawl outage never takes the scrape down.
+  if (opts.firecrawl) {
+    try {
+      const html = await firecrawlScrape(url, opts.firecrawl, {
+        fetcher,
+        timeoutMs: opts.firecrawlTimeoutMs ?? 60_000,
+      });
+      console.log(`[fetcher] rendered ${url} via Firecrawl (${html.length} chars)`);
+      return html;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[fetcher] Firecrawl failed for ${url} (${msg}); falling back to native fetch`);
+    }
+  }
+
   const mergedHeaders = { ...defaultHeaders(acceptLanguage), ...headers };
 
   const attempt = (insecure: boolean): Promise<string> =>
@@ -123,6 +154,60 @@ async function doFetch(
     const res = await args.fetcher(url, init);
     if (!res.ok) throw new HttpStatusError(res.status, url);
     return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Shape of the Firecrawl v1 /scrape response we rely on (defensively parsed). */
+interface FirecrawlScrapeResponse {
+  success?: boolean;
+  error?: string;
+  data?: {
+    rawHtml?: string;
+    html?: string;
+    markdown?: string;
+  };
+}
+
+/**
+ * Render a page through Firecrawl's v1 /scrape endpoint and return its HTML.
+ *
+ * We request the full rendered DOM (`rawHtml`, `onlyMainContent: false`) so the
+ * preprocessor's JSON-LD / __NEXT_DATA__ extraction still has the <script> tags
+ * to work with; we fall back through `html` then `markdown` if rawHtml is absent.
+ *
+ * NOTE: verify the request/response shape against the current Firecrawl docs
+ * before relying on it in production — this targets the documented v1 API.
+ */
+export async function firecrawlScrape(
+  url: string,
+  cfg: FirecrawlConfig,
+  args: { fetcher?: typeof fetch; timeoutMs?: number } = {},
+): Promise<string> {
+  const { fetcher = fetch, timeoutMs = 60_000 } = args;
+  const base = (cfg.apiUrl ?? 'https://api.firecrawl.dev').replace(/\/+$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetcher(`${base}/v1/scrape`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cfg.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url, formats: ['rawHtml', 'html'], onlyMainContent: false }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`Firecrawl HTTP ${res.status}`);
+    }
+    const json = (await res.json()) as FirecrawlScrapeResponse;
+    const html = json.data?.rawHtml ?? json.data?.html ?? json.data?.markdown;
+    if (!html) {
+      throw new Error(`Firecrawl returned no content${json.error ? ` (${json.error})` : ''}`);
+    }
+    return html;
   } finally {
     clearTimeout(timer);
   }

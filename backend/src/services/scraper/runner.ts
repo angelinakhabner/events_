@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
+import { env } from '../../config.js';
 import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue } from './preprocessor.js';
 import { extractEvents, EXTRACTOR_VERSION, type ExtractorClient } from './extractor.js';
@@ -79,7 +80,13 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // never go stale. No placeholder → returned unchanged.
     const today = opts.now ?? new Date();
     const fetchUrl = resolveVenueUrl(venue.url, today, venue.timezone);
-    const html = opts.htmlOverride ?? (await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher }));
+    // Render the listing through Firecrawl when configured (JS + anti-bot),
+    // with automatic native fallback. Enrichment intentionally stays native.
+    const firecrawl = env.FIRECRAWL_API_KEY
+      ? { apiKey: env.FIRECRAWL_API_KEY, apiUrl: env.FIRECRAWL_API_URL }
+      : undefined;
+    const html =
+      opts.htmlOverride ?? (await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher, firecrawl }));
     // Include EXTRACTOR_VERSION so a prompt/schema change forces a re-scrape
     // of every venue on the next sweep even when the underlying HTML hasn't
     // changed. Bytes-identical pages will produce a different hash after a

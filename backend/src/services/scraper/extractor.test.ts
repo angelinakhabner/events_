@@ -115,8 +115,20 @@ describe('toolResponseToJson', () => {
     expect(() => toolResponseToJson(message([{ type: 'text', text: 'sorry' }]))).toThrow(/no tool_use block/);
   });
 
-  it('throws when the tool input lacks an events array', () => {
-    expect(() => toolResponseToJson(message([toolUse({ notEvents: 1 })]))).toThrow(/events array/);
+  it('throws with a diagnostic (input keys, token counts) when the input lacks an events array', () => {
+    const err = (() => {
+      try {
+        toolResponseToJson(message([toolUse({ notEvents: 1 })]));
+      } catch (e) {
+        return e as Error;
+      }
+      return null;
+    })();
+    expect(err).toBeTruthy();
+    expect(err!.message).toMatch(/no events array/);
+    expect(err!.message).toContain('notEvents'); // surfaces what the model actually returned
+    expect(err!.message).toMatch(/output_tokens: 20/);
+    expect(err!.message).toMatch(/stop_reason: tool_use/);
   });
 });
 
