@@ -4,6 +4,8 @@ export interface FirecrawlConfig {
   apiKey: string;
   /** Base API URL; defaults to https://api.firecrawl.dev. */
   apiUrl?: string;
+  /** ms to wait for client-side JS before capturing (Firecrawl `waitFor`). */
+  waitMs?: number;
 }
 
 export interface FetchOptions {
@@ -196,7 +198,12 @@ export async function firecrawlScrape(
         Authorization: `Bearer ${cfg.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ url, formats: ['rawHtml', 'html'], onlyMainContent: false }),
+      body: JSON.stringify({
+        url,
+        formats: ['rawHtml', 'html'],
+        onlyMainContent: false,
+        ...(cfg.waitMs ? { waitFor: cfg.waitMs } : {}),
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {

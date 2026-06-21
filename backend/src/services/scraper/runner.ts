@@ -83,7 +83,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // Render the listing through Firecrawl when configured (JS + anti-bot),
     // with automatic native fallback. Enrichment intentionally stays native.
     const firecrawl = env.FIRECRAWL_API_KEY
-      ? { apiKey: env.FIRECRAWL_API_KEY, apiUrl: env.FIRECRAWL_API_URL }
+      ? { apiKey: env.FIRECRAWL_API_KEY, apiUrl: env.FIRECRAWL_API_URL, waitMs: env.FIRECRAWL_WAIT_MS }
       : undefined;
     const html =
       opts.htmlOverride ?? (await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher, firecrawl }));

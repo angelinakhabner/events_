@@ -138,11 +138,15 @@ describe('fetchVenueHTML', () => {
       });
     }) as unknown as typeof fetch;
 
-    const html = await fetchVenueHTML('https://polin.example/kalendarium', { fetcher: fakeFetch, firecrawl: FC });
+    const html = await fetchVenueHTML('https://polin.example/kalendarium', {
+      fetcher: fakeFetch,
+      firecrawl: { ...FC, waitMs: 5000 },
+    });
     expect(html).toBe('<html>rendered</html>');
     expect(calledUrl).toBe('https://fc.example/v1/scrape');
     expect(auth).toBe('Bearer fc-test');
     expect(body.url).toBe('https://polin.example/kalendarium');
+    expect(body.waitFor).toBe(5000); // gives client-side JS time to render
   });
 
   it('falls back to native fetch when Firecrawl errors (never takes the scrape down)', async () => {
