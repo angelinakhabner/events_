@@ -57,13 +57,6 @@ export const DEFAULT_VENUES: Venue[] = [
     ...PL,
   },
   {
-    id: 'teatr-studio',
-    name: 'Teatr Studio',
-    url: 'https://teatrstudio.pl/pl/teatr/kategorie-wydarzen/spektakl/',
-    category: 'theatre',
-    ...PL,
-  },
-  {
     id: 'teatr-dramatyczny',
     name: 'Teatr Dramatyczny',
     url: 'https://teatrdramatyczny.pl/repertuar/',
