@@ -31,7 +31,10 @@ const MAX_TOKENS = 48_000;
 // v6: per-category scrape window (cinema 7d … exhibition 60d) — a flat 7-day
 // window missed sparse venues whose nearest event was just outside it (e.g.
 // Filharmonia). Re-extract so those venues pick up their wider horizon.
-export const EXTRACTOR_VERSION = 6;
+// v7: prompt now tells the model to combine a card's separate date + standalone
+// HH:MM (e.g. Kinoteka shows "21.06.2026" and "18:00" apart) instead of
+// defaulting to 00:00 — those midnight rows were being dropped by the validator.
+export const EXTRACTOR_VERSION = 7;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
@@ -258,6 +261,10 @@ RULES:
   PREFER the exact start time from any structured data block at the top of the input
   (JSON-LD "startDate" / __NEXT_DATA__) over a time parsed from the HTML — it is the
   reliable source for showtimes on JS-rendered pages.
+  The date and time are often shown SEPARATELY on a listing card — e.g. a date
+  like "21.06.2026" near the top and a standalone clock time like "18:00" lower
+  down (frequently next to a "Kup bilet" / buy-ticket button). COMBINE them into
+  starts_at. Never emit 00:00 when an HH:MM appears anywhere on that event's card.
   If you cannot find a specific time, OMIT the event entirely — do NOT emit
   00:00 / midnight as a placeholder. (Exception: all-day exhibitions may use 00:00.)
 - Year defaults to ${year} unless stated.
