@@ -141,18 +141,23 @@ export function toolResponseToJson(resp: Anthropic.Message): string {
   // input is `unknown`; accept the {events:[...]} shape and, defensively, a bare array.
   const input = toolUse.input as { events?: unknown } | unknown[];
   const events = Array.isArray(input) ? input : input?.events;
-  if (!Array.isArray(events)) {
-    // Recurring on some venues (e.g. Klub Komediowy) without hitting max_tokens.
-    // Surface what the model actually returned so we can finally diagnose it:
-    // the top-level keys, the value type of `events`, and token counts.
-    const keys = input && typeof input === 'object' ? Object.keys(input) : [];
-    throw new Error(
-      `Extractor tool_use input had no events array ` +
-        `(input keys: [${keys.join(', ')}], events type: ${typeof (input as { events?: unknown })?.events}, ` +
-        `output_tokens: ${resp.usage.output_tokens}, stop_reason: ${resp.stop_reason})`,
-    );
+  if (Array.isArray(events)) {
+    return JSON.stringify(events);
   }
-  return JSON.stringify(events);
+  // Observed on Muranów / Iluzjon / Klub Komediowy: the model serialises the
+  // whole array into `events` as a JSON *string* (`{"events": "[{...}]"}`)
+  // instead of an array. Return that string raw so the caller's parseJsonArray
+  // (with its jsonrepair fallback) parses — or repairs a truncated one.
+  if (typeof events === 'string' && events.trim()) {
+    return events;
+  }
+  // Genuinely nothing usable — surface what the model returned for diagnosis.
+  const keys = input && typeof input === 'object' ? Object.keys(input) : [];
+  throw new Error(
+    `Extractor tool_use input had no events array ` +
+      `(input keys: [${keys.join(', ')}], events type: ${typeof (input as { events?: unknown })?.events}, ` +
+      `output_tokens: ${resp.usage.output_tokens}, stop_reason: ${resp.stop_reason})`,
+  );
 }
 
 let _defaultClient: ExtractorClient | null = null;
