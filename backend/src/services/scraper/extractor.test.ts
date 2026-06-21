@@ -107,6 +107,16 @@ describe('toolResponseToJson', () => {
     expect(parseJsonArray(toolResponseToJson(message([toolUse(events)])))).toEqual(events);
   });
 
+  it('recovers when the model returns events as a JSON string (Muranów/Komediowy bug)', () => {
+    const events = [
+      { title: 'Rozmowa', starts_at: '2026-06-20T18:30:00+02:00', source_url: 'https://v/film/a' },
+      { title: 'Inny', starts_at: '2026-06-21T20:00:00+02:00', source_url: 'https://v/film/b' },
+    ];
+    // events delivered as a stringified array, not an array.
+    const out = toolResponseToJson(message([toolUse({ events: JSON.stringify(events) })]));
+    expect(parseJsonArray(out)).toEqual(events);
+  });
+
   it('throws on max_tokens truncation rather than returning partial data', () => {
     expect(() => toolResponseToJson(message([toolUse({ events: [] })], 'max_tokens'))).toThrow(/max_tokens/);
   });
