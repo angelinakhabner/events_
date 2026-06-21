@@ -16,6 +16,11 @@ describe('admin endpoints', () => {
     expect(res.status).toBe(401);
   });
 
+  it('rejects /admin/render without a token', async () => {
+    const res = await createApp().request('/admin/render?url=https://example.com');
+    expect(res.status).toBe(401);
+  });
+
   it('keeps /health open', async () => {
     const res = await createApp().request('/health');
     expect(res.status).toBe(200);
