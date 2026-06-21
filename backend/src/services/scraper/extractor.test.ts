@@ -174,6 +174,20 @@ describe('extractEvents prompt shape', () => {
     expect(captured).toMatch(/PREFER the exact start time from any structured data/);
   });
 
+  it('uses a wider horizon for a sparse category (music → 45 days)', async () => {
+    let captured = '';
+    const musicVenue = { ...venue, category: 'music' as const };
+    const client = {
+      extract: async ({ user }: { user: string; system: string }) => {
+        captured = user;
+        return '[]';
+      },
+    };
+    await extractEvents('<html/>', musicVenue, new Date('2026-06-13T00:00:00Z'), { client });
+    expect(captured).toMatch(/next 45 days/);
+    expect(captured).toContain('2026-07-28'); // 2026-06-13 + 45 days
+  });
+
   it('honours a custom windowDays', async () => {
     let captured = '';
     const client = {

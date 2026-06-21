@@ -28,7 +28,10 @@ const MAX_TOKENS = 48_000;
 // fits comfortably, so we keep one bounded call per venue at the current
 // budget — and a week is a week for any user-added source. Bumping the version
 // invalidates raw_hash so the next sweep re-extracts.
-export const EXTRACTOR_VERSION = 5;
+// v6: per-category scrape window (cinema 7d … exhibition 60d) — a flat 7-day
+// window missed sparse venues whose nearest event was just outside it (e.g.
+// Filharmonia). Re-extract so those venues pick up their wider horizon.
+export const EXTRACTOR_VERSION = 6;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
@@ -161,14 +164,31 @@ function defaultClient(): ExtractorClient {
   return _defaultClient;
 }
 
-/** Default scrape horizon in days. Keeps a venue's output small enough to fit
- *  one bounded LLM call; refreshed each sweep so the window rolls forward. */
-export const DEFAULT_WINDOW_DAYS = 7;
+/**
+ * Scrape horizon in days, per venue category. Cinemas publish a dense daily
+ * repertoire, so a short window keeps the LLM output bounded; theatres, concert
+ * halls and galleries schedule sparsely and far ahead, so a week often catches
+ * nothing (e.g. Filharmonia's nearest concert was 9 days out → success_empty).
+ * Tuned so output stays small where events are dense and the horizon is wide
+ * where they're sparse.
+ */
+export const WINDOW_DAYS_BY_CATEGORY: Record<string, number> = {
+  cinema: 7,
+  comedy: 21,
+  theatre: 30,
+  exhibition: 60,
+  music: 45,
+};
+export const DEFAULT_WINDOW_DAYS = 30;
+
+export function windowDaysForCategory(category: string | undefined): number {
+  return (category && WINDOW_DAYS_BY_CATEGORY[category]) || DEFAULT_WINDOW_DAYS;
+}
 
 export interface ExtractOptions {
   client?: ExtractorClient;
   hint?: string | null;
-  /** Only extract events occurring within this many days from `today`. */
+  /** Override the category-derived horizon (days from `today`). */
   windowDays?: number;
 }
 
@@ -183,7 +203,7 @@ export async function extractEvents(
   const dateStr = today.toISOString().slice(0, 10);
   const year = today.getFullYear();
 
-  const windowDays = opts.windowDays ?? DEFAULT_WINDOW_DAYS;
+  const windowDays = opts.windowDays ?? windowDaysForCategory(venue.category);
   const windowEnd = new Date(today.getTime() + windowDays * 86_400_000).toISOString().slice(0, 10);
 
   const hintBlock = opts.hint ? `\n- Page hint: ${opts.hint}` : '';
