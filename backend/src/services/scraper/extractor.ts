@@ -28,7 +28,10 @@ const MAX_TOKENS = 48_000;
 // fits comfortably, so we keep one bounded call per venue at the current
 // budget — and a week is a week for any user-added source. Bumping the version
 // invalidates raw_hash so the next sweep re-extracts.
-export const EXTRACTOR_VERSION = 5;
+// v6: per-category scrape window (cinema 7d … exhibition 60d) — a flat 7-day
+// window missed sparse venues whose nearest event was just outside it (e.g.
+// Filharmonia). Re-extract so those venues pick up their wider horizon.
+export const EXTRACTOR_VERSION = 6;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
@@ -138,18 +141,23 @@ export function toolResponseToJson(resp: Anthropic.Message): string {
   // input is `unknown`; accept the {events:[...]} shape and, defensively, a bare array.
   const input = toolUse.input as { events?: unknown } | unknown[];
   const events = Array.isArray(input) ? input : input?.events;
-  if (!Array.isArray(events)) {
-    // Recurring on some venues (e.g. Klub Komediowy) without hitting max_tokens.
-    // Surface what the model actually returned so we can finally diagnose it:
-    // the top-level keys, the value type of `events`, and token counts.
-    const keys = input && typeof input === 'object' ? Object.keys(input) : [];
-    throw new Error(
-      `Extractor tool_use input had no events array ` +
-        `(input keys: [${keys.join(', ')}], events type: ${typeof (input as { events?: unknown })?.events}, ` +
-        `output_tokens: ${resp.usage.output_tokens}, stop_reason: ${resp.stop_reason})`,
-    );
+  if (Array.isArray(events)) {
+    return JSON.stringify(events);
   }
-  return JSON.stringify(events);
+  // Observed on Muranów / Iluzjon / Klub Komediowy: the model serialises the
+  // whole array into `events` as a JSON *string* (`{"events": "[{...}]"}`)
+  // instead of an array. Return that string raw so the caller's parseJsonArray
+  // (with its jsonrepair fallback) parses — or repairs a truncated one.
+  if (typeof events === 'string' && events.trim()) {
+    return events;
+  }
+  // Genuinely nothing usable — surface what the model returned for diagnosis.
+  const keys = input && typeof input === 'object' ? Object.keys(input) : [];
+  throw new Error(
+    `Extractor tool_use input had no events array ` +
+      `(input keys: [${keys.join(', ')}], events type: ${typeof (input as { events?: unknown })?.events}, ` +
+      `output_tokens: ${resp.usage.output_tokens}, stop_reason: ${resp.stop_reason})`,
+  );
 }
 
 let _defaultClient: ExtractorClient | null = null;
@@ -161,14 +169,31 @@ function defaultClient(): ExtractorClient {
   return _defaultClient;
 }
 
-/** Default scrape horizon in days. Keeps a venue's output small enough to fit
- *  one bounded LLM call; refreshed each sweep so the window rolls forward. */
-export const DEFAULT_WINDOW_DAYS = 7;
+/**
+ * Scrape horizon in days, per venue category. Cinemas publish a dense daily
+ * repertoire, so a short window keeps the LLM output bounded; theatres, concert
+ * halls and galleries schedule sparsely and far ahead, so a week often catches
+ * nothing (e.g. Filharmonia's nearest concert was 9 days out → success_empty).
+ * Tuned so output stays small where events are dense and the horizon is wide
+ * where they're sparse.
+ */
+export const WINDOW_DAYS_BY_CATEGORY: Record<string, number> = {
+  cinema: 7,
+  comedy: 21,
+  theatre: 30,
+  exhibition: 60,
+  music: 45,
+};
+export const DEFAULT_WINDOW_DAYS = 30;
+
+export function windowDaysForCategory(category: string | undefined): number {
+  return (category && WINDOW_DAYS_BY_CATEGORY[category]) || DEFAULT_WINDOW_DAYS;
+}
 
 export interface ExtractOptions {
   client?: ExtractorClient;
   hint?: string | null;
-  /** Only extract events occurring within this many days from `today`. */
+  /** Override the category-derived horizon (days from `today`). */
   windowDays?: number;
 }
 
@@ -183,7 +208,7 @@ export async function extractEvents(
   const dateStr = today.toISOString().slice(0, 10);
   const year = today.getFullYear();
 
-  const windowDays = opts.windowDays ?? DEFAULT_WINDOW_DAYS;
+  const windowDays = opts.windowDays ?? windowDaysForCategory(venue.category);
   const windowEnd = new Date(today.getTime() + windowDays * 86_400_000).toISOString().slice(0, 10);
 
   const hintBlock = opts.hint ? `\n- Page hint: ${opts.hint}` : '';

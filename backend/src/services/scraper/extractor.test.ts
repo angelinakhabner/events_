@@ -107,6 +107,16 @@ describe('toolResponseToJson', () => {
     expect(parseJsonArray(toolResponseToJson(message([toolUse(events)])))).toEqual(events);
   });
 
+  it('recovers when the model returns events as a JSON string (Muranów/Komediowy bug)', () => {
+    const events = [
+      { title: 'Rozmowa', starts_at: '2026-06-20T18:30:00+02:00', source_url: 'https://v/film/a' },
+      { title: 'Inny', starts_at: '2026-06-21T20:00:00+02:00', source_url: 'https://v/film/b' },
+    ];
+    // events delivered as a stringified array, not an array.
+    const out = toolResponseToJson(message([toolUse({ events: JSON.stringify(events) })]));
+    expect(parseJsonArray(out)).toEqual(events);
+  });
+
   it('throws on max_tokens truncation rather than returning partial data', () => {
     expect(() => toolResponseToJson(message([toolUse({ events: [] })], 'max_tokens'))).toThrow(/max_tokens/);
   });
@@ -172,6 +182,20 @@ describe('extractEvents prompt shape', () => {
     expect(captured).toContain('2026-06-20');
     expect(captured).toMatch(/Skip anything dated after 2026-06-20/);
     expect(captured).toMatch(/PREFER the exact start time from any structured data/);
+  });
+
+  it('uses a wider horizon for a sparse category (music → 45 days)', async () => {
+    let captured = '';
+    const musicVenue = { ...venue, category: 'music' as const };
+    const client = {
+      extract: async ({ user }: { user: string; system: string }) => {
+        captured = user;
+        return '[]';
+      },
+    };
+    await extractEvents('<html/>', musicVenue, new Date('2026-06-13T00:00:00Z'), { client });
+    expect(captured).toMatch(/next 45 days/);
+    expect(captured).toContain('2026-07-28'); // 2026-06-13 + 45 days
   });
 
   it('honours a custom windowDays', async () => {
