@@ -149,19 +149,28 @@ npm --workspace backend run scrape:all:dev       # scrape all venues
 
 ### Scheduling on Railway (no cron required)
 
-Railway's cron feature isn't available on all plans, so the daily scrape
-runs **inside the backend server process** via an in-process scheduler
-(`backend/src/services/scheduler.ts`). Enable it with two env vars on the
-backend service:
+Railway's cron feature isn't available on all plans, so the scheduled
+scrape runs **inside the backend server process** via an in-process
+scheduler (`backend/src/services/scheduler.ts`). Enable it with env vars on
+the backend service:
 
 | Variable | Value | Meaning |
 |---|---|---|
 | `SCRAPE_CRON_ENABLED` | `true` | turn the scheduler on (off by default so dev/test servers don't scrape) |
 | `SCRAPE_CRON_HOUR` | `7` (default) | hour of day in **Europe/Warsaw** to run |
+| `SCRAPE_CRON_DAY_OF_WEEK` | unset (default) | day of week in **Europe/Warsaw** to run (`0`=Sun … `6`=Sat). Unset → daily; set to e.g. `1` for a weekly Monday sweep |
 
-On boot the server logs `[scheduler] next scrape in X.Xh`, fires at the
-configured hour, then re-arms for the next day. DST is handled — the
-target is computed against the Europe/Warsaw wall clock, not UTC.
+**Saving tokens with a weekly cadence:** most venues publish their
+schedules weeks or months ahead, so a daily sweep mostly re-bills Anthropic
+tokens for listings that haven't changed. Setting `SCRAPE_CRON_DAY_OF_WEEK`
+(e.g. `1` for Monday) drops the scrape to once a week, cutting that cost
+roughly 7× while still catching new events well before they happen. Leave
+it unset to keep the original daily behaviour.
+
+On boot the server logs `[scheduler] next scrape in X.Xh (daily …)` or
+`(weekly on Monday …)`, fires at the configured time, then re-arms for the
+next occurrence. DST is handled — the target is computed against the
+Europe/Warsaw wall clock, not UTC.
 
 `scrape:all` is still available as a CLI (`npm --workspace backend run
 scrape:all`) if you later move to Railway cron or any external scheduler —
