@@ -25,6 +25,14 @@ const Env = z.object({
     .optional()
     .transform((v) => v === 'true' || v === '1'),
   SCRAPE_CRON_HOUR: z.coerce.number().int().min(0).max(23).default(7),
+  // Day of week to run the scrape on, in Europe/Warsaw (0=Sunday … 6=Saturday).
+  // Unset → daily. Set to e.g. 1 (Monday) for a weekly sweep: most venues
+  // publish weeks/months ahead, so daily mostly re-bills tokens for unchanged
+  // listings — weekly cuts that cost roughly 7×.
+  SCRAPE_CRON_DAY_OF_WEEK: z.preprocess(
+    (v) => (v === undefined || v === '' ? undefined : v),
+    z.coerce.number().int().min(0).max(6).optional(),
+  ),
 });
 
 export const env = Env.parse(process.env);

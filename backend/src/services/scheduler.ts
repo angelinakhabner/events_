@@ -4,29 +4,42 @@ import { scrapeVenue } from './scraper/runner.js';
 
 const TZ = 'Europe/Warsaw';
 
+/** Short weekday names as rendered by Intl in Europe/Warsaw, mapped to the
+ *  JS `getDay()` convention (0=Sunday … 6=Saturday). */
+const WEEKDAY_NUM: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+const WEEKDAY_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 /**
  * Backoff schedule (minutes) for re-scraping venues that failed on a
  * transient, credit/rate-limit-style error. After the last pass we give up
- * and wait for the next daily sweep rather than spinning forever — if credits
- * are still at zero, a tight loop just burns logs.
+ * and wait for the next scheduled sweep rather than spinning forever — if
+ * credits are still at zero, a tight loop just burns logs.
  */
 const RETRY_BACKOFFS_MIN = [30, 60, 120];
 
 /**
- * In-process daily scrape scheduler. Replaces an external cron: Railway's
- * cron feature isn't available on every plan, and the backend service is
- * already always-on, so a setTimeout loop inside the server process is the
- * simplest reliable option.
+ * In-process scrape scheduler. Replaces an external cron: Railway's cron
+ * feature isn't available on every plan, and the backend service is already
+ * always-on, so a setTimeout loop inside the server process is the simplest
+ * reliable option.
  *
- * Fires at the configured hour (default 07:00) in Europe/Warsaw, then
- * re-arms for the next day. Skips silently when DATABASE_URL is unset.
+ * Fires at the configured hour (default 07:00) in Europe/Warsaw, then re-arms.
+ * Cadence depends on `dayOfWeek`:
+ *   - undefined → daily (the original behaviour).
+ *   - 0–6 (Sun–Sat) → weekly, only on that weekday. Most venues publish
+ *     schedules weeks/months out, so a daily sweep mostly re-bills tokens for
+ *     unchanged listings; weekly cuts that cost ~7×.
+ * Skips silently when DATABASE_URL is unset.
  *
  * After each sweep, venues that failed on a retryable error (out of credits /
  * rate limited) are re-scraped on a backoff — only those venues, leaving the
  * ones that already succeeded untouched.
  */
-export function startScrapeScheduler(opts: { hour?: number } = {}): { stop: () => void } {
+export function startScrapeScheduler(opts: { hour?: number; dayOfWeek?: number } = {}): { stop: () => void } {
   const hour = opts.hour ?? 7;
+  const dayOfWeek = opts.dayOfWeek;
   let dailyTimer: NodeJS.Timeout | null = null;
   let sleepTimer: NodeJS.Timeout | null = null;
   let wakeSleep: (() => void) | null = null;
@@ -46,8 +59,9 @@ export function startScrapeScheduler(opts: { hour?: number } = {}): { stop: () =
 
   const arm = () => {
     if (stopped) return;
-    const delay = msUntilNextWarsawHour(hour);
-    console.log(`[scheduler] next scrape in ${(delay / 3_600_000).toFixed(1)}h (daily at ${String(hour).padStart(2, '0')}:00 ${TZ})`);
+    const delay = msUntilNextWarsawTime(hour, dayOfWeek);
+    const cadence = dayOfWeek === undefined ? 'daily' : `weekly on ${WEEKDAY_NAME[dayOfWeek]}`;
+    console.log(`[scheduler] next scrape in ${(delay / 3_600_000).toFixed(1)}h (${cadence} at ${String(hour).padStart(2, '0')}:00 ${TZ})`);
     dailyTimer = setTimeout(async () => {
       try {
         await scrapeAllVenues();
@@ -81,7 +95,7 @@ export function startScrapeScheduler(opts: { hour?: number } = {}): { stop: () =
     const left = await retryableFailedVenues();
     if (left.length) {
       console.warn(
-        `[scheduler] ${left.length} venue(s) still failing after ${RETRY_BACKOFFS_MIN.length} retries; waiting for next daily run`,
+        `[scheduler] ${left.length} venue(s) still failing after ${RETRY_BACKOFFS_MIN.length} retries; waiting for next scheduled run`,
       );
     }
   };
@@ -198,29 +212,43 @@ function unwrapRows<T>(result: unknown): T[] {
   return [];
 }
 
-/** Milliseconds until the next occurrence of HH:00 in Europe/Warsaw. */
-export function msUntilNextWarsawHour(hour: number, now: Date = new Date()): number {
-  // Read the current Warsaw wall-clock via Intl, then walk forward in
-  // 1-minute steps is wasteful — instead compute today's target in Warsaw
-  // and convert: find the UTC timestamp whose Warsaw rendering is HH:00.
-  // Simpler approach: iterate candidate UTC times (today/tomorrow at
-  // hour-2 .. hour+2 UTC handles both CET and CEST offsets).
+/**
+ * Milliseconds until the next HH:00 in Europe/Warsaw, optionally pinned to a
+ * weekday (`dayOfWeek` 0=Sunday … 6=Saturday).
+ *
+ * We can't just add 24h/7d to a UTC timestamp because of DST — the target is a
+ * Warsaw wall-clock time. Instead we probe candidate UTC instants and ask Intl
+ * how each renders in Warsaw, keeping the first whose hour (and weekday, when
+ * required) matches. Scanning hour-3 .. hour+1 UTC covers both CET and CEST
+ * offsets; addDays up to 8 guarantees a weekday match within a week.
+ */
+export function msUntilNextWarsawTime(hour: number, dayOfWeek?: number, now: Date = new Date()): number {
   const fmt = new Intl.DateTimeFormat('en-CA', {
     timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
+    hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
   });
-  for (let addDays = 0; addDays <= 2; addDays++) {
+  const maxDays = dayOfWeek === undefined ? 2 : 8;
+  const targetHour = String(hour).padStart(2, '0');
+  for (let addDays = 0; addDays <= maxDays; addDays++) {
     for (let utcHour = hour - 3; utcHour <= hour + 1; utcHour++) {
       const candidate = new Date(now);
       candidate.setUTCDate(candidate.getUTCDate() + addDays);
       candidate.setUTCHours(utcHour, 0, 0, 0);
       if (candidate.getTime() <= now.getTime()) continue;
-      const parts = fmt.format(candidate); // e.g. "2026-06-12, 07:00"
-      if (parts.endsWith(`${String(hour).padStart(2, '0')}:00`)) {
-        return candidate.getTime() - now.getTime();
-      }
+      const parts = fmt.formatToParts(candidate);
+      const h = parts.find((p) => p.type === 'hour')?.value;
+      const min = parts.find((p) => p.type === 'minute')?.value;
+      const wd = parts.find((p) => p.type === 'weekday')?.value ?? '';
+      if (h !== targetHour || min !== '00') continue;
+      if (dayOfWeek !== undefined && WEEKDAY_NUM[wd] !== dayOfWeek) continue;
+      return candidate.getTime() - now.getTime();
     }
   }
-  // Fallback: 24h from now (should be unreachable).
-  return 24 * 3_600_000;
+  // Fallback (should be unreachable): one cadence period from now.
+  return (dayOfWeek === undefined ? 24 : 7 * 24) * 3_600_000;
+}
+
+/** Milliseconds until the next occurrence of HH:00 in Europe/Warsaw (daily). */
+export function msUntilNextWarsawHour(hour: number, now: Date = new Date()): number {
+  return msUntilNextWarsawTime(hour, undefined, now);
 }
