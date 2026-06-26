@@ -4,7 +4,8 @@ import { getDb, schema } from '../../db/index.js';
 import { env } from '../../config.js';
 import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue } from './preprocessor.js';
-import { extractEvents, EXTRACTOR_VERSION, type ExtractorClient } from './extractor.js';
+import { extractEvents, EXTRACTOR_VERSION, windowDaysForCategory, type ExtractorClient } from './extractor.js';
+import { getDeterministicScraper } from './deterministic.js';
 import { validateEvents } from './validator.js';
 import { enrichDescriptions } from './enricher.js';
 import { saveEvents } from './persister.js';
@@ -85,32 +86,6 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     const firecrawl = env.FIRECRAWL_API_KEY
       ? { apiKey: env.FIRECRAWL_API_KEY, apiUrl: env.FIRECRAWL_API_URL }
       : undefined;
-    const html =
-      opts.htmlOverride ?? (await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher, firecrawl }));
-    // Include EXTRACTOR_VERSION so a prompt/schema change forces a re-scrape
-    // of every venue on the next sweep even when the underlying HTML hasn't
-    // changed. Bytes-identical pages will produce a different hash after a
-    // version bump → previous successful run's rawHash won't match → we
-    // re-extract with the new prompt.
-    const rawHash = sha256(`v${EXTRACTOR_VERSION}\n${html}`);
-
-    if (!opts.force) {
-      // Treat a prior empty success as "already seen this HTML" too, so an
-      // unchanged JS-rendered shell that yields no events isn't re-billed daily.
-      const prev = await db
-        .select()
-        .from(schema.scrapeRuns)
-        .where(and(
-          eq(schema.scrapeRuns.venueId, venueId),
-          inArray(schema.scrapeRuns.status, ['success', 'success_empty']),
-        ))
-        .orderBy(desc(schema.scrapeRuns.startedAt))
-        .limit(1);
-      if (prev[0]?.rawHash === rawHash) {
-        return await finalize({ status: 'skipped_unchanged', rawHash });
-      }
-    }
-
     const venueForVenueOps: Venue = {
       id: venue.id,
       name: venue.name,
@@ -123,11 +98,63 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       createdAt: (venue.createdAt instanceof Date ? venue.createdAt : new Date(venue.createdAt)).toISOString(),
     };
 
-    const { cleaned, hint } = preprocessForVenue(html, venueForVenueOps);
-    const raw = await extractEvents(cleaned, venueForVenueOps, today, {
-      client: opts.extractor,
-      hint,
-    });
+    // Treat a prior empty success as "already seen" too, so an unchanged page
+    // that yields no events isn't re-processed daily. Shared by both paths.
+    // The rawHash mixes in EXTRACTOR_VERSION so a prompt/schema change forces a
+    // re-scrape of every venue even when the page bytes are identical.
+    const isUnchanged = async (hash: string): Promise<boolean> => {
+      if (opts.force) return false;
+      const prev = await db
+        .select()
+        .from(schema.scrapeRuns)
+        .where(and(
+          eq(schema.scrapeRuns.venueId, venueId),
+          inArray(schema.scrapeRuns.status, ['success', 'success_empty']),
+        ))
+        .orderBy(desc(schema.scrapeRuns.startedAt))
+        .limit(1);
+      return prev[0]?.rawHash === hash;
+    };
+
+    // Deterministic venues (e.g. Kinoteka) carry machine-readable showtimes in
+    // the markup, so we parse with cheerio instead of the LLM — cheaper, exact,
+    // and able to fan out across a multi-day window. Descriptions come inline,
+    // so we skip the enrichment pass too.
+    const deterministic = getDeterministicScraper(venue.id);
+    let raw: unknown[];
+    let rawHash: string;
+
+    if (deterministic) {
+      if (opts.htmlOverride) {
+        raw = deterministic.parse(opts.htmlOverride, venue.timezone);
+        rawHash = sha256(`v${EXTRACTOR_VERSION}\n${opts.htmlOverride}`);
+      } else {
+        const res = await deterministic.scrape({
+          baseUrl: fetchUrl,
+          today,
+          windowDays: windowDaysForCategory(venue.category),
+          timezone: venue.timezone,
+          fetcher: opts.fetcher,
+        });
+        raw = res.events;
+        rawHash = sha256(`v${EXTRACTOR_VERSION}\n${res.signature}`);
+      }
+      if (await isUnchanged(rawHash)) {
+        return await finalize({ status: 'skipped_unchanged', rawHash });
+      }
+    } else {
+      const html =
+        opts.htmlOverride ?? (await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher, firecrawl }));
+      rawHash = sha256(`v${EXTRACTOR_VERSION}\n${html}`);
+      if (await isUnchanged(rawHash)) {
+        return await finalize({ status: 'skipped_unchanged', rawHash });
+      }
+      const { cleaned, hint } = preprocessForVenue(html, venueForVenueOps);
+      raw = await extractEvents(cleaned, venueForVenueOps, today, {
+        client: opts.extractor,
+        hint,
+      });
+    }
     const { valid, invalid } = validateEvents(raw, {
       category: venue.category,
       timezone: venue.timezone,
@@ -147,15 +174,18 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // Enrich descriptions by fetching each per-event page. Grouped by URL so
     // 80 unique films at Muranów costs ~80 GETs, not ~150. Concurrency-limited
     // (3 parallel) so we stay polite to venue servers. Failures don't fail
-    // the scrape — title + time are still saved.
-    const enrich = await enrichDescriptions(valid, {
-      venueUrl: fetchUrl,
-      fetcher: opts.fetcher,
-    });
-    if (enrich.enriched > 0 || enrich.failed > 0) {
-      console.log(
-        `[scraper] ${venue.name}: enriched ${enrich.enriched} description(s) (${enrich.failed} failed, ${enrich.skipped} skipped)`,
-      );
+    // the scrape — title + time are still saved. Skipped for deterministic
+    // venues, which already carry descriptions inline.
+    if (!deterministic) {
+      const enrich = await enrichDescriptions(valid, {
+        venueUrl: fetchUrl,
+        fetcher: opts.fetcher,
+      });
+      if (enrich.enriched > 0 || enrich.failed > 0) {
+        console.log(
+          `[scraper] ${venue.name}: enriched ${enrich.enriched} description(s) (${enrich.failed} failed, ${enrich.skipped} skipped)`,
+        );
+      }
     }
     await saveEvents(venueForVenueOps, valid);
 
