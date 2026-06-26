@@ -11,6 +11,10 @@ const Env = z.object({
   // Enrichment (per-event detail pages) always stays on native fetch — cost.
   FIRECRAWL_API_KEY: z.string().optional(),
   FIRECRAWL_API_URL: z.string().default('https://api.firecrawl.dev'),
+  // Milliseconds Firecrawl waits for client-side JS to finish rendering before
+  // capturing the page. JS-heavy listings (MSN, Nowy Teatr) can render an empty
+  // shell if captured too early. 0 disables the wait.
+  FIRECRAWL_WAIT_MS: z.coerce.number().int().min(0).default(5000),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default('hello@goin.app'),
   // When set, enables the /admin/* debug endpoints (manual scrape trigger,
@@ -21,6 +25,14 @@ const Env = z.object({
     .optional()
     .transform((v) => v === 'true' || v === '1'),
   SCRAPE_CRON_HOUR: z.coerce.number().int().min(0).max(23).default(7),
+  // Day of week to run the scrape on, in Europe/Warsaw (0=Sunday … 6=Saturday).
+  // Unset → daily. Set to e.g. 1 (Monday) for a weekly sweep: most venues
+  // publish weeks/months ahead, so daily mostly re-bills tokens for unchanged
+  // listings — weekly cuts that cost roughly 7×.
+  SCRAPE_CRON_DAY_OF_WEEK: z.preprocess(
+    (v) => (v === undefined || v === '' ? undefined : v),
+    z.coerce.number().int().min(0).max(6).optional(),
+  ),
 });
 
 export const env = Env.parse(process.env);

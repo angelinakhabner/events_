@@ -168,6 +168,19 @@ describe('extractEvents prompt shape', () => {
     expect(captured).toMatch(/\/film\/<slug>|\/spektakl\/<slug>|\/wystawa\/<slug>/);
   });
 
+  it('tells the model to combine a separate date + standalone HH:MM (Kinoteka case)', async () => {
+    let captured = '';
+    const client = {
+      extract: async ({ user }: { user: string; system: string }) => {
+        captured = user;
+        return '[]';
+      },
+    };
+    await extractEvents('<html/>', venue, new Date('2026-06-13T00:00:00Z'), { client });
+    expect(captured).toMatch(/COMBINE them into\s+starts_at/);
+    expect(captured).toMatch(/Never emit 00:00 when an HH:MM appears/);
+  });
+
   it('bounds extraction to a rolling window and prefers structured-data times', async () => {
     let captured = '';
     const client = {

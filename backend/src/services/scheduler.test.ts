@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { msUntilNextWarsawHour, isRetryableScrapeError, readVenueGapMs } from './scheduler.js';
+import { msUntilNextWarsawHour, msUntilNextWarsawTime, isRetryableScrapeError, readVenueGapMs } from './scheduler.js';
 
 describe('isRetryableScrapeError', () => {
   it('retries on out-of-credits (the message the SDK surfaces for a 400)', () => {
@@ -91,5 +91,40 @@ describe('msUntilNextWarsawHour', () => {
     const ms = msUntilNextWarsawHour(7, now);
     expect(ms).toBeGreaterThan(0);
     expect(ms).toBeLessThanOrEqual(24 * 3_600_000);
+  });
+});
+
+describe('msUntilNextWarsawTime (weekly cadence)', () => {
+  it('with no dayOfWeek behaves identically to the daily helper', () => {
+    const now = new Date('2026-06-11T20:00:00.000Z');
+    expect(msUntilNextWarsawTime(7, undefined, now)).toBe(msUntilNextWarsawHour(7, now));
+  });
+
+  it('targets the next Monday 07:00 when run on a Friday', () => {
+    // 2026-06-12T03:00:00Z = Fri 05:00 Warsaw. Next Mon 07:00 Warsaw =
+    // 2026-06-15T05:00:00Z → 3 days + 2h = 74h away.
+    const now = new Date('2026-06-12T03:00:00.000Z');
+    expect(msUntilNextWarsawTime(7, 1, now)).toBe(74 * 3_600_000);
+  });
+
+  it('picks the same day when the target hour is still ahead', () => {
+    // 2026-06-15T03:00:00Z = Mon 05:00 Warsaw. Today's 07:00 = 05:00 UTC → 2h.
+    const now = new Date('2026-06-15T03:00:00.000Z');
+    expect(msUntilNextWarsawTime(7, 1, now)).toBe(2 * 3_600_000);
+  });
+
+  it('rolls to next week when the target weekday/hour has just passed', () => {
+    // 2026-06-15T06:00:00Z = Mon 08:00 Warsaw (past 07:00). Next Mon 07:00 =
+    // 2026-06-22T05:00:00Z → 6 days + 23h = 167h away.
+    const now = new Date('2026-06-15T06:00:00.000Z');
+    expect(msUntilNextWarsawTime(7, 1, now)).toBe(167 * 3_600_000);
+  });
+
+  it('handles DST: weekly target stays on the Warsaw wall clock', () => {
+    // Winter (CET, +01:00). 2026-01-15T20:00:00Z = Thu 21:00 Warsaw.
+    // Next Monday is 2026-01-19; 07:00 Warsaw = 06:00 UTC.
+    // From 2026-01-15T20:00Z to 2026-01-19T06:00Z = 3 days + 10h = 82h.
+    const now = new Date('2026-01-15T20:00:00.000Z');
+    expect(msUntilNextWarsawTime(7, 1, now)).toBe(82 * 3_600_000);
   });
 });
