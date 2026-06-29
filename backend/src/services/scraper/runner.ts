@@ -145,11 +145,18 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     } else {
       const html =
         opts.htmlOverride ?? (await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher, firecrawl }));
-      rawHash = sha256(`v${EXTRACTOR_VERSION}\n${html}`);
+      // Fingerprint the *cleaned* content (what we'd actually send to the model),
+      // not the raw HTML. Raw pages carry per-request noise — rotating CSRF
+      // tokens, ad slots, "N people viewing" counters, build ids — that flips a
+      // raw-HTML hash daily even when the event listing is unchanged, forcing a
+      // full (paid) re-extract every sweep. Preprocessing strips that noise, so
+      // hashing `cleaned` means we skip (for $0) whenever the listing itself
+      // hasn't moved. Cost of preprocessing first is negligible (local cheerio).
+      const { cleaned, hint } = preprocessForVenue(html, venueForVenueOps);
+      rawHash = sha256(`v${EXTRACTOR_VERSION}\n${cleaned}`);
       if (await isUnchanged(rawHash)) {
         return await finalize({ status: 'skipped_unchanged', rawHash });
       }
-      const { cleaned, hint } = preprocessForVenue(html, venueForVenueOps);
       raw = await extractEvents(cleaned, venueForVenueOps, today, {
         client: opts.extractor,
         hint,

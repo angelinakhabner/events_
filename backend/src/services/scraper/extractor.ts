@@ -34,7 +34,14 @@ const MAX_TOKENS = 48_000;
 // v7: prompt now tells the model to combine a card's separate date + standalone
 // HH:MM (e.g. Kinoteka shows "21.06.2026" and "18:00" apart) instead of
 // defaulting to 00:00 — those midnight rows were being dropped by the validator.
-export const EXTRACTOR_VERSION = 7;
+// v8: two cost changes. (1) The unchanged-page fingerprint now hashes the
+// *cleaned* preprocessor output instead of raw HTML, so per-request noise no
+// longer forces daily re-extracts. (2) When a page has trustworthy structured
+// data (JSON-LD events / __NEXT_DATA__), the preprocessor now drops the
+// redundant HTML body and sends only the structured payload, cutting input
+// tokens sharply. Both change what we hash, so bumping re-baselines every venue
+// once on deploy.
+export const EXTRACTOR_VERSION = 8;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +

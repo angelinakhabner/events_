@@ -70,9 +70,31 @@ function preprocessGeneric(html: string): PreprocessResult {
   // application/ld+json blocks or a __NEXT_DATA__ hydration payload that the
   // browser turns into the visible page. Stripping all scripts threw that away
   // and left the model a nav/footer shell, yielding 0 events. We surface the
-  // structured JSON up front so the model prefers it, keeping the cleaned body
-  // as a fallback for genuinely server-rendered pages.
-  const structured = extractStructuredData(html);
+  // structured JSON up front so the model prefers it.
+  const structured = collectStructuredData(html);
+
+  // Cost control: the HTML body is by far the largest part of what we send to
+  // the model (tens of thousands of tokens), and we pay Anthropic per input
+  // token on every extraction. When we have *trustworthy* structured data, the
+  // body is redundant — the model already prefers the JSON — so we drop it
+  // entirely and send only the structured payload. This is the single biggest
+  // lever on per-scrape token cost.
+  //
+  // "Trustworthy" is deliberately conservative so we never trade away events:
+  //   - JSON-LD with ≥2 event nodes — schema.org events carry startDate/name
+  //     directly, and multiple nodes means the listing really is in the JSON.
+  //   - __NEXT_DATA__ — these are SPA pages whose stripped <body> is an empty
+  //     `<div id="__next">` shell anyway, so the body was never carrying events.
+  // A lone JSON-LD event (often just the "featured" item) keeps the body as a
+  // backup, matching the previous behaviour. If a venue ever regresses to fewer
+  // events, loosen/tighten this check — it's the only thing gating the trim.
+  if (structured && bodyIsRedundant(structured)) {
+    const cleaned =
+      `<!-- STRUCTURED DATA extracted from the page (this is the complete, authoritative event listing) -->\n` +
+      `${structured.json}\n` +
+      `<!-- END STRUCTURED DATA -->`;
+    return { cleaned, hint: 'Structured event data (JSON) is the complete listing for this page.', usedFallback: true };
+  }
 
   const $ = cheerio.load(html);
   $('script, style, noscript, svg, iframe, link, head, nav, footer').remove();
@@ -81,7 +103,7 @@ function preprocessGeneric(html: string): PreprocessResult {
   if (structured) {
     const cleaned =
       `<!-- STRUCTURED DATA extracted from the page (prefer this; it is the most reliable source) -->\n` +
-      `${structured}\n` +
+      `${structured.json}\n` +
       `<!-- END STRUCTURED DATA. The HTML below is a fallback. -->\n${body}`;
     return { cleaned, hint: 'Structured event data (JSON) is included at the top of the input.', usedFallback: true };
   }
@@ -89,17 +111,37 @@ function preprocessGeneric(html: string): PreprocessResult {
   return { cleaned: body, hint: null, usedFallback: true };
 }
 
+/** Whether the HTML body can be safely dropped given the structured data we
+ *  found — see the rationale in preprocessGeneric. */
+function bodyIsRedundant(s: StructuredData): boolean {
+  if (s.source === 'nextdata') return true;
+  return s.eventCount >= 2;
+}
+
 /** Matches schema.org event-ish @type values (Event, ScreeningEvent, …). */
 const EVENT_TYPE_RE = /event/i;
 /** Don't let a giant hydration payload blow the token budget. */
 const MAX_STRUCTURED_CHARS = 60_000;
 
+/** Structured event data pulled from a page, with enough metadata for the
+ *  preprocessor to decide whether the HTML body is still needed. */
+export interface StructuredData {
+  /** Compact JSON string fed to the model. */
+  json: string;
+  /** Which source it came from — JSON-LD is per-event and reliable; the
+   *  Next.js hydration blob is the whole app state. */
+  source: 'jsonld' | 'nextdata';
+  /** Number of event nodes for JSON-LD; 0 for the opaque __NEXT_DATA__ blob. */
+  eventCount: number;
+}
+
 /**
  * Extract event-bearing structured data from raw HTML: schema.org JSON-LD
  * (filtered to Event-like types) and, as a fallback, the Next.js __NEXT_DATA__
- * hydration blob. Returns a compact JSON string, or null if nothing useful.
+ * hydration blob. Returns the payload plus its source/count, or null if nothing
+ * useful is present.
  */
-export function extractStructuredData(html: string): string | null {
+export function collectStructuredData(html: string): StructuredData | null {
   const $ = cheerio.load(html);
 
   const events: unknown[] = [];
@@ -114,17 +156,25 @@ export function extractStructuredData(html: string): string | null {
   });
 
   if (events.length) {
-    return clamp(JSON.stringify(events), MAX_STRUCTURED_CHARS);
+    return { json: clamp(JSON.stringify(events), MAX_STRUCTURED_CHARS), source: 'jsonld', eventCount: events.length };
   }
 
   // No JSON-LD events — fall back to the Next.js hydration payload, which often
   // carries the listing as JSON even when nothing else does.
   const nextData = $('script#__NEXT_DATA__').first().contents().text().trim();
   if (nextData && safeJsonParse(nextData) !== undefined) {
-    return clamp(nextData, MAX_STRUCTURED_CHARS);
+    return { json: clamp(nextData, MAX_STRUCTURED_CHARS), source: 'nextdata', eventCount: 0 };
   }
 
   return null;
+}
+
+/**
+ * Back-compat wrapper returning just the JSON string (or null). Prefer
+ * {@link collectStructuredData} where the source/count matter.
+ */
+export function extractStructuredData(html: string): string | null {
+  return collectStructuredData(html)?.json ?? null;
 }
 
 function flattenJsonLd(node: unknown): unknown[] {
