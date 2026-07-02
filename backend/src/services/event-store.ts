@@ -1,4 +1,4 @@
-import { and, asc, eq, gte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
 import type { Event, EventVenue, Category } from '@goin/shared';
 
@@ -40,6 +40,37 @@ export class EventStore {
       .orderBy(asc(schema.events.startsAt))
       .limit(limit);
 
+    return rows.map((r) =>
+      rowToEvent(r.e, {
+        venue: {
+          id: r.venueId,
+          name: r.venueName,
+          category: r.venueCategory as Category,
+          city: r.venueCity,
+          country: r.venueCountry,
+        },
+        venueLanguage: r.venueLanguage,
+      }),
+    );
+  }
+
+  /** Events by id (any date — a saved event stays visible until it passes),
+   *  venue summary inlined. Order is unspecified; callers sort. */
+  async listByIds(ids: string[]): Promise<Event[]> {
+    if (ids.length === 0) return [];
+    const rows = await getDb()
+      .select({
+        e: schema.events,
+        venueId: schema.venues.id,
+        venueName: schema.venues.name,
+        venueCategory: schema.venues.category,
+        venueCity: schema.venues.city,
+        venueCountry: schema.venues.country,
+        venueLanguage: schema.venues.language,
+      })
+      .from(schema.events)
+      .innerJoin(schema.venues, eq(schema.events.venueId, schema.venues.id))
+      .where(inArray(schema.events.id, ids));
     return rows.map((r) =>
       rowToEvent(r.e, {
         venue: {
