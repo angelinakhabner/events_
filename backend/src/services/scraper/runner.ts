@@ -7,6 +7,7 @@ import { preprocessForVenue, isDeterministicallyParsable } from './preprocessor.
 import { parseJsonLdEvents } from './jsonld.js';
 import { extractEvents, EXTRACTOR_VERSION, windowDaysForCategory, type ExtractorClient } from './extractor.js';
 import { getDeterministicScraper } from './deterministic.js';
+import { defaultUserVenueStore } from '../user-venue-store.js';
 import { validateEvents } from './validator.js';
 import { enrichDescriptions } from './enricher.js';
 import { saveEvents } from './persister.js';
@@ -125,6 +126,13 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     let raw: unknown[];
     let rawHash: string;
 
+    // Effective scrape horizon: users can widen it per subscription (a venue
+    // shared by many users is scraped once, at the widest window anyone
+    // asked for), never below the category default. Store errors degrade to
+    // the default rather than failing the scrape.
+    const userMaxWindow = await defaultUserVenueStore.maxWindowDays(venue.id).catch(() => null);
+    const effectiveWindowDays = Math.max(windowDaysForCategory(venue.category), userMaxWindow ?? 0);
+
     if (deterministic) {
       if (opts.htmlOverride) {
         raw = deterministic.parse(opts.htmlOverride, venue.timezone);
@@ -133,7 +141,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         const res = await deterministic.scrape({
           baseUrl: fetchUrl,
           today,
-          windowDays: windowDaysForCategory(venue.category),
+          windowDays: effectiveWindowDays,
           timezone: venue.timezone,
           fetcher: opts.fetcher,
         });
@@ -168,7 +176,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         const rows = parseJsonLdEvents(structured.nodes, {
           pageUrl: fetchUrl,
           today,
-          windowDays: windowDaysForCategory(venue.category),
+          windowDays: effectiveWindowDays,
         });
         if (rows.length > 0) {
           console.log(`[scraper] ${venue.name}: ${rows.length} event(s) from JSON-LD (deterministic, no LLM call)`);
@@ -180,6 +188,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         (await extractEvents(cleaned, venueForVenueOps, today, {
           client: opts.extractor,
           hint,
+          windowDays: effectiveWindowDays,
         }));
     }
     const { valid, invalid } = validateEvents(raw, {
