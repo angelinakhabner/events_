@@ -3,7 +3,8 @@ import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import { env } from '../../config.js';
 import { fetchVenueHTML } from './fetcher.js';
-import { preprocessForVenue } from './preprocessor.js';
+import { preprocessForVenue, isDeterministicallyParsable } from './preprocessor.js';
+import { parseJsonLdEvents } from './jsonld.js';
 import { extractEvents, EXTRACTOR_VERSION, windowDaysForCategory, type ExtractorClient } from './extractor.js';
 import { getDeterministicScraper } from './deterministic.js';
 import { validateEvents } from './validator.js';
@@ -152,15 +153,34 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       // full (paid) re-extract every sweep. Preprocessing strips that noise, so
       // hashing `cleaned` means we skip (for $0) whenever the listing itself
       // hasn't moved. Cost of preprocessing first is negligible (local cheerio).
-      const { cleaned, hint } = preprocessForVenue(html, venueForVenueOps);
+      const { cleaned, hint, structured } = preprocessForVenue(html, venueForVenueOps);
       rawHash = sha256(`v${EXTRACTOR_VERSION}\n${cleaned}`);
       if (await isUnchanged(rawHash)) {
         return await finalize({ status: 'skipped_unchanged', rawHash });
       }
-      raw = await extractEvents(cleaned, venueForVenueOps, today, {
-        client: opts.extractor,
-        hint,
-      });
+      // When the page's JSON-LD is rich enough that `cleaned` is the structured
+      // payload alone, an LLM call would only transcribe JSON to JSON — the
+      // model sees nothing our mapper doesn't. Extract in code instead ($0),
+      // falling back to the LLM if the mapping yields nothing usable (e.g.
+      // dates buried in free text that only the model can read).
+      let jsonLdRows: unknown[] | null = null;
+      if (isDeterministicallyParsable(structured)) {
+        const rows = parseJsonLdEvents(structured.nodes, {
+          pageUrl: fetchUrl,
+          today,
+          windowDays: windowDaysForCategory(venue.category),
+        });
+        if (rows.length > 0) {
+          console.log(`[scraper] ${venue.name}: ${rows.length} event(s) from JSON-LD (deterministic, no LLM call)`);
+          jsonLdRows = rows;
+        }
+      }
+      raw =
+        jsonLdRows ??
+        (await extractEvents(cleaned, venueForVenueOps, today, {
+          client: opts.extractor,
+          hint,
+        }));
     }
     const { valid, invalid } = validateEvents(raw, {
       category: venue.category,
