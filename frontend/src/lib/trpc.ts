@@ -3,6 +3,7 @@ import { httpBatchLink } from '@trpc/client';
 import { QueryClient } from '@tanstack/react-query';
 import type { AppRouter } from '../../../backend/src/trpc/router';
 import { getDeviceId } from './device-id';
+import { getSessionToken } from './auth';
 
 export const trpc = createTRPCReact<AppRouter>();
 
@@ -21,7 +22,11 @@ export function makeTrpcClient() {
       httpBatchLink({
         url: `${base}/trpc`,
         headers() {
-          return { 'x-device-id': getDeviceId() };
+          const token = getSessionToken();
+          return {
+            'x-device-id': getDeviceId(),
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          };
         },
       }),
     ],

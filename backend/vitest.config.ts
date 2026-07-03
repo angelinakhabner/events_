@@ -6,6 +6,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Integration tests share one Postgres in CI, and scraper.test.ts
+    // TRUNCATEs events/scrape_runs between cases — parallel test files racing
+    // that truncation flake (e.g. a fixture event vanishing mid-test). Run
+    // files sequentially; the suite is small enough that this costs seconds.
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

@@ -6,6 +6,10 @@ export interface PreprocessResult {
   /** Optional structured hint surfaced to the extractor (e.g. month/year label). */
   hint: string | null;
   usedFallback: boolean;
+  /** Structured data found on the page, when any. When this is JSON-LD with
+   *  enough events that `cleaned` is the structured payload alone, the runner
+   *  can extract deterministically and skip the LLM call entirely. */
+  structured?: StructuredData | null;
 }
 
 export function preprocessForVenue(html: string, venue: Pick<Venue, 'id'>): PreprocessResult {
@@ -93,7 +97,7 @@ function preprocessGeneric(html: string): PreprocessResult {
       `<!-- STRUCTURED DATA extracted from the page (this is the complete, authoritative event listing) -->\n` +
       `${structured.json}\n` +
       `<!-- END STRUCTURED DATA -->`;
-    return { cleaned, hint: 'Structured event data (JSON) is the complete listing for this page.', usedFallback: true };
+    return { cleaned, hint: 'Structured event data (JSON) is the complete listing for this page.', usedFallback: true, structured };
   }
 
   const $ = cheerio.load(html);
@@ -105,10 +109,17 @@ function preprocessGeneric(html: string): PreprocessResult {
       `<!-- STRUCTURED DATA extracted from the page (prefer this; it is the most reliable source) -->\n` +
       `${structured.json}\n` +
       `<!-- END STRUCTURED DATA. The HTML below is a fallback. -->\n${body}`;
-    return { cleaned, hint: 'Structured event data (JSON) is included at the top of the input.', usedFallback: true };
+    return { cleaned, hint: 'Structured event data (JSON) is included at the top of the input.', usedFallback: true, structured };
   }
 
-  return { cleaned: body, hint: null, usedFallback: true };
+  return { cleaned: body, hint: null, usedFallback: true, structured: null };
+}
+
+/** Whether `structured` alone is what the model would see (`bodyIsRedundant`)
+ *  AND it is per-event JSON-LD we can map in code — i.e. an LLM call would
+ *  only transcribe JSON to JSON. Used by the runner to skip the LLM. */
+export function isDeterministicallyParsable(structured: StructuredData | null | undefined): structured is StructuredData {
+  return !!structured && structured.source === 'jsonld' && bodyIsRedundant(structured);
 }
 
 /** Whether the HTML body can be safely dropped given the structured data we
@@ -133,6 +144,9 @@ export interface StructuredData {
   source: 'jsonld' | 'nextdata';
   /** Number of event nodes for JSON-LD; 0 for the opaque __NEXT_DATA__ blob. */
   eventCount: number;
+  /** The parsed JSON-LD event nodes (empty for __NEXT_DATA__) — the input to
+   *  the deterministic JSON-LD extractor. Unlike `json`, never truncated. */
+  nodes: unknown[];
 }
 
 /**
@@ -156,14 +170,14 @@ export function collectStructuredData(html: string): StructuredData | null {
   });
 
   if (events.length) {
-    return { json: clamp(JSON.stringify(events), MAX_STRUCTURED_CHARS), source: 'jsonld', eventCount: events.length };
+    return { json: clamp(JSON.stringify(events), MAX_STRUCTURED_CHARS), source: 'jsonld', eventCount: events.length, nodes: events };
   }
 
   // No JSON-LD events — fall back to the Next.js hydration payload, which often
   // carries the listing as JSON even when nothing else does.
   const nextData = $('script#__NEXT_DATA__').first().contents().text().trim();
   if (nextData && safeJsonParse(nextData) !== undefined) {
-    return { json: clamp(nextData, MAX_STRUCTURED_CHARS), source: 'nextdata', eventCount: 0 };
+    return { json: clamp(nextData, MAX_STRUCTURED_CHARS), source: 'nextdata', eventCount: 0, nodes: [] };
   }
 
   return null;

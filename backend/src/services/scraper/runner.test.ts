@@ -239,6 +239,36 @@ describe('scrapeVenue runner', () => {
     expect(run.errorMessage).toMatch(/network exploded/);
   });
 
+  it('extracts deterministically from rich JSON-LD without calling Claude', async () => {
+    // Two future ScreeningEvents in JSON-LD → preprocessor goes structured-only
+    // → runner maps them in code; the extractor must never be invoked.
+    const soon = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const ldPage = `<html><head>
+      <script type="application/ld+json">[
+        {"@type":"ScreeningEvent","name":"Film A","startDate":"${soon}T18:00:00+02:00","url":"https://example.test/film/a"},
+        {"@type":"ScreeningEvent","name":"Film B","startDate":"${soon}T20:30:00+02:00","url":"https://example.test/film/b"}
+      ]</script>
+      </head><body>shell</body></html>`;
+    const extractor = { extract: vi.fn(async () => '[]') };
+    const run = await scrapeVenue('venue-1', { htmlOverride: ldPage, extractor });
+    expect(run.status).toBe('success');
+    expect(run.eventsFound).toBe(2);
+    expect(extractor.extract).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Claude when JSON-LD events are unusable (no parseable dates)', async () => {
+    const ldPage = `<html><head>
+      <script type="application/ld+json">[
+        {"@type":"Event","name":"A","startDate":"wkrótce"},
+        {"@type":"Event","name":"B","startDate":"do ustalenia"}
+      ]</script>
+      </head><body>shell</body></html>`;
+    const extractor = { extract: vi.fn(async () => EVENT_JSON) };
+    const run = await scrapeVenue('venue-1', { htmlOverride: ldPage, extractor });
+    expect(run.status).toBe('success');
+    expect(extractor.extract).toHaveBeenCalledTimes(1);
+  });
+
   it('re-runs the pipeline when a prior success was stored under a different hash version', async () => {
     // Simulate a successful run cached under an old version's hash. Same HTML
     // arriving now should produce a NEW hash (because EXTRACTOR_VERSION is

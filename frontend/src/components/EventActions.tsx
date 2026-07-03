@@ -2,18 +2,49 @@ import { useEffect, useRef, useState } from 'react';
 import type { Event } from '@goin/shared';
 import { downloadIcs, googleCalendarUrl } from '../lib/calendar';
 import { shareEvent, type ShareOutcome } from '../lib/share';
+import { trpc } from '../lib/trpc';
+import { isLoggedIn } from '../lib/auth';
 
 /**
- * Per-event "add to calendar" + "share" actions. Shared by the logged-out
- * Home view (EventBuckets) and the saved-folders view (EventCard) so the
- * calendar/share UI stays in one place.
+ * Per-event "add to calendar" + "share" actions (+ "want to go" when logged
+ * in). Shared by the logged-out Home view (EventBuckets) and the
+ * saved-folders view (EventCard) so the per-event action UI stays in one place.
  */
 export function EventActions({ event }: { event: Event }) {
   return (
     <div className="mt-3 flex items-center gap-5 text-sm">
+      {isLoggedIn() ? <WantToGoButton event={event} /> : null}
       <AddToCalendar event={event} />
       <ShareButton event={event} />
     </div>
+  );
+}
+
+function WantToGoButton({ event }: { event: Event }) {
+  const utils = trpc.useUtils();
+  const ids = trpc.my.wantToGo.ids.useQuery();
+  const saved = !!ids.data?.includes(event.id);
+
+  const invalidate = () => {
+    utils.my.wantToGo.ids.invalidate();
+    utils.my.wantToGo.list.invalidate();
+  };
+  const add = trpc.my.wantToGo.add.useMutation({ onSuccess: invalidate });
+  const remove = trpc.my.wantToGo.remove.useMutation({ onSuccess: invalidate });
+  const busy = add.isPending || remove.isPending;
+
+  return (
+    <button
+      type="button"
+      aria-pressed={saved}
+      disabled={busy}
+      onClick={() => (saved ? remove.mutate({ eventId: event.id }) : add.mutate({ eventId: event.id }))}
+      className={`bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50 ${
+        saved ? 'text-accent' : 'text-muted hover:text-ink'
+      }`}
+    >
+      {saved ? '♥ Want to go' : '♡ Want to go'}
+    </button>
   );
 }
 
