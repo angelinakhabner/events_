@@ -1,10 +1,12 @@
-import { and, asc, eq, gte, inArray } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
 import type { Event, EventVenue, Category } from '@goin/shared';
 
 export interface EventListInput {
   city?: string;
   venueId?: string;
+  /** Exact title, matched case-insensitively — same film at every cinema. */
+  title?: string;
   /** Hard upper bound on rows. */
   limit?: number;
   now?: Date;
@@ -19,6 +21,9 @@ export class EventStore {
     const conditions = [gte(schema.events.startsAt, now)];
     if (input.venueId) conditions.push(eq(schema.events.venueId, input.venueId));
     if (input.city) conditions.push(eq(schema.venues.city, input.city));
+    if (input.title) {
+      conditions.push(sql`lower(${schema.events.title}) = lower(${input.title})`);
+    }
 
     // INNER JOIN is intentional: an event without a venue is meaningless and
     // by FK can't exist anyway. We carry the venue summary inline so the

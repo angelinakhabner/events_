@@ -70,6 +70,19 @@ describe('API integration', () => {
     expect(body.result.data.every((e) => e.venueId === 'kino-muranow')).toBe(true);
   });
 
+  it('events.screenings returns upcoming screenings sorted soonest-first', async () => {
+    const { status, body } = await call<TrpcEnvelope<{ startsAt: string; title: string }[]>>(
+      `/trpc/events.screenings?input=${trpcInput({ title: 'Ojczyzna' })}`,
+    );
+    expect(status).toBe(200);
+    const data = body.result.data;
+    expect(Array.isArray(data)).toBe(true);
+    // Empty without seeded events; when rows exist they match the title and
+    // come back in ascending start order.
+    expect(data.every((e) => e.title.toLowerCase() === 'ojczyzna')).toBe(true);
+    expect(data.map((e) => e.startsAt)).toEqual([...data.map((e) => e.startsAt)].sort());
+  });
+
   it('folders.listMine rejects requests without an x-device-id header', async () => {
     const res = await app.request('http://localhost/trpc/folders.listMine');
     const body = (await res.json()) as TrpcErrorEnvelope;

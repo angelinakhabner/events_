@@ -74,6 +74,15 @@ const events = router({
       if (!env.DATABASE_URL) return [];
       return defaultEventStore.listUpcoming({ venueId: input.venueId, limit: 200 });
     }),
+
+  /** Upcoming screenings of one title across every venue, soonest first —
+   *  powers the "Nearest screenings" button on film cards. */
+  screenings: publicProcedure
+    .input(z.object({ title: z.string().min(1) }))
+    .query(async ({ input }) => {
+      if (!env.DATABASE_URL) return [];
+      return defaultEventStore.listUpcoming({ title: input.title, limit: 50 });
+    }),
 });
 
 const admin = router({
