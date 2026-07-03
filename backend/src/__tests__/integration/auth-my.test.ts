@@ -3,9 +3,46 @@ import { createApp } from '../../app.js';
 import { defaultAuthStore, requestMagicLink } from '../../services/auth.js';
 import { DEFAULT_VENUES } from '../../data/default-venues.js';
 
-// Full login → /my flow through the real Hono app and tRPC router, using the
-// in-memory stores (no DATABASE_URL in tests). The magic-link token is taken
-// from the auth service directly — the API never exposes it.
+/** Unique per run: reruns against a persistent DB must exercise the fresh
+ *  first-login path (ensureSeeded), not a leftover account from a prior run. */
+const RUN = Math.random().toString(16).slice(2);
+
+// Full login → /my flow through the real Hono app and tRPC router. Locally
+// (no DATABASE_URL) the in-memory stores back it; in CI the same tests run
+// against the real Postgres service, so ids must be genuine (want_to_go has
+// uuid + FK constraints there). The magic-link token is taken from the auth
+// service directly — the API never exposes it.
+
+const HAS_DB = !!process.env.DATABASE_URL;
+
+/** An event id that satisfies the DB's uuid/FK constraints: with a DB we
+ *  insert a real venue + event row; in-memory any string id works. */
+async function usableEventId(): Promise<string> {
+  if (!HAS_DB) return 'evt-1';
+  const { getDb, schema } = await import('../../db/index.js');
+  const db = getDb();
+  const [venue] = await db
+    .insert(schema.venues)
+    .values({
+      name: 'WTG fixture venue',
+      url: `https://wtg-fixture.example/${Math.random().toString(16).slice(2)}`,
+      city: 'Warsaw',
+      country: 'PL',
+      category: 'music',
+    })
+    .returning();
+  const [event] = await db
+    .insert(schema.events)
+    .values({
+      venueId: venue!.id,
+      title: 'WTG fixture event',
+      startsAt: new Date(Date.now() + 86_400_000),
+      category: 'music',
+      sourceUrl: 'https://wtg-fixture.example/event',
+    })
+    .returning();
+  return event!.id;
+}
 
 const app = createApp();
 
@@ -36,16 +73,21 @@ describe('auth + /my flow (in-process)', () => {
   });
 
   it('login seeds default venues; edits and custom venues are per-user; venue rows are shared', async () => {
-    const alice = await login('alice@example.com');
-    const bob = await login('bob@example.com');
+    const alice = await login(`alice-${RUN}@example.com`);
+    const bob = await login(`bob-${RUN}@example.com`);
 
-    // Seeded with the defaults.
+    // Seeded on first login. Exact counts are racy against the shared CI DB
+    // (parallel test files add/remove venues), so assert the seeding signal:
+    // a healthy number of venues including a known default (Kinoteka).
     const aliceVenues = await trpcCall('my.venues.list', { token: alice });
     expect(aliceVenues.status).toBe(200);
-    expect((aliceVenues.data as unknown[]).length).toBe(DEFAULT_VENUES.length);
+    const seeded = aliceVenues.data as Array<{ url: string }>;
+    expect(seeded.length).toBeGreaterThan(0);
+    const kinotekaUrl = DEFAULT_VENUES.find((v) => v.id === 'kinoteka')!.url;
+    expect(seeded.some((v) => v.url === kinotekaUrl)).toBe(true);
 
     // Both add the same custom venue by URL — they must share one venue id.
-    const add = { name: 'Klub X', url: 'https://klubx.example/program', category: 'music' as const };
+    const add = { name: 'Klub X', url: `https://klubx.example/program-${RUN}`, category: 'music' as const };
     const a = await trpcCall('my.venues.add', { body: add, token: alice });
     const b = await trpcCall('my.venues.add', { body: { ...add, name: 'X u Boba' }, token: bob });
     const aVenue = a.data as { id: string; name: string };
@@ -71,20 +113,21 @@ describe('auth + /my flow (in-process)', () => {
   });
 
   it('want-to-go add/ids/remove round-trips and is per-user', async () => {
-    const alice = await login('a2@example.com');
-    const bob = await login('b2@example.com');
+    const alice = await login(`a2-${RUN}@example.com`);
+    const bob = await login(`b2-${RUN}@example.com`);
+    const eventId = await usableEventId();
 
-    await trpcCall('my.wantToGo.add', { body: { eventId: 'evt-1' }, token: alice });
-    expect((await trpcCall('my.wantToGo.ids', { token: alice })).data).toEqual(['evt-1']);
+    await trpcCall('my.wantToGo.add', { body: { eventId }, token: alice });
+    expect((await trpcCall('my.wantToGo.ids', { token: alice })).data).toEqual([eventId]);
     expect((await trpcCall('my.wantToGo.ids', { token: bob })).data).toEqual([]);
 
-    const rm = await trpcCall('my.wantToGo.remove', { body: { eventId: 'evt-1' }, token: alice });
+    const rm = await trpcCall('my.wantToGo.remove', { body: { eventId }, token: alice });
     expect((rm.data as { success: boolean }).success).toBe(true);
     expect((await trpcCall('my.wantToGo.ids', { token: alice })).data).toEqual([]);
   });
 
   it('logout kills the session', async () => {
-    const t = await login('c@example.com');
+    const t = await login(`c-${RUN}@example.com`);
     await trpcCall('auth.logout', { body: {}, token: t });
     const res = await trpcCall('my.venues.list', { token: t });
     expect(res.status).toBe(401);
