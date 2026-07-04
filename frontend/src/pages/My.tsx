@@ -113,6 +113,150 @@ function LogoutButton() {
   );
 }
 
+// ─── Lists ───────────────────────────────────────────────────────────────────
+
+/**
+ * Switcher over the user's venue lists ("Warsaw", "Poznan", …). The venues
+ * below always show the active list; switching also tells the backend which
+ * venues to keep scraping — inactive lists pause until you come back.
+ */
+function ListsBar() {
+  const utils = trpc.useUtils();
+  const listsQuery = trpc.my.lists.list.useQuery();
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+
+  const invalidate = () => {
+    utils.my.lists.list.invalidate();
+    utils.my.venues.list.invalidate();
+  };
+  const setActive = trpc.my.lists.setActive.useMutation({ onSuccess: invalidate });
+  const create = trpc.my.lists.create.useMutation({
+    onSuccess: () => { invalidate(); setCreating(false); setNewName(''); },
+  });
+  const rename = trpc.my.lists.rename.useMutation({
+    onSuccess: () => { invalidate(); setRenaming(false); },
+  });
+  const remove = trpc.my.lists.remove.useMutation({ onSuccess: invalidate });
+
+  const lists = listsQuery.data ?? [];
+  const active = lists.find((l) => l.active);
+  const mutationError =
+    setActive.error?.message ?? create.error?.message ?? rename.error?.message ?? remove.error?.message ?? null;
+
+  return (
+    <div className="mb-8">
+      <div className="flex flex-wrap items-center gap-2">
+        {lists.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            aria-pressed={l.active}
+            onClick={() => { if (!l.active) setActive.mutate({ listId: l.id }); }}
+            disabled={setActive.isPending}
+            className={
+              l.active
+                ? 'border border-ink bg-ink text-paper px-3 py-1 text-sm cursor-default'
+                : 'border border-rule bg-transparent text-muted hover:text-ink px-3 py-1 text-sm cursor-pointer disabled:opacity-50'
+            }
+          >
+            {l.name} <span className="opacity-70">({l.venueCount})</span>
+          </button>
+        ))}
+        {creating ? (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newName.trim()) create.mutate({ name: newName.trim() });
+            }}
+          >
+            <label className="sr-only" htmlFor="new-list-name">List name</label>
+            <input
+              id="new-list-name"
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Poznan"
+              className="border border-rule bg-paper px-2 py-1 text-sm"
+            />
+            <button type="submit" disabled={create.isPending} className="link-accent text-sm bg-transparent border-0 cursor-pointer disabled:opacity-50">
+              Create
+            </button>
+            <button
+              type="button"
+              onClick={() => { setCreating(false); setNewName(''); }}
+              className="text-sm text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+            >
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <button type="button" onClick={() => setCreating(true)} className="link-accent text-sm bg-transparent border-0 cursor-pointer">
+            + New list
+          </button>
+        )}
+      </div>
+
+      {active ? (
+        <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted">
+          {renaming ? (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (renameValue.trim()) rename.mutate({ listId: active.id, name: renameValue.trim() });
+              }}
+            >
+              <label className="sr-only" htmlFor="rename-list">New list name</label>
+              <input
+                id="rename-list"
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                className="border border-rule bg-paper px-2 py-1 text-sm"
+              />
+              <button type="submit" disabled={rename.isPending} className="link-accent bg-transparent border-0 cursor-pointer disabled:opacity-50">
+                Save
+              </button>
+              <button type="button" onClick={() => setRenaming(false)} className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer">
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setRenameValue(active.name); setRenaming(true); }}
+              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+            >
+              Rename list
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`Delete "${active.name}" and its ${active.venueCount} venue subscription(s)?`)) {
+                remove.mutate({ listId: active.id });
+              }
+            }}
+            className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+          >
+            Delete list
+          </button>
+        </div>
+      ) : null}
+
+      {mutationError ? <p className="mt-2 text-sm text-red-700">{mutationError}</p> : null}
+      <p className="mt-3 text-xs text-muted max-w-prose">
+        Only the list you&rsquo;re viewing is kept fresh — venues in your other lists aren&rsquo;t
+        scraped until you switch to them.
+      </p>
+    </div>
+  );
+}
+
 // ─── My venues ───────────────────────────────────────────────────────────────
 
 function MyVenuesSection() {
@@ -157,6 +301,8 @@ function MyVenuesSection() {
         </button>
       </div>
 
+      <ListsBar />
+
       {adding ? (
         <AddVenueForm
           onSubmit={(input) => add.mutate(input)}
@@ -168,6 +314,11 @@ function MyVenuesSection() {
       {venuesQuery.isLoading ? <SkeletonList rows={4} /> : null}
       {venuesQuery.error ? (
         <ErrorState message="Couldn't load your venues." onRetry={() => venuesQuery.refetch()} />
+      ) : null}
+      {venueRows && venueRows.length === 0 ? (
+        <p className="text-sm text-muted">
+          No venues in this list yet — use &ldquo;Add venue&rdquo; to add one by URL.
+        </p>
       ) : null}
 
       {grouped.map(([category, list]) => (
@@ -308,6 +459,7 @@ function AddVenueForm({
   const [url, setUrl] = useState('');
   const [category, setCategory] = useState<Category>('other');
   const [windowDays, setWindowDays] = useState('');
+  const check = trpc.my.venues.checkUrl.useMutation();
 
   return (
     <form
@@ -323,7 +475,9 @@ function AddVenueForm({
       }}
     >
       <p className="mb-3 text-sm text-muted">
-        If someone already added this venue (same URL), you&rsquo;ll share it — it&rsquo;s only scraped once for everyone.
+        Paste any listing URL. &ldquo;Check URL&rdquo; does a dry run and turns green when the page
+        can be scraped. If someone already added this venue (same URL), you&rsquo;ll share it —
+        it&rsquo;s only scraped once for everyone.
       </p>
       <div className="flex flex-wrap gap-3">
         <label className="sr-only" htmlFor="add-name">Venue name</label>
@@ -333,9 +487,18 @@ function AddVenueForm({
         />
         <label className="sr-only" htmlFor="add-url">Listing URL</label>
         <input
-          id="add-url" required type="url" value={url} onChange={(e) => setUrl(e.target.value)}
+          id="add-url" required type="url" value={url}
+          onChange={(e) => { setUrl(e.target.value); check.reset(); }}
           placeholder="https://venue.example/program" className="flex-[2] min-w-[16rem] border border-rule bg-paper px-2 py-1 text-sm"
         />
+        <button
+          type="button"
+          onClick={() => { if (url.trim()) check.mutate({ url: url.trim() }); }}
+          disabled={!url.trim() || check.isPending}
+          className="text-sm text-muted hover:text-ink bg-transparent border border-rule px-3 py-1 cursor-pointer disabled:opacity-50"
+        >
+          {check.isPending ? 'Checking…' : 'Check URL'}
+        </button>
         <label className="sr-only" htmlFor="add-category">Category</label>
         <select
           id="add-category" value={category} onChange={(e) => setCategory(e.target.value as Category)}
@@ -358,6 +521,21 @@ function AddVenueForm({
           {submitting ? 'Adding…' : 'Add'}
         </button>
       </div>
+      {check.data ? (
+        check.data.ok ? (
+          <p role="status" className="mt-2 text-sm text-green-700">
+            ✓ Scrapable
+            {check.data.method === 'structured-data'
+              ? ` — found ${check.data.eventCount} upcoming event${check.data.eventCount === 1 ? '' : 's'} in the page's structured data`
+              : ' — the page has readable content the AI extractor can parse'}
+          </p>
+        ) : (
+          <p role="status" className="mt-2 text-sm text-red-700">✗ {check.data.reason}</p>
+        )
+      ) : null}
+      {check.error ? (
+        <p role="status" className="mt-2 text-sm text-red-700">✗ Check failed: {check.error.message}</p>
+      ) : null}
       {error ? <p className="mt-2 text-sm text-muted">{error}</p> : null}
     </form>
   );

@@ -6,6 +6,7 @@ import { generateDefaultEvents } from '../data/default-events.js';
 import { filterEvents } from '../services/filters.js';
 import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
+import { probeVenueUrl } from '../services/scraper/probe.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -139,11 +140,57 @@ const myVenueUpdateInput = z.object({
 });
 
 const my = router({
-  venues: router({
+  lists: router({
     list: userProcedure.query(async ({ ctx }) => {
       await ctx.userVenues.ensureSeeded(ctx.user.id);
-      return ctx.userVenues.list(ctx.user.id);
+      return ctx.userVenues.lists(ctx.user.id);
     }),
+
+    create: userProcedure
+      .input(z.object({ name: z.string().trim().min(1).max(80) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await ctx.userVenues.createList(ctx.user.id, input.name);
+        } catch (e) {
+          throw mapStoreError(e);
+        }
+      }),
+
+    rename: userProcedure
+      .input(z.object({ listId: z.string(), name: z.string().trim().min(1).max(80) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await ctx.userVenues.renameList(ctx.user.id, input.listId, input.name);
+        } catch (e) {
+          throw mapStoreError(e);
+        }
+      }),
+
+    remove: userProcedure
+      .input(z.object({ listId: z.string() }))
+      .mutation(async ({ ctx, input }) => ({
+        success: await ctx.userVenues.removeList(ctx.user.id, input.listId),
+      })),
+
+    setActive: userProcedure
+      .input(z.object({ listId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          await ctx.userVenues.setActiveList(ctx.user.id, input.listId);
+          return { ok: true };
+        } catch (e) {
+          throw mapStoreError(e);
+        }
+      }),
+  }),
+
+  venues: router({
+    list: userProcedure
+      .input(z.object({ listId: z.string().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        await ctx.userVenues.ensureSeeded(ctx.user.id);
+        return ctx.userVenues.list(ctx.user.id, input?.listId);
+      }),
 
     add: userProcedure
       .input(
@@ -154,9 +201,23 @@ const my = router({
           country: z.string().min(1).default('PL'),
           category: categorySchema,
           windowDays: z.number().int().min(1).max(90).nullable().optional(),
+          listId: z.string().optional(),
         }),
       )
-      .mutation(({ ctx, input }) => ctx.userVenues.addCustom(ctx.user.id, input)),
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await ctx.userVenues.addCustom(ctx.user.id, input);
+        } catch (e) {
+          throw mapStoreError(e);
+        }
+      }),
+
+    /** Dry-run scrapability check for the add-venue form: fetches the URL the
+     *  way a real scrape would and reports whether/how events could be
+     *  extracted. Never calls the LLM, never writes anything. */
+    checkUrl: userProcedure
+      .input(z.object({ url: z.string().url() }))
+      .mutation(({ input }) => probeVenueUrl(input.url)),
 
     update: userProcedure.input(myVenueUpdateInput).mutation(async ({ ctx, input }) => {
       const { venueId, ...patch } = input;
@@ -255,6 +316,7 @@ function mapStoreError(e: unknown): TRPCError {
   const msg = e instanceof Error ? e.message : String(e);
   if (/forbidden/i.test(msg)) return new TRPCError({ code: 'UNAUTHORIZED', message: msg });
   if (/not found/i.test(msg)) return new TRPCError({ code: 'NOT_FOUND', message: msg });
+  if (/already have/i.test(msg)) return new TRPCError({ code: 'CONFLICT', message: msg });
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: msg });
 }
 
