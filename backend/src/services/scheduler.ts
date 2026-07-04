@@ -132,9 +132,39 @@ export function readVenueGapMs(): number {
 
 export async function scrapeAllVenues(): Promise<void> {
   const db = getDb();
-  const venues = await db.select().from(schema.venues);
-  console.log(`[scheduler] scraping ${venues.length} venue(s)...`);
-  await scrapeVenues(venues);
+  const total = await db.select({ id: schema.venues.id }).from(schema.venues);
+  const targets = await scrapeTargetVenues();
+  const skipped = total.length - targets.length;
+  console.log(
+    `[scheduler] scraping ${targets.length}/${total.length} venue(s)` +
+    (skipped > 0 ? ` (${skipped} only in inactive lists — skipped)` : '') + '...',
+  );
+  await scrapeVenues(targets);
+}
+
+/**
+ * Which venues deserve a scrape right now:
+ *   - venues nobody subscribes to — the shared seed that keeps the public
+ *     (logged-out) home fresh; and
+ *   - venues reachable through at least one user's *active* list.
+ * Venues that live only in inactive lists are skipped — "when not in use,
+ * don't scrape". They catch up as soon as their owner switches back
+ * (list_id IS NULL legacy rows count as active until adopted into a list).
+ */
+export async function scrapeTargetVenues(): Promise<Pick<VenueRow, 'id' | 'name'>[]> {
+  const db = getDb();
+  const result = await db.execute(sql`
+    SELECT v.id, v.name FROM venues v
+    WHERE NOT EXISTS (SELECT 1 FROM user_venues uv WHERE uv.venue_id = v.id)
+       OR EXISTS (
+         SELECT 1 FROM user_venues uv
+         JOIN users u ON u.id = uv.user_id
+         WHERE uv.venue_id = v.id
+           AND (uv.list_id IS NULL OR uv.list_id = u.active_list_id)
+       )
+    ORDER BY v.created_at ASC
+  `);
+  return unwrapRows<{ id: string; name: string }>(result);
 }
 
 type VenueRow = typeof schema.venues.$inferSelect;

@@ -60,8 +60,28 @@ export const events = pgTable(
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
+  // The list whose venues the user is currently looking at. Only venues
+  // reachable through some user's *active* list get scraped (plus venues with
+  // no subscribers at all — the shared seed powering the public home).
+  // No FK reference here to avoid a circular table definition; the SQL
+  // migration declares REFERENCES user_lists(id) ON DELETE SET NULL.
+  activeListId: uuid('active_list_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// A named grouping of a user's venue subscriptions (e.g. "Warsaw", "Poznan").
+export const userLists = pgTable(
+  'user_lists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index('user_lists_user_id_idx').on(t.userId),
+  }),
+);
 
 // Magic-link tokens. Only the SHA-256 of the token is stored, so a DB leak
 // can't be replayed as a login link. Single-use (used_at) and short-lived.
@@ -95,6 +115,9 @@ export const userVenues = pgTable(
   {
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     venueId: uuid('venue_id').notNull().references(() => venues.id, { onDelete: 'cascade' }),
+    // Which of the user's lists this subscription lives in. Null only for
+    // pre-lists legacy rows (the 0006 migration backfills them into "Warsaw").
+    listId: uuid('list_id').references(() => userLists.id, { onDelete: 'cascade' }),
     nameOverride: text('name_override'),
     categoryOverride: text('category_override'),
     // Personal scrape horizon in days. The venue's effective horizon is the
@@ -105,6 +128,7 @@ export const userVenues = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.venueId] }),
     venueIdx: index('user_venues_venue_id_idx').on(t.venueId),
+    listIdx: index('user_venues_list_id_idx').on(t.listId),
   }),
 );
 

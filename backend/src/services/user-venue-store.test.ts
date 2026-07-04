@@ -71,6 +71,85 @@ describe('InMemoryUserVenueStore', () => {
   });
 });
 
+describe('InMemoryUserVenueStore — lists', () => {
+  it('ensureSeeded creates an active "Warsaw" list holding the default venues', async () => {
+    const s = new InMemoryUserVenueStore();
+    await s.ensureSeeded('u1');
+    const lists = await s.lists('u1');
+    expect(lists).toHaveLength(1);
+    expect(lists[0]).toMatchObject({ name: 'Warsaw', active: true, venueCount: DEFAULT_VENUES.length });
+  });
+
+  it('a new list starts empty and does NOT steal the active flag', async () => {
+    const s = new InMemoryUserVenueStore();
+    await s.ensureSeeded('u1');
+    const poznan = await s.createList('u1', 'Poznan');
+    expect(poznan.active).toBe(false);
+    const lists = await s.lists('u1');
+    expect(lists.find((l) => l.name === 'Warsaw')!.active).toBe(true);
+    expect(await s.list('u1', poznan.id)).toHaveLength(0);
+  });
+
+  it('setActiveList switches which list list() shows', async () => {
+    const s = new InMemoryUserVenueStore();
+    await s.ensureSeeded('u1');
+    const poznan = await s.createList('u1', 'Poznan');
+    await s.setActiveList('u1', poznan.id);
+    expect(await s.list('u1')).toHaveLength(0); // active list is now the empty Poznan
+    const lists = await s.lists('u1');
+    expect(lists.find((l) => l.name === 'Poznan')!.active).toBe(true);
+  });
+
+  it('addCustom lands in the active list; re-adding moves the venue between lists', async () => {
+    const s = new InMemoryUserVenueStore();
+    await s.ensureSeeded('u1');
+    const poznan = await s.createList('u1', 'Poznan');
+    await s.setActiveList('u1', poznan.id);
+    const v = await s.addCustom('u1', { ...KINOTEKA, name: 'Kino Pałacowe', url: 'https://palacowe.example/' });
+    expect((await s.list('u1', poznan.id)).map((x) => x.id)).toContain(v.id);
+
+    // Re-adding the same URL while another list is active moves it there.
+    const lists = await s.lists('u1');
+    const warsaw = lists.find((l) => l.name === 'Warsaw')!;
+    await s.setActiveList('u1', warsaw.id);
+    await s.addCustom('u1', { ...KINOTEKA, name: 'Kino Pałacowe', url: 'https://palacowe.example/' });
+    expect((await s.list('u1', poznan.id)).map((x) => x.id)).not.toContain(v.id);
+    expect((await s.list('u1', warsaw.id)).map((x) => x.id)).toContain(v.id);
+  });
+
+  it('duplicate list names are rejected', async () => {
+    const s = new InMemoryUserVenueStore();
+    await s.ensureSeeded('u1');
+    await expect(s.createList('u1', 'Warsaw')).rejects.toThrow(/already have/i);
+    const poznan = await s.createList('u1', 'Poznan');
+    await expect(s.renameList('u1', poznan.id, 'Warsaw')).rejects.toThrow(/already have/i);
+  });
+
+  it('removing the active list drops its venues and activates the oldest remaining list', async () => {
+    const s = new InMemoryUserVenueStore();
+    await s.ensureSeeded('u1');
+    const poznan = await s.createList('u1', 'Poznan');
+    await s.setActiveList('u1', poznan.id);
+    await s.addCustom('u1', { ...KINOTEKA, name: 'Kino Pałacowe', url: 'https://palacowe.example/' });
+
+    expect(await s.removeList('u1', poznan.id)).toBe(true);
+    const lists = await s.lists('u1');
+    expect(lists).toHaveLength(1);
+    expect(lists[0]).toMatchObject({ name: 'Warsaw', active: true });
+    // The Poznan-only subscription went with the list.
+    expect((await s.list('u1', lists[0]!.id)).some((v) => v.url === 'https://palacowe.example/')).toBe(false);
+  });
+
+  it('lists are per-user', async () => {
+    const s = new InMemoryUserVenueStore();
+    await s.ensureSeeded('u1');
+    await s.ensureSeeded('u2');
+    const poznan = await s.createList('u1', 'Poznan');
+    expect((await s.lists('u2')).map((l) => l.name)).toEqual(['Warsaw']);
+    await expect(s.setActiveList('u2', poznan.id)).rejects.toThrow(/not found/i);
+  });
+});
+
 describe('normalizeVenueUrl', () => {
   it('trims and drops fragments so trivially-different URLs dedupe', () => {
     expect(normalizeVenueUrl(' https://kinoteka.pl/repertuar/#top ')).toBe('https://kinoteka.pl/repertuar/');

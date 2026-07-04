@@ -132,4 +132,81 @@ describe('auth + /my flow (in-process)', () => {
     const res = await trpcCall('my.venues.list', { token: t });
     expect(res.status).toBe(401);
   });
+
+  it('lists: seeded Warsaw is active; create/switch scope venues; delete falls back', async () => {
+    const carol = await login(`carol-${RUN}@example.com`);
+
+    // First login → one active "Warsaw" list holding the seeded venues.
+    const initial = (await trpcCall('my.lists.list', { token: carol })).data as Array<{
+      id: string; name: string; active: boolean; venueCount: number;
+    }>;
+    expect(initial).toHaveLength(1);
+    expect(initial[0]).toMatchObject({ name: 'Warsaw', active: true });
+    expect(initial[0]!.venueCount).toBeGreaterThan(0);
+    const warsaw = initial[0]!;
+
+    // A second list starts empty and inactive; duplicates are rejected.
+    const poznan = (await trpcCall('my.lists.create', { body: { name: 'Poznan' }, token: carol }))
+      .data as { id: string; active: boolean; venueCount: number };
+    expect(poznan.active).toBe(false);
+    const dup = await trpcCall('my.lists.create', { body: { name: 'Poznan' }, token: carol });
+    expect(dup.status).toBe(409);
+
+    // Switch to Poznan → my.venues.list now shows that (empty) list.
+    await trpcCall('my.lists.setActive', { body: { listId: poznan.id }, token: carol });
+    expect((await trpcCall('my.venues.list', { token: carol })).data).toEqual([]);
+
+    // Adding a venue while Poznan is active lands it in Poznan only.
+    const added = (await trpcCall('my.venues.add', {
+      body: { name: 'Kino Pałacowe', url: `https://palacowe.example/program-${RUN}`, category: 'cinema' },
+      token: carol,
+    })).data as { id: string };
+    const inPoznan = (await trpcCall('my.venues.list', { token: carol })).data as Array<{ id: string }>;
+    expect(inPoznan.map((v) => v.id)).toEqual([added.id]);
+    const inWarsaw = (await trpcCall('my.venues.list', {
+      token: carol, query: JSON.stringify({ listId: warsaw.id }),
+    })).data as Array<{ id: string }>;
+    expect(inWarsaw.some((v) => v.id === added.id)).toBe(false);
+
+    // Renaming works; deleting the active list falls back to the oldest one.
+    const renamed = (await trpcCall('my.lists.rename', {
+      body: { listId: poznan.id, name: 'Poznań' }, token: carol,
+    })).data as { name: string };
+    expect(renamed.name).toBe('Poznań');
+    const rm = (await trpcCall('my.lists.remove', { body: { listId: poznan.id }, token: carol }))
+      .data as { success: boolean };
+    expect(rm.success).toBe(true);
+    const after = (await trpcCall('my.lists.list', { token: carol })).data as Array<{
+      name: string; active: boolean;
+    }>;
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ name: 'Warsaw', active: true });
+  });
+
+  it.skipIf(!HAS_DB)('scrape targeting skips venues that live only in inactive lists', async () => {
+    const dave = await login(`dave-${RUN}@example.com`);
+
+    // Venue in a list Dave is NOT viewing → not a scrape target. Venue in his
+    // active list → target. (Unique URLs so other CI users can't interfere.)
+    const idle = (await trpcCall('my.lists.create', { body: { name: 'Idle city' }, token: dave }))
+      .data as { id: string };
+    const parked = (await trpcCall('my.venues.add', {
+      body: { name: 'Parked venue', url: `https://parked.example/${RUN}`, category: 'music', listId: idle.id },
+      token: dave,
+    })).data as { id: string };
+    const live = (await trpcCall('my.venues.add', {
+      body: { name: 'Live venue', url: `https://live.example/${RUN}`, category: 'music' },
+      token: dave,
+    })).data as { id: string };
+
+    const { scrapeTargetVenues } = await import('../../services/scheduler.js');
+    const targets = (await scrapeTargetVenues()).map((v) => v.id);
+    expect(targets).toContain(live.id);
+    expect(targets).not.toContain(parked.id);
+
+    // Switching to the idle list makes its venue a target again.
+    await trpcCall('my.lists.setActive', { body: { listId: idle.id }, token: dave });
+    const after = (await scrapeTargetVenues()).map((v) => v.id);
+    expect(after).toContain(parked.id);
+  });
 });
