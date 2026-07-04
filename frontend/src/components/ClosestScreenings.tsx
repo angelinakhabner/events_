@@ -5,10 +5,15 @@ import { formatShortDate, formatTime } from '../lib/format';
 
 const MAX_SHOWN = 6;
 
+/** "Screenings" for films; plays/concerts/exhibitions get the generic word. */
+function panelLabel(event: Event): string {
+  return event.category === 'cinema' ? 'Nearest screenings' : 'Nearest dates';
+}
+
 /**
- * "Nearest screenings" — cinema events only. Opens a dropdown listing the
- * soonest upcoming screenings of the same film across all cinemas, nearest
- * first, so you can pick whichever showing suits you.
+ * "Nearest screenings" (films) / "Nearest dates" (everything else) — opens a
+ * dropdown listing the soonest upcoming events with the same title across all
+ * venues, nearest first, so you can pick whichever showing suits you.
  *
  * The panel (and its query) only mounts once opened, so cards don't fire a
  * request per event and the button stays safe to render outside a tRPC
@@ -33,8 +38,6 @@ export function ClosestScreenings({ event }: { event: Event }) {
     };
   }, [open]);
 
-  if (event.category !== 'cinema') return null;
-
   return (
     <div className="relative" ref={wrapperRef}>
       <button
@@ -43,7 +46,7 @@ export function ClosestScreenings({ event }: { event: Event }) {
         onClick={() => setOpen((v) => !v)}
         className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
       >
-        Nearest screenings
+        {panelLabel(event)}
       </button>
       {open ? <ScreeningsPanel event={event} /> : null}
     </div>
@@ -55,13 +58,14 @@ function ScreeningsPanel({ event }: { event: Event }) {
   // The row you clicked from is already on screen — list the alternatives.
   const others = (screenings.data ?? []).filter((s) => s.id !== event.id).slice(0, MAX_SHOWN);
 
+  const isFilm = event.category === 'cinema';
   let body;
   if (screenings.isLoading) {
-    body = <div className="text-sm text-muted">Looking for screenings…</div>;
+    body = <div className="text-sm text-muted">{isFilm ? 'Looking for screenings…' : 'Looking for dates…'}</div>;
   } else if (screenings.isError) {
-    body = <div className="text-sm text-muted">Couldn’t load screenings.</div>;
+    body = <div className="text-sm text-muted">{isFilm ? 'Couldn’t load screenings.' : 'Couldn’t load dates.'}</div>;
   } else if (others.length === 0) {
-    body = <div className="text-sm text-muted">No other upcoming screenings.</div>;
+    body = <div className="text-sm text-muted">{isFilm ? 'No other upcoming screenings.' : 'No other upcoming dates.'}</div>;
   } else {
     body = (
       <ul className="divide-y divide-rule list-none m-0 p-0">
@@ -86,7 +90,7 @@ function ScreeningsPanel({ event }: { event: Event }) {
 
   return (
     <div className="absolute z-10 left-0 mt-2 bg-paper border border-rule p-3 min-w-[16rem] max-w-[22rem]">
-      <div className="text-xs uppercase tracking-wide text-muted mb-2">Nearest screenings</div>
+      <div className="text-xs uppercase tracking-wide text-muted mb-2">{panelLabel(event)}</div>
       {body}
     </div>
   );

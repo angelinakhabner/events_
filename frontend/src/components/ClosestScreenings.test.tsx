@@ -32,10 +32,31 @@ beforeEach(() => {
 });
 
 describe('ClosestScreenings', () => {
-  it('renders nothing for non-cinema events', () => {
-    const { container } = render(<ClosestScreenings event={makeEvent({ category: 'theatre' })} />);
-    expect(container).toBeEmptyDOMElement();
-    expect(useQueryMock).not.toHaveBeenCalled();
+  it('non-cinema events get a "Nearest dates" button that lists other venues', () => {
+    const event = makeEvent({
+      category: 'theatre', title: 'Dziady',
+      venue: { id: 'v1', name: 'Teatr Powszechny', category: 'theatre', city: 'Warsaw', country: 'PL' },
+    });
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: [
+        makeEvent({
+          id: 'e9', venueId: 'v9', category: 'theatre', title: 'Dziady',
+          sourceUrl: 'https://nowy.example/e9',
+          startsAt: '2026-07-06T19:00:00.000Z',
+          venue: { id: 'v9', name: 'Nowy Teatr', category: 'theatre', city: 'Warsaw', country: 'PL' },
+        }),
+      ],
+    });
+
+    render(<ClosestScreenings event={event} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest dates/i }));
+    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Dziady' });
+
+    const [link] = screen.getAllByRole('link');
+    expect(link).toHaveAttribute('href', 'https://nowy.example/e9');
+    expect(link).toHaveTextContent('Nowy Teatr');
   });
 
   it('only queries once the button is clicked, using the film title', () => {
