@@ -269,6 +269,45 @@ describe('scrapeVenue runner', () => {
     expect(extractor.extract).toHaveBeenCalledTimes(1);
   });
 
+  it('parses registry venues deterministically and enriches from per-event pages', async () => {
+    // klub-komediowy is in the deterministic registry with enrich: true —
+    // rows come from cheerio (no Claude), then the enrichment pass fetches
+    // each /spektakl/ page for the description.
+    state.venues = [{
+      ...VENUE,
+      id: 'klub-komediowy',
+      name: 'Klub Komediowy',
+      category: 'comedy',
+      url: 'https://komediowy.pl/repertuar/',
+    }];
+    const komediowyHtml = `
+      <div class=eventDay data-event-date=17.06.2026><div class=eventItem>
+        <div class=eventTime>19:00</div>
+        <h3 class=eventTitle><a href=https://komediowy.pl/spektakl/test/>Test Show</a></h3>
+        <div class=eventPrice><span class=metaValue>75 zł</span></div>
+        <div class=eventAction><a href=https://tixto.pl/s/111>KUP BILET</a></div>
+      </div></div>`;
+    const extractor = { extract: vi.fn(async () => '[]') };
+    const fetcher = vi.fn(async () =>
+      new Response(
+        '<html><head><meta property="og:description" content="Opis spektaklu."></head><body></body></html>',
+        { status: 200 },
+      ));
+    const run = await scrapeVenue('klub-komediowy', {
+      htmlOverride: komediowyHtml,
+      extractor,
+      fetcher: fetcher as unknown as typeof fetch,
+    });
+    expect(run.status).toBe('success');
+    expect(run.eventsFound).toBe(1);
+    expect(extractor.extract).not.toHaveBeenCalled();
+
+    const { saveEvents } = await import('./persister.js');
+    const saved = (saveEvents as any).mock.calls.at(-1)![1];
+    expect(saved[0].source_id).toBe('tixto:111');
+    expect(saved[0].description).toBe('Opis spektaklu.'); // enrichment ran
+  });
+
   it('re-runs the pipeline when a prior success was stored under a different hash version', async () => {
     // Simulate a successful run cached under an old version's hash. Same HTML
     // arriving now should produce a NEW hash (because EXTRACTOR_VERSION is

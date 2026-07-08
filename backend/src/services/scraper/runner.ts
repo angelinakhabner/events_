@@ -118,10 +118,10 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       return prev[0]?.rawHash === hash;
     };
 
-    // Deterministic venues (e.g. Kinoteka) carry machine-readable showtimes in
-    // the markup, so we parse with cheerio instead of the LLM — cheaper, exact,
-    // and able to fan out across a multi-day window. Descriptions come inline,
-    // so we skip the enrichment pass too.
+    // Deterministic venues (e.g. Kinoteka, Komediowy) carry machine-readable
+    // showtimes in the markup, so we parse with cheerio instead of the LLM —
+    // cheaper, exact, and able to fan out across a multi-day/multi-month
+    // window.
     const deterministic = getDeterministicScraper(venue.id);
     let raw: unknown[];
     let rawHash: string;
@@ -210,9 +210,10 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // Enrich descriptions by fetching each per-event page. Grouped by URL so
     // 80 unique films at Muranów costs ~80 GETs, not ~150. Concurrency-limited
     // (3 parallel) so we stay polite to venue servers. Failures don't fail
-    // the scrape — title + time are still saved. Skipped for deterministic
-    // venues, which already carry descriptions inline.
-    if (!deterministic) {
+    // the scrape — title + time are still saved. Deterministic venues skip
+    // this by default (descriptions come inline) unless they opt in because
+    // their descriptions live on per-event pages (e.g. Komediowy).
+    if (!deterministic || deterministic.enrich) {
       const enrich = await enrichDescriptions(valid, {
         venueUrl: fetchUrl,
         fetcher: opts.fetcher,

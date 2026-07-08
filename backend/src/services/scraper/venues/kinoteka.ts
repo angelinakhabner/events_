@@ -1,6 +1,12 @@
 import * as cheerio from 'cheerio';
 import { fetchVenueHTML } from '../fetcher.js';
 import { clean } from '../enricher.js';
+import { toStartsAt, ymdInTz } from './datetime.js';
+
+// Re-export the shared date/time helpers under their historical home — they
+// started life here and the tests (and any future callers) import them from
+// this module.
+export { tzOffsetAt, toStartsAt } from './datetime.js';
 
 // Kinoteka's /repertuar/ page is fully server-rendered: every screening is an
 // <a> inside .e-movie__screenings carrying clean data-attributes —
@@ -35,33 +41,6 @@ export interface KinotekaScrapeResult {
   events: KinotekaRawEvent[];
   /** Raw material the caller hashes for its skip-unchanged check. */
   signature: string;
-}
-
-/**
- * The numeric UTC offset (e.g. "+02:00") of `timeZone` at the given instant.
- * Used to stamp each showtime with the real Warsaw offset (CEST/CET) instead of
- * the bogus +00:00 the page's <time> element carries.
- */
-export function tzOffsetAt(instant: Date, timeZone: string): string {
-  const name =
-    new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
-      .formatToParts(instant)
-      .find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+00:00';
-  // "GMT+2", "GMT+02:00", "GMT-01:00" → "+02:00" / "-01:00"
-  const m = name.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
-  if (!m) return '+00:00';
-  return `${m[1]}${m[2]!.padStart(2, '0')}:${m[3] ?? '00'}`;
-}
-
-/** Build an ISO start from a `data-day` + `data-hour`, or null if malformed. */
-export function toStartsAt(day: string, hour: string, timeZone: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
-  const m = hour.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const hh = m[1]!.padStart(2, '0');
-  const mm = m[2]!;
-  const offset = tzOffsetAt(new Date(`${day}T${hh}:${mm}:00Z`), timeZone);
-  return `${day}T${hh}:${mm}:00${offset}`;
 }
 
 /** Parse one day's listing HTML into raw event rows (validator-shaped). */
@@ -105,15 +84,6 @@ export function parseKinotekaListing(html: string, timeZone: string = TZ_DEFAULT
   });
 
   return events;
-}
-
-/** YYYY-MM-DD rendering of `date` in `timeZone`. */
-function ymdInTz(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(date);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 /** The day-picker's active date (the day the base page is showing), if present. */
