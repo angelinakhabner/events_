@@ -53,12 +53,10 @@ describe('AddVenueForm — guided flow', () => {
     expect(screen.getByRole('group', { name: /3 · tag/i })).toBeInTheDocument();
     // No checkbox list of pre-defined venues anywhere in the form.
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
-    // The steps appear in the promised order.
-    const order = [language, url, screen.getByRole('button', { name: /^cinema$/i })].map((el) =>
-      el.compareDocumentPosition(url),
-    );
-    expect(order[0] & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(order[2] & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    // The steps appear in the promised order: language before URL before tag.
+    const cinemaTag = screen.getByRole('button', { name: /^cinema$/i });
+    expect(language.compareDocumentPosition(url) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(url.compareDocumentPosition(cinemaTag) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('checking a scrapable URL turns green and suggests the venue name from the page', async () => {
