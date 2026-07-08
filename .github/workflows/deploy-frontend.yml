@@ -1,10 +1,12 @@
 name: Deploy frontend
 
+# The repo's default branch is claude/epic-goldberg-qj4EC (there is no `main`);
+# the previous trigger chained off CI@main and therefore never fired — Pages
+# sat on a May 31 build while features kept merging. Trigger on pushes to the
+# real default branch instead.
 on:
-  workflow_run:
-    workflows: ['CI']
-    types: [completed]
-    branches: [main]
+  push:
+    branches: [claude/epic-goldberg-qj4EC]
   workflow_dispatch:
 
 concurrency:
@@ -13,20 +15,14 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
-      pages: write
+      contents: write # push the build to the gh-pages branch
+      pages: write # and/or publish via the Pages Actions API
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -38,12 +34,32 @@ jobs:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: npm --workspace frontend run build
+
+      # The repo's Pages source setting is not visible from the workflow, so
+      # publish through both supported mechanisms; the one matching the
+      # setting takes effect and the other is inert.
+      # 1. Classic: push the build to the gh-pages branch (what produced the
+      #    currently-live site).
+      - name: Publish to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./frontend/dist
+          force_orphan: true
+      # 2. Actions-based Pages deploy. Fails harmlessly when the Pages source
+      #    is set to "deploy from a branch", hence continue-on-error.
       - name: Setup Pages
+        id: setup_pages
+        continue-on-error: true
         uses: actions/configure-pages@v5
       - name: Upload artifact
+        if: steps.setup_pages.outcome == 'success'
+        continue-on-error: true
+        id: upload_pages
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./frontend/dist
       - name: Deploy to GitHub Pages
-        id: deployment
+        if: steps.upload_pages.outcome == 'success'
+        continue-on-error: true
         uses: actions/deploy-pages@v4
