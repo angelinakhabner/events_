@@ -51,6 +51,15 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
   return ordered.filter((b) => b.items.length > 0);
 }
 
+/** Keep only events that start on the given Europe/Warsaw day; null means any day. */
+export function filterEventsByDay(events: Event[], dayKey: string | null): Event[] {
+  if (!dayKey) return events;
+  return events.filter((e) => {
+    const t = Date.parse(e.startsAt);
+    return !Number.isNaN(t) && warsawDayKey(new Date(t)) === dayKey;
+  });
+}
+
 /** YYYY-MM-DD in Europe/Warsaw. */
 export function warsawDayKey(d: Date): string {
   const fmt = new Intl.DateTimeFormat('en-CA', {

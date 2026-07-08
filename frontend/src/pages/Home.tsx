@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import type { Category } from '@goin/shared';
 import { trpc } from '../lib/trpc';
+import { filterEventsByDay } from '../lib/buckets';
 import { EventBuckets } from '../components/EventBuckets';
 import { CategoryBar } from '../components/CategoryBar';
+import { DayBar } from '../components/DayBar';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export function HomePage() {
   const [category, setCategory] = useState<Category | null>(null);
+  const [day, setDay] = useState<string | null>(null);
 
   const eventsQuery = trpc.events.listDefault.useQuery(
     category ? { filters: { categories: [category] } } : undefined,
@@ -21,7 +24,10 @@ export function HomePage() {
     [venuesQuery.data],
   );
 
-  const events = eventsQuery.data ?? [];
+  const events = useMemo(
+    () => filterEventsByDay(eventsQuery.data ?? [], day),
+    [eventsQuery.data, day],
+  );
 
   return (
     <section>
@@ -33,6 +39,7 @@ export function HomePage() {
       </div>
 
       <CategoryBar selected={category} onChange={setCategory} />
+      <DayBar selected={day} onChange={setDay} />
 
       <div className="mt-6">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
@@ -44,8 +51,22 @@ export function HomePage() {
         ) : null}
         {!eventsQuery.isLoading && !eventsQuery.error && events.length === 0 ? (
           <EmptyState
-            title="No upcoming events in this category."
-            action={category ? { label: 'Show all', onClick: () => setCategory(null) } : undefined}
+            title={
+              category || day
+                ? 'No upcoming events match your selection.'
+                : 'No upcoming events.'
+            }
+            action={
+              category || day
+                ? {
+                    label: 'Show all',
+                    onClick: () => {
+                      setCategory(null);
+                      setDay(null);
+                    },
+                  }
+                : undefined
+            }
           />
         ) : null}
         {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
