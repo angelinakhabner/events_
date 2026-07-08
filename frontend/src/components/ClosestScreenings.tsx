@@ -3,6 +3,7 @@ import type { Event } from '@goin/shared';
 import { trpc } from '../lib/trpc';
 import { formatShortDate, formatTime } from '../lib/format';
 
+/** Cap on venue rows in the panel, soonest venues first. */
 const MAX_SHOWN = 6;
 
 /** "Screenings" for films; plays/concerts/exhibitions get the generic word. */
@@ -12,8 +13,10 @@ function panelLabel(event: Event): string {
 
 /**
  * "Nearest screenings" (films) / "Nearest dates" (everything else) — opens a
- * dropdown listing the soonest upcoming events with the same title across all
- * venues, nearest first, so you can pick whichever showing suits you.
+ * dropdown with one row per venue showing that venue's soonest upcoming
+ * showing of the same title, soonest venue first. Grouping by venue (rather
+ * than listing showings chronologically) keeps every cinema visible even when
+ * one of them screens the film many times a day.
  *
  * The panel (and its query) only mounts once opened, so cards don't fire a
  * request per event and the button stays safe to render outside a tRPC
@@ -53,10 +56,41 @@ export function ClosestScreenings({ event }: { event: Event }) {
   );
 }
 
+interface VenueGroup {
+  key: string;
+  venueName: string;
+  /** Soonest upcoming showing at this venue. */
+  next: Event;
+  /** Further showings at the same venue beyond `next`. */
+  moreCount: number;
+}
+
+/** One group per venue, keeping only each venue's soonest showing. Relies on
+ *  the API's soonest-first ordering, so the first hit per venue is its next
+ *  showing and groups come out sorted by that time. */
+function groupByVenue(screenings: Event[]): VenueGroup[] {
+  const groups: VenueGroup[] = [];
+  const byKey = new Map<string, VenueGroup>();
+  for (const s of screenings) {
+    const key = s.venue?.id ?? s.venueId;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.moreCount += 1;
+    } else {
+      const group = { key, venueName: s.venue?.name ?? 'Unknown venue', next: s, moreCount: 0 };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+  }
+  return groups;
+}
+
 function ScreeningsPanel({ event }: { event: Event }) {
   const screenings = trpc.events.screenings.useQuery({ title: event.title });
-  // The row you clicked from is already on screen — list the alternatives.
-  const others = (screenings.data ?? []).filter((s) => s.id !== event.id).slice(0, MAX_SHOWN);
+  // The showing you clicked from is already on screen — group the
+  // alternatives (including later showings at the same venue) per venue.
+  const others = (screenings.data ?? []).filter((s) => s.id !== event.id);
+  const venues = groupByVenue(others).slice(0, MAX_SHOWN);
 
   const isFilm = event.category === 'cinema';
   let body;
@@ -64,23 +98,26 @@ function ScreeningsPanel({ event }: { event: Event }) {
     body = <div className="text-sm text-muted">{isFilm ? 'Looking for screenings…' : 'Looking for dates…'}</div>;
   } else if (screenings.isError) {
     body = <div className="text-sm text-muted">{isFilm ? 'Couldn’t load screenings.' : 'Couldn’t load dates.'}</div>;
-  } else if (others.length === 0) {
+  } else if (venues.length === 0) {
     body = <div className="text-sm text-muted">{isFilm ? 'No other upcoming screenings.' : 'No other upcoming dates.'}</div>;
   } else {
     body = (
       <ul className="divide-y divide-rule list-none m-0 p-0">
-        {others.map((s) => (
-          <li key={s.id}>
+        {venues.map((g) => (
+          <li key={g.key}>
             <a
-              href={s.sourceUrl}
+              href={g.next.sourceUrl}
               target="_blank"
               rel="noreferrer"
               className="flex items-baseline gap-3 py-1.5 text-sm text-ink hover:text-accent no-underline"
             >
               <span className="shrink-0 tabular-nums text-muted">
-                {formatShortDate(s.startsAt)} · {formatTime(s.startsAt)}
+                {formatShortDate(g.next.startsAt)} · {formatTime(g.next.startsAt)}
               </span>
-              <span className="truncate">{s.venue?.name ?? 'Unknown venue'}</span>
+              <span className="truncate">{g.venueName}</span>
+              {g.moreCount > 0 ? (
+                <span className="shrink-0 text-xs text-muted">+{g.moreCount} more</span>
+              ) : null}
             </a>
           </li>
         ))}
