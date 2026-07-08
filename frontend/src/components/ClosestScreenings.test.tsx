@@ -97,6 +97,71 @@ describe('ClosestScreenings', () => {
     expect(links[1]).toHaveTextContent('Iluzjon');
   });
 
+  it('keeps every cinema visible by grouping repeat showings into one row', () => {
+    const event = makeEvent();
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: [
+        event,
+        // Kinoteka screens the film three times before Iluzjon's first showing —
+        // chronological order, as the API returns it.
+        makeEvent({
+          id: 'k1', venueId: 'v2', sourceUrl: 'https://kinoteka.example/k1',
+          startsAt: '2026-07-04T19:00:00.000Z',
+          venue: { id: 'v2', name: 'Kinoteka', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        }),
+        makeEvent({
+          id: 'k2', venueId: 'v2', sourceUrl: 'https://kinoteka.example/k2',
+          startsAt: '2026-07-04T21:00:00.000Z',
+          venue: { id: 'v2', name: 'Kinoteka', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        }),
+        makeEvent({
+          id: 'k3', venueId: 'v2', sourceUrl: 'https://kinoteka.example/k3',
+          startsAt: '2026-07-05T19:00:00.000Z',
+          venue: { id: 'v2', name: 'Kinoteka', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        }),
+        makeEvent({
+          id: 'i1', venueId: 'v3', sourceUrl: 'https://iluzjon.example/i1',
+          startsAt: '2026-07-06T16:00:00.000Z',
+          venue: { id: 'v3', name: 'Iluzjon', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        }),
+      ],
+    });
+
+    render(<ClosestScreenings event={event} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+
+    // One row per venue: Kinoteka collapses to its next showing (+2 more),
+    // Iluzjon still gets its own row instead of being pushed out.
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(2);
+    expect(links[0]).toHaveAttribute('href', 'https://kinoteka.example/k1');
+    expect(links[0]).toHaveTextContent('Kinoteka');
+    expect(links[0]).toHaveTextContent('+2 more');
+    expect(links[1]).toHaveAttribute('href', 'https://iluzjon.example/i1');
+    expect(links[1]).toHaveTextContent('Iluzjon');
+  });
+
+  it('offers later showings at the same venue you clicked from', () => {
+    const event = makeEvent(); // 18:00 at Kino Muranów
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: [
+        event,
+        makeEvent({ id: 'm2', sourceUrl: 'https://muranow.example/m2', startsAt: '2026-07-04T21:15:00.000Z' }),
+      ],
+    });
+
+    render(<ClosestScreenings event={event} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+
+    const [link] = screen.getAllByRole('link');
+    expect(link).toHaveAttribute('href', 'https://muranow.example/m2');
+    expect(link).toHaveTextContent('Kino Muranów');
+  });
+
   it('says so when there are no other screenings', () => {
     const event = makeEvent();
     useQueryMock.mockReturnValue({ data: [event], isLoading: false, isError: false });
