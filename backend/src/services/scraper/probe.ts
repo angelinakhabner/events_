@@ -1,3 +1,4 @@
+import * as cheerio from 'cheerio';
 import { env } from '../../config.js';
 import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue, isDeterministicallyParsable } from './preprocessor.js';
@@ -21,6 +22,11 @@ export interface ProbeResult {
   eventCount: number | null;
   /** Why the URL can't be scraped. Null when ok. */
   reason: string | null;
+  /** Venue name suggestion, from og:site_name / <title>. Null when absent
+   *  or when the fetch failed. */
+  title: string | null;
+  /** Page language from <html lang>, normalized to the bare code ("pl"). */
+  language: string | null;
 }
 
 /** Below this much cleaned page text the AI extractor has nothing to read —
@@ -46,9 +52,13 @@ export async function probeVenueUrl(
     html = await fetchVenueHTML(fetchUrl, { fetcher: opts.fetcher, firecrawl });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return { ok: false, method: null, eventCount: null, reason: `Couldn't fetch the page: ${message}` };
+    return {
+      ok: false, method: null, eventCount: null, title: null, language: null,
+      reason: `Couldn't fetch the page: ${message}`,
+    };
   }
 
+  const meta = pageMeta(html);
   const { cleaned, structured } = preprocessForVenue(html, { id: 'probe' });
 
   if (isDeterministicallyParsable(structured)) {
@@ -58,20 +68,32 @@ export async function probeVenueUrl(
       windowDays: PROBE_WINDOW_DAYS,
     });
     if (rows.length > 0) {
-      return { ok: true, method: 'structured-data', eventCount: rows.length, reason: null };
+      return { ok: true, method: 'structured-data', eventCount: rows.length, reason: null, ...meta };
     }
   }
 
   if (cleaned.trim().length >= MIN_CONTENT_CHARS) {
-    return { ok: true, method: 'ai', eventCount: null, reason: null };
+    return { ok: true, method: 'ai', eventCount: null, reason: null, ...meta };
   }
 
   return {
     ok: false,
     method: null,
     eventCount: null,
+    ...meta,
     reason:
       'The page loads but contains almost no readable content — it is probably ' +
       'rendered entirely by JavaScript, which the scraper cannot see.',
   };
+}
+
+/** Name + language suggestions for the add-venue form. og:site_name is the
+ *  venue's own name; <title> often carries "Repertuar — Kino X" noise but is
+ *  still a better starting point than an empty field. */
+function pageMeta(html: string): { title: string | null; language: string | null } {
+  const $ = cheerio.load(html);
+  const siteName = $('meta[property="og:site_name"]').attr('content')?.trim();
+  const title = (siteName || $('title').first().text().trim() || '').slice(0, 120) || null;
+  const lang = $('html').attr('lang')?.trim().toLowerCase().split('-')[0] || null;
+  return { title, language: lang && /^[a-z]{2,3}$/.test(lang) ? lang : null };
 }

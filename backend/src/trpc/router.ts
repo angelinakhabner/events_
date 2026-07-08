@@ -200,6 +200,9 @@ const my = router({
           city: z.string().min(1).default('Warsaw'),
           country: z.string().min(1).default('PL'),
           category: categorySchema,
+          /** BCP-47-ish primary tag of the venue page ("pl", "en"); the AI
+           *  extractor uses it as a parsing hint. Defaults to Polish. */
+          language: z.string().trim().toLowerCase().regex(/^[a-z]{2,3}$/).optional(),
           windowDays: z.number().int().min(1).max(90).nullable().optional(),
           listId: z.string().optional(),
         }),

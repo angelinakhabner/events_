@@ -15,7 +15,9 @@ function jsonLdPage(events: Array<{ name: string; startDate: string }>): string 
     startDate: e.startDate,
     url: `/event/${encodeURIComponent(e.name)}`,
   }));
-  return `<!doctype html><html><head>
+  return `<!doctype html><html lang="pl-PL"><head>
+    <title>Repertuar — Kino Przykład</title>
+    <meta property="og:site_name" content="Kino Przykład" />
     <script type="application/ld+json">${JSON.stringify(nodes)}</script>
   </head><body><div>listing</div></body></html>`;
 }
@@ -30,7 +32,16 @@ describe('probeVenueUrl', () => {
       fetcher: htmlResponder(html),
       now: NOW,
     });
-    expect(res).toEqual({ ok: true, method: 'structured-data', eventCount: 2, reason: null });
+    expect(res).toEqual({
+      ok: true,
+      method: 'structured-data',
+      eventCount: 2,
+      reason: null,
+      // Suggestions for the add-venue form: og:site_name wins over <title>,
+      // <html lang> is normalized to the bare code.
+      title: 'Kino Przykład',
+      language: 'pl',
+    });
   });
 
   it('falls back to "ai" when the page has readable content but no structured data', async () => {
