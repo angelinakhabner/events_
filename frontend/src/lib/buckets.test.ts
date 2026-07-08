@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bucketEvents, warsawDayKey } from './buckets';
+import { bucketEvents, filterEventsByDay, warsawDayKey } from './buckets';
 import type { Event } from '@goin/shared';
 
 function evt(startsAt: string, id = startsAt): Event {
@@ -57,6 +57,30 @@ describe('bucketEvents', () => {
   it('hides empty buckets', () => {
     const buckets = bucketEvents([], now);
     expect(buckets).toEqual([]);
+  });
+});
+
+describe('filterEventsByDay', () => {
+  const events = [
+    evt('2026-06-08T21:00:00.000Z', 'mon-late'), // 23:00 Warsaw Mon
+    evt('2026-06-08T22:30:00.000Z', 'tue-early'), // 00:30 Warsaw Tue
+    evt('2026-06-09T10:00:00.000Z', 'tue-noon'), // 12:00 Warsaw Tue
+  ];
+
+  it('returns all events when no day is selected', () => {
+    expect(filterEventsByDay(events, null)).toEqual(events);
+  });
+
+  it('keeps only events on the given Warsaw day', () => {
+    expect(filterEventsByDay(events, '2026-06-09').map((e) => e.id)).toEqual([
+      'tue-early',
+      'tue-noon',
+    ]);
+    expect(filterEventsByDay(events, '2026-06-08').map((e) => e.id)).toEqual(['mon-late']);
+  });
+
+  it('drops events with unparseable start times', () => {
+    expect(filterEventsByDay([evt('not-a-date', 'bad')], '2026-06-08')).toEqual([]);
   });
 });
 
