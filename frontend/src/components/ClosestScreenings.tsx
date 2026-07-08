@@ -86,7 +86,12 @@ function groupByVenue(screenings: Event[]): VenueGroup[] {
 }
 
 function ScreeningsPanel({ event }: { event: Event }) {
-  const screenings = trpc.events.screenings.useQuery({ title: event.title });
+  const screenings = trpc.events.screenings.useQuery(
+    { title: event.title },
+    // Fail fast: with react-query's default 3 retries a dead endpoint keeps
+    // the panel stuck on "Looking for…" for ~10s before the error shows.
+    { retry: 1 },
+  );
   // The showing you clicked from is already on screen — group the
   // alternatives (including later showings at the same venue) per venue.
   const others = (screenings.data ?? []).filter((s) => s.id !== event.id);

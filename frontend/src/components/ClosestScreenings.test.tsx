@@ -52,7 +52,7 @@ describe('ClosestScreenings', () => {
 
     render(<ClosestScreenings event={event} />);
     fireEvent.click(screen.getByRole('button', { name: /nearest dates/i }));
-    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Dziady' });
+    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Dziady' }, expect.anything());
 
     const [link] = screen.getAllByRole('link');
     expect(link).toHaveAttribute('href', 'https://nowy.example/e9');
@@ -64,7 +64,7 @@ describe('ClosestScreenings', () => {
     expect(useQueryMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
-    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Ojczyzna' });
+    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Ojczyzna' }, expect.objectContaining({ retry: 1 }));
   });
 
   it('lists screenings at other cinemas, excluding the row you clicked from', () => {
