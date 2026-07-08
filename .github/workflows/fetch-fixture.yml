@@ -1,0 +1,82 @@
+name: Fetch scraper fixture
+
+# TEMPORARY development helper for the Klub Komediowy deterministic scraper —
+# deleted once the fixture set is captured.
+#
+# The Claude Code cloud sandbox has a locked-down egress policy and cannot
+# reach komediowy.pl at all, but Actions runners can. This workflow fetches a
+# live page with the same browser-shaped headers the backend fetcher sends and
+# commits the HTML as a test fixture on this branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: URL to fetch
+        default: 'https://komediowy.pl/repertuar/'
+        required: true
+      out:
+        description: Fixture filename (under backend/test/fixtures/)
+        default: 'komediowy-repertuar.html'
+        required: true
+  push:
+    branches: [claude/klub-komediowy-scraper-7eh4no]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-fixture
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TARGET_URL: ${{ github.event.inputs.url || 'https://komediowy.pl/repertuar/' }}
+      OUT_FILE: ${{ github.event.inputs.out || 'komediowy-repertuar.html' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Push runs only capture a missing fixture (so ordinary development
+      # pushes don't re-fetch and churn the file); manual dispatch always
+      # fetches, allowing a deliberate refresh or extra pages.
+      - name: Decide whether to fetch
+        id: guard
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ -f "backend/test/fixtures/$OUT_FILE" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch page
+        if: steps.guard.outputs.skip == 'false'
+        run: |
+          mkdir -p backend/test/fixtures
+          code=$(curl -sSL -o "backend/test/fixtures/$OUT_FILE" -w '%{http_code}' \
+            -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
+            -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8' \
+            -H 'Accept-Language: pl,en;q=0.8' \
+            -H 'Upgrade-Insecure-Requests: 1' \
+            -H 'Sec-Fetch-Dest: document' \
+            -H 'Sec-Fetch-Mode: navigate' \
+            -H 'Sec-Fetch-Site: none' \
+            -H 'Sec-Fetch-User: ?1' \
+            "$TARGET_URL")
+          echo "HTTP $code — $(wc -c < "backend/test/fixtures/$OUT_FILE") bytes"
+          [ "$code" = "200" ]
+
+      - name: Commit fixture
+        if: steps.guard.outputs.skip == 'false'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add backend/test/fixtures/
+          if git diff --cached --quiet; then
+            echo 'Fixture unchanged — nothing to commit'
+            exit 0
+          fi
+          git commit -m "chore(fixtures): capture $OUT_FILE from live site"
+          git push
