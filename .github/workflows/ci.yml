@@ -3,7 +3,9 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    # claude/epic-goldberg-qj4EC is the repo's default ("main") branch;
+    # dev is the staging branch that deploys the gated /dev/ preview.
+    branches: [main, claude/epic-goldberg-qj4EC, dev]
 
 concurrency:
   group: ci-${{ github.ref }}
