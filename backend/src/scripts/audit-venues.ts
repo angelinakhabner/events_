@@ -105,8 +105,37 @@ async function auditSource(venue: (typeof DEFAULT_VENUES)[number], today: Date):
   return out;
 }
 
-async function auditApp(venueId: string): Promise<AppSide> {
+interface ApiVenue {
+  id: string;
+  name: string;
+  url: string;
+}
+
+/** The DB assigns venues generated UUIDs (seed upserts by URL), so the slug
+ *  ids in default-venues.ts don't exist server-side. Map slug → UUID via the
+ *  public venues.list endpoint, matching by URL first, then name. */
+async function fetchApiVenues(): Promise<ApiVenue[]> {
+  if (!API) return [];
+  try {
+    const res = await fetch(`${API}/trpc/venues.list`);
+    if (!res.ok) return [];
+    const json = (await res.json()) as { result?: { data?: ApiVenue[] } };
+    return json.result?.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function resolveApiVenueId(venue: { name: string; url: string }, apiVenues: ApiVenue[]): string | null {
+  const byUrl = apiVenues.find((v) => v.url === venue.url);
+  if (byUrl) return byUrl.id;
+  const byName = apiVenues.find((v) => v.name === venue.name);
+  return byName?.id ?? null;
+}
+
+async function auditApp(venueId: string | null): Promise<AppSide> {
   if (!API) return { apiOk: false, visibleUpcoming: null, firstStartsAt: null, lastStartsAt: null, distinctDays: null, error: 'AUDIT_API_URL not set' };
+  if (!venueId) return { apiOk: false, visibleUpcoming: null, firstStartsAt: null, lastStartsAt: null, distinctDays: null, error: 'venue not found in production venues.list' };
   try {
     const input = encodeURIComponent(JSON.stringify({ venueId }));
     const res = await fetch(`${API}/trpc/events.listByVenue?input=${input}`);
@@ -152,15 +181,19 @@ async function auditHomeFeed(): Promise<unknown> {
 
 async function main(): Promise<void> {
   const today = new Date();
+  const apiVenues = await fetchApiVenues();
+  console.error(`[audit] resolved ${apiVenues.length} venues from production venues.list`);
   const report: unknown[] = [];
   for (const venue of DEFAULT_VENUES) {
     console.error(`[audit] ${venue.id} …`);
+    const apiVenueId = resolveApiVenueId(venue, apiVenues);
     const [source, app] = await Promise.all([
       auditSource(venue, today).catch((e) => ({ crashed: String(e) })),
-      auditApp(venue.id),
+      auditApp(apiVenueId),
     ]);
     report.push({
       id: venue.id,
+      apiVenueId,
       name: venue.name,
       url: venue.url,
       category: venue.category,
