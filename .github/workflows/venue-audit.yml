@@ -1,0 +1,43 @@
+name: Venue scrape audit
+
+# TEMPORARY development helper — deleted once the audit is done.
+#
+# The Claude Code cloud sandbox's egress policy blocks the venue sites (and
+# even the deployed app), but Actions runners have open egress. This workflow
+# runs backend/src/scripts/audit-venues.ts, which compares every default
+# venue's ORIGINAL listing page (fetched the way the real scraper would)
+# against the events currently VISIBLE IN THE APP (production tRPC API), and
+# prints a JSON report to the job log.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/venue-events-visibility-j27pfm]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: venue-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run venue audit
+        working-directory: backend
+        env:
+          AUDIT_API_URL: ${{ vars.VITE_API_URL }}
+        run: npx tsx src/scripts/audit-venues.ts
