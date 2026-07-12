@@ -97,14 +97,17 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'muzeum-narodowe',
     name: 'Muzeum Narodowe',
-    url: 'https://mnw.art.pl/wystawy',
+    // /wystawy lists ongoing exhibitions without dates — the validator drops
+    // every row. The Kalendarium page carries the dated event listing.
+    url: 'https://mnw.art.pl/wydarzenia/kalendarium/',
     category: 'exhibition',
     ...PL,
   },
   {
     id: 'krolikarnia',
     name: 'Królikarnia',
-    url: 'https://krolikarnia.mnw.art.pl/wystawy/',
+    // Same as MNW: /wystawy/ is undated; the event calendar has real dates.
+    url: 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/',
     category: 'exhibition',
     ...PL,
   },

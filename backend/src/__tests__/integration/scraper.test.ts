@@ -166,6 +166,38 @@ describeIfDb('scraper integration', () => {
     }
   });
 
+  it('migration 0007 moves MNW + Królikarnia from /wystawy to their event calendars in place', async () => {
+    const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
+    try {
+      await sql`DELETE FROM venues WHERE name IN ('Muzeum Narodowe', 'Królikarnia')`;
+      await sql`
+        INSERT INTO venues (name, url, city, country, category, language, timezone)
+        VALUES
+          ('Muzeum Narodowe', 'https://mnw.art.pl/wystawy', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw'),
+          ('Królikarnia', 'https://krolikarnia.mnw.art.pl/wystawy/', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw')`;
+
+      await runMigrations(); // 0007: /wystawy → event calendar pages
+
+      // The post-migration seed then upserts with the NEW urls.
+      await sql`
+        INSERT INTO venues (name, url, city, country, category, language, timezone)
+        VALUES
+          ('Muzeum Narodowe', 'https://mnw.art.pl/wydarzenia/kalendarium/', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw'),
+          ('Królikarnia', 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw')
+        ON CONFLICT (url) DO UPDATE SET name = EXCLUDED.name`;
+
+      const mnw = await sql<{ url: string }[]>`SELECT url FROM venues WHERE name = 'Muzeum Narodowe'`;
+      expect(mnw).toHaveLength(1);
+      expect(mnw[0]!.url).toBe('https://mnw.art.pl/wydarzenia/kalendarium/');
+      const krolikarnia = await sql<{ url: string }[]>`SELECT url FROM venues WHERE name = 'Królikarnia'`;
+      expect(krolikarnia).toHaveLength(1);
+      expect(krolikarnia[0]!.url).toBe('https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/');
+    } finally {
+      await sql`DELETE FROM venues WHERE name IN ('Muzeum Narodowe', 'Królikarnia')`;
+      await sql.end();
+    }
+  });
+
   it('migration 0003 removes Muzeum Powstania and cascades its events + runs', async () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
     try {
