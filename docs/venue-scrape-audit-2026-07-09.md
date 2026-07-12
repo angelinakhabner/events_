@@ -77,6 +77,54 @@ appear at all; Muranów alone takes 49 of the 100 slots). Even a perfectly
 scraped venue looks "invisible" on Home. Consider a higher limit + pagination,
 or per-venue capping in the feed query.
 
+## Fix round 1 — 2026-07-12
+
+**🚨 Critical, found while force-triggering production scrapes: the production
+backend is GONE.** `https://goinbackend-production.up.railway.app` returns
+Railway's edge error `404 {"message":"Application not found"}` — the service
+was deleted, renamed, or lost its domain some time after Jul 9 (when the
+audit still got live data from it). Until it's restored (Railway dashboard →
+service → networking/domain, then update the `VITE_API_URL` repo variable if
+the URL changed and re-run *Deploy frontend*), the app shows nothing and no
+scrape can run. Everything below is code-side work that takes effect on the
+next deploy.
+
+Landed on this branch:
+
+- **MNW + Królikarnia** repointed from undated `/wystawy` pages to their real
+  event calendars (migration 0007 moves rows in place). MNW uses the bounded
+  month page via a new `{{MM-YYYY}}` URL placeholder — probe-verified: 122
+  showtimes on the July page (the all-time Kalendarium is ~340k chars).
+- **Stale-event pruning**: a successful scrape is now authoritative for its
+  window — untouched rows inside `[today, today+windowDays]` are deleted.
+  Kills the Kinoteka zombie rows (and any future ones) which upserts alone
+  could never remove.
+- **Kinoteka + Klub Komediowy**: their deterministic scrapers were re-verified
+  from the runner (251 and 49 events respectively). Nothing to fix in code —
+  the production gap is the dead backend / stale deploy; force
+  `admin.triggerScrape` for both once it's back.
+
+Diagnosed, not (yet) code-fixable:
+
+- **TR Warszawa** — `/kalendarz/` and `/repertuar/` are the same JS shell;
+  wp-json REST exposes no event route (tribe/spektakl/wydarzenie all 404,
+  admin-ajax needs unknown params). Needs Firecrawl rendering in production.
+- **Nowy Teatr** — `/pl/kalendarz` slightly richer than `/pl/repertuar` but
+  still JS-rendered; `/pl/api/search` exists but rejects bare GETs. Firecrawl.
+- **Teatr Powszechny** — React Server Components shell (~2k readable chars);
+  Firecrawl.
+- **Filharmonia** — the page IS server-rendered with events (August festival
+  links, `?p=2..14` pagination). The 0-events state is likely an extraction or
+  scheduler failure from before the outage — re-check with a forced scrape
+  after restore; consider following pagination later.
+- **CSW Zamek Ujazdowski** — readable content exists (6 ISO dates); re-check
+  with a forced scrape after restore.
+
+After the backend is restored, re-run the audit + a trigger sweep from
+Actions: *Venue diagnose* → `trigger: kinoteka,klub-komediowy,tr-warszawa,
+csw-zamek-ujazdowski,nowy-teatr,teatr-powszechny,filharmonia,muzeum-narodowe,
+krolikarnia` and read the per-venue `run.status` / `errorMessage` in the log.
+
 ## Housekeeping
 
 - `venues.list` returns 16 venues for 15 defaults — one leftover row (venue
