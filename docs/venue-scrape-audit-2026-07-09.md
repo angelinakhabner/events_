@@ -125,6 +125,31 @@ Actions: *Venue diagnose* → `trigger: kinoteka,klub-komediowy,tr-warszawa,
 csw-zamek-ujazdowski,nowy-teatr,teatr-powszechny,filharmonia,muzeum-narodowe,
 krolikarnia` and read the per-venue `run.status` / `errorMessage` in the log.
 
+## Fix round 2 — 2026-07-12 (deterministic scrapers for the JS-shell venues)
+
+Live pages were captured as fixtures from Actions runners (`capture` mode of
+the venue-diagnose workflow) and each venue's real data source was found in
+the markup. Five new deterministic scrapers — exact rows, zero Anthropic
+tokens, no Firecrawl:
+
+| Venue | Data source found | Notes |
+|---|---|---|
+| Filharmonia | `/repertuar` is server-rendered; `?p=N` pagination walked until past the window | Card dates lack a year → rolling-forward inference. **Summer break until 24.08** — the old "0 events" was real (Jul 9 + 45d window ended Aug 23, one day short) |
+| MNW + Królikarnia | edito CMS month-list pages (`MM-YYYY,lista,miesiac.html`) — one shared parser | Branch-museum rows (Królikarnia/Poster Museum inside MNW's calendar) dropped via same-host filter. Venue URLs moved to the lista variant (migration 0007 updated pre-ship) |
+| TR Warszawa | `/kalendarz/YYYY/MM/?view=calendar` month pages (the site's own PJAX calendar is server-rendered) | Tiles carry HH:MM–HH:MM → real durations. New `{{MM}}` placeholder; migration 0008. Dark over the summer |
+| CSW Zamek Ujazdowski | `/en/wydarzenia/week.ajax?ut=<midnight-Warsaw epoch>` day fragments (~6 kB each) | One fragment per window day; venue URL unchanged |
+| Nowy Teatr | `/pl/kalendarz?date_from=…&date_to=…` — the filter form's no-JS fallback renders the agenda server-side | One GET per month; timeless festival banners skipped; migration 0009. Dark over the summer |
+
+Still LLM/Firecrawl-path after this round: **Teatr Powszechny** (Next.js RSC —
+the repertoire streams behind a Suspense boundary a plain GET never receives;
+needs Firecrawl), plus the already-working Muranów/Iluzjon/Zachęta/MSN and the
+WAF-blocked POLIN/Dramatyczny (Firecrawl).
+
+Scorecard after both rounds: **11 of 16 venues deterministic** (Kinoteka,
+Komediowy, Filharmonia, MNW, Królikarnia, TR Warszawa, CSW, Nowy Teatr + the
+JSON-LD path), 4 on the LLM path, 1 Firecrawl-only. Everything lands in
+production on the next deploy + scrape once the Railway backend is restored.
+
 ## Housekeeping
 
 - `venues.list` returns 16 venues for 15 defaults — one leftover row (venue
