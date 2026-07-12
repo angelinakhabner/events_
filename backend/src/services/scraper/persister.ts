@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, and, eq, gte, lte, lt } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import type { ValidatedEvent } from './validator.js';
 import type { Venue } from '@goin/shared';
@@ -91,4 +91,33 @@ export async function saveEvents(
   }
 
   return { inserted, updated };
+}
+
+/**
+ * Delete this venue's events that a just-completed scrape should have seen but
+ * didn't: rows starting inside the scraped window whose `updated_at` predates
+ * the run. A successful scrape is authoritative for its window — anything it
+ * didn't touch was cancelled, rescheduled, or (the Kinoteka case) created by an
+ * earlier buggy extraction with a wrong date, and `saveEvents` alone can never
+ * remove it. Rows beyond the window are left alone: the scrape never looked
+ * there, so it has no authority over them (they get reconciled once the
+ * advancing window reaches them).
+ */
+export async function pruneStaleEvents(
+  venueId: string,
+  args: { windowStart: Date; windowEnd: Date; olderThan: Date },
+): Promise<number> {
+  const db = getDb();
+  const deleted = await db
+    .delete(schema.events)
+    .where(
+      and(
+        eq(schema.events.venueId, venueId),
+        gte(schema.events.startsAt, args.windowStart),
+        lte(schema.events.startsAt, args.windowEnd),
+        lt(schema.events.updatedAt, args.olderThan),
+      ),
+    )
+    .returning({ id: schema.events.id });
+  return deleted.length;
 }

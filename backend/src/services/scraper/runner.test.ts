@@ -143,6 +143,7 @@ vi.mock('drizzle-orm', async () => {
 // Stub persister to avoid touching SQL.
 vi.mock('./persister.js', () => ({
   saveEvents: vi.fn(async () => ({ inserted: 1, updated: 0 })),
+  pruneStaleEvents: vi.fn(async () => 0),
 }));
 
 import { scrapeVenue } from './runner.js';
