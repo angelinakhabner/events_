@@ -21,6 +21,10 @@ on:
         description: Comma-separated venue slugs to run page content analysis on
         default: ''
         required: false
+      probe:
+        description: Comma-separated raw URLs to probe for scrapability + content density
+        default: ''
+        required: false
   # Registration-only: a dispatch-only workflow on a non-default branch never
   # gets registered with the Actions API. The job below skips push events.
   push:
@@ -56,4 +60,5 @@ jobs:
           DIAG_TRIGGER: ${{ github.event.inputs.trigger }}
           DIAG_DISCOVER: ${{ github.event.inputs.discover }}
           DIAG_ANALYZE: ${{ github.event.inputs.analyze }}
+          DIAG_PROBE: ${{ github.event.inputs.probe }}
         run: npx tsx src/scripts/diagnose-venues.ts

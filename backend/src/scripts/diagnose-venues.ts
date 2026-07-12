@@ -31,6 +31,7 @@ const API = (process.env.DIAG_API_URL ?? '').replace(/\/+$/, '');
 const TRIGGER = csv(process.env.DIAG_TRIGGER);
 const DISCOVER = csv(process.env.DIAG_DISCOVER);
 const ANALYZE = csv(process.env.DIAG_ANALYZE);
+const PROBE = csv(process.env.DIAG_PROBE);
 
 function csv(v: string | undefined): string[] {
   return (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -203,6 +204,27 @@ async function analyze(slug: string): Promise<unknown> {
   };
 }
 
+/** Probe an explicit URL: scrapability + content-density signals in one shot. */
+async function probeRawUrl(url: string): Promise<unknown> {
+  const resolved = resolveVenueUrl(url, new Date());
+  const probe = await probeVenueUrl(resolved).catch((e) => ({ ok: false, reason: String(e) }));
+  let density: Record<string, unknown> = {};
+  try {
+    const html = await fetchVenueHTML(resolved);
+    const text = html.toLowerCase();
+    density = {
+      htmlChars: html.length,
+      clockTimes: (text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/g) ?? []).length,
+      isoDates: (text.match(/\b20\d{2}-\d{2}-\d{2}\b/g) ?? []).length,
+      looksJson: html.trimStart().startsWith('{') || html.trimStart().startsWith('['),
+      preview: html.replace(/\s+/g, ' ').slice(0, 400),
+    };
+  } catch (e) {
+    density = { fetchError: e instanceof Error ? e.message : String(e) };
+  }
+  return { url: resolved, probe, ...density };
+}
+
 async function main(): Promise<void> {
   const report: Record<string, unknown> = { generatedAt: new Date().toISOString(), apiUrl: API || null };
 
@@ -229,6 +251,14 @@ async function main(): Promise<void> {
       out.push(await analyze(slug));
     }
     report.analyze = out;
+  }
+  if (PROBE.length) {
+    const out: unknown[] = [];
+    for (const url of PROBE) {
+      console.error(`[diag] probe ${url} …`);
+      out.push(await probeRawUrl(url));
+    }
+    report.probe = out;
   }
 
   console.log('===DIAG_JSON_START===');
