@@ -166,6 +166,28 @@ async function analyze(slug: string): Promise<unknown> {
     const n = text.split(m).length - 1;
     if (n > 0) monthMentions[m] = n;
   }
+  // Hunt for the JSON/API endpoints a JS-rendered page actually loads its
+  // listing from — an API we can hit directly beats rendering the page.
+  const origin = new URL(url).origin;
+  const apiHints = new Set<string>();
+  for (const m of html.matchAll(/["'](https?:\/\/[^"'\s]{5,200}|\/[^"'\s]{3,200})["']/g)) {
+    const cand = m[1]!;
+    if (/(api|json|graphql|admin-ajax|wp-json|repertuar|kalendarz|events?)[^"']*/i.test(cand) && !/\.(css|js|png|jpe?g|svg|webp|woff2?|ico)(\?|$)/i.test(cand)) {
+      apiHints.add(cand.startsWith('/') ? `${origin}${cand}` : cand);
+      if (apiHints.size >= 25) break;
+    }
+  }
+  // WordPress fingerprint: the REST index is a machine-readable event source.
+  let wpJson: string | null = null;
+  if (/wp-content|wp-includes/.test(html)) {
+    try {
+      const res = await fetch(`${origin}/wp-json/`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      wpJson = `HTTP ${res.status}`;
+    } catch (e) {
+      wpJson = `error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
   return {
     slug,
     page: url,
@@ -174,6 +196,9 @@ async function analyze(slug: string): Promise<unknown> {
     clockTimes,
     isoDates,
     monthMentions,
+    isWordPress: /wp-content|wp-includes/.test(html),
+    wpJsonProbe: wpJson,
+    apiHints: [...apiHints],
     sample: cleaned.trim().replace(/\s+/g, ' ').slice(0, 600),
   };
 }
