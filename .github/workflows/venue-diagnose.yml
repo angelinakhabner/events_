@@ -21,6 +21,10 @@ on:
         description: Comma-separated venue slugs to run page content analysis on
         default: ''
         required: false
+  # Registration-only: a dispatch-only workflow on a non-default branch never
+  # gets registered with the Actions API. The job below skips push events.
+  push:
+    branches: [claude/venue-events-visibility-j27pfm]
 
 permissions:
   contents: read
@@ -31,6 +35,7 @@ concurrency:
 
 jobs:
   diagnose:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
