@@ -42,18 +42,32 @@ function venueBySlug(slug: string) {
   return v;
 }
 
-async function apiVenueId(slug: string): Promise<string | null> {
+async function apiVenueId(slug: string): Promise<{ id: string | null; listError: string | null }> {
   const v = venueBySlug(slug);
-  const res = await fetch(`${API}/trpc/venues.list`);
-  if (!res.ok) return null;
-  const json = (await res.json()) as { result?: { data?: Array<{ id: string; name: string; url: string }> } };
+  let res: Response;
+  try {
+    res = await fetch(`${API}/trpc/venues.list`);
+  } catch (e) {
+    return { id: null, listError: `venues.list fetch threw: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const body = await res.text();
+  if (!res.ok) {
+    return { id: null, listError: `venues.list HTTP ${res.status}: ${body.slice(0, 300)}` };
+  }
+  let json: { result?: { data?: Array<{ id: string; name: string; url: string }> } };
+  try {
+    json = JSON.parse(body) as typeof json;
+  } catch {
+    return { id: null, listError: `venues.list returned non-JSON: ${body.slice(0, 300)}` };
+  }
   const rows = json.result?.data ?? [];
-  return rows.find((r) => r.url === v.url)?.id ?? rows.find((r) => r.name === v.name)?.id ?? null;
+  const id = rows.find((r) => r.url === v.url)?.id ?? rows.find((r) => r.name === v.name)?.id ?? null;
+  return { id, listError: id ? null : `no match among ${rows.length} venues` };
 }
 
 async function triggerScrape(slug: string): Promise<unknown> {
-  const id = await apiVenueId(slug);
-  if (!id) return { slug, error: 'venue not found in production venues.list' };
+  const { id, listError } = await apiVenueId(slug);
+  if (!id) return { slug, error: `venue not resolved: ${listError}` };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 240_000);
   try {
