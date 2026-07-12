@@ -98,18 +98,19 @@ export const DEFAULT_VENUES: Venue[] = [
     id: 'muzeum-narodowe',
     name: 'Muzeum Narodowe',
     // /wystawy lists ongoing exhibitions without dates — the validator drops
-    // every row. The month calendar carries the dated event listing; the
-    // {{MM-YYYY}} placeholder keeps it on the current month (the all-time
-    // Kalendarium page is ~340k chars — needlessly expensive to extract from).
-    url: 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},miesiac.html',
+    // every row. The month calendar's LIST view carries the dated listing in
+    // the shape the deterministic edito scraper parses; {{MM-YYYY}} keeps it
+    // on the current month and the scraper swaps the segment for siblings.
+    url: 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html',
     category: 'exhibition',
     ...PL,
   },
   {
     id: 'krolikarnia',
     name: 'Królikarnia',
-    // Same as MNW: /wystawy/ is undated; the event calendar has real dates.
-    url: 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/',
+    // Same as MNW: /wystawy/ is undated; the event calendar's list view has
+    // real dates and matches the shared edito scraper.
+    url: 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html',
     category: 'exhibition',
     ...PL,
   },
