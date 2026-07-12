@@ -31,7 +31,9 @@ const API = (process.env.DIAG_API_URL ?? '').replace(/\/+$/, '');
 const TRIGGER = csv(process.env.DIAG_TRIGGER);
 const DISCOVER = csv(process.env.DIAG_DISCOVER);
 const ANALYZE = csv(process.env.DIAG_ANALYZE);
-const PROBE = csv(process.env.DIAG_PROBE);
+// Pipe-separated, not comma: probed URLs may themselves contain commas
+// (e.g. MNW's "07-2026,miesiac.html" calendar paths).
+const PROBE = (process.env.DIAG_PROBE ?? '').split('|').map((s) => s.trim()).filter(Boolean);
 
 function csv(v: string | undefined): string[] {
   return (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
