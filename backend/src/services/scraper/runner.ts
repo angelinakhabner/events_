@@ -292,7 +292,8 @@ export function resolveVenueUrl(url: string, today: Date, timezone = 'Europe/War
     .replace(/\{\{YYYY-MM-DD\}\}/g, `${y}-${m}-${d}`)
     .replace(/\{\{YYYY-MM\}\}/g, `${y}-${m}`)
     .replace(/\{\{MM-YYYY\}\}/g, `${m}-${y}`)
-    .replace(/\{\{YYYY\}\}/g, y);
+    .replace(/\{\{YYYY\}\}/g, y)
+    .replace(/\{\{MM\}\}/g, m);
 }
 
 /**
