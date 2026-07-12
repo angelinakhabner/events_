@@ -212,13 +212,13 @@ describeIfDb('scraper integration', () => {
       await sql`
         INSERT INTO venues (name, url, city, country, category, language, timezone)
         VALUES
-          ('Muzeum Narodowe', 'https://mnw.art.pl/wydarzenia/kalendarium/', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw'),
+          ('Muzeum Narodowe', 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},miesiac.html', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw'),
           ('Królikarnia', 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw')
         ON CONFLICT (url) DO UPDATE SET name = EXCLUDED.name`;
 
       const mnw = await sql<{ url: string }[]>`SELECT url FROM venues WHERE name = 'Muzeum Narodowe'`;
       expect(mnw).toHaveLength(1);
-      expect(mnw[0]!.url).toBe('https://mnw.art.pl/wydarzenia/kalendarium/');
+      expect(mnw[0]!.url).toBe('https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},miesiac.html');
       const krolikarnia = await sql<{ url: string }[]>`SELECT url FROM venues WHERE name = 'Królikarnia'`;
       expect(krolikarnia).toHaveLength(1);
       expect(krolikarnia[0]!.url).toBe('https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/');

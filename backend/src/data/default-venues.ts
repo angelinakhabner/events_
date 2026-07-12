@@ -98,8 +98,10 @@ export const DEFAULT_VENUES: Venue[] = [
     id: 'muzeum-narodowe',
     name: 'Muzeum Narodowe',
     // /wystawy lists ongoing exhibitions without dates — the validator drops
-    // every row. The Kalendarium page carries the dated event listing.
-    url: 'https://mnw.art.pl/wydarzenia/kalendarium/',
+    // every row. The month calendar carries the dated event listing; the
+    // {{MM-YYYY}} placeholder keeps it on the current month (the all-time
+    // Kalendarium page is ~340k chars — needlessly expensive to extract from).
+    url: 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},miesiac.html',
     category: 'exhibition',
     ...PL,
   },

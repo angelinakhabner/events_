@@ -8,5 +8,5 @@
 -- new UUID. The new strings must match default-venues.ts exactly.
 --
 -- Idempotent: no-op on a fresh DB (0 rows match) and after the first run.
-UPDATE venues SET url = 'https://mnw.art.pl/wydarzenia/kalendarium/'                    WHERE url = 'https://mnw.art.pl/wystawy';
+UPDATE venues SET url = 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},miesiac.html' WHERE url = 'https://mnw.art.pl/wystawy';
 UPDATE venues SET url = 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/' WHERE url = 'https://krolikarnia.mnw.art.pl/wystawy/';

@@ -382,6 +382,12 @@ describe('resolveVenueUrl', () => {
       .toBe('https://artmuseum.pl/en/program-1?from=2026-06-19&type=all');
   });
 
+  it('substitutes {{MM-YYYY}} with the venue-local month-first form (MNW calendar paths)', async () => {
+    const { resolveVenueUrl } = await import('./runner.js');
+    expect(resolveVenueUrl('https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},miesiac.html', now, 'Europe/Warsaw'))
+      .toBe('https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/06-2026,miesiac.html');
+  });
+
   it('returns the URL unchanged when there is no placeholder', async () => {
     const { resolveVenueUrl } = await import('./runner.js');
     const url = 'https://zacheta.art.pl/en';
