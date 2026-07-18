@@ -1,5 +1,11 @@
 import { parseKinotekaListing, scrapeKinoteka } from './venues/kinoteka.js';
 import { parseKomediowyListing, scrapeKomediowy } from './venues/komediowy.js';
+import { parseFilharmoniaListing, scrapeFilharmonia } from './venues/filharmonia.js';
+import { parseEditoListing, scrapeEdito } from './venues/edito.js';
+import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js';
+import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
+import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
+import { ymdInTz } from './venues/datetime.js';
 
 /**
  * A venue whose listing is structured enough to parse deterministically with
@@ -37,6 +43,39 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     parse: (html, timezone) => parseKomediowyListing(html, timezone),
     scrape: (args) => scrapeKomediowy(args),
     enrich: true,
+  },
+  filharmonia: {
+    // htmlOverride path has no scrape date — anchor year inference to now.
+    parse: (html, timezone) => parseFilharmoniaListing(html, ymdInTz(new Date(), timezone), timezone),
+    scrape: (args) => scrapeFilharmonia(args),
+  },
+  // MNW and Królikarnia share the edito CMS month-list markup; the page URL
+  // passed to the parser anchors link absolutizing + the same-host filter
+  // that keeps branch-museum rows out of the parent museum's venue.
+  'muzeum-narodowe': {
+    parse: (html, timezone) =>
+      parseEditoListing(html, 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/', timezone),
+    scrape: (args) => scrapeEdito(args),
+  },
+  krolikarnia: {
+    parse: (html, timezone) =>
+      parseEditoListing(html, 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/', timezone),
+    scrape: (args) => scrapeEdito(args),
+  },
+  'tr-warszawa': {
+    parse: (html, timezone) => parseTrWarszawaListing(html, timezone),
+    scrape: (args) => scrapeTrWarszawa(args),
+  },
+  'csw-zamek-ujazdowski': {
+    // htmlOverride carries a single day fragment; stamp rows with today.
+    parse: (html, timezone) =>
+      parseUjazdowskiDay(html, ymdInTz(new Date(), timezone), 'https://u-jazdowski.pl', timezone),
+    scrape: (args) => scrapeUjazdowski(args),
+  },
+  'nowy-teatr': {
+    // htmlOverride carries one month's agenda; anchor day numbers to now.
+    parse: (html, timezone) => parseNowyTeatrMonth(html, ymdInTz(new Date(), timezone).slice(0, 7), timezone),
+    scrape: (args) => scrapeNowyTeatr(args),
   },
 };
 
