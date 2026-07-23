@@ -7,6 +7,7 @@ import { filterEvents } from '../services/filters.js';
 import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
+import { listFestivals } from '../data/festivals.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -238,6 +239,65 @@ const my = router({
       })),
   }),
 
+  films: router({
+    list: userProcedure.query(({ ctx }) => ctx.films.list(ctx.user.id)),
+    add: userProcedure
+      .input(z.object({ title: z.string().trim().min(1).max(200) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await ctx.films.add(ctx.user.id, input.title);
+        } catch (e) {
+          throw mapStoreError(e);
+        }
+      }),
+    markSeen: userProcedure
+      .input(
+        z.object({
+          filmId: z.string(),
+          watchedVenue: z.string().trim().max(120).optional(),
+          comment: z.string().trim().max(500).optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const { filmId, ...details } = input;
+          return await ctx.films.markSeen(ctx.user.id, filmId, details);
+        } catch (e) {
+          throw mapStoreError(e);
+        }
+      }),
+    moveToWant: userProcedure
+      .input(z.object({ filmId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await ctx.films.moveToWant(ctx.user.id, input.filmId);
+        } catch (e) {
+          throw mapStoreError(e);
+        }
+      }),
+    remove: userProcedure
+      .input(z.object({ filmId: z.string() }))
+      .mutation(async ({ ctx, input }) => ({
+        success: await ctx.films.remove(ctx.user.id, input.filmId),
+      })),
+  }),
+
+  newsletter: router({
+    get: userProcedure.query(({ ctx }) => ctx.newsletter.get(ctx.user.id)),
+    save: userProcedure
+      .input(
+        z.object({
+          email: z.string().email(),
+          frequency: z.enum(['daily', 'weekly']),
+          venueIds: z.array(z.string()).default([]),
+          afterHour: z.number().int().min(0).max(23).nullable().optional(),
+          beforeHour: z.number().int().min(0).max(23).nullable().optional(),
+          enabled: z.boolean().default(true),
+        }),
+      )
+      .mutation(({ ctx, input }) => ctx.newsletter.save(ctx.user.id, input)),
+  }),
+
   wantToGo: router({
     list: userProcedure.query(({ ctx }) => ctx.wantToGo.list(ctx.user.id)),
     ids: userProcedure.query(({ ctx }) => ctx.wantToGo.listIds(ctx.user.id)),
@@ -323,11 +383,17 @@ function mapStoreError(e: unknown): TRPCError {
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: msg });
 }
 
+const festivals = router({
+  /** Ongoing and upcoming film festivals at covered cinemas, soonest first. */
+  list: publicProcedure.query(() => listFestivals()),
+});
+
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),
   venues,
   events,
   folders,
+  festivals,
   admin,
   auth,
   my,

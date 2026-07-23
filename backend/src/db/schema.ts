@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const venues = pgTable('venues', {
@@ -163,3 +163,41 @@ export const scrapeRuns = pgTable(
     startedIdx: index('scrape_runs_started_at_idx').on(t.startedAt),
   }),
 );
+
+// A logged-in user's personal film list: titles they want to watch and titles
+// they've seen (with where + a short note). Unique per user by lower(title) —
+// enforced in SQL (films_user_title_unique); the store checks it too so the
+// in-memory variant behaves the same.
+export const films = pgTable(
+  'films',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    status: text('status').notNull().default('want'),
+    watchedVenue: text('watched_venue'),
+    comment: text('comment'),
+    watchedAt: timestamp('watched_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index('films_user_id_idx').on(t.userId),
+  }),
+);
+
+// Newsletter briefs: one subscription per user. venue_ids scope the brief;
+// after/before hour narrow it to e.g. "everything after 6 pm". last_sent_at
+// lets the sender skip users already briefed in the current cadence window.
+export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  frequency: text('frequency').notNull().default('weekly'),
+  venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+  afterHour: integer('after_hour'),
+  beforeHour: integer('before_hour'),
+  enabled: boolean('enabled').notNull().default(true),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

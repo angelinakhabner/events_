@@ -86,3 +86,52 @@ export interface ScrapeRun {
   errorMessage: string | null;
   rawHash: string | null;
 }
+
+// ─── Films (want to watch / seen) ────────────────────────────────────────────
+
+export type FilmStatus = 'want' | 'seen';
+
+export interface Film {
+  id: string;
+  title: string;
+  status: FilmStatus;
+  /** Where it was watched — free text, filled when moving to "seen". */
+  watchedVenue: string | null;
+  /** Short personal note, filled when moving to "seen". */
+  comment: string | null;
+  watchedAt: string | null;
+  createdAt: string;
+}
+
+// ─── Newsletter ──────────────────────────────────────────────────────────────
+
+export type NewsletterFrequency = 'daily' | 'weekly';
+
+export interface NewsletterSettings {
+  email: string;
+  frequency: NewsletterFrequency;
+  /** Venues the brief covers; empty = all of the user's venues. */
+  venueIds: string[];
+  /** Only include events starting at/after this hour (0-23), e.g. 18 = after 6 pm. */
+  afterHour: number | null;
+  /** Only include events starting before this hour (0-23). */
+  beforeHour: number | null;
+  enabled: boolean;
+  lastSentAt: string | null;
+}
+
+// ─── Festivals ───────────────────────────────────────────────────────────────
+
+export interface Festival {
+  id: string;
+  name: string;
+  url: string;
+  /** Cinemas (venue names) hosting the festival. */
+  cinemas: string[];
+  city: string;
+  /** ISO dates (YYYY-MM-DD), inclusive. */
+  startDate: string;
+  endDate: string;
+  description: string;
+  status: 'ongoing' | 'upcoming';
+}

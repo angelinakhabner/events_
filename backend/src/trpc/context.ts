@@ -4,6 +4,8 @@ import { defaultFolderStore, type FolderStore } from '../services/folder-store.j
 import { defaultAuthStore, userForSession, type AuthStore, type AuthUser } from '../services/auth.js';
 import { defaultUserVenueStore, type UserVenueStore } from '../services/user-venue-store.js';
 import { defaultWantToGoStore, type WantToGoStore } from '../services/want-to-go-store.js';
+import { defaultFilmStore, type FilmStore } from '../services/film-store.js';
+import { defaultNewsletterStore, type NewsletterStore } from '../services/newsletter-store.js';
 
 export interface AppContext {
   venues: IVenueStore;
@@ -11,6 +13,8 @@ export interface AppContext {
   auth: AuthStore;
   userVenues: UserVenueStore;
   wantToGo: WantToGoStore;
+  films: FilmStore;
+  newsletter: NewsletterStore;
   deviceId: string | null;
   /** Logged-in user resolved from the Authorization bearer, when valid. */
   user: AuthUser | null;
@@ -29,6 +33,8 @@ export async function createContext(opts: FetchCreateContextFnOptions): Promise<
     auth: defaultAuthStore,
     userVenues: defaultUserVenueStore,
     wantToGo: defaultWantToGoStore,
+    films: defaultFilmStore,
+    newsletter: defaultNewsletterStore,
     deviceId: deviceId && deviceId.length > 0 ? deviceId : null,
     user,
     sessionToken,
