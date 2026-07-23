@@ -1,39 +1,81 @@
 name: Deploy frontend
 
 # The repo's default branch is claude/epic-goldberg-qj4EC (there is no `main`);
-# the previous trigger chained off CI@main and therefore never fired — Pages
-# sat on a May 31 build while features kept merging. Trigger on pushes to the
-# real default branch instead.
+# it acts as production. The `dev` branch is the staging line: every push to it
+# redeploys a password-gated preview at /<repo>/dev/, while the default branch
+# keeps serving the root of the Pages site. Both builds ship in one Pages
+# artifact because a repo only gets a single Pages deployment.
 on:
   push:
-    branches: [claude/epic-goldberg-qj4EC]
+    branches: [claude/epic-goldberg-qj4EC, dev]
   workflow_dispatch:
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  # SHA-256 of the dev-preview password (the password itself is not in the
+  # repo). Baked only into the /dev/ build; production builds skip the gate.
+  DEV_GATE_HASH: 2a7670fb1e927703d0650cc245d128f15493b064ef34544c1ab89dc1b3d8f01e
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write # push the build to the gh-pages branch
       pages: write # and/or publish via the Pages Actions API
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout production (default branch)
+        uses: actions/checkout@v4
+        with:
+          ref: claude/epic-goldberg-qj4EC
+          path: prod
+
+      - name: Checkout dev branch
+        id: checkout_dev
+        continue-on-error: true # tolerate the dev branch not existing yet
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: dev
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
-      - name: Build frontend
+          cache-dependency-path: prod/package-lock.json
+
+      - name: Build production frontend
+        working-directory: prod
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-        run: npm --workspace frontend run build
+        run: |
+          npm ci
+          npm --workspace frontend run build
+
+      - name: Build dev-preview frontend
+        if: steps.checkout_dev.outcome == 'success'
+        working-directory: dev
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/dev/
+          VITE_DEV_GATE_HASH: ${{ env.DEV_GATE_HASH }}
+        run: |
+          npm ci
+          npm --workspace frontend run build
+
+      - name: Assemble combined site (prod at /, dev at /dev/)
+        run: |
+          mkdir -p site
+          cp -r prod/frontend/dist/. site/
+          if [ -d dev/frontend/dist ]; then
+            mkdir -p site/dev
+            cp -r dev/frontend/dist/. site/dev/
+          fi
 
       # The repo's Pages source setting is not visible from the workflow, so
       # publish through both supported mechanisms; the one matching the
@@ -44,7 +86,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./frontend/dist
+          publish_dir: ./site
           force_orphan: true
       # 2. Actions-based Pages deploy. Fails harmlessly when the Pages source
       #    is set to "deploy from a branch", hence continue-on-error.
@@ -58,7 +100,7 @@ jobs:
         id: upload_pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./frontend/dist
+          path: ./site
       - name: Deploy to GitHub Pages
         if: steps.upload_pages.outcome == 'success'
         continue-on-error: true

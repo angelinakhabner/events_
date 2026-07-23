@@ -111,6 +111,27 @@ next milestone; see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - No auth in MVP. The `folders.userId` column and `MyPage` route exist
   so auth slots in without reshaping the data model.
 
+## Branch workflow: dev → main
+
+The default branch (`claude/epic-goldberg-qj4EC`) is production. All updates
+go through the `dev` branch first:
+
+1. Develop on a feature branch, merge/PR into `dev`.
+2. CI runs the full suite (typecheck, lint, unit + integration tests) on
+   every push to `dev`.
+3. Each push to `dev` also redeploys a **password-gated dev preview** at
+   `https://<owner>.github.io/<repo>/dev/` — check your updates there. The
+   password's SHA-256 hash is baked into the dev build
+   (`VITE_DEV_GATE_HASH` in `.github/workflows/deploy-frontend.yml`); the
+   password itself is shared privately. The unlock persists per browser via
+   `localStorage`. Note this is a client-side deterrent for a public static
+   preview, not real security.
+4. Once verified, open a PR `dev` → default branch. Merging redeploys the
+   production site at the Pages root (no gate there).
+
+To rotate the dev password: `printf '%s' 'new-password' | sha256sum` and put
+the digest in `DEV_GATE_HASH` in `deploy-frontend.yml`.
+
 ## Deploying the frontend to GitHub Pages
 
 The workflow at `.github/workflows/deploy-frontend.yml` runs after CI passes
