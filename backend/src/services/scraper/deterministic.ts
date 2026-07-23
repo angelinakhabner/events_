@@ -5,6 +5,7 @@ import { parseEditoListing, scrapeEdito } from './venues/edito.js';
 import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js';
 import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
 import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
+import { parsePowszechnyRepertoire, scrapePowszechny } from './venues/powszechny.js';
 import { ymdInTz } from './venues/datetime.js';
 
 /**
@@ -76,6 +77,12 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     // htmlOverride carries one month's agenda; anchor day numbers to now.
     parse: (html, timezone) => parseNowyTeatrMonth(html, ymdInTz(new Date(), timezone).slice(0, 7), timezone),
     scrape: (args) => scrapeNowyTeatr(args),
+  },
+  'teatr-powszechny': {
+    // The listing page is an RSC shell; htmlOverride carries the
+    // /api/repertoire JSON body instead of HTML.
+    parse: (html) => parsePowszechnyRepertoire(html),
+    scrape: (args) => scrapePowszechny(args),
   },
 };
 
