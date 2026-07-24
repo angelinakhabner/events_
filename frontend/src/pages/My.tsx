@@ -5,6 +5,8 @@ import { trpc } from '../lib/trpc';
 import { clearSessionToken, isLoggedIn } from '../lib/auth';
 import { MyFoldersPage } from './MyFolders';
 import { EventList } from '../components/EventList';
+import { FilmsSection } from '../components/FilmsSection';
+import { NewsletterSection } from '../components/NewsletterSection';
 import { ErrorState, SkeletonList } from '../components/states';
 
 const CATEGORIES: Category[] = ['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other'];
@@ -32,6 +34,8 @@ export function MyPage() {
       </header>
       <MyVenuesSection />
       <WantToGoSection />
+      <FilmsSection />
+      <NewsletterSection defaultEmail={me.data?.email ?? ''} />
       <section>
         <MyFoldersPage />
       </section>

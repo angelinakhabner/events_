@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { env } from './config.js';
 import { startScrapeScheduler } from './services/scheduler.js';
+import { startNewsletterScheduler } from './services/newsletter.js';
 
 const app = createApp();
 
@@ -16,4 +17,12 @@ if (env.SCRAPE_CRON_ENABLED && env.DATABASE_URL) {
   startScrapeScheduler({ hour: env.SCRAPE_CRON_HOUR, dayOfWeek: env.SCRAPE_CRON_DAY_OF_WEEK });
 } else {
   console.log('[scheduler] disabled (set SCRAPE_CRON_ENABLED=true to enable)');
+}
+
+// Newsletter briefs go out on their own daily tick — needs the DB (events +
+// subscriptions) and a Resend key to actually deliver anything.
+if (env.NEWSLETTER_CRON_ENABLED && env.DATABASE_URL) {
+  startNewsletterScheduler({ hour: env.NEWSLETTER_CRON_HOUR });
+} else {
+  console.log('[newsletter] disabled (set NEWSLETTER_CRON_ENABLED=true to enable)');
 }
