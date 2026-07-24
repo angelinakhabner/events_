@@ -1,0 +1,11 @@
+-- Nowy Teatr's /pl/repertuar page is a JavaScript shell — the native fetch saw
+-- only cookie banners and nav, so the venue sat at 0 events. /pl/kalendarz
+-- renders the agenda server-side when queried with the filter form's
+-- date_from/date_to params, which the deterministic scraper appends per month.
+--
+-- Migrate the row in place so the post-migration seed (ON CONFLICT (url) DO
+-- UPDATE) updates the same row instead of inserting a duplicate venue with a
+-- new UUID. The new string must match default-venues.ts exactly.
+--
+-- Idempotent: no-op on a fresh DB (0 rows match) and after the first run.
+UPDATE venues SET url = 'https://nowyteatr.org/pl/kalendarz' WHERE url = 'https://nowyteatr.org/pl/repertuar';

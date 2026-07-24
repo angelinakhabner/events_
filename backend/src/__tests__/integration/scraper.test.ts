@@ -136,6 +136,36 @@ describeIfDb('scraper integration', () => {
     expect(tajny.title).toBe('Tajny agent (reissue)');
   });
 
+  it('prunes stale in-window events a successful scrape no longer sees; out-of-window rows survive', async () => {
+    const now = new Date('2026-06-07T08:00:00.000Z'); // cinema window: 7 days
+    const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
+    try {
+      // A zombie row inside the scrape window (e.g. an earlier bad extraction)
+      // and a row beyond the window the scrape has no authority over.
+      await sql`
+        INSERT INTO events (venue_id, title, starts_at, category, source_url, updated_at)
+        VALUES
+          (${venueId}, 'Zombie in window', '2026-06-10T18:00:00.000Z', 'cinema', 'https://kinomuranow.pl/film/zombie', '2026-06-01T00:00:00.000Z'),
+          (${venueId}, 'Beyond window', '2026-07-01T18:00:00.000Z', 'cinema', 'https://kinomuranow.pl/film/beyond', '2026-06-01T00:00:00.000Z')`;
+    } finally {
+      await sql.end();
+    }
+
+    const run = await scrapeVenue(venueId, {
+      htmlOverride: muranowHtml,
+      extractor: makeExtractor(expectedJson),
+      now,
+    });
+    expect(run.status).toBe('success');
+
+    const db = getDb();
+    const rows = await db.select().from(schema.events);
+    const titles = rows.map((r) => r.title).sort();
+    expect(titles).not.toContain('Zombie in window'); // pruned: in window, untouched
+    expect(titles).toContain('Beyond window'); // kept: outside the scraped window
+    expect(titles).toEqual(expect.arrayContaining(['Drugie życie', 'Romería', 'Tajny agent']));
+  });
+
   // ─── URL migration (0003) ──────────────────────────────────────────────────
   // The seed upserts ON CONFLICT (url), so a changed URL must be migrated in
   // place first — otherwise the seed inserts a duplicate venue with a new UUID.
@@ -162,6 +192,38 @@ describeIfDb('scraper integration', () => {
       expect(rows[0]!.url).toBe('https://komediowy.pl/repertuar/');
     } finally {
       await sql`DELETE FROM venues WHERE name = 'Klub Komediowy'`;
+      await sql.end();
+    }
+  });
+
+  it('migration 0007 moves MNW + Królikarnia from /wystawy to their event calendars in place', async () => {
+    const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
+    try {
+      await sql`DELETE FROM venues WHERE name IN ('Muzeum Narodowe', 'Królikarnia')`;
+      await sql`
+        INSERT INTO venues (name, url, city, country, category, language, timezone)
+        VALUES
+          ('Muzeum Narodowe', 'https://mnw.art.pl/wystawy', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw'),
+          ('Królikarnia', 'https://krolikarnia.mnw.art.pl/wystawy/', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw')`;
+
+      await runMigrations(); // 0007: /wystawy → event calendar pages
+
+      // The post-migration seed then upserts with the NEW urls.
+      await sql`
+        INSERT INTO venues (name, url, city, country, category, language, timezone)
+        VALUES
+          ('Muzeum Narodowe', 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw'),
+          ('Królikarnia', 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html', 'Warsaw', 'PL', 'exhibition', 'pl', 'Europe/Warsaw')
+        ON CONFLICT (url) DO UPDATE SET name = EXCLUDED.name`;
+
+      const mnw = await sql<{ url: string }[]>`SELECT url FROM venues WHERE name = 'Muzeum Narodowe'`;
+      expect(mnw).toHaveLength(1);
+      expect(mnw[0]!.url).toBe('https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html');
+      const krolikarnia = await sql<{ url: string }[]>`SELECT url FROM venues WHERE name = 'Królikarnia'`;
+      expect(krolikarnia).toHaveLength(1);
+      expect(krolikarnia[0]!.url).toBe('https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html');
+    } finally {
+      await sql`DELETE FROM venues WHERE name IN ('Muzeum Narodowe', 'Królikarnia')`;
       await sql.end();
     }
   });

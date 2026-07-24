@@ -1,0 +1,119 @@
+name: Venue diagnose
+
+# TEMPORARY development helper — deleted once the scraper gaps are fixed.
+#
+# Dispatch-only on purpose: the trigger mode forces REAL production scrapes
+# (admin.triggerScrape), which cost Anthropic tokens for LLM venues, so it must
+# never run automatically on push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      trigger:
+        description: Comma-separated venue slugs to force-scrape in production
+        default: ''
+        required: false
+      discover:
+        description: Comma-separated venue slugs to run calendar-URL discovery on
+        default: ''
+        required: false
+      analyze:
+        description: Comma-separated venue slugs to run page content analysis on
+        default: ''
+        required: false
+      probe:
+        description: Comma-separated raw URLs to probe for scrapability + content density
+        default: ''
+        required: false
+      capture:
+        description: Pipe-separated URLs to fetch and commit as test fixtures (filename derived from URL)
+        default: ''
+        required: false
+  # Registration-only: a dispatch-only workflow on a non-default branch never
+  # gets registered with the Actions API. The job below skips push events.
+  push:
+    branches: [claude/venue-events-visibility-j27pfm]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: venue-diagnose
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run diagnostics
+        working-directory: backend
+        env:
+          DIAG_API_URL: ${{ vars.VITE_API_URL }}
+          DIAG_TRIGGER: ${{ github.event.inputs.trigger }}
+          DIAG_DISCOVER: ${{ github.event.inputs.discover }}
+          DIAG_ANALYZE: ${{ github.event.inputs.analyze }}
+          DIAG_PROBE: ${{ github.event.inputs.probe }}
+        run: npx tsx src/scripts/diagnose-venues.ts
+
+  # Same pattern as the retired fetch-fixture.yml: the dev sandbox can't reach
+  # the venue sites, so live pages are captured on a runner and committed as
+  # fixtures for building/verifying deterministic scrapers offline.
+  capture:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.capture != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pages
+        env:
+          CAPTURE: ${{ github.event.inputs.capture }}
+        run: |
+          mkdir -p backend/test/fixtures
+          IFS='|' read -ra URLS <<< "$CAPTURE"
+          for url in "${URLS[@]}"; do
+            url="$(echo "$url" | xargs)"
+            [ -z "$url" ] && continue
+            # Slug from host+path: "trwarszawa.pl-repertuar.html"
+            slug=$(echo "$url" | sed -E 's#^https?://##; s#[?/,=&]+#-#g; s#-+$##; s#-+#-#g')
+            out="backend/test/fixtures/${slug}.html"
+            code=$(curl -sSL -o "$out" -w '%{http_code}' \
+              -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
+              -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
+              -H 'Accept-Language: pl,en;q=0.8' \
+              -H 'Upgrade-Insecure-Requests: 1' \
+              -H 'Sec-Fetch-Dest: document' \
+              -H 'Sec-Fetch-Mode: navigate' \
+              -H 'Sec-Fetch-Site: none' \
+              -H 'Sec-Fetch-User: ?1' \
+              "$url" || echo '000')
+            echo "$url → $out (HTTP $code, $(wc -c < "$out" 2>/dev/null || echo 0) bytes)"
+            if [ "$code" != "200" ]; then rm -f "$out"; fi
+          done
+
+      - name: Commit fixtures
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add backend/test/fixtures/
+          if git diff --cached --quiet; then
+            echo 'Fixtures unchanged — nothing to commit'
+            exit 0
+          fi
+          git commit -m "chore(fixtures): capture venue pages from live sites"
+          git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          git push

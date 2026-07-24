@@ -1,0 +1,12 @@
+-- TR Warszawa's /repertuar/ page is a JavaScript shell — the native fetch saw
+-- only nav/footer, so the venue sat at 0 events. The month calendar pages
+-- (/kalendarz/YYYY/MM/?view=calendar) are server-rendered and feed the
+-- deterministic scraper.
+--
+-- Migrate the row in place so the post-migration seed (ON CONFLICT (url) DO
+-- UPDATE) updates the same row instead of inserting a duplicate venue with a
+-- new UUID. The new string must match default-venues.ts exactly, including
+-- the {{YYYY}}/{{MM}} placeholders the runner substitutes at fetch time.
+--
+-- Idempotent: no-op on a fresh DB (0 rows match) and after the first run.
+UPDATE venues SET url = 'https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar' WHERE url = 'https://trwarszawa.pl/repertuar/';
