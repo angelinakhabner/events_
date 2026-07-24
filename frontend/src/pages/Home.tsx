@@ -6,6 +6,7 @@ import { EventBuckets } from '../components/EventBuckets';
 import { CategoryBar } from '../components/CategoryBar';
 import { DayBar } from '../components/DayBar';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
+import { FestivalsSection } from '../components/FestivalsSection';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -71,6 +72,10 @@ export function HomePage() {
         ) : null}
         {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
       </div>
+
+      {/* Festivals are cinema news — keep them visible on the unfiltered view
+          and the cinema tab, but out of the way of other categories. */}
+      {category === null || category === 'cinema' ? <FestivalsSection /> : null}
     </section>
   );
 }

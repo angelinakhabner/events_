@@ -5,6 +5,8 @@ import { trpc } from '../lib/trpc';
 import { clearSessionToken, isLoggedIn } from '../lib/auth';
 import { MyFoldersPage } from './MyFolders';
 import { EventList } from '../components/EventList';
+import { FilmsSection } from '../components/FilmsSection';
+import { NewsletterSection } from '../components/NewsletterSection';
 import { ErrorState, SkeletonList } from '../components/states';
 
 const CATEGORIES: Category[] = ['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other'];
@@ -32,6 +34,8 @@ export function MyPage() {
       </header>
       <MyVenuesSection />
       <WantToGoSection />
+      <FilmsSection />
+      <NewsletterSection defaultEmail={me.data?.email ?? ''} />
       <section>
         <MyFoldersPage />
       </section>
@@ -44,6 +48,7 @@ export function MyPage() {
 function LoginSection() {
   const [email, setEmail] = useState('');
   const request = trpc.auth.requestLink.useMutation();
+  const methods = trpc.auth.methods.useQuery();
 
   if (request.isSuccess) {
     return (
@@ -90,6 +95,22 @@ function LoginSection() {
         </button>
       </form>
       {request.error ? <p className="mt-3 text-sm text-muted">{request.error.message}</p> : null}
+
+      {methods.data?.google ? (
+        <div className="mt-8">
+          <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted">
+            <span className="h-px flex-1 bg-rule" aria-hidden />
+            or
+            <span className="h-px flex-1 bg-rule" aria-hidden />
+          </div>
+          <a
+            href={`${import.meta.env.VITE_API_URL ?? ''}/auth/google`}
+            className="mt-4 inline-block border border-rule px-4 py-2 text-sm text-ink no-underline hover:text-accent"
+          >
+            Continue with Google
+          </a>
+        </div>
+      ) : null}
     </section>
   );
 }

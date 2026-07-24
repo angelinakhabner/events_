@@ -1,7 +1,7 @@
 /**
  * End-to-end-ish: mounts MyPage logged in against a real Hono backend,
- * in-process, and drives the lists flow — seeded "Warsaw" list is active,
- * creating "Poznan", switching to it, and seeing the venue list re-scope.
+ * in-process, and drives the newsletter flow (GOI-8) — configuring cadence,
+ * an after-hour window and venues, saving, and seeing the settings persist.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -11,11 +11,13 @@ import { httpBatchLink } from '@trpc/client';
 import { MemoryRouter } from 'react-router-dom';
 import { createApp } from '../../../backend/src/app';
 import { defaultAuthStore, requestMagicLink, verifyMagicLink } from '../../../backend/src/services/auth';
+import { defaultNewsletterStore } from '../../../backend/src/services/newsletter-store';
 import { trpc, makeQueryClient } from '../lib/trpc';
 import { setSessionToken, getSessionToken } from '../lib/auth';
 import { MyPage } from './My';
 
-const DEVICE = 'e2e-lists-device';
+const DEVICE = 'e2e-newsletter-device';
+let userId = '';
 
 function inProcessFetch(app: ReturnType<typeof createApp>): typeof fetch {
   return ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -55,41 +57,42 @@ function renderPage() {
 }
 
 beforeAll(async () => {
-  const { token } = await requestMagicLink(defaultAuthStore, 'lists-e2e@example.com');
+  const { token } = await requestMagicLink(defaultAuthStore, 'newsletter-e2e@example.com');
   const verified = await verifyMagicLink(defaultAuthStore, token);
   if (!verified) throw new Error('login failed');
   setSessionToken(verified.sessionToken);
+  userId = verified.user.id;
 });
 
-describe('MyPage — lists end-to-end', () => {
-  it('shows the seeded Warsaw list, creates Poznan, and switching re-scopes the venues', async () => {
+describe('MyPage — newsletter end-to-end', () => {
+  it('prefills the login email, saves settings, and persists them', async () => {
+    const user = userEvent.setup();
     renderPage();
 
-    // Seeded state: an active "Warsaw" tab and at least one default venue.
-    const warsawTab = await screen.findByRole('button', { name: /warsaw/i });
-    await waitFor(() => expect(warsawTab).toHaveAttribute('aria-pressed', 'true'));
-    // Scope venue-name assertions to the venues section — venue names also
-    // appear in the newsletter's venue picker further down the page.
-    const venuesSection = screen.getByRole('heading', { name: 'My venues' }).closest('section')!;
-    expect(await within(venuesSection).findByText('Kinoteka')).toBeInTheDocument();
+    // Wait for the form (the section shows a skeleton while settings load,
+    // and the whole section subtree is replaced once they arrive).
+    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const section = email.closest('section')!;
 
-    // Create a second list.
-    await userEvent.click(screen.getByRole('button', { name: /\+ new list/i }));
-    await userEvent.type(screen.getByLabelText(/list name/i), 'Poznan');
-    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
-    const poznanTab = await screen.findByRole('button', { name: /poznan/i });
-    expect(poznanTab).toHaveAttribute('aria-pressed', 'false');
+    // Email defaults to the login address. The prefill is async by design —
+    // auth.me resolves in parallel with the settings query and the form
+    // adopts the address once it lands — so wait rather than assert the
+    // instant the form appears (the race made CI flaky).
+    await waitFor(() => expect(email.value).toBe('newsletter-e2e@example.com'));
 
-    // Switch to it: it becomes active and the venue list is empty.
-    await userEvent.click(poznanTab);
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /poznan/i })).toHaveAttribute('aria-pressed', 'true'),
-    );
-    expect(await screen.findByText(/no venues in this list yet/i)).toBeInTheDocument();
-    expect(within(venuesSection).queryByText('Kinoteka')).not.toBeInTheDocument();
+    // Daily, after 18:00.
+    await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
+    await user.selectOptions(within(section).getByLabelText(/only events after/i), '18');
+    await user.click(within(section).getByRole('button', { name: /save newsletter/i }));
+    await within(section).findByText('Saved.');
 
-    // Switch back: the Warsaw venues return.
-    await userEvent.click(screen.getByRole('button', { name: /warsaw/i }));
-    expect(await within(venuesSection).findByText('Kinoteka')).toBeInTheDocument();
+    // Settings landed in the store.
+    const saved = await defaultNewsletterStore.get(userId);
+    expect(saved).toMatchObject({
+      email: 'newsletter-e2e@example.com',
+      frequency: 'daily',
+      afterHour: 18,
+      enabled: true,
+    });
   });
 });

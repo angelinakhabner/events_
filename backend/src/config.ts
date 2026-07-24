@@ -17,6 +17,15 @@ const Env = z.object({
   FIRECRAWL_WAIT_MS: z.coerce.number().int().min(0).default(5000),
   // Public origin of the frontend — magic-link login emails point here.
   APP_URL: z.string().default('http://localhost:5173'),
+  // "Sign in with Google" (OAuth 2.0 / OIDC, free). All three must be set to
+  // enable it: a client id/secret from Google Cloud Console (OAuth consent
+  // screen + Web application credentials, no cost) and this backend's public
+  // origin (e.g. the Railway URL) used to build the redirect URI
+  // <API_PUBLIC_URL>/auth/google/callback — register exactly that URI in the
+  // Google console. Unset → the Google button simply doesn't render.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  API_PUBLIC_URL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().default('hello@goin.app'),
   // When set, enables the /admin/* debug endpoints (manual scrape trigger,
@@ -35,6 +44,13 @@ const Env = z.object({
     (v) => (v === undefined || v === '' ? undefined : v),
     z.coerce.number().int().min(0).max(6).optional(),
   ),
+  // Newsletter briefs (GOI-8). One daily tick at this Warsaw hour serves both
+  // daily and weekly subscriptions (weekly go out on Mondays).
+  NEWSLETTER_CRON_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
+  NEWSLETTER_CRON_HOUR: z.coerce.number().int().min(0).max(23).default(8),
 });
 
 export const env = Env.parse(process.env);
