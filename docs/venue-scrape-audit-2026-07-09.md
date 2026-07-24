@@ -150,6 +150,50 @@ Komediowy, Filharmonia, MNW, Królikarnia, TR Warszawa, CSW, Nowy Teatr + the
 JSON-LD path), 4 on the LLM path, 1 Firecrawl-only. Everything lands in
 production on the next deploy + scrape once the Railway backend is restored.
 
+## Fix round 3 — 2026-07-23 (the two remaining theatres + the production root cause)
+
+**Root cause found for "deterministic venues are empty in production":**
+`DETERMINISTIC_SCRAPERS` is keyed by the DEFAULT_VENUES slugs, but real
+database rows carry random UUIDs (the seed inserts by url, never a slug id) —
+so `getDeterministicScraper(venue.id)` never matched in production and every
+venue silently fell back to Firecrawl + LLM. Railway logs made it visible:
+`rendered https://kinoteka.pl/repertuar/ via Firecrawl` followed by 16
+midnight-rejected LLM rows on the venue that has been deterministic since
+June. Fixed by resolving the registry via the venue URL's hostname when the
+id lookup misses (each deterministic venue lives on its own host). This also
+explains the token spend resuming on Jul 22–23 at the old all-LLM rate.
+
+Production status first: the Railway backend came back online on Jul 23 (16
+venues resolve, home feed serves). But it still runs pre-Jul-18 code — every
+deterministic-scraper venue shows 0 (or stale) events in the app while its
+scraper extracts fine from a runner (Kinoteka 231, Komediowy 44, Filharmonia
+15, MNW 81, Królikarnia 13, CSW 34). **A redeploy from the current default
+branch is still the unblocking step**; check the service's tracked branch —
+`main` no longer exists.
+
+- **Teatr Powszechny — now deterministic.** The repertuar page is a Next.js
+  RSC shell; the repertoire never appears in the served HTML (hence the ~2k
+  readable chars and thin LLM results). The page's own client code loads
+  `GET /api/repertoire?lang=pl` — complete JSON with a UUID per showing, UTC
+  start instant, running time, stage, category and per-showing notes. The new
+  scraper (`venues/powszechny.ts`) reads that endpoint directly: exact rows,
+  zero tokens, no Firecrawl, venue URL unchanged. Audit-verified from a
+  runner: fetch OK, 39 showings parsed from the live API (0 inside the
+  current 30-day window — the theatre is dark until 19.09, like TR Warszawa
+  and Nowy Teatr).
+- **Teatr Dramatyczny — confirmed Firecrawl-only.** A runner-side fetch of
+  `/repertuar/` with a full browser header set (Chrome UA, Sec-Fetch-*,
+  client hints) still gets HTTP 403 with a ~5.7 kB challenge page: the WAF
+  fingerprints beyond headers (TLS/IP), so no native deterministic path
+  exists. Production scrapes it successfully via Firecrawl today (20
+  September events) — keep that path.
+
+Scorecard after round 3 (per today's audit run): **9 venues with dedicated
+deterministic scrapers** (Kinoteka, Komediowy, Filharmonia, MNW, Królikarnia,
+TR Warszawa, CSW, Nowy Teatr, Powszechny), 5 on the LLM path (Muranów,
+Iluzjon, Zachęta, MSN, Jazzmine — plus the generic JSON-LD short-circuit when
+a page carries it), 2 WAF-blocked venues on Firecrawl (Dramatyczny, POLIN).
+
 ## Housekeeping
 
 - `venues.list` returns 16 venues for 15 defaults — one leftover row (venue

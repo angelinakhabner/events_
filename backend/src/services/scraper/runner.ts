@@ -122,7 +122,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // showtimes in the markup, so we parse with cheerio instead of the LLM —
     // cheaper, exact, and able to fan out across a multi-day/multi-month
     // window.
-    const deterministic = getDeterministicScraper(venue.id);
+    const deterministic = getDeterministicScraper(venue.id, venue.url);
     let raw: unknown[];
     let rawHash: string;
 
