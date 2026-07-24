@@ -27,3 +27,17 @@ describe('admin endpoints', () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 });
+
+// Google sign-in is env-gated; the test env has no GOOGLE_* config, so both
+// endpoints must answer 503 rather than redirect anywhere.
+describe('google auth endpoints (unconfigured)', () => {
+  it('reports /auth/google as not configured', async () => {
+    const res = await createApp().request('/auth/google');
+    expect(res.status).toBe(503);
+  });
+
+  it('reports /auth/google/callback as not configured', async () => {
+    const res = await createApp().request('/auth/google/callback?code=x&state=y');
+    expect(res.status).toBe(503);
+  });
+});

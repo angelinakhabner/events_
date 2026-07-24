@@ -7,6 +7,14 @@ import { env } from './config.js';
 import { getDb, schema } from './db/index.js';
 import { scrapeVenue } from './services/scraper/runner.js';
 import { firecrawlScrape } from './services/scraper/fetcher.js';
+import { defaultAuthStore, loginWithVerifiedEmail } from './services/auth.js';
+import {
+  exchangeGoogleCode,
+  googleAuthConfig,
+  googleAuthUrl,
+  makeState,
+  verifyState,
+} from './services/google-auth.js';
 
 export function createApp() {
   const app = new Hono();
@@ -14,6 +22,41 @@ export function createApp() {
   app.use('*', cors({ origin: '*' }));
 
   app.get('/health', (c) => c.json({ ok: true }));
+
+  // ─── "Sign in with Google" ────────────────────────────────────────────────
+  // Plain OIDC code flow; enabled only when GOOGLE_CLIENT_ID/SECRET and
+  // API_PUBLIC_URL are configured (frontend hides the button otherwise via
+  // auth.methods). The session token travels back to the SPA in the URL
+  // fragment — fragments never reach servers or access logs.
+
+  app.get('/auth/google', (c) => {
+    const cfg = googleAuthConfig();
+    if (!cfg) return c.json({ error: 'Google sign-in is not configured' }, 503);
+    return c.redirect(googleAuthUrl(cfg, makeState(cfg.clientSecret)));
+  });
+
+  app.get('/auth/google/callback', async (c) => {
+    const cfg = googleAuthConfig();
+    if (!cfg) return c.json({ error: 'Google sign-in is not configured' }, 503);
+    const appUrl = env.APP_URL.replace(/\/$/, '');
+    const fail = (msg: string) => c.redirect(`${appUrl}/auth#error=${encodeURIComponent(msg)}`);
+
+    const state = c.req.query('state') ?? '';
+    if (!verifyState(state, cfg.clientSecret)) return fail('Login attempt expired — please try again.');
+    // The user declined on Google's screen, or Google reported an error.
+    const providerError = c.req.query('error');
+    if (providerError) return fail('Google sign-in was cancelled.');
+    const code = c.req.query('code');
+    if (!code) return fail('Google sign-in failed (missing code).');
+
+    try {
+      const { email } = await exchangeGoogleCode(cfg, code);
+      const { sessionToken } = await loginWithVerifiedEmail(defaultAuthStore, email);
+      return c.redirect(`${appUrl}/auth#session=${encodeURIComponent(sessionToken)}`);
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : 'Google sign-in failed.');
+    }
+  });
 
   // ─── Admin debug endpoints ────────────────────────────────────────────────
   // Browser-checkable, no script needed. Disabled unless ADMIN_TOKEN is set;
