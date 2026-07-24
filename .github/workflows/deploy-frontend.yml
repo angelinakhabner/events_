@@ -17,7 +17,7 @@ concurrency:
 env:
   # SHA-256 of the dev-preview password (the password itself is not in the
   # repo). Baked only into the /dev/ build; production builds skip the gate.
-  DEV_GATE_HASH: 2a7670fb1e927703d0650cc245d128f15493b064ef34544c1ab89dc1b3d8f01e
+  DEV_GATE_HASH: 87274af01876341455b32d805946f272871bb42effa6604dccf28bb027afa82b
 
 jobs:
   deploy:
