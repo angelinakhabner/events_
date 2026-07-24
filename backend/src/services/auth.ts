@@ -91,7 +91,21 @@ export async function verifyMagicLink(
   const now = opts.now ?? new Date();
   const email = await store.consumeToken(sha256(token), now);
   if (!email) return null;
-  const user = await store.upsertUser(email);
+  return loginWithVerifiedEmail(store, email, { now });
+}
+
+/**
+ * Mint a session for an email whose ownership has already been proven —
+ * a consumed magic-link token, or a verified identity from an OAuth provider
+ * (Google). The single place users are created and sessions issued.
+ */
+export async function loginWithVerifiedEmail(
+  store: AuthStore,
+  emailRaw: string,
+  opts: { now?: Date } = {},
+): Promise<VerifyResult> {
+  const now = opts.now ?? new Date();
+  const user = await store.upsertUser(normalizeEmail(emailRaw));
   const sessionToken = randomBytes(32).toString('base64url');
   await store.saveSession(sha256(sessionToken), user.id, new Date(now.getTime() + SESSION_TTL_MS));
   return { sessionToken, user };

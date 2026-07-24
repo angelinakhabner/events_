@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, userProcedure, ownerProcedure } from './trpc.js';
 import { requestMagicLink, verifyMagicLink, logout as authLogout } from '../services/auth.js';
+import { googleAuthEnabled } from '../services/google-auth.js';
 import { generateDefaultEvents } from '../data/default-events.js';
 import { filterEvents } from '../services/filters.js';
 import { defaultEventStore } from '../services/event-store.js';
@@ -99,6 +100,12 @@ const admin = router({
 });
 
 const auth = router({
+  /** Which login methods this deployment offers — drives the login UI. */
+  methods: publicProcedure.query(() => ({
+    magicLink: true,
+    google: googleAuthEnabled(),
+  })),
+
   requestLink: publicProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ ctx, input }) => {
