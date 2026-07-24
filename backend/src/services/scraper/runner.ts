@@ -10,7 +10,7 @@ import { getDeterministicScraper } from './deterministic.js';
 import { defaultUserVenueStore } from '../user-venue-store.js';
 import { validateEvents } from './validator.js';
 import { enrichDescriptions } from './enricher.js';
-import { saveEvents } from './persister.js';
+import { saveEvents, pruneStaleEvents } from './persister.js';
 import type { Venue, ScrapeRun } from '@goin/shared';
 
 export interface ScrapeOptions {
@@ -122,7 +122,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // showtimes in the markup, so we parse with cheerio instead of the LLM —
     // cheaper, exact, and able to fan out across a multi-day/multi-month
     // window.
-    const deterministic = getDeterministicScraper(venue.id);
+    const deterministic = getDeterministicScraper(venue.id, venue.url);
     let raw: unknown[];
     let rawHash: string;
 
@@ -226,6 +226,23 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     }
     await saveEvents(venueForVenueOps, valid);
 
+    // The scrape is authoritative for its window: rows starting inside it that
+    // this run didn't upsert are gone from the venue's listing (cancelled,
+    // moved, or created by an older bad extraction) and would otherwise live
+    // in the DB forever — upserts alone never delete. Only after a non-empty
+    // save: an empty/partial-failure run must not wipe a venue.
+    if (valid.length > 0) {
+      const windowEnd = new Date(today.getTime() + effectiveWindowDays * 86_400_000);
+      const pruned = await pruneStaleEvents(venue.id, {
+        windowStart: today,
+        windowEnd,
+        olderThan: startedAt,
+      });
+      if (pruned > 0) {
+        console.log(`[scraper] ${venue.name}: pruned ${pruned} stale event(s) no longer on the listing`);
+      }
+    }
+
     // A scrape that yields zero usable events is almost never a real "nothing
     // is on" — it's a JS-rendered page, a blocked request, a selector drift, or
     // (as with the midnight guard) extracted rows we had to reject. Record it as
@@ -274,7 +291,9 @@ export function resolveVenueUrl(url: string, today: Date, timezone = 'Europe/War
   return url
     .replace(/\{\{YYYY-MM-DD\}\}/g, `${y}-${m}-${d}`)
     .replace(/\{\{YYYY-MM\}\}/g, `${y}-${m}`)
-    .replace(/\{\{YYYY\}\}/g, y);
+    .replace(/\{\{MM-YYYY\}\}/g, `${m}-${y}`)
+    .replace(/\{\{YYYY\}\}/g, y)
+    .replace(/\{\{MM\}\}/g, m);
 }
 
 /**

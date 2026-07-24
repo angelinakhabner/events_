@@ -143,6 +143,7 @@ vi.mock('drizzle-orm', async () => {
 // Stub persister to avoid touching SQL.
 vi.mock('./persister.js', () => ({
   saveEvents: vi.fn(async () => ({ inserted: 1, updated: 0 })),
+  pruneStaleEvents: vi.fn(async () => 0),
 }));
 
 import { scrapeVenue } from './runner.js';
@@ -379,6 +380,12 @@ describe('resolveVenueUrl', () => {
     const { resolveVenueUrl } = await import('./runner.js');
     expect(resolveVenueUrl('https://artmuseum.pl/en/program-1?from={{YYYY-MM-DD}}&type=all', now, 'Europe/Warsaw'))
       .toBe('https://artmuseum.pl/en/program-1?from=2026-06-19&type=all');
+  });
+
+  it('substitutes {{MM-YYYY}} with the venue-local month-first form (MNW calendar paths)', async () => {
+    const { resolveVenueUrl } = await import('./runner.js');
+    expect(resolveVenueUrl('https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},miesiac.html', now, 'Europe/Warsaw'))
+      .toBe('https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/06-2026,miesiac.html');
   });
 
   it('returns the URL unchanged when there is no placeholder', async () => {

@@ -45,14 +45,20 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'nowy-teatr',
     name: 'Nowy Teatr',
-    url: 'https://nowyteatr.org/pl/repertuar',
+    // /pl/repertuar is a JS shell; /pl/kalendarz renders the agenda server-side
+    // when queried with the filter form's date_from/date_to params, which the
+    // deterministic scraper appends per month.
+    url: 'https://nowyteatr.org/pl/kalendarz',
     category: 'theatre',
     ...PL,
   },
   {
     id: 'tr-warszawa',
     name: 'TR Warszawa',
-    url: 'https://trwarszawa.pl/repertuar/',
+    // /repertuar/ is a JS shell; the month calendar pages are server-rendered
+    // and feed the deterministic scraper (which swaps the YYYY/MM segment for
+    // sibling months). NOTE: dark over the summer — July/August are sparse.
+    url: 'https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar',
     category: 'theatre',
     ...PL,
   },
@@ -97,14 +103,20 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'muzeum-narodowe',
     name: 'Muzeum Narodowe',
-    url: 'https://mnw.art.pl/wystawy',
+    // /wystawy lists ongoing exhibitions without dates — the validator drops
+    // every row. The month calendar's LIST view carries the dated listing in
+    // the shape the deterministic edito scraper parses; {{MM-YYYY}} keeps it
+    // on the current month and the scraper swaps the segment for siblings.
+    url: 'https://mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html',
     category: 'exhibition',
     ...PL,
   },
   {
     id: 'krolikarnia',
     name: 'Królikarnia',
-    url: 'https://krolikarnia.mnw.art.pl/wystawy/',
+    // Same as MNW: /wystawy/ is undated; the event calendar's list view has
+    // real dates and matches the shared edito scraper.
+    url: 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html',
     category: 'exhibition',
     ...PL,
   },

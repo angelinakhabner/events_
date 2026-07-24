@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="pl" class="modernizr-no-js">
+
+<head>
+    <meta charset="utf-8">
+    <!--[if IE]><meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'><![endif]-->
+    <meta name="viewport" content="width=device-width">
+
+    <title>Nowy Teatr</title>
+    <meta name="description" content="">
+
+    <meta property="og:description" content="">
+    <meta property="og:title" content="Nowy Teatr">
+        <meta property="og:image" content="https://nowyteatr.org/public/og_image.jpg">
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+        <meta property="og:url" content="https://nowyteatr.org/pl/repertuar">
+    <meta property="og:type" content="website" />
+
+    <meta property="twitter:card" content="summary" />
+    <meta property="twitter:title" content="Nowy Teatr" />
+    <meta property="twitter:description" content="" />
+    <meta property="twitter:image" content="https://nowyteatr.org/public/og_image.jpg" />
+    <meta property="twitter:url" content="https://nowyteatr.org/pl/repertuar" />
+
+
+    <meta property="fb:app_id" content="1012350232153500" />
+
+    <style>@font-face{font-family:"ReaderPro";font-weight:400;font-style:normal;font-display:fallback;src:url("./fonts/ReaderPro/reader-regular-pro.eot");src:url("./fonts/ReaderPro/reader-regular-pro.eot?#iefix") format("embedded-opentype"),url("./fonts/ReaderPro/reader-regular-pro.woff2") format("woff2"),url("./fonts/ReaderPro/reader-regular-pro.woff") format("woff"),url("./fonts/ReaderPro/reader-regular-pro.ttf") format("truetype")}@font-face{font-family:"ReaderPro";font-weight:400;font-style:italic;font-display:fallback;src:url("./fonts/ReaderPro/reader-italic-pro.eot");src:url("./fonts/ReaderPro/reader-italic-pro.eot?#iefix") format("embedded-opentype"),url("./fonts/ReaderPro/reader-italic-pro.woff2") format("woff2"),url("./fonts/ReaderPro/reader-italic-pro.woff") format("woff"),url("./fonts/ReaderPro/reader-italic-pro.ttf") format("truetype")}@font-face{font-family:"ReaderPro";font-weight:700;font-style:normal;font-display:fallback;src:url("./fonts/ReaderPro/reader-bold-pro.eot");src:url("./fonts/ReaderPro/reader-bold-pro.eot?#iefix") format("embedded-opentype"),url("./fonts/ReaderPro/reader-bold-pro.woff2") format("woff2"),url("./fonts/ReaderPro/reader-bold-pro.woff") format("woff"),url("./fonts/ReaderPro/reader-bold-pro.ttf") format("truetype")}@font-face{font-family:"ReaderPro";font-weight:900;font-style:normal;font-display:fallback;src:url("./fonts/ReaderPro/reader-black-pro.eot");src:url("./fonts/ReaderPro/reader-black-pro.eot?#iefix") format("embedded-opentype"),url("./fonts/ReaderPro/reader-black-pro.woff2") format("woff2"),url("./fonts/ReaderPro/reader-black-pro.woff") format("woff"),url("./fonts/ReaderPro/reader-black-pro.ttf") format("truetype")}.header{z-index:6;padding-top:24px;padding-bottom:24px;position:fixed;top:0;left:0;width:100%;height:64px;background:#fff;transition:transform .5s cubic-bezier(0.5, 0, 0.2, 1)}body.is-loading-content .header{transition-duration:1.2s}body.is-loading-content .header .spacer{transition-delay:.7s;transition-duration:.7s}body.is-scrolling-down:not(.is-loading-content):not(.accessibility) .header{transform:translateY(-110%)}body.is-scrolled:not(.is-loading-content) .header .spacer{transform:scaleY(0)}body.is-scrolled:not(.is-loading-content):not(.accessibility) .header .header__logo{transform:translateY(-100%)}@media(max-width: 659px){body.is-scrolled:not(.is-loading-content):not(.accessibility) .header .header__logo{opacity:0}}@media(min-width: 1024px){.header{height:88px;padding-bottom:62px}}.header__nav{position:fixed;top:0;left:0;height:100vh;width:100vw;margin-right:0;margin-left:auto;background-color:#fff;display:none}@media(min-width: 1024px){.header__nav{position:relative;height:100%;margin-right:0;margin-left:auto;transition-delay:.1s;opacity:1;background-color:rgba(0,0,0,0);display:block}}.header__logo{position:absolute;transform:translateY(0);height:100%;display:block;width:100%;max-width:92px;transition:opacity .25s,transform .25s cubic-bezier(0.5, 0, 0.2, 1);right:0}@media(min-width: 660px)and (max-width: 1023px){.header__logo{max-width:215px}}@media(min-width: 1024px){.header__logo{max-width:250px}}@media(max-width: 659px){.header__logo{width:92px;height:70px;margin-right:16px}}.header__title{position:relative;display:inline-block;vertical-align:top;margin-top:1px;margin-left:7px}@media(min-width: 1024px){.header__title{margin-left:5px}}.header__title svg{overflow:visible;position:absolute;left:0;top:-1px !important;opacity:0}body.is-not-ready .header__title svg:first-child{opacity:1}@media(max-width: 1023px){.header__title svg{opacity:1;width:77px;height:auto}}@media(max-width: 1023px)and (min-width: 660px)and (max-width: 1023px){.header__title svg{width:140px}}.header__lang{font-size:12px;font-size:0.75rem;line-height:1.4;position:absolute;top:0;right:0;margin-top:-0.3em}.header__search{display:flex;flex-direction:row;justify-content:flex-start;align-items:center;display:inline-flex;padding-top:15px;margin-bottom:80px;min-height:40px;position:relative}.header__search i{margin-right:9px;margin-top:-0.15625vw}.mac .header__search i{margin-top:0.078125vw}@media(min-width: 1600px){.header__search i{margin-top:2px}.mac .header__search i{margin-top:5px}}.header__search span{display:inline-block;vertical-align:middle;font-size:32px;font-size:2rem;line-height:1.1875;min-height:35px}.mac .header__search span{vertical-align:top;min-height:40px}@media(min-width: 1024px){.header__search span{font-size:24px;font-size:1.5rem;line-height:1.2083333333}}@media(min-width: 1024px)and (min-width: 1024px){.header__search span{font-size:1.5em;line-height:1.2083333333}}.header__search{transition:transform .5s cubic-bezier(0.5, 0, 0.2, 1)}@media(min-width: 1024px){.header__search{display:block;padding-top:0;margin-bottom:0}}body.is-not-ready .header__search{transform:translateY(-100%)}.is-lightboxpage .header{display:none}body.is-not-ready .header__nav,body.is-not-ready .header__search{opacity:0;transform:translateY(-50%)}.nav{font-size:32px;font-size:2rem;line-height:1.1875;display:flex;flex-direction:row;justify-content:flex-start;align-items:flex-start}@media(min-width: 1024px){.nav{font-size:24px;font-size:1.5rem;line-height:1.2083333333;height:95px}}@media(min-width: 1024px)and (min-width: 1024px){.nav{font-size:1.5em;line-height:1.2083333333}}.nav:has(a:focus) body.accessibility .nav__sublist{display:block;visibility:visible;position:absolute;left:0;top:2em;background-color:#fefefe;font-size:1rem}.nav--bottom{font-size:16px;font-size:1rem;line-height:1.1875}@media(min-width: 1024px){.nav--bottom{font-size:18px;font-size:1.125rem;line-height:1.2222222222}}@media(min-width: 1024px)and (min-width: 1024px){.nav--bottom{font-size:1.125em;line-height:1.2222222222}}.nav__wrapper{width:100%;height:100vh;position:relative;overflow:hidden;transform:translateZ(0);padding:0 20px}.nav__wrapper>div{height:auto}.nav__list{height:auto;margin-bottom:18px;padding-top:55px}@media(min-width: 1024px){.nav__list{display:flex;flex-direction:row;justify-content:flex-start;align-items:center;padding:0 0 0 14px;transition:padding .25s cubic-bezier(0.5, 0, 0.2, 1);height:40px;margin:0}.footer .nav__list{padding-left:0}}.modernizr-no-touchevents .nav__list:hover .nav__item,.accessibility .nav__list:focus .nav__item{opacity:.3}.nav--bottom .nav__list{padding-top:0}@media(min-width: 1024px){.nav--bottom .nav__list{padding:20px 0;height:auto}}.nav__item{position:relative;text-align:right;min-height:40px;margin-bottom:5px}@media(min-width: 1024px){.nav__item{padding-right:1.328125vw;display:flex;flex-direction:row;justify-content:flex-start;align-items:flex-end;white-space:nowrap;text-align:left;margin-bottom:0}}.nav__item:hover,.nav__item:focus,.nav__item.has-submenu-open{opacity:1 !important}.nav--bottom .nav__item{text-align:left;min-height:29px}.nav__item a{min-height:40px;position:relative}.nav--bottom .nav__item a{min-height:27px}@media(min-width: 1024px){.nav--bottom .nav__item a{min-height:40px;line-height:40px}}body.accessibility .nav__item a:focus~.nav__sublist{display:block;visibility:visible;position:absolute;left:0;top:2em;background-color:#fefefe;font-size:1rem}.nav__item i{margin-left:13px}@media(min-width: 1024px){.nav__item i{margin-left:0;margin-right:13px}}.nav__item span{display:inline-block;vertical-align:middle}.mac .nav__item span{vertical-align:top}.nav__item{transition:opacity .25s cubic-bezier(0.5, 0, 0.2, 1),transform .5s cubic-bezier(0.5, 0, 0.2, 1)}body.is-not-ready .nav__item{transform:translateY(-120%)}.nav__item:nth-child(1){transition-delay:0s,.05s}.nav__item:nth-child(2){transition-delay:0s,.1s}.nav__item:nth-child(3){transition-delay:0s,.15s}.nav__item:nth-child(4){transition-delay:0s,.2s}.nav__item:nth-child(5){transition-delay:0s,.25s}.nav__item:nth-child(6){transition-delay:0s,.3s}.nav__item:nth-child(7){transition-delay:0s,.35s}.nav__item:nth-child(8){transition-delay:0s,.4s}.nav__item:nth-child(9){transition-delay:0s,.45s}.nav__item:nth-child(10){transition-delay:0s,.5s}.nav__card{background-color:#1d1d1d;color:#fff;position:absolute;top:40px;white-space:nowrap;overflow:hidden;display:none;height:0}.nav__card:not(.is-shown){pointer-events:none}.nav__card>div{transition:none !important}body.accessibility .nav__card{display:none !important}@media(max-width: 1023px){.nav__sublist{font-size:16px;font-size:1rem;line-height:2.0625;padding-right:45px;overflow:hidden;transition:height .5s cubic-bezier(0.5, 0, 0.2, 1);will-change:height}}@media(min-width: 1024px){.nav__sublist{visibility:hidden;position:absolute}.nav__card .nav__sublist{position:static;display:inline-block;visibility:visible;vertical-align:top;min-width:300px}}body.accessibility .nav__sublist.accessible{display:block;visibility:visible;position:absolute;left:0;top:2em;background-color:#fefefe;font-size:1rem}.nav__subitem{transition:opacity .5s cubic-bezier(0.5, 0, 0.2, 1);opacity:0}.nav__subitem:has(*:focus) body.accessibility .nav__sublist{display:block;visibility:visible;position:absolute;left:0;top:2em;background-color:#fefefe;font-size:1rem}.is-active .nav__subitem{opacity:1}@media(min-width: 1024px){.nav__subitem{opacity:1}}.nav__subitem a{display:block;transition:transform .5s cubic-bezier(0.5, 0, 0.2, 1)}.modernizr-no-touchevents .nav__subitem a:hover,.accessibility .nav__subitem a:focus{transform:translateX(20px)}@media(min-width: 1024px){.nav__subitem a{padding:8px 30px 8px 20px}}.nav__subitem:first-child a{padding-top:15px}@media(min-width: 1024px){.nav__subitem:first-child a{padding-top:20px}}.nav__subitem:last-child a{padding-bottom:21px}@media(min-width: 1024px){.nav__subitem:last-child a{padding-bottom:24px}}a{color:inherit}</style>    <link rel="stylesheet" href="/public/theme/styles.css?v=2.0.67">
+    <style>
+        .obituary
+        {
+            border: 1px solid black;
+            padding: 5px;
+        }
+    </style>
+
+    <script>
+        WebFontConfig = {
+            events: false,
+            custom: { families: ['ReaderPro:n4,n9']}
+        };
+        (function(d) {
+            var wf = d.createElement('script'), s = d.scripts[0];
+            wf.src = 'https://ajax.googleapis.com/ajax/libs/webfont/1.5.18/webfont.js';
+            s.parentNode.insertBefore(wf, s);
+        })(document);
+    </script>
+    <script src="/public/theme/libs.min.js?v=2.0.67" defer></script>
+    <script src="/public/theme/scripts.min.js?v=2.0.67" defer></script>
+
+    <!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+// fbq('init', '603525063143518');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src=https://www.facebook.com/tr?id=603525063143518&ev=PageView&noscript=1
+/></noscript>
+<!-- End Meta Pixel Code -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/theme/favicons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/public/theme/favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/public/theme/favicons/favicon-16x16.png">
+<link rel="manifest" href="/public/theme/favicons/site.webmanifest">
+<link rel="mask-icon" href="/public/theme/favicons/safari-pinned-tab.svg" color="#1d1d1d">
+<link rel="shortcut icon" href="/public/theme/favicons/favicon.ico">
+<meta name="msapplication-TileColor" content="#ffffff">
+<meta name="msapplication-config" content="/public/theme/favicons/browserconfig.xml">
+<meta name="theme-color" content="#ffffff">
+
+</head>
+
+<body class="is-not-ready" data-meta-pixel-id="848423516914043,603525063143518">
+
+    <svg class="svg-sprite"  xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><symbol id="sprite-calendar" preserveAspectRatio="xMidYMid meet"><g><path d="M0 0h22v4H0zM0 6h4v4H0zM0 12h4v4H0zM0 18h4v4H0zM6 6h4v4H6zM6 12h4v4H6zM6 18h4v4H6zM12 6h4v4h-4zM12 12h4v4h-4zM12 18h4v4h-4zM18 6h4v4h-4zM18 12h4v4h-4zM18 18h4v4h-4z"/></g></symbol><symbol id="sprite-envelope" viewBox="0 0 21 16" preserveAspectRatio="xMidYMid meet"><path d="M10.2 8.5L.2.3h19.9l-9.9 8.2zm0 2.1L.2 2.4v13h20v-13l-10 8.2z"/></symbol><symbol id="sprite-facebook" viewBox="0 0 26.57 56" preserveAspectRatio="xMidYMid meet"><path d="M5.69 18.54v-5.62a15.26 15.26 0 011.84-8.68A10.08 10.08 0 0116.38 0a35.69 35.69 0 0110.19 1l-1.42 8.64a19.47 19.47 0 00-4.61-.75c-2.21 0-4.18.8-4.18 3v6.6h9.08l-.62 8.37h-8.46V56H5.69V26.91H0v-8.37z"/></symbol><symbol id="sprite-instagram" preserveAspectRatio="xMidYMid meet"><g fill-rule="evenodd"><path d="M6.49 8.673a2.163 2.163 0 110-4.326 2.163 2.163 0 010 4.326m0-5.495a3.333 3.333 0 100 6.665 3.333 3.333 0 000-6.665"/><path d="M6.49.02c-1.763 0-1.984.008-2.676.04C3.124.09 2.652.2 2.24.36a3.18 3.18 0 00-1.15.749 3.18 3.18 0 00-.748 1.15c-.16.412-.27.884-.302 1.575C.007 4.527 0 4.748 0 6.51c0 1.763.007 1.984.04 2.676.03.69.14 1.162.3 1.575.167.427.388.789.75 1.15.36.36.722.582 1.149.748.413.16.884.27 1.575.302.692.032.913.039 2.676.039 1.762 0 1.983-.007 2.675-.04.691-.03 1.163-.14 1.576-.3a3.18 3.18 0 001.15-.75c.36-.36.582-.722.748-1.149.16-.413.27-.884.301-1.575.032-.692.04-.913.04-2.676 0-1.762-.008-1.983-.04-2.675-.031-.691-.14-1.163-.301-1.576a3.181 3.181 0 00-.749-1.15 3.18 3.18 0 00-1.15-.748c-.412-.16-.884-.27-1.575-.301C8.473.028 8.252.02 6.49.02m0 1.17c1.733 0 1.938.006 2.622.038.633.028.977.134 1.205.223.303.118.52.258.746.486.228.227.368.443.486.746.089.228.194.572.223 1.205.032.684.038.89.038 2.622 0 1.733-.006 1.938-.038 2.623-.029.632-.134.976-.223 1.205a2.01 2.01 0 01-.486.746 2.01 2.01 0 01-.746.485c-.228.09-.572.195-1.205.224-.684.031-.89.038-2.622.038-1.733 0-1.938-.007-2.623-.038-.632-.029-.976-.135-1.205-.224a2.01 2.01 0 01-.746-.485 2.012 2.012 0 01-.485-.746c-.09-.229-.195-.573-.224-1.205-.031-.685-.038-.89-.038-2.623s.007-1.938.038-2.622c.03-.633.135-.977.224-1.205.117-.303.258-.52.485-.746a2.01 2.01 0 01.746-.486c.229-.089.573-.195 1.205-.223.685-.032.89-.038 2.623-.038"/><path d="M10.733 3.046a.779.779 0 11-1.558 0 .779.779 0 011.558 0"/></g></symbol><symbol id="sprite-link" preserveAspectRatio="xMidYMid meet"><path d="M4.9 6.9c.3-.3.7-.6 1.1-.9 2.3-1.3 5.2-.6 6.7 1.6l-1.8 1.8c-.5-1.2-1.8-1.8-3-1.5-.5.1-1 .3-1.3.7L3.2 12c-1 1-1 2.7 0 3.8 1 1 2.7 1 3.8 0l1-1.1c1 .4 2 .5 3 .5l-2.3 2.3c-2 2-5.2 2-7.2 0s-2-5.2 0-7.2l3.4-3.4zm5.4-5.5L7.9 3.8c1-.1 2 .1 3 .5l1-1c1-1 2.7-1 3.8 0 1 1 1 2.7 0 3.8l-3.4 3.4c-1 1-2.7 1-3.8 0-.2-.2-.4-.5-.6-.8l-1.8 1.8c.2.3.4.5.6.8.6.6 1.5 1.1 2.4 1.3 1.2.3 2.5.1 3.7-.5.4-.2.8-.5 1.1-.9l3.4-3.4c2-2 2-5.2 0-7.2-1.8-2.1-5-2.1-7-.2z"/></symbol><symbol id="sprite-message" preserveAspectRatio="xMidYMid meet"><path d="M5.7 13.7C4.5 14.6 3.3 15 2 15c.8-.8 1.3-1.6 1.5-2.2C1.4 11.6 0 9.4 0 7c0-3.9 3.6-7 8-7s8 3.1 8 7-3.6 7-8 7c-.8 0-1.6-.1-2.3-.3z"/></symbol><symbol id="sprite-pin" preserveAspectRatio="xMidYMid meet"><path d="M7 0C3.3 0 0 3 0 6.8c0 2.2 1.1 4.7 2.8 7.8 1.2 2 2.6 4.3 4.2 6.9 4-6.4 7-10.9 7-14.6C14 3 10.7 0 7 0zm0 9.7C5.5 9.7 4.3 8.5 4.3 7c0-1.5 1.2-2.7 2.7-2.7S9.7 5.5 9.7 7c0 1.5-1.2 2.7-2.7 2.7z"/></symbol><symbol id="sprite-pinterest" viewBox="0 0 15.54 19.3" preserveAspectRatio="xMidYMid meet"><path d="M6.6 12.6c-.1 0-.1.1 0 0a4.65 4.65 0 01-.3.9c-.1.4-.2.8-.3 1.1s-.2.7-.3 1.1c-.1.2-.2.5-.3.7s-.1.3-.2.4a4.35 4.35 0 01-.4.7c-.2.3-.4.7-.6 1-.1.1-.2.3-.3.4s-.2.2-.2.3a.1.1 0 00-.1.1c-.1 0-.2 0-.2-.1V19a1.27 1.27 0 00-.1-.6v-1.9c0-.3.1-.6.1-1 0-.2.1-.4.1-.6s.1-.3.1-.5c.1-.5.3-1.1.4-1.6s.3-1 .4-1.5a8.33 8.33 0 01.4-1.5c.1-.3.1-.5.2-.8v-.1L4.7 8a3.08 3.08 0 01-.1-1 4.25 4.25 0 01.2-1.1 4.05 4.05 0 01.5-.9 4.35 4.35 0 01.7-.6 1.42 1.42 0 01.6-.2h.7a2 2 0 01.8.4 2.19 2.19 0 01.3.5.9.9 0 01.1.5v.8a1.85 1.85 0 01-.2.7c-.1.4-.3.9-.4 1.3l-.3.9c0 .1-.1.2-.1.3s-.1.3-.1.4a1.49 1.49 0 00.2.9 1.38 1.38 0 00.3.4 1.61 1.61 0 00.7.4 2.77 2.77 0 00.9.1 1.45 1.45 0 00.7-.2 1.79 1.79 0 00.7-.5 2.18 2.18 0 00.7-.9 3.1 3.1 0 00.6-1.3 5.27 5.27 0 00.3-1.2c0-.2.1-.4.1-.6s.1-.6.1-.8V5.2L12.4 4a2.18 2.18 0 00-.5-.8 2.36 2.36 0 00-.9-.8l-1.2-.6c-.2.3-.5.2-.8.2a4.87 4.87 0 00-1.2-.1 3.75 3.75 0 00-1.1.1 5.64 5.64 0 00-1.2.4 6.38 6.38 0 00-1.4.8 4.62 4.62 0 00-.7.7c-.2.4-.4.7-.6 1.1-.1.2-.2.5-.3.7a1.48 1.48 0 00-.1.7 3.4 3.4 0 00-.1 1 1.7 1.7 0 00.1.7A3.38 3.38 0 003 9.3l.2.2a.6.6 0 01.1.4c-.1.2-.1.4-.2.6a.37.37 0 01-.1.3c0 .1-.1.1-.1.2a.37.37 0 01-.3.1h-.2c-.1 0-.2-.1-.3-.2a2.19 2.19 0 01-.5-.3 4.3 4.3 0 01-.9-1 5.36 5.36 0 01-.5-1.1 1.7 1.7 0 01-.1-.7c0-.3-.1-.6-.1-.8v-.9c0-.2.1-.5.1-.7s.2-.5.3-.8A10.91 10.91 0 011 3.5a3.92 3.92 0 01.8-1 7.55 7.55 0 011.4-1.1A5.39 5.39 0 014.5.7c.3-.1.7-.2 1-.3s.6-.1.9-.2a.75.75 0 00.5-.1A6.64 6.64 0 018.2 0h1.3a1.88 1.88 0 01.8.2 7.84 7.84 0 011.4.5 4.73 4.73 0 011.2.7 4.3 4.3 0 011 .9 4.44 4.44 0 01.8 1.1 9.29 9.29 0 01.5 1 1.85 1.85 0 01.2.7 1.7 1.7 0 01.1.7 4 4 0 010 1.1v.9c0 .2-.1.4-.1.6a1.85 1.85 0 01-.2.7c-.1.3-.2.5-.3.8a5.85 5.85 0 01-1 1.7 9 9 0 01-.9 1 4.19 4.19 0 01-1.4.9 2.93 2.93 0 01-1 .3 4 4 0 01-1.9.1 3.36 3.36 0 01-1.4-.5 5.5 5.5 0 01-.9-.7c.3 0 .2 0 .2-.1"/></symbol><symbol id="sprite-print" preserveAspectRatio="xMidYMid meet"><path d="M21 6h-2v1h2v8H1V7h2V6H0v10h22V6z"/><path d="M3 12h1v1H3zM5 12h1v1H5zM7 12h1v1H7zM17 9V0H5v9H3v1h16V9h-2zM6 9V1h10v8H6z"/></symbol><symbol id="sprite-share" preserveAspectRatio="xMidYMid meet"><path d="M0 19v-3h20v3zM8 7h3v7H8z"/><path d="M9.5 0L17 8H2z"/></symbol><symbol id="sprite-twitter" preserveAspectRatio="xMidYMid meet"><path d="M18 1.7c-.7.3-1.4.5-2.1.6.8-.5 1.3-1.2 1.6-2-.7.4-1.5.7-2.3.9C14.5.4 13.5 0 12.5 0c-2 0-3.7 1.7-3.7 3.7 0 .3 0 .6.1.8C5.8 4.4 3.1 2.9 1.3.7.9 1.2.8 1.9.8 2.5c0 1.3.7 2.4 1.6 3.1-.6 0-1.2-.2-1.7-.5 0 1.8 1.3 3.3 3 3.6-.3.1-.6.1-1 .1-.2 0-.5 0-.7-.1.5 1.5 1.8 2.5 3.4 2.6-1.3 1-2.9 1.6-4.6 1.6-.2.1-.5.1-.8.1 1.6 1 3.6 1.7 5.7 1.7 6.8 0 10.5-5.6 10.5-10.5v-.5c.7-.6 1.3-1.2 1.8-2"/></symbol><symbol id="sprite-warn" preserveAspectRatio="xMidYMid meet"><path d="M8.8 5.4h1.1v5.5H8.8zM8.8 12.3h1.1v1.1H8.8z"/><path d="M18.8 16H0L9.4 0l9.4 16zM1.9 14.9h14.9L9.4 2.2 1.9 14.9z"/></symbol></svg>
+
+    <!-- cookies aside -->
+<aside class="cookies container js-cookies">
+    <div class="cookies__wrap row no-gutters">
+        <button class="cookies__close js-cookies-close">
+            <span class="sr-only">Zamknij</span>
+            <i class="icon-close"></i>
+        </button>
+        <div class="col-11 col-xl-11">
+            <p class="cookies__text">
+                Nowy Teatr  korzysta z plików cookies. Zapoznaj się z naszą <a href="/pl/polityka-prywatnosci">Polityką plików cookies</a> w której informujemy o celu używanych przez nas cookies. Jeśli klikniesz Akceptuj - zgadzasz się na instalację plików cookies w Twoim urządzeniu w celu dostosowania naszych reklam do Twoich potrzeb.
+            </p>
+        </div>
+        <div class="col-5 col-xl-5">
+            <button class="cookies__accept js-cookies-agree">Akceptuj<span class="sr-only">Akceptuj cookies</span></button>
+        </div>
+    </div>
+</aside>
+
+    <div class="wrapper js-shift" id="wrapper">
+         <header class="header" id="header">
+    <div class="container">
+        <div class="row no-gutters desktop-only">
+            <div class="col-3 col-xl-3">
+                <button class="header__search js-toggle-search">
+                    <i class="block--circle"></i>
+                    <span>Szukaj</span>
+                </button>
+            </div>
+            <div class="col-10 col-xl-10">
+                <nav class="quick-access print-hide">
+                    <a href="#content" data-skip-to>Przejdź do głównej treści</a>
+                    <a href="#footer" data-skip-to>Przejdź do stopki</a>
+                </nav>
+                <nav class="header__nav nav js-nav" aria-label="Główna">
+                    <div class="nav__card js-nav-card">
+                        <div data-gradient-options='{"image": "/public/upload/misc/jpg/5d1373855a1bf___1568930328.jpg", "shift": 80, "destroy": false, "breakpoints": ["desktop"]}'></div>
+                    </div>
+                    <div class="spacer"></div>
+                    <ul class="nav__list">
+                        <li class="nav__item js-nav-item"><a href="/pl/kalendarz"><i class="block--triangle"></i><span>Kalendarz</span></a></li><li class="nav__item js-nav-item"><a href="/pl/program"><i class="block--circle"></i><span>Program</span></a><ul class="nav__sublist"><li class="nav__subitem"><a href="/pl/program/teatr">Teatr</a></li><li class="nav__subitem"><a href="/pl/program/festiwale">Festiwale</a></li><li class="nav__subitem"><a href="/pl/program/muzyka">Muzyka</a></li><li class="nav__subitem"><a href="/pl/program/taniec">Taniec</a></li><li class="nav__subitem"><a href="/pl/program/film">Film</a></li><li class="nav__subitem"><a href="/pl/program/literatura">Literatura</a></li><li class="nav__subitem"><a href="/pl/program/akcje">Akcje</a></li><li class="nav__subitem"><a href="/pl/program/spotkania">Spotkania</a></li><li class="nav__subitem"><a href="/pl/program/edukacja">Edukacja</a></li></ul></li><li class="nav__item js-nav-item"><a href="/pl/teatr"><i class="block--hexagon"></i><span>Teatr</span></a><ul class="nav__sublist"><li class="nav__subitem"><a href="/pl/teatr/miejsce">Miejsce</a></li><li class="nav__subitem"><a href="/pl/teatr/zespol">Zespół</a></li><li class="nav__subitem"><a href="/pl/teatr/historia">Historia</a></li><li class="nav__subitem"><a href="/pl/teatr/dzialania-spoleczne">Działania społeczne</a></li><li class="nav__subitem"><a href="/pl/teatr/zielony-zespol">Zielony zespół</a></li><li class="nav__subitem"><a href="/pl/teatr/patroni">Patroni</a></li><li class="nav__subitem"><a href="/pl/teatr/raporty-sezonowe">Raporty sezonowe</a></li></ul></li><li class="nav__item js-nav-item"><a href="/pl/bilety"><i class="block--square"></i><span>Bilety</span></a></li><li class="nav__item js-nav-item"><a href="https://vod.nowyteatr.org/"><i class="block--vod"></i><span>VOD</span></a></li>                    </ul>
+                </nav>
+            </div>
+            <div class="col-3 col-xl-3">
+                <a href="/pl" class="header__logo js-logo" title="Nowy Teatr">
+                    <div class="spacer"></div>
+                    <span class="header__title js-logo-wrap" data-lang="pl">
+                        <svg class="svg-wczytuje"  width="194px" height="34px" viewBox="0 0 194 34" version="1.1" data-state="loading">
+    <path d="M14.22,0.826 L19.222,0.826 L20.124,15.627 L26.561,0.826 L33.285,0.826 L21.641,26 L15.655,26 L14.671,11.24 L7.783,26 L1.797,26 L0.198,0.826 L6.717,0.826 L7.373,15.627 L14.22,0.826 Z M31.145,14.971 C31.145,6.976 36.68,0.416 44.47,0.416 C50.702,0.416 54.351,4.147 54.679,9.272 L48.119,9.272 C47.791,7.427 46.438,6.197 44.224,6.197 C40.329,6.197 37.787,9.805 37.787,14.807 C37.787,18.292 39.673,20.629 42.666,20.629 C44.839,20.629 46.397,19.481 47.299,17.513 L53.9,17.513 C52.26,22.679 48.611,26.41 42.461,26.41 C35.573,26.41 31.145,21.695 31.145,14.971 Z M75.13,20.301 L74.105,26 L53.892,26 L54.712,21.121 L68.98,6.484 L57.5,6.484 L58.525,0.826 L78.451,0.826 L77.59,5.664 L63.527,20.301 L75.13,20.301 Z M90.005,10.666 L97.057,0.826 L104.232,0.826 L92.301,17.062 L90.743,26 L84.142,26 L85.7,17.062 L79.591,0.826 L86.438,0.826 L90.005,10.666 Z M103.732,6.484 L104.716,0.826 L126.856,0.826 L125.831,6.484 L118.082,6.484 L114.638,26 L108.037,26 L111.481,6.484 L103.732,6.484 Z M135.909,26.41 C129.923,26.41 126.028,23.376 126.028,17.882 C126.028,17.144 126.069,16.365 126.274,15.34 L128.857,0.826 L135.417,0.826 L132.875,15.135 C132.793,15.668 132.711,16.201 132.711,16.693 C132.711,19.153 133.982,20.547 136.401,20.547 C139.353,20.547 141.034,18.702 141.69,15.135 L144.191,0.826 L150.751,0.826 L148.127,15.75 C146.897,22.679 142.633,26.41 135.909,26.41 Z M149.513,16.857 L156.114,16.857 C156.114,16.857 156.073,17.185 156.073,17.39 C156.073,19.317 157.057,20.506 159.025,20.506 C161.403,20.506 162.469,18.907 162.92,16.119 L165.626,0.826 L172.227,0.826 L169.48,16.406 C168.332,23.007 164.519,26.41 158.738,26.41 C152.998,26.41 149.472,23.089 149.472,18.005 C149.472,17.636 149.513,17.062 149.513,16.857 Z M175.171,0.826 L193.211,0.826 L192.227,6.484 L180.665,6.484 L179.968,10.42 L190.464,10.42 L189.521,15.955 L178.984,15.955 L178.246,20.301 L189.767,20.301 L188.783,26 L187.225,26 C185.913,27.312 184.642,28.296 184.642,29.239 C184.642,29.608 184.847,29.854 185.298,29.854 C185.79,29.854 186.118,29.69 186.856,29.239 L186.2,32.806 C185.421,33.257 184.519,33.585 183.412,33.585 C181.485,33.585 180.255,32.642 180.255,30.92 C180.255,28.911 181.731,27.435 183.248,26 L170.743,26 L175.171,0.826 Z" fill="#101010" fill-rule="nonzero"></path>
+</svg>
+
+                        <svg class="svg-jeszczechwila"  width="167px" height="60px" viewBox="0 0 167 60" data-state="wait">
+    <path fill="#101010" d="M1.204,15.265 C1.204,6.88 7.009,8.52651283e-14 15.179,8.52651283e-14 C21.715,8.52651283e-14 25.542,3.913 25.886,9.288 L19.006,9.288 C18.662,7.353 17.243,6.063 14.921,6.063 C10.836,6.063 8.17,9.847 8.17,15.093 C8.17,18.748 10.148,21.199 13.287,21.199 C15.566,21.199 17.2,19.995 18.146,17.931 L25.069,17.931 C23.349,23.349 19.522,27.262 13.072,27.262 C5.848,27.262 1.204,22.317 1.204,15.265 Z M47.359,0.43 L54.282,0.43 L49.638,26.832 L42.715,26.832 L44.564,16.383 L34.373,16.383 L32.524,26.832 L25.601,26.832 L30.245,0.43 L37.168,0.43 L35.405,10.449 L45.596,10.449 L47.359,0.43 Z M70.767,0.43 L76.013,0.43 L76.959,15.953 L83.71,0.43 L90.762,0.43 L78.55,26.832 L72.272,26.832 L71.24,11.352 L64.016,26.832 L57.738,26.832 L56.061,0.43 L62.898,0.43 L63.586,15.953 L70.767,0.43 Z M99.464,0.43 L94.82,26.832 L87.897,26.832 L92.541,0.43 L99.464,0.43 Z M98.276,26.832 L102.92,0.43 L109.843,0.43 L106.231,20.855 L118.099,20.855 L117.067,26.832 L98.276,26.832 Z M133.036,0.43 L140.088,0.43 L145.205,26.832 L138.368,26.832 L137.422,21.715 L127.79,21.715 L124.952,26.832 L118.072,26.832 L133.036,0.43 Z M135.1,8.6 L130.929,16.039 L136.433,16.039 L135.1,8.6 Z"></path>
+    <path fill="#101010" d="M16.469,58.832 L11.997,58.832 L9.245,43.137 L6.45,58.832 L-2.61479727e-12,58.832 L4.644,32.43 L12.9,32.43 L15.824,48.985 L24.51,32.43 L33.067,32.43 L28.423,58.832 L21.93,58.832 L24.725,43.137 L16.469,58.832 Z M45.123,53.199 C48.95,53.199 51.96,49.759 51.96,44.169 C51.96,40.6 49.982,38.063 46.843,38.063 C42.973,38.063 40.006,41.503 40.006,47.093 C40.006,50.662 41.984,53.199 45.123,53.199 Z M44.908,59.262 C37.598,59.262 33.04,54.274 33.04,47.265 C33.04,38.45 39.189,32 47.058,32 C54.368,32 58.926,36.988 58.926,43.997 C58.926,52.812 52.777,59.262 44.908,59.262 Z M75.454,58.832 L70.982,58.832 L68.23,43.137 L65.435,58.832 L58.985,58.832 L63.629,32.43 L71.885,32.43 L74.809,48.985 L83.495,32.43 L92.052,32.43 L87.408,58.832 L80.915,58.832 L83.71,43.137 L75.454,58.832 Z M95.465,32.43 L114.385,32.43 L113.353,38.364 L101.227,38.364 L100.496,42.492 L111.504,42.492 L110.515,48.297 L99.464,48.297 L98.69,52.855 L110.773,52.855 L109.741,58.832 L90.821,58.832 L95.465,32.43 Z M140.502,32.43 L135.858,58.832 L130.526,58.832 L122.098,42.922 L119.303,58.832 L112.638,58.832 L117.282,32.43 L123.474,32.43 L131.171,47.437 L133.837,32.43 L140.502,32.43 Z M141.722,38.364 L142.754,32.43 L165.974,32.43 L164.899,38.364 L156.772,38.364 L153.16,58.832 L146.237,58.832 L149.849,38.364 L141.722,38.364 Z"></path>
+</svg>
+
+                        <svg class="svg-logo"  width="116.7px" height="62px" viewBox="0 0 116.7 62" data-state="logo">
+<path d="M6.5,11.6v16.5H0v-28h7L17.5,17V0.1H24v28h-6.7L6.5,11.6z"/>
+<path d="M40.8,0c9,0,14.7,6.2,14.7,14.2S49.9,28.5,41,28.5c-9,0-14.5-6.2-14.5-14.2C26.4,6.3,32.3,0,40.8,0 M41,22.3
+	c4.9,0,7.5-3.6,7.5-8.1s-2.8-8.1-7.6-8.1c-4.9,0-7.5,3.6-7.5,8.1C33.4,18.8,36.4,22.3,41,22.3"/>
+<path d="M74.8,10.7L70,28h-7.6L54.7,0.5H62l4.5,18.7l4.8-18.7h7.2l4.8,18.7l4.5-18.7h6.9L87.3,28h-7.8L74.8,10.7z"/>
+<path d="M94.6,0.5h7.4l3.8,7.5l3.9-7.5h7l-7.8,13.9V28h-6.6V14.5L94.6,0.5z"/>
+<path d="M11.7,40.6v21.3H5V40.6H0.4v-6.2h15.9v6.2H11.7z"/>
+<path d="M18.5,61.9V34.4h13.1v6.2h-6.4v4.3h6.2V51h-6.2v4.7h6.6v6.2H18.5z"/>
+<path d="M50.3,55.4h-8.7L39.3,62h-6.6l9.7-27.5h7L59.6,62h-7.1L50.3,55.4z M43.6,49.8h4.9l-2.4-7L43.6,49.8z"/>
+<path d="M68.8,40.6v21.3h-6.7V40.6h-4.6v-6.2h15.9v6.2H68.8z"/>
+<path d="M90.6,49.3L96,61.9h-7.2l-4.5-11.1h-2v11.1h-6.6V34.4h9.8c5.6,0,8.5,3.1,8.5,8.2C93.8,45.5,92.5,47.9,90.6,49.3L90.6,49.3z
+	 M82.2,40.2v5.1h2.3c1.6,0,2.4-1,2.4-2.6s-0.9-2.5-2.4-2.5H82.2z"/>
+</svg>
+
+                    </span>
+                </a>
+                                    <a class="header__lang" href="/en/repertuar?setlang=true" data-history="false">English</a>
+                            </div>
+        </div>
+
+        <button class="hamburger desktop-hide js-toggle-menu">
+            <span class="sr-only">Otwórz Menu</span>
+            <i class="icon-menu"><u></u><u></u><u></u></i>
+        </button>
+        <a href="/pl" class="header__logo desktop-hide" title="Nowy Teatr">
+            <span class="spacer"></span>
+            <span class="header__title">
+                <svg class="svg-logo"  width="116.7px" height="62px" viewBox="0 0 116.7 62" data-state="logo">
+<path d="M6.5,11.6v16.5H0v-28h7L17.5,17V0.1H24v28h-6.7L6.5,11.6z"/>
+<path d="M40.8,0c9,0,14.7,6.2,14.7,14.2S49.9,28.5,41,28.5c-9,0-14.5-6.2-14.5-14.2C26.4,6.3,32.3,0,40.8,0 M41,22.3
+	c4.9,0,7.5-3.6,7.5-8.1s-2.8-8.1-7.6-8.1c-4.9,0-7.5,3.6-7.5,8.1C33.4,18.8,36.4,22.3,41,22.3"/>
+<path d="M74.8,10.7L70,28h-7.6L54.7,0.5H62l4.5,18.7l4.8-18.7h7.2l4.8,18.7l4.5-18.7h6.9L87.3,28h-7.8L74.8,10.7z"/>
+<path d="M94.6,0.5h7.4l3.8,7.5l3.9-7.5h7l-7.8,13.9V28h-6.6V14.5L94.6,0.5z"/>
+<path d="M11.7,40.6v21.3H5V40.6H0.4v-6.2h15.9v6.2H11.7z"/>
+<path d="M18.5,61.9V34.4h13.1v6.2h-6.4v4.3h6.2V51h-6.2v4.7h6.6v6.2H18.5z"/>
+<path d="M50.3,55.4h-8.7L39.3,62h-6.6l9.7-27.5h7L59.6,62h-7.1L50.3,55.4z M43.6,49.8h4.9l-2.4-7L43.6,49.8z"/>
+<path d="M68.8,40.6v21.3h-6.7V40.6h-4.6v-6.2h15.9v6.2H68.8z"/>
+<path d="M90.6,49.3L96,61.9h-7.2l-4.5-11.1h-2v11.1h-6.6V34.4h9.8c5.6,0,8.5,3.1,8.5,8.2C93.8,45.5,92.5,47.9,90.6,49.3L90.6,49.3z
+	 M82.2,40.2v5.1h2.3c1.6,0,2.4-1,2.4-2.6s-0.9-2.5-2.4-2.5H82.2z"/>
+</svg>
+
+            </span>
+        </a>
+    </div>
+</header>
+
+        <main id="content" class="content" tabindex="0">
+        <article data-page="Page" data-title="Nowy Teatr" data-lang-url="/en/repertuar?setlang=true">
+    <div class="container">
+	  		 <h1 class="sr-only">404</h1>
+    <div class="container">
+        <!--INTRO-->
+        <section>
+            <div class="row no-gutters">
+                <div class="spacer--h js-spacer-h"></div>
+                <div class="col-8 col-xl-8">
+                    <div class="col-wrap">
+                        <div class="heading heading--full">
+                            <h2>404</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-8 col-xl-8">
+                    <div class="col-wrap">
+                        <div class="text align-right">
+                            <p>Strona nie została znaleziona</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!--IMAGE-->
+        <section>
+            <figure class="image--full image--mb" data-ratio="1.60" data-scroll="relativeParallax">
+                                <!-- subview_picture -->
+<picture>
+  <source media="(max-width: 999px)" srcset="data:image/png;base64,aHVuY3dvdA==" data-srcset="/public/upload/modules/square/5d7b72bdc34d7___1570090345.jpg, /public/upload/modules/square_x2/5d7b72bdc34d7___1570090345.jpg 2x">
+  <source media="(min-width: 1000px)" srcset="data:image/png;base64,aHVuY3dvdA==" data-srcset="/public/upload/modules/medium/5d7b72bdc34d7___1570090346.jpg, /public/upload/modules/medium_x2/5d7b72bdc34d7___1570090346.jpg 2x">
+  <img src="/public/upload/modules/medium/5d7b72bdc34d7___1570090346.jpg" alt="" class="is-loading">
+</picture>
+
+            </figure>
+        </section>
+    </div>
+		</div>
+</article>
+
+        </main>
+
+        <footer class="footer" id="footer" tabindex="0">
+    <div class="container">
+        <div class="row no-gutters ">
+            <div class="col-11 col-xl-11">
+                <nav class="footer__nav nav--bottom" aria-label="Dolna">
+                    <ul class="nav__list">
+                                                                <li class="nav__item js-menu-item">
+                                                        <a href="/pl/aktualnosci">Aktualności</a>
+                                                    </li>
+                                                                                    <li class="nav__item js-menu-item">
+                                                        <a href="/pl/dla-prasy">Dla prasy</a>
+                                                    </li>
+                                                                                    <li class="nav__item js-menu-item">
+                                                        <a href="/pl/teatr-bez-barier">Teatr bez barier</a>
+                                                    </li>
+                                                                                    <li class="nav__item js-menu-item">
+                                                        <a href="/pl/polityka-prywatnosci">Polityka prywatności</a>
+                                                    </li>
+                                                                                    <li class="nav__item js-menu-item">
+                                                        <a href="/pl/bip">BIP</a>
+                                                    </li>
+                                                                                    <li class="nav__item js-menu-item">
+                                                        <a href="#" class="js-toggle-subscribe">Newsletter</a>
+                                                    </li>
+                                                                                    <li class="nav__item js-menu-item">
+                                                        <a href="/pl/kontakt">Kontakt</a>
+                                                    </li>
+                                                                                    <li class="nav__item js-menu-item"><a href="https://tlumacz.migam.org/warszawa-nowy-teatr-madalinskiego-10-16" target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie"><svg class="svg-ucho"  xmlns="http://www.w3.org/2000/svg" width="22" height="25" viewBox="0 0 22 25"><path fill="none" stroke="#000" stroke-width="2" d="M6 8.6c0-1.7 1.4-3.2 3.2-3.2 1.7 0 3.2 1.4 3.2 3.2"/><path fill="none" stroke="#000" stroke-width="2" d="M8.4 23.4c1.8 0 3.3-1.5 3.3-3.3 0-3.5 1.9-5.9 3-7 1.1-1.1 1.7-1.7 1.7-4.4 0-4.1-3.3-7.3-7.3-7.3-4.1 0-7.4 3.3-7.4 7.3M.7 20.2l9.3-9.4M17.4 3.5l3-2.8"/></svg><span class="sr-only">tłumacz on-line</span></a></li>
+                                        </ul>
+                    <div class="footer__colophon desktop-hide">Website by <a href="https://huncwot.com" target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie">Huncwot.com</a></div>
+                </nav>
+            </div>
+            <div class="col-5 col-xl-5">
+                <div class="footer__colophon desktop-only">Website by <a href="https://huncwot.com" target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie">Huncwot.com</a></div>
+                <ul class="footer__social social">
+                    <li class="social__item social__lang desktop-hide">
+                        <a href="/en/repertuar?setlang=true" data-history="false">
+                            <span class="sr-only">Zmień język</span>English</a>
+                    </li>
+                                        <li class="social__item">
+                        <a target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie" href="https://www.facebook.com/MCKNowyTeatr/"><span class="sr-only">Podziel się na facebook</span><svg class="svg-facebook"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26.57 56"><path d="M5.69 18.54v-5.62a15.26 15.26 0 011.84-8.68A10.08 10.08 0 0116.38 0a35.69 35.69 0 0110.19 1l-1.42 8.64a19.47 19.47 0 00-4.61-.75c-2.21 0-4.18.8-4.18 3v6.6h9.08l-.62 8.37h-8.46V56H5.69V26.91H0v-8.37z"/></svg></a>
+                    </li>
+                                        <li class="social__item">
+                        <a target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie" href="https://www.instagram.com/nowy_teatr/"><span class="sr-only">Podziel się na instagram</span><svg class="svg-instagram"  viewBox="0 0 13 13" xmlns="http://www.w3.org/2000/svg"><g fill-rule="evenodd"><path d="M6.49 8.673a2.163 2.163 0 110-4.326 2.163 2.163 0 010 4.326m0-5.495a3.333 3.333 0 100 6.665 3.333 3.333 0 000-6.665"/><path d="M6.49.02c-1.763 0-1.984.008-2.676.04C3.124.09 2.652.2 2.24.36a3.18 3.18 0 00-1.15.749 3.18 3.18 0 00-.748 1.15c-.16.412-.27.884-.302 1.575C.007 4.527 0 4.748 0 6.51c0 1.763.007 1.984.04 2.676.03.69.14 1.162.3 1.575.167.427.388.789.75 1.15.36.36.722.582 1.149.748.413.16.884.27 1.575.302.692.032.913.039 2.676.039 1.762 0 1.983-.007 2.675-.04.691-.03 1.163-.14 1.576-.3a3.18 3.18 0 001.15-.75c.36-.36.582-.722.748-1.149.16-.413.27-.884.301-1.575.032-.692.04-.913.04-2.676 0-1.762-.008-1.983-.04-2.675-.031-.691-.14-1.163-.301-1.576a3.181 3.181 0 00-.749-1.15 3.18 3.18 0 00-1.15-.748c-.412-.16-.884-.27-1.575-.301C8.473.028 8.252.02 6.49.02m0 1.17c1.733 0 1.938.006 2.622.038.633.028.977.134 1.205.223.303.118.52.258.746.486.228.227.368.443.486.746.089.228.194.572.223 1.205.032.684.038.89.038 2.622 0 1.733-.006 1.938-.038 2.623-.029.632-.134.976-.223 1.205a2.01 2.01 0 01-.486.746 2.01 2.01 0 01-.746.485c-.228.09-.572.195-1.205.224-.684.031-.89.038-2.622.038-1.733 0-1.938-.007-2.623-.038-.632-.029-.976-.135-1.205-.224a2.01 2.01 0 01-.746-.485 2.012 2.012 0 01-.485-.746c-.09-.229-.195-.573-.224-1.205-.031-.685-.038-.89-.038-2.623s.007-1.938.038-2.622c.03-.633.135-.977.224-1.205.117-.303.258-.52.485-.746a2.01 2.01 0 01.746-.486c.229-.089.573-.195 1.205-.223.685-.032.89-.038 2.623-.038"/><path d="M10.733 3.046a.779.779 0 11-1.558 0 .779.779 0 011.558 0"/></g></svg></a>
+                    </li>
+                                        <li class="social__item">
+                        <a target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie" href="https://www.youtube.com/user/NowyTeatr"><span class="sr-only">Podziel się na youtube</span><svg class="svg-youtube"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 12"><path d="M12.26.115c-2.253-.154-7.27-.153-9.52 0C.306.281.019 1.753 0 5.625c.018 3.866.302 5.343 2.74 5.51 2.25.153 7.267.154 9.52 0 2.435-.166 2.722-1.637 2.74-5.51-.018-3.866-.303-5.343-2.74-5.51zm-6.635 8.01v-5l5 2.496-5 2.504z" fill-rule="evenodd"/></svg></a>
+                    </li>
+                                        <li class="social__item social__lang desktop-only">
+                        <span class="sr-only">Zmień język</span>
+                                            <a href="/en/repertuar?setlang=true" data-history="false">English</a>
+                                        </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</footer>
+
+    </div>
+
+    <div class="menu js-menu">
+    <ul class="menu__list">
+                <li class="menu__item js-menu-item ">
+            <a href="/pl/kalendarz">
+                Kalendarz<i class="block--triangle"></i>
+            </a>
+                    </li>
+                    <li class="menu__item js-menu-item has-submenu">
+            <a href="/pl/program">
+                Program<i class="block--circle"></i>
+            </a>
+                        <div class="menu__subwrap">
+                <ul class="menu__sublist js-sublist">
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/teatr">Teatr</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/festiwale">Festiwale</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/muzyka">Muzyka</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/taniec">Taniec</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/film">Film</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/literatura">Literatura</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/akcje">Akcje</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/spotkania">Spotkania</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/program/edukacja">Edukacja</a>
+                    </li>
+                                    </ul>
+            </div>
+                    </li>
+                    <li class="menu__item js-menu-item has-submenu">
+            <a href="/pl/teatr">
+                Teatr<i class="block--hexagon"></i>
+            </a>
+                        <div class="menu__subwrap">
+                <ul class="menu__sublist js-sublist">
+                                        <li class="menu__subitem">
+                        <a href="/pl/teatr/miejsce">Miejsce</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/teatr/zespol">Zespół</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/teatr/historia">Historia</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/teatr/dzialania-spoleczne">Działania społeczne</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/teatr/zielony-zespol">Zielony zespół</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/teatr/patroni">Patroni</a>
+                    </li>
+                                        <li class="menu__subitem">
+                        <a href="/pl/teatr/raporty-sezonowe">Raporty sezonowe</a>
+                    </li>
+                                    </ul>
+            </div>
+                    </li>
+                    <li class="menu__item js-menu-item ">
+            <a href="/pl/bilety">
+                Bilety<i class="block--square"></i>
+            </a>
+                    </li>
+                    <li class="menu__item js-menu-item ">
+            <a href="https://vod.nowyteatr.org/">
+                VOD<i class="block--vod"></i>
+            </a>
+                    </li>
+            </ul>
+
+
+
+    <div class="spaner spacer--h js-menu-item"></div>
+
+    <div class="menu__search js-search js-menu-item">
+        <i class="block--circle"></i>
+        <form method="GET" action="/pl/szukaj" data-api-url="/pl/api/search">
+            <input type="search" class="search__input--mobile" placeholder="Szukaj" name="q" value="" autocomplete="off">
+        </form>
+    </div>
+
+    <div class="menu__bottom-lists">
+        <ul class="menu__list menu__list--small">
+                                    <li class="menu__item--small js-menu-item">
+                <a href="/pl/aktualnosci">Aktualności</a>
+            </li>
+                                                <li class="menu__item--small js-menu-item">
+                <a href="/pl/dla-prasy">Dla prasy</a>
+            </li>
+                                                <li class="menu__item--small js-menu-item">
+                <a href="/pl/teatr-bez-barier">Teatr bez barier</a>
+            </li>
+                                                <li class="menu__item--small js-menu-item">
+                <a href="/pl/polityka-prywatnosci">Polityka prywatności</a>
+            </li>
+                                                <li class="menu__item--small js-menu-item">
+                <a href="/pl/bip">BIP</a>
+            </li>
+                                                <li class="menu__item--small js-menu-item">
+                <a href="#" class="js-toggle-subscribe">Newsletter</a>
+            </li>
+                                                <li class="menu__item--small js-menu-item">
+                <a href="/pl/kontakt">Kontakt</a>
+            </li>
+                                    <li class="menu__item--colophon js-menu-item">
+                <a href="https://huncwot.com" target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie">Website by Huncwot.com</a>
+            </li>
+        </ul>
+
+
+        <ul class="menu__social social js-menu-item">
+                                                            <li class="social__item social__lang"><a href="/en/repertuar?setlang=true" data-history="false"><span class="sr-only">Zmień język</span>EN</a>
+                                    </li>
+                        <li class="social__item">
+                <a href="https://www.facebook.com/MCKNowyTeatr/" target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie" title="facebook"><svg class="svg-facebook"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26.57 56"><path d="M5.69 18.54v-5.62a15.26 15.26 0 011.84-8.68A10.08 10.08 0 0116.38 0a35.69 35.69 0 0110.19 1l-1.42 8.64a19.47 19.47 0 00-4.61-.75c-2.21 0-4.18.8-4.18 3v6.6h9.08l-.62 8.37h-8.46V56H5.69V26.91H0v-8.37z"/></svg></a>
+            </li>
+                        <li class="social__item">
+                <a href="https://www.instagram.com/nowy_teatr/" target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie" title="instagram"><svg class="svg-instagram"  viewBox="0 0 13 13" xmlns="http://www.w3.org/2000/svg"><g fill-rule="evenodd"><path d="M6.49 8.673a2.163 2.163 0 110-4.326 2.163 2.163 0 010 4.326m0-5.495a3.333 3.333 0 100 6.665 3.333 3.333 0 000-6.665"/><path d="M6.49.02c-1.763 0-1.984.008-2.676.04C3.124.09 2.652.2 2.24.36a3.18 3.18 0 00-1.15.749 3.18 3.18 0 00-.748 1.15c-.16.412-.27.884-.302 1.575C.007 4.527 0 4.748 0 6.51c0 1.763.007 1.984.04 2.676.03.69.14 1.162.3 1.575.167.427.388.789.75 1.15.36.36.722.582 1.149.748.413.16.884.27 1.575.302.692.032.913.039 2.676.039 1.762 0 1.983-.007 2.675-.04.691-.03 1.163-.14 1.576-.3a3.18 3.18 0 001.15-.75c.36-.36.582-.722.748-1.149.16-.413.27-.884.301-1.575.032-.692.04-.913.04-2.676 0-1.762-.008-1.983-.04-2.675-.031-.691-.14-1.163-.301-1.576a3.181 3.181 0 00-.749-1.15 3.18 3.18 0 00-1.15-.748c-.412-.16-.884-.27-1.575-.301C8.473.028 8.252.02 6.49.02m0 1.17c1.733 0 1.938.006 2.622.038.633.028.977.134 1.205.223.303.118.52.258.746.486.228.227.368.443.486.746.089.228.194.572.223 1.205.032.684.038.89.038 2.622 0 1.733-.006 1.938-.038 2.623-.029.632-.134.976-.223 1.205a2.01 2.01 0 01-.486.746 2.01 2.01 0 01-.746.485c-.228.09-.572.195-1.205.224-.684.031-.89.038-2.622.038-1.733 0-1.938-.007-2.623-.038-.632-.029-.976-.135-1.205-.224a2.01 2.01 0 01-.746-.485 2.012 2.012 0 01-.485-.746c-.09-.229-.195-.573-.224-1.205-.031-.685-.038-.89-.038-2.623s.007-1.938.038-2.622c.03-.633.135-.977.224-1.205.117-.303.258-.52.485-.746a2.01 2.01 0 01.746-.486c.229-.089.573-.195 1.205-.223.685-.032.89-.038 2.623-.038"/><path d="M10.733 3.046a.779.779 0 11-1.558 0 .779.779 0 011.558 0"/></g></svg></a>
+            </li>
+                        <li class="social__item">
+                <a href="https://www.youtube.com/user/NowyTeatr" target="_blank" rel="noopener noreferrer" title="Otwórz w nowym oknie" title="youtube"><svg class="svg-youtube"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15 12"><path d="M12.26.115c-2.253-.154-7.27-.153-9.52 0C.306.281.019 1.753 0 5.625c.018 3.866.302 5.343 2.74 5.51 2.25.153 7.267.154 9.52 0 2.435-.166 2.722-1.637 2.74-5.51-.018-3.866-.303-5.343-2.74-5.51zm-6.635 8.01v-5l5 2.496-5 2.504z" fill-rule="evenodd"/></svg></a>
+            </li>
+                    </ul>
+    </div>
+
+
+    <button class="menu__closer hamburger js-toggle-menu">
+        <span class="sr-only">Zamknij</span>
+        <i class="icon-close"></i>
+    </button>
+</div>
+    <div id="filters" data-options='{"toggleSelector": ".js-toggle-filters"}'
+    data-gradient-options='{"image": "/public/upload/misc/jpg/5d1373855a1bf___1568930328.jpg", "shift": 100}'>
+    <div class="filters__scroll js-iscroll">
+        <div></div>
+    </div>
+</div>
+
+<div class="search js-search" id="search" data-options='{"toggleSelector": ".js-toggle-search", "position": "top"}'
+    data-gradient-options='{"image": "/public/upload/misc/jpg/5d13739798412___1568930417.jpg", "shift": 40, "breakpoints": ["desktop"]}'>
+    <button class="search__close js-toggle-search">
+        <span class="sr-only">Zamknij</span>
+        <i class="icon-close"></i>
+    </button>
+    <form class="search__form" method="post" action="/pl/szukaj"
+        data-api-url="/pl/api/search">
+        <label for="q">Wpisz frazę</label>
+        <input type="search" class="search__input" placeholder="Wpisz frazę" name="q"
+            value="" autocomplete="off">
+    </form>
+    <div class="search__live livesearch js-search-live"></div>
+</div>
+
+<div id="subscribe" class="subscribe container"
+    data-options='{"toggleSelector": ".js-toggle-subscribe", "position": "bottom"}'
+    data-gradient-options='{"image": "/public/upload/misc/jpg/5d13739798412___1568930417.jpg", "shift": 40}'>
+    <button class="subscribe__close js-toggle-subscribe">
+        <span class="sr-only">Zamknij</span>
+        <i class="icon-close"></i>
+    </button>
+    <form action="/pl/api/newsletter_add" class="form" method="POST"
+        data-options='{"response": "#newsletter-result", "type": "json", "reset": false }'>
+        <div class="row no-gutters">
+            <div class="col-8 col-xl-8">
+                <div class="error"></div>
+                <label for="email"><span>Twój e-mail</span></label>
+                <input type="email" name="email" placeholder="Twój e-mail" autocomplete="email" />
+                <input type="hidden" data-recaptcha data-recaptcha-key="6Lf-fUghAAAAADbZSneKMEnXAmX3AtBvhsB9yzLT" name="token" value="">
+                <div class="error error-email"><span class="subscribe__alert"><svg class="svg-alert"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 19"><path fill="#FFF" d="M10.4 0l10.4 18.5H0L10.4 0zM1.7 17.5H19L10.4 2 1.7 17.5z"/><path fill="#FFF" d="M9.9 6.5h1v6h-1zM9.9 14.5h1v1h-1z"/></svg></span></div>
+                <button class="subscribe__submit" type="submit" aria-label="Zasubskrybuj">
+                    <i class="block--arrow"></i>
+                </button>
+            </div>
+            <div class="col-8 col-xl-8">
+                <div class="error error-checkbox"></div>
+                <input type="checkbox" id="newsletter_assent" name="agree" required>
+                <label class="subscribe__checkbox" for="newsletter_assent"></label>
+                    <p>
+                        Wyrażam zgodę na otrzymywanie newslettera zawierającego informacje handlowe dotyczące Nowego Teatru. <a href="/pl/polityka-prywatnosci" target="_blank" class="link--underline">Więcej.</a>
+                        <br>Akceptuję treść regulaminu newsletterów <a href="/pl/regulamin" target="_blank" class="link--underline">Więcej.</a>
+                    </p>
+            </div>
+        </div>
+        <div id="newsletter-result"></div>
+    </form>
+</div>
+
+<div class="offscreen js-offscreen">
+    <div class="row no-gutters">
+        <div class="col-16 col-xl-16 offset-right-1 offset-left-1">
+            <div class="lightbox js-lightbox"></div>
+        </div>
+    </div>
+</div>
+
+
+<div class="preloader js-loader"></div>
+    
+    <script type="text/twig" id="tmpl-form-response"><div class="form__response form__response--{% if result == true %}success{% else %}fail{% endif %}">{{message}}</div>
+</script>
+    <script type="text/twig" id="tmpl-lightbox"><div class="lightbox__close">
+    <a href="{{backUrl}}" class="js-close" data-history="back">
+        <span class="sr-only">{{translate.close}}</span>
+        <i class="icon-close"></i>
+    </a>
+</div>
+<div class="lightbox__counter">
+    <div class="lightbox__counter-content js-photo-counter"></div>
+</div>
+<div class="lightbox__wrap">
+    <ul class="lightbox__list js-list">
+        {% spaceless %}
+
+
+        {% for item in items %}
+        <li class="lightbox__item js-item" data-lightbox-path="{{item.url}}">
+
+            {% set type = item.vimeo or item.video ? 'video' : item.audio ? 'audio' : item.image ? 'image' : '' %}
+
+            <figure class="lightbox__{{type}}">
+
+                {% if item.vimeo %}
+                <div class="player player--vimeo" data-component="VimeoCustom" data-options='{{ item.vimeo }}'></div>
+                {% endif %}
+
+
+                {% if item.video %}
+                <div class="player player--video" data-component="Video" data-options='{{ item.video }}'>
+                    <video src="{{ item.video.src }}" poster="{{ item.video.poster }}" controls></video>
+                </div>
+                {% endif %}
+
+
+                {% if item.audio %}
+                <div class="player player--audio" data-component="Audio" data-options='{{ item.audio }}'>
+                    <audio src="{{ item.audio.src }}"></audio>
+                </div>
+                {% endif %}
+
+
+                {% if item.image %}
+                <img data-src="{{ item.image.src }}" alt="" {% if item.image.width %} width="{{item.image.width}}" height="{{item.image.height}}"{% endif %}{% if item.image.big %} data-big="{{item.image.big.src}}" data-big-height="{{item.image.big.height}}" data-big-width="{{item.image.big.width}}" data-big-scale="{{item.image.big.scale?:1.2}}"{% endif %}{% if item.image.deepzoom %} data-deepzoom="{{item.image.deepzoom}}"{% endif %}>
+                <div class="lightbox__caption">
+                    <span>{{item.title}}</span>
+                </div>
+                {% endif %}
+
+            </figure>
+        </li>
+        {% endfor %}
+
+
+        {% endspaceless %}
+    </ul>
+</div>
+<button class="lightbox__arrow lightbox__arrow--left js-nav js-prev is-disabled" aria-label="{{translate.previous_image}}">
+    <span class="arrow arrow-left"></span>
+</button>
+<button class="lightbox__arrow lightbox__arrow--right js-nav js-next is-disabled" aria-label="{{translate.next_image}}">
+    <span class="arrow arrow-right"></span>
+</button>
+<!-- <div class="lightbox__arrow-wrapper">
+</div>
+<div class="lightbox__arrow-wrapper">
+</div> -->
+
+<!--<div class="lightbox__zoom zoom js-zoom"></div>-->
+</script>
+    <script type="text/twig" id="tmpl-player"><div class="player__poster"></div>
+<div class="player__loader"></div>
+<button class="player__toggle" aria-label="{{translate.player_play_pause}}">
+    <i class="icon-toggleplay"></i>
+</button>
+
+<div class="player__bar">{% spaceless %}
+
+    <button class="playlist__toggle js-playlist-toggle" aria-label="{{translate.player_toggle_playlist}}"></button>
+
+    <div class="player__controls">
+
+        <div class="player__playpause">
+            <button aria-label="{{translate.player_play_pause}}">
+                <i class="icon-playpause"></i>
+            </button>
+        </div>
+        <div class="player__time">
+            <em class="player__played">00:00</em>
+        </div>
+
+
+        <div class="player__scrubber-wrap">
+            <div class="player__scrubber js-player-scrubber">
+                <div class="player__loaded"></div>
+                <div class="player__progress"></div>
+            </div>
+        </div>
+
+        {# <div class="player__time">
+            <strong class="player__duration">00:00</strong>
+        </div> #}
+
+        <div class="player__volume volume volume-on">
+            <button class="volume__button" aria-label="{{translate.player_toggle_volume}}">
+                <span class="volume__speaker on"><svg class="svg-speaker"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 18"><path fill="#1d1d1d" d="M12 18V0L1 9l11 9z"/><path fill="#1d1d1d" d="M0 5h12v8H0zM14 6a3 3 0 010 6z"/><path d="M14 16a7 7 0 000-14v2a5 5 0 010 10z" fill="#1d1d1d"/></svg></span>
+                <span class="volume__speaker off"><svg class="svg-speakeroff"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18.4 18"><path fill="#1d1d1d" d="M1.433 1.432L2.847.018l15.556 15.556-1.414 1.414zM0 5v8h10.2l-8-8H0z"/><path fill="#1d1d1d" d="M12 5H5l7 7V5z"/><path fill="#1d1d1d" d="M12 0L5.4 5.4 12 12V0zM1 9l11 9v-3.2L3.8 6.7 1 9z"/></svg></span>
+            </button>
+        </div>
+
+        <div class="player__full">
+            <button aria-label="{{translate.player_full_exit}}">
+                <span class="block--fullscreen"></span>
+                {# <i class="icon-full"><span></span><span></span><span></span><span></span></i> #}
+            </button>
+        </div>
+
+        {# <div class="player__prev"></div>
+        <div class="player__next"></div> #}
+
+    </div>
+{% endspaceless %}</div>
+
+<div class="player__playlist playlist">
+    <button class="playlist__toggle" aria-label="{{translate.playlist_on_off}}"></button>
+    <div class="playlist__wrap">
+        <ol class="playlist__content"></ol>
+    </div>
+</div>
+</script>
+    <script type="text/twig" id="tmpl-playlist">{% for spot in playlist %}
+    <li class="playlist__item"><a href="#"><span>{{spot.name}}</span></a></li>
+{% endfor %}
+</script>
+    <script type="text/twig" id="tmpl-search-live"><div class="livesearch__wrap">
+    {% for item in items[0:6] %}
+    	<a href="{{ item.url }}" class="livesearch__item">
+            {% if item.image %}<img src="{{item.image}}" class="livesearch__image" alt="">{% endif %}
+    	    <p class="livesearch__text">{{ item.title }}</p>
+    	</a>
+    {% endfor %}
+</div>
+</script>
+
+    <script>
+        (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+        (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+        m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+        })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+        ga('create', 'UA-7762935-1', 'auto');
+        ga('send', 'pageview');
+    </script>
+</body>
+</html>
+<!-- cached in 0.00059199333190918 -->
