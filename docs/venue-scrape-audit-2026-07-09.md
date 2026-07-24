@@ -150,7 +150,18 @@ Komediowy, Filharmonia, MNW, Królikarnia, TR Warszawa, CSW, Nowy Teatr + the
 JSON-LD path), 4 on the LLM path, 1 Firecrawl-only. Everything lands in
 production on the next deploy + scrape once the Railway backend is restored.
 
-## Fix round 3 — 2026-07-23 (the two remaining theatres)
+## Fix round 3 — 2026-07-23 (the two remaining theatres + the production root cause)
+
+**Root cause found for "deterministic venues are empty in production":**
+`DETERMINISTIC_SCRAPERS` is keyed by the DEFAULT_VENUES slugs, but real
+database rows carry random UUIDs (the seed inserts by url, never a slug id) —
+so `getDeterministicScraper(venue.id)` never matched in production and every
+venue silently fell back to Firecrawl + LLM. Railway logs made it visible:
+`rendered https://kinoteka.pl/repertuar/ via Firecrawl` followed by 16
+midnight-rejected LLM rows on the venue that has been deterministic since
+June. Fixed by resolving the registry via the venue URL's hostname when the
+id lookup misses (each deterministic venue lives on its own host). This also
+explains the token spend resuming on Jul 22–23 at the old all-LLM rate.
 
 Production status first: the Railway backend came back online on Jul 23 (16
 venues resolve, home feed serves). But it still runs pre-Jul-18 code — every

@@ -6,6 +6,7 @@ import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js
 import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
 import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
 import { parsePowszechnyRepertoire, scrapePowszechny } from './venues/powszechny.js';
+import { DEFAULT_VENUES } from '../../data/default-venues.js';
 import { ymdInTz } from './venues/datetime.js';
 
 /**
@@ -86,6 +87,33 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
   },
 };
 
-export function getDeterministicScraper(venueId: string): DeterministicScraper | undefined {
-  return DETERMINISTIC_SCRAPERS[venueId];
+// The registry is keyed by the DEFAULT_VENUES slugs, but rows in a real
+// database carry random UUIDs (the seed inserts by url, never a slug id), so
+// an id lookup alone never matches in production — every venue silently fell
+// back to Firecrawl + LLM. Resolve by the venue URL's hostname as a fallback;
+// every deterministic venue lives on its own host (Królikarnia's subdomain is
+// distinct from MNW's parent domain, so exact-host matching keeps them apart).
+const HOST_TO_SLUG: Record<string, string> = Object.fromEntries(
+  DEFAULT_VENUES.filter((v) => v.id in DETERMINISTIC_SCRAPERS).flatMap((v) => {
+    try {
+      return [[new URL(v.url).hostname.replace(/^www\./, ''), v.id]];
+    } catch {
+      return [];
+    }
+  }),
+);
+
+export function getDeterministicScraper(
+  venueId: string,
+  venueUrl?: string,
+): DeterministicScraper | undefined {
+  const byId = DETERMINISTIC_SCRAPERS[venueId];
+  if (byId || !venueUrl) return byId;
+  try {
+    const host = new URL(venueUrl).hostname.replace(/^www\./, '');
+    const slug = HOST_TO_SLUG[host];
+    return slug ? DETERMINISTIC_SCRAPERS[slug] : undefined;
+  } catch {
+    return undefined;
+  }
 }
