@@ -4,7 +4,7 @@
  * an after-hour window and venues, saving, and seeing the settings persist.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
@@ -74,8 +74,11 @@ describe('MyPage — newsletter end-to-end', () => {
     const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
     const section = email.closest('section')!;
 
-    // Email defaults to the login address.
-    expect(email.value).toBe('newsletter-e2e@example.com');
+    // Email defaults to the login address. The prefill is async by design —
+    // auth.me resolves in parallel with the settings query and the form
+    // adopts the address once it lands — so wait rather than assert the
+    // instant the form appears (the race made CI flaky).
+    await waitFor(() => expect(email.value).toBe('newsletter-e2e@example.com'));
 
     // Daily, after 18:00.
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
