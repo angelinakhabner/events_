@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
+import { env } from '../config.js';
 import { scrapeVenue } from './scraper/runner.js';
+import { scrapeVenuesBatched, DEFAULT_BATCH_CONCURRENCY } from './scraper/batch.js';
+import { defaultBatchClient } from './scraper/extractor.js';
 
 const TZ = 'Europe/Warsaw';
 
@@ -169,7 +172,43 @@ export async function scrapeTargetVenues(): Promise<Pick<VenueRow, 'id' | 'name'
 
 type VenueRow = typeof schema.venues.$inferSelect;
 
+/** Send the sweep's LLM extractions through the Message Batches API (50% off).
+ *  Default on; set SCRAPE_BATCH_ENABLED=false to fall back to the sequential,
+ *  one-request-per-venue path (immediate results, full price). */
+export function readBatchEnabled(): boolean {
+  const raw = process.env.SCRAPE_BATCH_ENABLED;
+  if (raw === undefined || raw === '') return true;
+  return raw === 'true' || raw === '1';
+}
+
+/** Parallel venue fetches during a batched sweep. Venues parked on the batch
+ *  don't hold a slot, so this only paces Firecrawl renders. */
+export function readBatchConcurrency(): number {
+  const raw = process.env.SCRAPE_BATCH_CONCURRENCY;
+  if (raw === undefined || raw === '') return DEFAULT_BATCH_CONCURRENCY;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_BATCH_CONCURRENCY;
+  return Math.floor(n);
+}
+
 async function scrapeVenues(venues: Pick<VenueRow, 'id' | 'name'>[]): Promise<void> {
+  // Batching needs a key up front to build the client. Without one there's
+  // nothing to batch (deterministic venues only), so stay on the sequential
+  // path and let each venue fail individually as it always has.
+  if (readBatchEnabled() && env.ANTHROPIC_API_KEY) {
+    const concurrency = readBatchConcurrency();
+    console.log(`[scheduler] batched sweep (concurrency ${concurrency})`);
+    await scrapeVenuesBatched(venues, {
+      client: defaultBatchClient(),
+      concurrency,
+      onResult: (v, run) =>
+        console.log(`[scheduler] ${v.name}: ${run.status} (${run.eventsFound ?? '-'} events)`),
+      onError: (v, e) =>
+        console.error(`[scheduler] ${v.name} threw:`, e instanceof Error ? e.message : e),
+    });
+    return;
+  }
+
   const gapMs = readVenueGapMs();
   console.log(`[scheduler] gap ${gapMs}ms between venues`);
   for (let i = 0; i < venues.length; i++) {
