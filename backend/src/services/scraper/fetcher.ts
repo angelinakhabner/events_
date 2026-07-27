@@ -15,6 +15,15 @@ export interface FetchOptions {
   /** Per-source header overrides, merged over the browser defaults. */
   headers?: Record<string, string>;
   /**
+   * HTTP method. Defaults to GET. Set to POST for listings whose pagination is
+   * a form submission rather than a link (e.g. Muranów's Drupal AJAX month
+   * pager) so those requests still get the browser-shaped headers and error
+   * rewrapping below instead of a bare `fetch`.
+   */
+  method?: string;
+  /** Request body, paired with `method`. Send the matching Content-Type via `headers`. */
+  body?: string;
+  /**
    * Fetch even if the TLS chain can't be verified (e.g. a server that forgot to
    * send its intermediate cert). Off by default. Independent of this flag we
    * also auto-retry once on the specific chain-verification errors — see below.
@@ -98,8 +107,9 @@ export async function fetchVenueHTML(url: string, opts: FetchOptions = {}): Prom
   } = opts;
 
   // Firecrawl path (opt-in): render via Firecrawl, fall back to native fetch on
-  // any error so a Firecrawl outage never takes the scrape down.
-  if (opts.firecrawl) {
+  // any error so a Firecrawl outage never takes the scrape down. Firecrawl only
+  // renders GET navigations, so a form POST always goes native.
+  if (opts.firecrawl && !opts.method) {
     try {
       const html = await firecrawlScrape(url, opts.firecrawl, {
         fetcher,
@@ -116,7 +126,14 @@ export async function fetchVenueHTML(url: string, opts: FetchOptions = {}): Prom
   const mergedHeaders = { ...defaultHeaders(acceptLanguage), ...headers };
 
   const attempt = (insecure: boolean): Promise<string> =>
-    doFetch(url, { fetcher, headers: mergedHeaders, timeoutMs, insecure });
+    doFetch(url, {
+      fetcher,
+      headers: mergedHeaders,
+      timeoutMs,
+      insecure,
+      method: opts.method,
+      body: opts.body,
+    });
 
   try {
     return await attempt(insecureTLS);
@@ -141,7 +158,14 @@ export async function fetchVenueHTML(url: string, opts: FetchOptions = {}): Prom
 
 async function doFetch(
   url: string,
-  args: { fetcher: typeof fetch; headers: Record<string, string>; timeoutMs: number; insecure: boolean },
+  args: {
+    fetcher: typeof fetch;
+    headers: Record<string, string>;
+    timeoutMs: number;
+    insecure: boolean;
+    method?: string;
+    body?: string;
+  },
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), args.timeoutMs);
@@ -152,6 +176,8 @@ async function doFetch(
       headers: args.headers,
       signal: controller.signal,
     };
+    if (args.method) init.method = args.method;
+    if (args.body !== undefined) init.body = args.body;
     if (args.insecure) init.dispatcher = insecureDispatcher();
     const res = await args.fetcher(url, init);
     if (!res.ok) throw new HttpStatusError(res.status, url);
