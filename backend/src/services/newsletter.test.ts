@@ -5,8 +5,11 @@ import {
   selectBriefEvents,
   renderBriefHtml,
   isWeeklySendDay,
+  isSendHour,
+  resolveBriefVenueIds,
   wasRecentlySent,
 } from './newsletter.js';
+import { InMemoryUserVenueStore } from './user-venue-store.js';
 import { InMemoryNewsletterStore } from './newsletter-store.js';
 import type { NewsletterSubscription } from './newsletter-store.js';
 
@@ -44,6 +47,10 @@ function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription 
     venueIds: [],
     afterHour: null,
     beforeHour: null,
+    sendHour: 8,
+    sendWeekday: 1,
+    eventDayMode: 'all',
+    eventDay: null,
     enabled: true,
     lastSentAt: null,
     ...over,
@@ -93,6 +100,70 @@ describe('selectBriefEvents', () => {
     const picked = selectBriefEvents([matinee, evening], makeSub({ beforeHour: 18 }), NOW);
     expect(picked.map((e) => e.id)).toEqual(['matinee']);
   });
+
+  // GOI-28: "all the events" / "events happening every day" / "a specific day".
+  describe('event day scope', () => {
+    /** A weekly window (Wed 22nd → Wed 29th) with one title on every day and
+     *  one that plays a single evening. */
+    function weekOfEvents() {
+      const daily = ['22', '23', '24', '25', '26', '27', '28', '29'].map((d) =>
+        makeEvent({ id: `daily-${d}`, title: 'Every Day', startsAt: `2026-07-${d}T20:00:00+02:00` }),
+      );
+      const oneOff = makeEvent({ id: 'one-off', title: 'One Night', startsAt: '2026-07-24T20:00:00+02:00' });
+      return [...daily, oneOff];
+    }
+
+    it('keeps everything under "all"', () => {
+      const picked = selectBriefEvents(weekOfEvents(), makeSub({ frequency: 'weekly', eventDayMode: 'all' }), NOW);
+      expect(picked.map((e) => e.title)).toContain('One Night');
+      expect(picked.map((e) => e.title)).toContain('Every Day');
+    });
+
+    it('keeps only titles running every day of the window under "daily"', () => {
+      const picked = selectBriefEvents(weekOfEvents(), makeSub({ frequency: 'weekly', eventDayMode: 'daily' }), NOW);
+      expect(new Set(picked.map((e) => e.title))).toEqual(new Set(['Every Day']));
+    });
+
+    it('keeps only the chosen weekday under "specific"', () => {
+      // Friday the 24th is the only Friday in the window.
+      const picked = selectBriefEvents(
+        weekOfEvents(),
+        makeSub({ frequency: 'weekly', eventDayMode: 'specific', eventDay: 5 }),
+        NOW,
+      );
+      expect(picked.map((e) => e.id).sort()).toEqual(['daily-24', 'one-off']);
+    });
+
+    it('falls back to everything when "specific" has no day picked', () => {
+      const events = weekOfEvents();
+      const picked = selectBriefEvents(
+        events,
+        makeSub({ frequency: 'weekly', eventDayMode: 'specific', eventDay: null }),
+        NOW,
+      );
+      const all = selectBriefEvents(events, makeSub({ frequency: 'weekly', eventDayMode: 'all' }), NOW);
+      expect(picked.map((e) => e.id)).toEqual(all.map((e) => e.id));
+    });
+  });
+});
+
+describe('resolveBriefVenueIds', () => {
+  it('keeps an explicit selection', async () => {
+    const venues = new InMemoryUserVenueStore();
+    expect(await resolveBriefVenueIds('u1', ['v1', 'v2'], venues)).toEqual(['v1', 'v2']);
+  });
+
+  it('expands an empty selection to the user\'s own venues, not every venue', async () => {
+    const venues = new InMemoryUserVenueStore();
+    await venues.ensureSeeded('u1');
+    const mine = (await venues.listAll('u1')).map((v) => v.id);
+
+    expect(mine.length).toBeGreaterThan(0);
+    expect(await resolveBriefVenueIds('u1', [], venues)).toEqual(mine);
+    // A user who follows nothing resolves to nothing — the sweep skips them
+    // rather than mailing them the whole database.
+    expect(await resolveBriefVenueIds('nobody', [], new InMemoryUserVenueStore([]))).toEqual([]);
+  });
 });
 
 describe('renderBriefHtml', () => {
@@ -118,9 +189,26 @@ describe('renderBriefHtml', () => {
 });
 
 describe('isWeeklySendDay', () => {
-  it('is true on Mondays in Warsaw and false otherwise', () => {
+  it('defaults to Mondays in Warsaw', () => {
     expect(isWeeklySendDay(new Date('2026-07-20T06:00:00Z'))).toBe(true); // Monday
     expect(isWeeklySendDay(new Date('2026-07-22T06:00:00Z'))).toBe(false); // Wednesday
+  });
+
+  it('honours the subscription\'s chosen weekday (GOI-28)', () => {
+    const wednesday = new Date('2026-07-22T06:00:00Z');
+    expect(isWeeklySendDay(wednesday, 3)).toBe(true);
+    expect(isWeeklySendDay(wednesday, 1)).toBe(false);
+  });
+});
+
+describe('isSendHour', () => {
+  it('compares against the Warsaw wall clock, not UTC', () => {
+    // 06:00 UTC is 08:00 in Warsaw (CEST).
+    const at = new Date('2026-07-22T06:00:00Z');
+    expect(isSendHour(at, 8)).toBe(true);
+    expect(isSendHour(at, 6)).toBe(false);
+    // Default matches the pre-GOI-28 fixed hour.
+    expect(isSendHour(at)).toBe(true);
   });
 });
 

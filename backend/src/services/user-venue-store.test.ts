@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { InMemoryUserVenueStore, normalizeVenueUrl } from './user-venue-store.js';
+import { InMemoryUserVenueStore, normalizeTags, normalizeVenueUrl } from './user-venue-store.js';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 
 const KINOTEKA = { name: 'Kinoteka', url: 'https://kinoteka.pl/repertuar/', category: 'cinema' as const, city: 'Warsaw', country: 'PL' };
@@ -147,6 +147,76 @@ describe('InMemoryUserVenueStore — lists', () => {
     const poznan = await s.createList('u1', 'Poznan');
     expect((await s.lists('u2')).map((l) => l.name)).toEqual(['Warsaw']);
     await expect(s.setActiveList('u2', poznan.id)).rejects.toThrow(/not found/i);
+  });
+});
+
+// GOI-25: the "My venues" tab lists everything at once, grouped by folder, so
+// each row has to carry its own folder and tags.
+describe('InMemoryUserVenueStore — folders and tags', () => {
+  it('listAll spans every folder, while list() stays scoped to the active one', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await s.ensureSeeded('u1');
+    const warsaw = (await s.lists('u1'))[0]!;
+    await s.addCustom('u1', { ...KINOTEKA });
+    const poznan = await s.createList('u1', 'Poznan');
+    await s.addCustom('u1', { ...KINOTEKA, name: 'Kino Pałacowe', url: 'https://palacowe.example/', listId: poznan.id });
+
+    expect((await s.list('u1')).map((v) => v.name)).toEqual(['Kinoteka']);
+    expect((await s.listAll('u1')).map((v) => v.name).sort()).toEqual(['Kino Pałacowe', 'Kinoteka']);
+    // Each row says which folder it's in, so the UI can group without a join.
+    const all = await s.listAll('u1');
+    expect(all.find((v) => v.name === 'Kinoteka')!.listId).toBe(warsaw.id);
+    expect(all.find((v) => v.name === 'Kino Pałacowe')!.listId).toBe(poznan.id);
+  });
+
+  it('moves a venue between folders without unsubscribing it', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await s.ensureSeeded('u1');
+    const venue = await s.addCustom('u1', { ...KINOTEKA });
+    const poznan = await s.createList('u1', 'Poznan');
+
+    const moved = await s.update('u1', venue.id, { listId: poznan.id });
+    expect(moved.listId).toBe(poznan.id);
+    expect(await s.listAll('u1')).toHaveLength(1);
+    expect(await s.list('u1', poznan.id)).toHaveLength(1);
+  });
+
+  it('rejects a move into someone else\'s folder', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await s.ensureSeeded('u1');
+    await s.ensureSeeded('u2');
+    const venue = await s.addCustom('u1', { ...KINOTEKA });
+    const theirs = await s.createList('u2', 'Poznan');
+
+    await expect(s.update('u1', venue.id, { listId: theirs.id })).rejects.toThrow(/not found/i);
+  });
+
+  it('tags are personal and replace the whole set', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    const a = await s.addCustom('u1', { ...KINOTEKA });
+    await s.addCustom('u2', { ...KINOTEKA });
+
+    expect(a.tags).toEqual([]);
+    const tagged = await s.update('u1', a.id, { tags: ['date night', 'walkable'] });
+    expect(tagged.tags).toEqual(['date night', 'walkable']);
+    // Removing is just a shorter set.
+    expect((await s.update('u1', a.id, { tags: ['walkable'] })).tags).toEqual(['walkable']);
+    // u2 shares the venue row but not the tags.
+    expect((await s.list('u2'))[0]!.tags).toEqual([]);
+  });
+});
+
+describe('normalizeTags', () => {
+  it('trims, drops blanks and de-duplicates case-insensitively', () => {
+    expect(normalizeTags([' date night ', '', '   ', 'Date Night', 'walkable'])).toEqual([
+      'date night',
+      'walkable',
+    ]);
+  });
+
+  it('caps tag length and count', () => {
+    expect(normalizeTags(['x'.repeat(60)])[0]).toHaveLength(40);
+    expect(normalizeTags(Array.from({ length: 30 }, (_, i) => `t${i}`))).toHaveLength(20);
   });
 });
 

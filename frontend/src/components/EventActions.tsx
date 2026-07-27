@@ -4,22 +4,22 @@ import { downloadIcs, googleCalendarUrl } from '../lib/calendar';
 import { shareEvent, type ShareOutcome } from '../lib/share';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
+import { ClosestScreenings } from './ClosestScreenings';
 
 /**
- * Per-event "add to calendar" + "share" actions (+ "want to go" when logged
- * in). Shared by the logged-out Home view (EventBuckets) and the
- * saved-folders view (EventCard) so the per-event action UI stays in one
- * place.
+ * Per-event "nearest screenings" + "add to calendar" + "share" actions (+
+ * "want to go" when logged in). Shared by the logged-out Home view
+ * (EventBuckets) and the saved-folders view (EventCard) so the per-event
+ * action UI stays in one place.
  *
- * "Nearest screenings" (ClosestScreenings) is unmounted for now: the deployed
- * backend doesn't serve events.screenings yet, so the button only ever showed
- * an error. Re-add <ClosestScreenings event={event} /> here once the backend
- * is redeployed.
+ * The screenings panel is where films get onto your want-to-go list (GOI-26),
+ * so it has to be reachable from a real event — it is the only entry point.
  */
 export function EventActions({ event }: { event: Event }) {
   return (
     <div className="mt-3 flex items-center gap-5 text-sm">
       {isLoggedIn() ? <WantToGoButton event={event} /> : null}
+      <ClosestScreenings event={event} />
       <AddToCalendar event={event} />
       <ShareButton event={event} />
     </div>

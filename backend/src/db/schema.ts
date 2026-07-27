@@ -120,6 +120,9 @@ export const userVenues = pgTable(
     listId: uuid('list_id').references(() => userLists.id, { onDelete: 'cascade' }),
     nameOverride: text('name_override'),
     categoryOverride: text('category_override'),
+    // Free-form personal tags ("date night", "walking distance"). Personal
+    // like the overrides — the shared venue row carries none.
+    tags: text('tags').array().notNull().default(sql`ARRAY[]::text[]`),
     // Personal scrape horizon in days. The venue's effective horizon is the
     // max over its subscribers (falling back to the category default).
     windowDays: integer('window_days'),
@@ -138,6 +141,9 @@ export const wantToGo = pgTable(
   {
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+    // Set when the user marks the entry seen; it stays on the list, filed
+    // under "Seen", instead of being removed.
+    seenAt: timestamp('seen_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -196,6 +202,14 @@ export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
   venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
   afterHour: integer('after_hour'),
   beforeHour: integer('before_hour'),
+  /** Warsaw hour the brief goes out at (0-23). */
+  sendHour: integer('send_hour').notNull().default(8),
+  /** Weekday weekly briefs go out on, JS convention (0=Sun … 6=Sat). */
+  sendWeekday: integer('send_weekday').notNull().default(1),
+  /** Which events the brief covers: 'all', 'daily' (titles running every day
+   *  of the window) or 'specific' (one weekday, see eventDay). */
+  eventDayMode: text('event_day_mode').notNull().default('all'),
+  eventDay: integer('event_day'),
   enabled: boolean('enabled').notNull().default(true),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

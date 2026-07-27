@@ -1,7 +1,9 @@
 /**
  * End-to-end-ish: mounts MyPage logged in against a real Hono backend,
- * in-process, and drives the newsletter flow (GOI-8) — configuring cadence,
- * an after-hour window and venues, saving, and seeing the settings persist.
+ * in-process, and drives the newsletter flow (GOI-8, GOI-28) — opening the
+ * Newsletter section from the left-hand menu, configuring cadence, send time,
+ * an after-hour window and the event-day scope, saving, and seeing the
+ * settings persist.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -73,6 +75,9 @@ describe('MyPage — newsletter end-to-end', () => {
     const user = userEvent.setup();
     renderPage();
 
+    // The page opens on Events; the newsletter lives behind its menu entry.
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+
     // Wait for the form (the section shows a skeleton while settings load,
     // and the whole section subtree is replaced once they arrive).
     const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
@@ -84,9 +89,12 @@ describe('MyPage — newsletter end-to-end', () => {
     // instant the form appears (the race made CI flaky).
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
-    // Daily, after 18:00.
+    // Daily at 07:00, after 18:00, only events on Fridays.
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
+    await user.selectOptions(within(section).getByLabelText(/time of day/i), '7');
     await user.selectOptions(within(section).getByLabelText(/only events after/i), '18');
+    await user.click(within(section).getByLabelText(/only events on a specific day/i));
+    await user.selectOptions(within(section).getByLabelText(/which day/i), '5');
     await user.click(within(section).getByRole('button', { name: /save newsletter/i }));
     await within(section).findByText('Saved.');
 
@@ -95,8 +103,41 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(saved).toMatchObject({
       email: USER_EMAIL,
       frequency: 'daily',
+      sendHour: 7,
       afterHour: 18,
+      eventDayMode: 'specific',
+      eventDay: 5,
       enabled: true,
     });
+  });
+
+  it('weekly briefs let you pick the weekday, and Generate renders a preview', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const section = email.closest('section')!;
+    await waitFor(() => expect(email.value).toBe(USER_EMAIL));
+
+    // The weekday picker only exists for weekly briefs.
+    await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
+    expect(within(section).queryByLabelText(/day of the week/i)).not.toBeInTheDocument();
+
+    await user.selectOptions(within(section).getByLabelText(/how often/i), 'weekly');
+    await user.selectOptions(await within(section).findByLabelText(/day of the week/i), '4');
+    await user.click(within(section).getByRole('button', { name: /save newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    expect(await defaultNewsletterStore.get(userId)).toMatchObject({
+      frequency: 'weekly',
+      sendWeekday: 4,
+    });
+
+    // "Generate" renders the brief the settings would produce. Without a
+    // database there are no events, so the preview says so rather than 404ing.
+    await user.click(within(section).getByRole('button', { name: /generate/i }));
+    const preview = await screen.findByTestId('newsletter-preview');
+    expect(preview.textContent).toMatch(/this week at your venues/i);
   });
 });

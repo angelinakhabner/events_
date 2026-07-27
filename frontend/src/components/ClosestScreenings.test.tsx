@@ -4,11 +4,31 @@ import { ClosestScreenings } from './ClosestScreenings';
 import type { Event } from '@goin/shared';
 
 const useQueryMock = vi.fn();
+const filmsListMock = vi.fn();
+const addFilmMock = vi.fn();
+/** Whether the panel thinks there's a session — drives the "Track film" row. */
+let loggedIn = false;
+
+vi.mock('../lib/auth', () => ({ isLoggedIn: () => loggedIn }));
 vi.mock('../lib/trpc', () => ({
   trpc: {
+    useUtils: () => ({ my: { films: { list: { invalidate: vi.fn() } } } }),
     events: {
       screenings: {
         useQuery: (...args: unknown[]) => useQueryMock(...args),
+      },
+    },
+    my: {
+      films: {
+        list: { useQuery: () => filmsListMock() },
+        add: {
+          useMutation: (opts?: { onSuccess?: () => void }) => ({
+            mutate: (input: { title: string }) => { addFilmMock(input); opts?.onSuccess?.(); },
+            isPending: false,
+            isSuccess: false,
+            error: null,
+          }),
+        },
       },
     },
   },
@@ -29,6 +49,10 @@ function makeEvent(overrides: Partial<Event> = {}): Event {
 beforeEach(() => {
   useQueryMock.mockReset();
   useQueryMock.mockReturnValue({ data: [], isLoading: false, isError: false });
+  filmsListMock.mockReset();
+  filmsListMock.mockReturnValue({ data: [] });
+  addFilmMock.mockReset();
+  loggedIn = false;
 });
 
 describe('ClosestScreenings', () => {
@@ -179,5 +203,42 @@ describe('ClosestScreenings', () => {
     fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
 
     expect(screen.getByText(/looking for screenings/i)).toBeInTheDocument();
+  });
+});
+
+// GOI-26: the screenings panel is the *only* way a film reaches the want-to-go
+// list — there is no free-text film field anywhere in the app.
+describe('ClosestScreenings — Track film', () => {
+  it('tracks the film under the title the venue uses', () => {
+    loggedIn = true;
+    render(<ClosestScreenings event={makeEvent()} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /track film/i }));
+    expect(addFilmMock).toHaveBeenCalledWith({ title: 'Ojczyzna' });
+  });
+
+  it('shows the film as already tracked instead of offering it twice', () => {
+    loggedIn = true;
+    filmsListMock.mockReturnValue({ data: [{ id: 'f1', title: 'ojczyzna', status: 'want' }] });
+
+    render(<ClosestScreenings event={makeEvent()} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+
+    const button = screen.getByRole('button', { name: /on your want-to-go list/i });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
+  });
+
+  it('is hidden for logged-out visitors and for non-film events', () => {
+    const { unmount } = render(<ClosestScreenings event={makeEvent()} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
+    unmount();
+
+    loggedIn = true;
+    render(<ClosestScreenings event={makeEvent({ category: 'theatre' })} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest dates/i }));
+    expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
   });
 });

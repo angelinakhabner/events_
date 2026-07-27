@@ -1,8 +1,9 @@
-import type { Event, NewsletterFrequency } from '@goin/shared';
+import type { Event, NewsletterEventDayMode, NewsletterFrequency } from '@goin/shared';
 import { defaultEventStore } from './event-store.js';
+import { defaultUserVenueStore, type UserVenueStore } from './user-venue-store.js';
 import { sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
-import { msUntilNextWarsawTime } from './scheduler.js';
+import { msUntilNextWarsawHour, warsawHourOf, warsawWeekday } from './scheduler.js';
 import { env } from '../config.js';
 
 const TZ = 'Europe/Warsaw';
@@ -23,17 +24,57 @@ function warsawHour(iso: string): number {
   return Number(h) % 24;
 }
 
+/** Warsaw calendar day (YYYY-MM-DD) of an ISO instant. */
+function warsawDay(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(iso));
+}
+
+/** The subset of a subscription that decides what lands in a brief. Written
+ *  out (rather than Pick'd) so callers holding freshly-parsed input, where the
+ *  optional narrowing fields may be absent, can pass it straight through. */
+export interface BriefScope {
+  frequency: NewsletterFrequency;
+  venueIds: string[];
+  afterHour?: number | null;
+  beforeHour?: number | null;
+  eventDayMode?: NewsletterEventDayMode;
+  eventDay?: number | null;
+}
+
+/**
+ * Titles that run on *every* calendar day of the window — the "events
+ * happening every day" scope. A one-day window (daily briefs) makes every
+ * title trivially qualify, which is the sensible reading there.
+ */
+function titlesRunningEveryDay(events: Event[], windowDays: number): Set<string> {
+  const daysByTitle = new Map<string, Set<string>>();
+  for (const e of events) {
+    const key = e.title.toLowerCase();
+    const days = daysByTitle.get(key) ?? new Set<string>();
+    days.add(warsawDay(e.startsAt));
+    daysByTitle.set(key, days);
+  }
+  const out = new Set<string>();
+  for (const [title, days] of daysByTitle) {
+    if (days.size >= windowDays) out.add(title);
+  }
+  return out;
+}
+
 /**
  * Which events belong in a brief: within the cadence window, at one of the
- * chosen venues (empty selection = all), inside the after/before-hour window.
+ * chosen venues (empty selection = all), inside the after/before-hour window,
+ * and matching the chosen day scope (everything / only titles running every
+ * day / only one weekday).
  */
 export function selectBriefEvents(
   events: Event[],
-  sub: Pick<NewsletterSubscription, 'venueIds' | 'afterHour' | 'beforeHour' | 'frequency'>,
+  sub: BriefScope,
   now: Date = new Date(),
 ): Event[] {
-  const horizon = new Date(now.getTime() + briefWindowDays(sub.frequency) * 24 * 3_600_000);
-  return events.filter((e) => {
+  const windowDays = briefWindowDays(sub.frequency);
+  const horizon = new Date(now.getTime() + windowDays * 24 * 3_600_000);
+  const inWindow = events.filter((e) => {
     const starts = new Date(e.startsAt);
     if (starts < now || starts > horizon) return false;
     if (sub.venueIds.length > 0 && !sub.venueIds.includes(e.venueId)) return false;
@@ -42,6 +83,17 @@ export function selectBriefEvents(
     if (sub.beforeHour != null && hour >= sub.beforeHour) return false;
     return true;
   });
+
+  const mode = sub.eventDayMode ?? 'all';
+  if (mode === 'specific') {
+    if (sub.eventDay == null) return inWindow;
+    return inWindow.filter((e) => warsawWeekday(new Date(e.startsAt)) === sub.eventDay);
+  }
+  if (mode === 'daily') {
+    const everyDay = titlesRunningEveryDay(inWindow, windowDays);
+    return inWindow.filter((e) => everyDay.has(e.title.toLowerCase()));
+  }
+  return inWindow;
 }
 
 function escapeHtml(s: string): string {
@@ -95,10 +147,29 @@ export function renderBriefHtml(events: Event[], frequency: NewsletterFrequency)
   );
 }
 
-/** True when `at` falls on the weekday weekly briefs go out (Monday, Warsaw). */
-export function isWeeklySendDay(at: Date): boolean {
-  const wd = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short' }).format(at);
-  return wd === 'Mon';
+/** True when `at` falls on the weekday this subscription's weekly brief goes
+ *  out (Warsaw). Defaults to Monday for rows saved before send days existed. */
+export function isWeeklySendDay(at: Date, sendWeekday: number = 1): boolean {
+  return warsawWeekday(at) === sendWeekday;
+}
+
+/** True when `at` is the Warsaw hour this subscription asked to be sent at. */
+export function isSendHour(at: Date, sendHour: number = 8): boolean {
+  return warsawHourOf(at) === sendHour;
+}
+
+/**
+ * Which venues a brief covers. An empty selection means "all *your* venues",
+ * as the form says — not every venue in the database, which is what an empty
+ * `venueIds` would mean to `selectBriefEvents` on its own.
+ */
+export async function resolveBriefVenueIds(
+  userId: string,
+  venueIds: string[],
+  venues: UserVenueStore = defaultUserVenueStore,
+): Promise<string[]> {
+  if (venueIds.length > 0) return venueIds;
+  return (await venues.listAll(userId)).map((v) => v.id);
 }
 
 /** Guard against double sends (e.g. a restart re-running the tick): skip
@@ -110,7 +181,8 @@ export function wasRecentlySent(sub: NewsletterSubscription, now: Date): boolean
 }
 
 /**
- * One send sweep: daily subscriptions every day, weekly ones on Monday.
+ * One send sweep: every subscription whose chosen send hour is the current
+ * Warsaw hour — and, for weekly ones, whose chosen weekday is today (GOI-28).
  * Empty briefs are skipped — no "nothing on" emails. Errors are per-recipient:
  * one bad address doesn't stop the sweep.
  */
@@ -122,11 +194,16 @@ export async function sendNewsletterBriefs(
   let sent = 0;
   let skipped = 0;
   for (const sub of subs) {
-    if (sub.frequency === 'weekly' && !isWeeklySendDay(now)) { skipped++; continue; }
+    if (!isSendHour(now, sub.sendHour)) { skipped++; continue; }
+    if (sub.frequency === 'weekly' && !isWeeklySendDay(now, sub.sendWeekday)) { skipped++; continue; }
     if (wasRecentlySent(sub, now)) { skipped++; continue; }
     try {
       const all = await defaultEventStore.listUpcoming({ limit: 500 });
-      const events = selectBriefEvents(all, sub, now);
+      const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds);
+      // No venues followed at all — nothing to brief on, and an empty list
+      // must not fall through to "every venue in the database".
+      if (venueIds.length === 0) { skipped++; continue; }
+      const events = selectBriefEvents(all, { ...sub, venueIds }, now);
       if (events.length === 0) { skipped++; continue; }
       await sendEmail({
         to: sub.email,
@@ -143,19 +220,21 @@ export async function sendNewsletterBriefs(
 }
 
 /**
- * In-process newsletter scheduler, same shape as the scrape scheduler: fires
- * daily at the configured Warsaw hour and re-arms. Weekly subscriptions are
- * filtered inside the sweep (Monday), so one daily tick serves both cadences.
+ * In-process newsletter scheduler, same shape as the scrape scheduler. Since
+ * GOI-28 each subscription picks its own send hour (and weekday), so the tick
+ * runs hourly and the sweep decides who is due — one loop serves every
+ * cadence and every chosen time.
  */
-export function startNewsletterScheduler(opts: { hour?: number } = {}): { stop: () => void } {
-  const hour = opts.hour ?? 8;
+export function startNewsletterScheduler(): { stop: () => void } {
   let timer: NodeJS.Timeout | null = null;
   let stopped = false;
 
   const arm = () => {
     if (stopped) return;
-    const delay = msUntilNextWarsawTime(hour);
-    console.log(`[newsletter] next send sweep in ${(delay / 3_600_000).toFixed(1)}h (daily at ${String(hour).padStart(2, '0')}:00 ${TZ})`);
+    // Next top of the hour, Warsaw. msUntilNextWarsawHour takes an hour of the
+    // day, so ask for the one after the current wall-clock hour.
+    const delay = msUntilNextWarsawHour((warsawHourOf(new Date()) + 1) % 24);
+    console.log(`[newsletter] next send sweep in ${(delay / 60_000).toFixed(0)}m (hourly, ${TZ})`);
     timer = setTimeout(async () => {
       try {
         const res = await sendNewsletterBriefs();

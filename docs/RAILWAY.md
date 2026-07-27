@@ -96,12 +96,12 @@ Wait ~1 minute. The Pages site at `https://angelinakhabner.github.io/events_/` n
 
 ## 7. Verify end-to-end
 
-1. Open `https://angelinakhabner.github.io/events_/my` in a normal browser window.
-2. Click **New folder** → type a name → **Create folder**.
-3. Modal closes, folder appears in the list. **No "Unexpected token '<'" error.**
-4. Hard-refresh (Cmd/Ctrl+Shift+R). Folder is still there.
-5. Open the same URL in an incognito window. The list is empty (different `goin_device_id` in `localStorage` → different folder owner).
-6. Optional: connect to the Railway Postgres from your machine via the Postgres service's **Data** tab → run `SELECT * FROM folders;` to see the row.
+1. Open `https://angelinakhabner.github.io/events_/my` in a normal browser window and sign in.
+2. In the left-hand menu pick **My venues**, then **+ New folder** → type a name → **Create**.
+3. The folder appears with its own (empty) section. **No "Unexpected token '<'" error.**
+4. Hard-refresh (Cmd/Ctrl+Shift+R). The folder is still there.
+5. On a venue row, **+ Add tag** → type a tag → **Add**. It survives a refresh too.
+6. Optional: connect to the Railway Postgres from your machine via the Postgres service's **Data** tab → run `SELECT name FROM user_lists;` and `SELECT tags FROM user_venues;` to see the rows.
 
 ---
 

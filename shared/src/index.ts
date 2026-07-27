@@ -103,9 +103,28 @@ export interface Film {
   createdAt: string;
 }
 
+// ─── Want to go ──────────────────────────────────────────────────────────────
+
+/** A saved event, plus when (if ever) the user marked it seen. */
+export interface WantToGoEntry {
+  event: Event;
+  /** ISO instant the entry was marked seen; null while it's still upcoming. */
+  seenAt: string | null;
+  savedAt: string;
+}
+
 // ─── Newsletter ──────────────────────────────────────────────────────────────
 
 export type NewsletterFrequency = 'daily' | 'weekly';
+
+/**
+ * Which events a brief covers:
+ *  - `all`      — everything in the cadence window.
+ *  - `daily`    — only titles that run on *every* day of the window, i.e. the
+ *                 things you can catch whenever you feel like it.
+ *  - `specific` — only events on `eventDay` (0=Sun … 6=Sat).
+ */
+export type NewsletterEventDayMode = 'all' | 'daily' | 'specific';
 
 export interface NewsletterSettings {
   email: string;
@@ -116,6 +135,13 @@ export interface NewsletterSettings {
   afterHour: number | null;
   /** Only include events starting before this hour (0-23). */
   beforeHour: number | null;
+  /** Warsaw hour the brief is sent at (0-23). */
+  sendHour: number;
+  /** Weekday weekly briefs go out on (0=Sun … 6=Sat). Ignored when daily. */
+  sendWeekday: number;
+  eventDayMode: NewsletterEventDayMode;
+  /** The chosen weekday when `eventDayMode` is 'specific' (0=Sun … 6=Sat). */
+  eventDay: number | null;
   enabled: boolean;
   lastSentAt: string | null;
 }
