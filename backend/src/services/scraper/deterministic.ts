@@ -1,4 +1,5 @@
 import { parseKinotekaListing, scrapeKinoteka } from './venues/kinoteka.js';
+import { parseMuranowCalendar, scrapeMuranow } from './venues/muranow.js';
 import { parseKomediowyListing, scrapeKomediowy } from './venues/komediowy.js';
 import { parseFilharmoniaListing, scrapeFilharmonia } from './venues/filharmonia.js';
 import { parseEditoListing, scrapeEdito } from './venues/edito.js';
@@ -40,6 +41,13 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
   kinoteka: {
     parse: (html, timezone) => parseKinotekaListing(html, timezone),
     scrape: (args) => scrapeKinoteka(args),
+  },
+  'kino-muranow': {
+    // The calendar names its own month in the header, so htmlOverride needs no
+    // date anchor. Descriptions live on each film's page, not the calendar.
+    parse: (html, timezone) => parseMuranowCalendar(html, timezone),
+    scrape: (args) => scrapeMuranow(args),
+    enrich: true,
   },
   'klub-komediowy': {
     parse: (html, timezone) => parseKomediowyListing(html, timezone),

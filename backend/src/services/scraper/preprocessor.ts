@@ -21,6 +21,11 @@ export function preprocessForVenue(html: string, venue: Pick<Venue, 'id'>): Prep
   }
 }
 
+/**
+ * NOTE: Muranów now has a deterministic cheerio scraper (venues/muranow.ts), so
+ * the runner never reaches the LLM path for it and this branch is dormant. Kept
+ * as the fallback shape the LLM path would need if that scraper is ever removed.
+ */
 function preprocessMuranow(html: string): PreprocessResult {
   const $ = cheerio.load(html);
   $('script, style, noscript, svg, iframe, link').remove();
