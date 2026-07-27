@@ -180,6 +180,23 @@ the backend service:
 | `SCRAPE_CRON_ENABLED` | `true` | turn the scheduler on (off by default so dev/test servers don't scrape) |
 | `SCRAPE_CRON_HOUR` | `7` (default) | hour of day in **Europe/Warsaw** to run |
 | `SCRAPE_CRON_DAY_OF_WEEK` | unset (default) | day of week in **Europe/Warsaw** to run (`0`=Sun … `6`=Sat). Unset → daily; set to e.g. `1` for a weekly Monday sweep |
+| `SCRAPE_BATCH_ENABLED` | `true` (default) | send the sweep's LLM extractions through Anthropic's Message Batches API at **half the per-token price**. Set `false` for the sequential, one-request-per-venue path |
+| `SCRAPE_BATCH_CONCURRENCY` | `3` (default) | parallel venue fetches during a batched sweep. Venues waiting on the batch don't hold a slot, so this only paces Firecrawl renders |
+
+**Halving token cost with the Batch API:** every venue that needs the LLM
+has its prompt collected rather than sent, and the whole sweep goes out as a
+single batch — billed at 50% of standard rates. Batch requests also don't
+draw on the per-minute rate limits, which is why the batched path doesn't
+need the `SCRAPE_VENUE_GAP_MS` pause between venues. The tradeoff is
+latency: results usually land within the hour, but the API's guarantee is 24
+hours, so a sweep can take longer to complete than the sequential path.
+Deterministic venues, unchanged pages, and JSON-LD venues never call the
+model, so they're unaffected either way.
+
+A batch that hasn't finished within 6 hours is cancelled and its venues are
+recorded as failed, so the next sweep retries them from scratch. If the
+process restarts mid-batch the in-flight results are lost (and still
+billed) — a once-a-day risk worth knowing about, not currently mitigated.
 
 **Saving tokens with a weekly cadence:** most venues publish their
 schedules weeks or months ahead, so a daily sweep mostly re-bills Anthropic

@@ -132,6 +132,128 @@ class AnthropicExtractor implements ExtractorClient {
   }
 }
 
+/** One venue's extraction request inside a batch submission. */
+export interface BatchExtractRequest {
+  /** Venue id. Echoed back by the API so results can be re-keyed to venues. */
+  customId: string;
+  system: string;
+  user: string;
+}
+
+/** Per-request outcome. Failures are per-venue: one bad page must not sink the sweep. */
+export type BatchExtractOutcome =
+  | { ok: true; json: string }
+  | { ok: false; error: string };
+
+export interface BatchExtractorClient {
+  run(requests: BatchExtractRequest[]): Promise<Map<string, BatchExtractOutcome>>;
+}
+
+export interface BatchPollOptions {
+  /** Delay between status polls. */
+  pollIntervalMs?: number;
+  /** Give up (and cancel the batch) after this long. */
+  maxWaitMs?: number;
+  /** Injectable sleep/clock so tests don't wait in real time. */
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  /** Injectable SDK client, for tests. */
+  client?: Anthropic;
+}
+
+/** Most batches land well inside an hour; the API's own ceiling is 24h. */
+export const DEFAULT_BATCH_POLL_INTERVAL_MS = 30_000;
+export const DEFAULT_BATCH_MAX_WAIT_MS = 6 * 60 * 60_000;
+
+/**
+ * Message Batches implementation: submits every venue's prompt as one batch,
+ * polls to completion, and re-keys results by venue id. Costs 50% of the
+ * standard per-token price, and batch requests don't draw on the per-minute
+ * rate limits the inline path has to pace itself around.
+ */
+export class AnthropicBatchExtractor implements BatchExtractorClient {
+  private client: Anthropic;
+  private opts: BatchPollOptions;
+
+  constructor(apiKey: string, opts: BatchPollOptions = {}) {
+    this.client = opts.client ?? new Anthropic({ apiKey, maxRetries: 6 });
+    this.opts = opts;
+  }
+
+  async run(requests: BatchExtractRequest[]): Promise<Map<string, BatchExtractOutcome>> {
+    const out = new Map<string, BatchExtractOutcome>();
+    if (requests.length === 0) return out;
+
+    const pollIntervalMs = this.opts.pollIntervalMs ?? DEFAULT_BATCH_POLL_INTERVAL_MS;
+    const maxWaitMs = this.opts.maxWaitMs ?? DEFAULT_BATCH_MAX_WAIT_MS;
+    const sleep = this.opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const now = this.opts.now ?? Date.now;
+
+    const batch = await this.client.beta.messages.batches.create({
+      requests: requests.map((r) => ({
+        custom_id: r.customId,
+        params: {
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          system: r.system,
+          tools: [EVENT_TOOL],
+          // Force the call so the model can't answer in prose and skip the tool.
+          tool_choice: { type: 'tool' as const, name: EVENT_TOOL.name },
+          messages: [{ role: 'user' as const, content: r.user }],
+        },
+      })),
+    });
+    console.log(`[batch] submitted ${requests.length} request(s) as ${batch.id}`);
+
+    const startedAt = now();
+    for (;;) {
+      const status = await this.client.beta.messages.batches.retrieve(batch.id);
+      if (status.processing_status === 'ended') break;
+      if (now() - startedAt > maxWaitMs) {
+        // Cancel so in-flight requests stop billing, then fail every venue —
+        // the next sweep retries them from scratch.
+        await this.client.beta.messages.batches.cancel(batch.id).catch(() => {});
+        throw new Error(
+          `Batch ${batch.id} still ${status.processing_status} after ${Math.round(maxWaitMs / 60_000)}m; cancelled`,
+        );
+      }
+      await sleep(pollIntervalMs);
+    }
+
+    for await (const result of await this.client.beta.messages.batches.results(batch.id)) {
+      const id = result.custom_id;
+      switch (result.result.type) {
+        case 'succeeded':
+          try {
+            out.set(id, { ok: true, json: toolResponseToJson(result.result.message as Anthropic.Message) });
+          } catch (e) {
+            out.set(id, { ok: false, error: e instanceof Error ? e.message : String(e) });
+          }
+          break;
+        case 'errored':
+          out.set(id, { ok: false, error: `batch request errored: ${JSON.stringify(result.result.error)}` });
+          break;
+        case 'canceled':
+          out.set(id, { ok: false, error: 'batch request was canceled' });
+          break;
+        case 'expired':
+          out.set(id, { ok: false, error: 'batch request expired before processing (24h limit)' });
+          break;
+      }
+    }
+    return out;
+  }
+}
+
+let _defaultBatchClient: BatchExtractorClient | null = null;
+export function defaultBatchClient(opts: BatchPollOptions = {}): BatchExtractorClient {
+  if (!_defaultBatchClient) {
+    if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
+    _defaultBatchClient = new AnthropicBatchExtractor(env.ANTHROPIC_API_KEY, opts);
+  }
+  return _defaultBatchClient;
+}
+
 /**
  * Pull the events array out of a forced `record_events` tool call and return it
  * as a JSON string (so the existing `parseJsonArray` path stays the single
@@ -207,13 +329,18 @@ export interface ExtractOptions {
   windowDays?: number;
 }
 
-export async function extractEvents(
+/**
+ * Build the exact (system, user) pair we send for a venue. Pure — no network —
+ * so the same prompt can either be issued inline (one request, answer comes
+ * back immediately) or packed into a Message Batches submission at half the
+ * token price. `extractEvents` below is the inline path.
+ */
+export function buildExtractionPrompt(
   cleanedHtml: string,
   venue: Pick<Venue, 'name' | 'city' | 'timezone' | 'category' | 'url'>,
   today: Date,
-  opts: ExtractOptions = {},
-): Promise<unknown[]> {
-  const client = opts.client ?? defaultClient();
+  opts: Pick<ExtractOptions, 'hint' | 'windowDays'> = {},
+): { system: string; user: string } {
   const tz = venue.timezone || 'Europe/Warsaw';
   const dateStr = today.toISOString().slice(0, 10);
   const year = today.getFullYear();
@@ -281,7 +408,18 @@ RULES:
 HTML:
 ${cleanedHtml}`;
 
-  const text = await client.extract({ system: SYSTEM_PROMPT, user });
+  return { system: SYSTEM_PROMPT, user };
+}
+
+export async function extractEvents(
+  cleanedHtml: string,
+  venue: Pick<Venue, 'name' | 'city' | 'timezone' | 'category' | 'url'>,
+  today: Date,
+  opts: ExtractOptions = {},
+): Promise<unknown[]> {
+  const client = opts.client ?? defaultClient();
+  const { system, user } = buildExtractionPrompt(cleanedHtml, venue, today, opts);
+  const text = await client.extract({ system, user });
   return parseJsonArray(text);
 }
 
