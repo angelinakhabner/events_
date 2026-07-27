@@ -16,7 +16,11 @@ import { trpc, makeQueryClient } from '../lib/trpc';
 import { setSessionToken, getSessionToken } from '../lib/auth';
 import { MyPage } from './My';
 
-const DEVICE = 'e2e-newsletter-device';
+// Fresh identity per run — see the note in My.films.e2e.test.tsx: the CI
+// Postgres outlives the process, so a fixed account carries state between runs.
+const RUN = Math.random().toString(36).slice(2, 10);
+const DEVICE = `e2e-newsletter-device-${RUN}`;
+const USER_EMAIL = `newsletter-e2e-${RUN}@example.com`;
 let userId = '';
 
 function inProcessFetch(app: ReturnType<typeof createApp>): typeof fetch {
@@ -57,7 +61,7 @@ function renderPage() {
 }
 
 beforeAll(async () => {
-  const { token } = await requestMagicLink(defaultAuthStore, 'newsletter-e2e@example.com');
+  const { token } = await requestMagicLink(defaultAuthStore, USER_EMAIL);
   const verified = await verifyMagicLink(defaultAuthStore, token);
   if (!verified) throw new Error('login failed');
   setSessionToken(verified.sessionToken);
@@ -78,7 +82,7 @@ describe('MyPage — newsletter end-to-end', () => {
     // auth.me resolves in parallel with the settings query and the form
     // adopts the address once it lands — so wait rather than assert the
     // instant the form appears (the race made CI flaky).
-    await waitFor(() => expect(email.value).toBe('newsletter-e2e@example.com'));
+    await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
     // Daily, after 18:00.
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
@@ -89,7 +93,7 @@ describe('MyPage — newsletter end-to-end', () => {
     // Settings landed in the store.
     const saved = await defaultNewsletterStore.get(userId);
     expect(saved).toMatchObject({
-      email: 'newsletter-e2e@example.com',
+      email: USER_EMAIL,
       frequency: 'daily',
       afterHour: 18,
       enabled: true,
