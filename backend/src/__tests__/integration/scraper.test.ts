@@ -17,8 +17,15 @@ const fixtureDir = path.resolve(__dirname, '../../../test/fixtures');
 let muranowHtml = '';
 let expectedJson = '';
 
+// A cinema on a host with no deterministic scraper, so these cases keep
+// exercising the LLM path (preprocess → mocked Claude → validate → persist).
+// The HTML is opaque to that path — the mocked extractor returns `expectedJson`
+// regardless — so Muranów's fixture doubles as a realistically-sized page.
+const LLM_VENUE_URL = 'https://kino-example.test/repertuar';
+
 describeIfDb('scraper integration', () => {
   let venueId = '';
+  let muranowVenueId = '';
 
   beforeAll(async () => {
     muranowHtml = await fs.readFile(path.join(fixtureDir, 'muranow.html'), 'utf-8');
@@ -27,13 +34,20 @@ describeIfDb('scraper integration', () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
     try {
       await sql`TRUNCATE events, scrape_runs RESTART IDENTITY CASCADE`;
-      // Ensure Muranów venue exists in DB. INSERT...RETURNING gets us its UUID.
+      // INSERT...RETURNING gets us each venue's UUID (rows never carry a slug id).
       const rows = await sql`
+        INSERT INTO venues (name, url, city, country, category, language, timezone)
+        VALUES ('Kino Example', ${LLM_VENUE_URL}, 'Warsaw', 'PL', 'cinema', 'pl', 'Europe/Warsaw')
+        ON CONFLICT (url) DO UPDATE SET name = EXCLUDED.name
+        RETURNING id`;
+      venueId = (rows[0] as { id: string }).id;
+
+      const muranowRows = await sql`
         INSERT INTO venues (name, url, city, country, category, language, timezone)
         VALUES ('Kino Muranów', 'https://kinomuranow.pl/repertuar', 'Warsaw', 'PL', 'cinema', 'pl', 'Europe/Warsaw')
         ON CONFLICT (url) DO UPDATE SET name = EXCLUDED.name
         RETURNING id`;
-      venueId = (rows[0] as { id: string }).id;
+      muranowVenueId = (muranowRows[0] as { id: string }).id;
     } finally {
       await sql.end();
     }
@@ -44,6 +58,8 @@ describeIfDb('scraper integration', () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
     try {
       await sql`TRUNCATE events, scrape_runs RESTART IDENTITY CASCADE`;
+      // Synthetic venue — not part of the seed, so don't leave it behind.
+      await sql`DELETE FROM venues WHERE url = ${LLM_VENUE_URL}`;
     } finally {
       await sql.end();
     }
@@ -83,6 +99,35 @@ describeIfDb('scraper integration', () => {
     expect(tajny.sourceId).toBe('26919');
     expect(tajny.sourceUrl).toBe('https://kinomuranow.pl/film/tajny-agent');
     expect(tajny.category).toBe('cinema');
+  });
+
+  it('Muranów takes the deterministic path: no extractor, real rows off the fixture', async () => {
+    // Every film page answers with the same synopsis, so the enrichment pass
+    // (deterministic venues opt in via `enrich`) has something to fill in.
+    const filmPage = '<html><head><meta property="og:description" content="Opis filmu."></head></html>';
+    const fetcher = (async () => new Response(filmPage, { status: 200 })) as unknown as typeof fetch;
+
+    const run = await scrapeVenue(muranowVenueId, {
+      htmlOverride: muranowHtml,
+      // Deliberately no extractor: reaching the LLM here would throw.
+      fetcher,
+      now: new Date('2026-06-07T08:00:00.000Z'),
+    });
+
+    expect(run.status).toBe('success');
+    expect(run.eventsFound).toBe(143);
+
+    const db = getDb();
+    const rows = await db.select().from(schema.events);
+    expect(rows).toHaveLength(143);
+
+    const tajny = rows.find((r) => r.sourceId === '26919')!;
+    expect(tajny.title).toBe('Tajny agent');
+    expect(tajny.sourceUrl).toBe('https://kinomuranow.pl/film/tajny-agent');
+    expect(tajny.category).toBe('cinema');
+    // 17:00 Warsaw on 7 June = 15:00Z (CEST).
+    expect(new Date(tajny.startsAt).toISOString()).toBe('2026-06-07T15:00:00.000Z');
+    expect(tajny.description).toBe('Opis filmu.');
   });
 
   it('second run with identical HTML records status=skipped_unchanged', async () => {
@@ -145,8 +190,8 @@ describeIfDb('scraper integration', () => {
       await sql`
         INSERT INTO events (venue_id, title, starts_at, category, source_url, updated_at)
         VALUES
-          (${venueId}, 'Zombie in window', '2026-06-10T18:00:00.000Z', 'cinema', 'https://kinomuranow.pl/film/zombie', '2026-06-01T00:00:00.000Z'),
-          (${venueId}, 'Beyond window', '2026-07-01T18:00:00.000Z', 'cinema', 'https://kinomuranow.pl/film/beyond', '2026-06-01T00:00:00.000Z')`;
+          (${venueId}, 'Zombie in window', '2026-06-10T18:00:00.000Z', 'cinema', 'https://kino-example.test/film/zombie', '2026-06-01T00:00:00.000Z'),
+          (${venueId}, 'Beyond window', '2026-07-01T18:00:00.000Z', 'cinema', 'https://kino-example.test/film/beyond', '2026-06-01T00:00:00.000Z')`;
     } finally {
       await sql.end();
     }

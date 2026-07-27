@@ -32,8 +32,14 @@ describe('getDeterministicScraper', () => {
     ).toBe(DETERMINISTIC_SCRAPERS.krolikarnia);
   });
 
+  it('resolves Muranów by host for DB rows carrying a UUID id', () => {
+    expect(getDeterministicScraper('some-uuid', 'https://kinomuranow.pl/repertuar')).toBe(
+      DETERMINISTIC_SCRAPERS['kino-muranow'],
+    );
+  });
+
   it('returns undefined for hosts without a deterministic scraper', () => {
-    expect(getDeterministicScraper('some-uuid', 'https://kinomuranow.pl/repertuar')).toBeUndefined();
+    expect(getDeterministicScraper('some-uuid', 'https://teatrdramatyczny.pl/repertuar/')).toBeUndefined();
     expect(getDeterministicScraper('some-uuid', 'not a url')).toBeUndefined();
     expect(getDeterministicScraper('some-uuid')).toBeUndefined();
   });
