@@ -1,6 +1,9 @@
 import { getDb, schema } from '../db/index.js';
+import { env } from '../config.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
-import { scrapeTargetVenues } from '../services/scheduler.js';
+import { scrapeVenuesBatched } from '../services/scraper/batch.js';
+import { defaultBatchClient } from '../services/scraper/extractor.js';
+import { scrapeTargetVenues, readBatchEnabled, readBatchConcurrency } from '../services/scheduler.js';
 
 async function main(): Promise<void> {
   const db = getDb();
@@ -14,22 +17,37 @@ async function main(): Promise<void> {
   const venues = await scrapeTargetVenues();
   const skipped = total.length - venues.length;
   console.log(`scraping ${venues.length}/${total.length} venue(s)${skipped > 0 ? ` (${skipped} inactive — skipped)` : ''}...`);
-  const results = await Promise.allSettled(
-    venues.map((v) => scrapeVenue(v.id)),
-  );
   let ok = 0;
   let failed = 0;
-  results.forEach((r, i) => {
-    const name = venues[i]!.name;
-    if (r.status === 'fulfilled') {
-      console.log(`  ${name}: ${r.value.status} (${r.value.eventsFound ?? '-'} events)`);
-      if (r.value.status === 'failed') failed++;
-      else ok++;
-    } else {
-      console.error(`  ${name}: threw`, r.reason);
-      failed++;
-    }
-  });
+  const report = (name: string, run: { status: string; eventsFound: number | null }) => {
+    console.log(`  ${name}: ${run.status} (${run.eventsFound ?? '-'} events)`);
+    if (run.status === 'failed') failed++;
+    else ok++;
+  };
+
+  // Same path the scheduler takes: one Message Batches submission for every
+  // venue that needs the LLM, at half the per-token price.
+  if (readBatchEnabled() && env.ANTHROPIC_API_KEY) {
+    await scrapeVenuesBatched(venues, {
+      client: defaultBatchClient(),
+      concurrency: readBatchConcurrency(),
+      onResult: (v, run) => report(v.name, run),
+      onError: (v, e) => {
+        console.error(`  ${v.name}: threw`, e);
+        failed++;
+      },
+    });
+  } else {
+    const results = await Promise.allSettled(venues.map((v) => scrapeVenue(v.id)));
+    results.forEach((r, i) => {
+      const name = venues[i]!.name;
+      if (r.status === 'fulfilled') report(name, r.value);
+      else {
+        console.error(`  ${name}: threw`, r.reason);
+        failed++;
+      }
+    });
+  }
   if (ok === 0 && failed > 0) process.exit(1);
   process.exit(0);
 }

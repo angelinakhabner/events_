@@ -15,7 +15,11 @@ import { trpc, makeQueryClient } from '../lib/trpc';
 import { setSessionToken, getSessionToken } from '../lib/auth';
 import { MyPage } from './My';
 
-const DEVICE = 'e2e-lists-device';
+// Fresh identity per run — see the note in My.films.e2e.test.tsx: the CI
+// Postgres outlives the process, so a fixed account carries state between runs.
+const RUN = Math.random().toString(36).slice(2, 10);
+const DEVICE = `e2e-lists-device-${RUN}`;
+const USER_EMAIL = `lists-e2e-${RUN}@example.com`;
 
 function inProcessFetch(app: ReturnType<typeof createApp>): typeof fetch {
   return ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -55,7 +59,7 @@ function renderPage() {
 }
 
 beforeAll(async () => {
-  const { token } = await requestMagicLink(defaultAuthStore, 'lists-e2e@example.com');
+  const { token } = await requestMagicLink(defaultAuthStore, USER_EMAIL);
   const verified = await verifyMagicLink(defaultAuthStore, token);
   if (!verified) throw new Error('login failed');
   setSessionToken(verified.sessionToken);

@@ -79,13 +79,16 @@ npm run lint
 | `DATABASE_URL` | `postgresql://goin:goin@localhost:5432/goin` | `${{ Postgres.DATABASE_URL }}` | Postgres connection. Unset ⇒ in-memory folder store |
 | `ANTHROPIC_API_KEY` | `sk-ant-…` (optional locally) | `sk-ant-…` | Claude API key for AI event parsing |
 | `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
-| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email |
+| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email. The domain must be verified in Resend |
+| `APP_URL` | `http://localhost:5173` | `https://<owner>.github.io/<repo>` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
 | `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | set as a **GitHub Actions repo variable**, baked into the Pages build | Backend base URL the frontend calls |
 | `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/<repo>/` | Vite `base` for the GitHub Pages subpath |
 
 `ANTHROPIC_API_KEY` and `RESEND_API_KEY` are read lazily — the server boots and
 serves venues/folders/default events without them; only AI parsing and email
-calls fail if they're missing. CI uses a throwaway set (`backend/.env.test`)
+calls fail if they're missing. In particular, **email sign-in silently does
+nothing useful without `RESEND_API_KEY`**: the token is still minted, but the
+link is only written to the server log and the UI says email isn't configured. CI uses a throwaway set (`backend/.env.test`)
 against the CI Postgres service.
 
 ## Scheduled scraping (not yet wired)
@@ -180,6 +183,23 @@ the backend service:
 | `SCRAPE_CRON_ENABLED` | `true` | turn the scheduler on (off by default so dev/test servers don't scrape) |
 | `SCRAPE_CRON_HOUR` | `7` (default) | hour of day in **Europe/Warsaw** to run |
 | `SCRAPE_CRON_DAY_OF_WEEK` | unset (default) | day of week in **Europe/Warsaw** to run (`0`=Sun … `6`=Sat). Unset → daily; set to e.g. `1` for a weekly Monday sweep |
+| `SCRAPE_BATCH_ENABLED` | `true` (default) | send the sweep's LLM extractions through Anthropic's Message Batches API at **half the per-token price**. Set `false` for the sequential, one-request-per-venue path |
+| `SCRAPE_BATCH_CONCURRENCY` | `3` (default) | parallel venue fetches during a batched sweep. Venues waiting on the batch don't hold a slot, so this only paces Firecrawl renders |
+
+**Halving token cost with the Batch API:** every venue that needs the LLM
+has its prompt collected rather than sent, and the whole sweep goes out as a
+single batch — billed at 50% of standard rates. Batch requests also don't
+draw on the per-minute rate limits, which is why the batched path doesn't
+need the `SCRAPE_VENUE_GAP_MS` pause between venues. The tradeoff is
+latency: results usually land within the hour, but the API's guarantee is 24
+hours, so a sweep can take longer to complete than the sequential path.
+Deterministic venues, unchanged pages, and JSON-LD venues never call the
+model, so they're unaffected either way.
+
+A batch that hasn't finished within 6 hours is cancelled and its venues are
+recorded as failed, so the next sweep retries them from scratch. If the
+process restarts mid-batch the in-flight results are lost (and still
+billed) — a once-a-day risk worth knowing about, not currently mitigated.
 
 **Saving tokens with a weekly cadence:** most venues publish their
 schedules weeks or months ahead, so a daily sweep mostly re-bills Anthropic
@@ -224,6 +244,6 @@ Short version:
    (`npm --workspace backend run start`, which itself chains the migration)
    commands and `/health` as the healthcheck.
 3. Env vars: `DATABASE_URL=${{ Postgres.DATABASE_URL }}`, `ANTHROPIC_API_KEY`,
-   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `NODE_ENV=production`.
+   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `APP_URL`, `NODE_ENV=production`.
 4. Generate a public domain → set `VITE_API_URL` (repo Actions variable) to it
    → re-run the **Deploy frontend** workflow.

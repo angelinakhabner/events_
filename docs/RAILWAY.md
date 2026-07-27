@@ -53,8 +53,9 @@ In the backend service → **Variables** tab → **+ New Variable**, add the fol
 | `DATABASE_URL` | `${{ Postgres.DATABASE_URL }}` | **Variable reference**, not a literal. Type `${{` and Railway will autocomplete the Postgres service's `DATABASE_URL`. |
 | `NODE_ENV` | `production` | |
 | `ANTHROPIC_API_KEY` | `sk-ant-…` | Your Anthropic key. Used by the AI parser when scraping lands. |
-| `RESEND_API_KEY` | `re_…` | Optional today, but the config schema accepts it. |
-| `RESEND_FROM_EMAIL` | `hello@goin.app` | Default is fine for now. |
+| `RESEND_API_KEY` | `re_…` | **Required for email sign-in.** Without it the backend mints the login token but only prints the link to the server log — the user never gets an email. |
+| `RESEND_FROM_EMAIL` | `hello@goin.app` | The sending domain must be verified in Resend (DNS records), otherwise Resend rejects the send and "Continue with email" surfaces the provider error. To try it before owning a domain, use `onboarding@resend.dev`, which only delivers to your own Resend account address. |
+| `APP_URL` | `https://<owner>.github.io/<repo>` | **Required for email sign-in.** Login emails are built as `<APP_URL>/auth?token=…`. Defaults to `http://localhost:5173`, so if it is unset in production every emailed link points at localhost. No trailing slash needed. |
 
 Do **not** set `PORT` — Railway injects it automatically and the backend reads it via `process.env.PORT`.
 
