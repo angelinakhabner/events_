@@ -79,13 +79,16 @@ npm run lint
 | `DATABASE_URL` | `postgresql://goin:goin@localhost:5432/goin` | `${{ Postgres.DATABASE_URL }}` | Postgres connection. Unset ⇒ in-memory folder store |
 | `ANTHROPIC_API_KEY` | `sk-ant-…` (optional locally) | `sk-ant-…` | Claude API key for AI event parsing |
 | `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
-| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email |
+| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email. The domain must be verified in Resend |
+| `APP_URL` | `http://localhost:5173` | `https://<owner>.github.io/<repo>` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
 | `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | set as a **GitHub Actions repo variable**, baked into the Pages build | Backend base URL the frontend calls |
 | `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/<repo>/` | Vite `base` for the GitHub Pages subpath |
 
 `ANTHROPIC_API_KEY` and `RESEND_API_KEY` are read lazily — the server boots and
 serves venues/folders/default events without them; only AI parsing and email
-calls fail if they're missing. CI uses a throwaway set (`backend/.env.test`)
+calls fail if they're missing. In particular, **email sign-in silently does
+nothing useful without `RESEND_API_KEY`**: the token is still minted, but the
+link is only written to the server log and the UI says email isn't configured. CI uses a throwaway set (`backend/.env.test`)
 against the CI Postgres service.
 
 ## Scheduled scraping (not yet wired)
@@ -241,6 +244,6 @@ Short version:
    (`npm --workspace backend run start`, which itself chains the migration)
    commands and `/health` as the healthcheck.
 3. Env vars: `DATABASE_URL=${{ Postgres.DATABASE_URL }}`, `ANTHROPIC_API_KEY`,
-   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `NODE_ENV=production`.
+   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `APP_URL`, `NODE_ENV=production`.
 4. Generate a public domain → set `VITE_API_URL` (repo Actions variable) to it
    → re-run the **Deploy frontend** workflow.

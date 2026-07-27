@@ -76,6 +76,16 @@ jobs:
             mkdir -p site/dev
             cp -r dev/frontend/dist/. site/dev/
           fi
+          # SPA fallback. The app uses BrowserRouter, so deep links like
+          # /<repo>/auth?token=… (the magic-link login landing) have no file on
+          # disk and Pages would answer with its own 404 page. Serving the built
+          # index.html as 404.html hands those URLs to the router instead; the
+          # browser keeps the path and query string, and the bundle's asset URLs
+          # are absolute, so it boots correctly from any depth.
+          cp site/index.html site/404.html
+          if [ -f site/dev/index.html ]; then
+            cp site/dev/index.html site/dev/404.html
+          fi
 
       # The repo's Pages source setting is not visible from the workflow, so
       # publish through both supported mechanisms; the one matching the
