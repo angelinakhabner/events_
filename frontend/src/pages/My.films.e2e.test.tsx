@@ -15,7 +15,14 @@ import { trpc, makeQueryClient } from '../lib/trpc';
 import { setSessionToken, getSessionToken } from '../lib/auth';
 import { MyPage } from './My';
 
-const DEVICE = 'e2e-films-device';
+// A fresh identity per run. These e2e tests drive the real backend, which in
+// CI is backed by a Postgres that outlives the process — a fixed email meant
+// the same user accumulated rows run over run, so the exact-count assertions
+// below ("Want to watch (1)") started failing against leftovers. Randomising
+// the account keeps each run's state its own without needing a DB reset.
+const RUN = Math.random().toString(36).slice(2, 10);
+const DEVICE = `e2e-films-device-${RUN}`;
+const USER_EMAIL = `films-e2e-${RUN}@example.com`;
 
 function inProcessFetch(app: ReturnType<typeof createApp>): typeof fetch {
   return ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -55,7 +62,7 @@ function renderPage() {
 }
 
 beforeAll(async () => {
-  const { token } = await requestMagicLink(defaultAuthStore, 'films-e2e@example.com');
+  const { token } = await requestMagicLink(defaultAuthStore, USER_EMAIL);
   const verified = await verifyMagicLink(defaultAuthStore, token);
   if (!verified) throw new Error('login failed');
   setSessionToken(verified.sessionToken);
