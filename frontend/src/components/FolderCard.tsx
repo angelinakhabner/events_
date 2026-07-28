@@ -39,13 +39,13 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
                 if (e.key === 'Enter') submit();
                 if (e.key === 'Escape') { setDraft(folder.name); setEditing(false); }
               }}
-              className="font-serif text-2xl bg-transparent border-b border-accent outline-none w-full"
+              className="headline text-2xl bg-transparent border-b border-accent outline-none w-full"
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="font-serif text-2xl text-ink bg-transparent border-0 p-0 cursor-text text-left"
+              className="headline text-2xl text-ink bg-transparent border-0 p-0 cursor-text text-left"
               aria-label={`Rename folder ${folder.name}`}
             >
               {folder.name}

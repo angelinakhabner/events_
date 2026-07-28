@@ -39,7 +39,7 @@ export function MyEventsSection() {
   return (
     <section>
       <div className="mb-6">
-        <h2 className="font-serif text-2xl tracking-tight">Events</h2>
+        <h2 className="headline text-2xl">Events</h2>
         <p className="mt-1 text-sm text-muted max-w-prose">
           What&rsquo;s coming up at the venues in your active folder.
         </p>

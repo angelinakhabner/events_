@@ -61,7 +61,7 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
   if (settings.isLoading || venues.isLoading) {
     return (
       <section>
-        <h2 className="mb-6 font-serif text-2xl tracking-tight">Newsletter</h2>
+        <h2 className="mb-6 headline text-2xl">Newsletter</h2>
         <SkeletonList rows={2} />
       </section>
     );
@@ -69,7 +69,7 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
   if (settings.error || venues.error) {
     return (
       <section>
-        <h2 className="mb-6 font-serif text-2xl tracking-tight">Newsletter</h2>
+        <h2 className="mb-6 headline text-2xl">Newsletter</h2>
         <ErrorState
           message="Couldn't load your newsletter settings."
           onRetry={() => { void settings.refetch(); void venues.refetch(); }}
@@ -197,7 +197,7 @@ function NewsletterForm({
 
   return (
     <section>
-      <h2 className="mb-2 font-serif text-2xl tracking-tight">Newsletter</h2>
+      <h2 className="mb-2 headline text-2xl">Newsletter</h2>
       <p className="mb-6 text-sm text-muted max-w-prose">
         Get what&rsquo;s on at your venues as an email brief — e.g. Kino Muranów and Kinoteka,
         every day at 08:00, everything after 6&nbsp;pm.

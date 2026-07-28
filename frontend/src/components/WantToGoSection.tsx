@@ -32,7 +32,7 @@ export function WantToGoSection() {
 
   return (
     <section>
-      <h2 className="mb-2 font-serif text-2xl tracking-tight">Want to go</h2>
+      <h2 className="mb-2 headline text-2xl">Want to go</h2>
       <p className="mb-6 text-sm text-muted max-w-prose">
         Everything you saved, in one list. Add events with &ldquo;Want to go&rdquo; on any
         event, and films with &ldquo;Track film&rdquo; in the nearest-screenings panel.

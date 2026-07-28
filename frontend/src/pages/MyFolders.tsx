@@ -32,7 +32,7 @@ export function MyFoldersPage() {
     <section>
       <div className="mb-10 flex items-baseline justify-between">
         <div>
-          <h2 className="font-serif text-2xl tracking-tight">My folders</h2>
+          <h2 className="headline text-2xl">My folders</h2>
           <p className="mt-2 text-muted max-w-prose">
             Curated subsets of venues with persistent filters.
           </p>

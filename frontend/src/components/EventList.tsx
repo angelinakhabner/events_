@@ -14,7 +14,7 @@ export function EventList({ events, venues }: Props) {
       {groups.map(({ key, label, items }) => (
         <section key={key} className="mb-12">
           <div className="flex items-baseline justify-between border-b border-rule pb-3 mb-2">
-            <h2 className="font-serif text-2xl">{label}</h2>
+            <h2 className="headline text-2xl">{label}</h2>
             <span className="tag">{items.length} event{items.length === 1 ? '' : 's'}</span>
           </div>
           <ul className="divide-y divide-rule">

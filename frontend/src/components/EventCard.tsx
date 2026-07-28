@@ -18,7 +18,7 @@ export function EventCard({ event, venue }: Props) {
           {formatTime(event.startsAt)}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-serif text-xl leading-snug">
+          <h3 className="headline text-xl">
             <a
               href={event.sourceUrl}
               target="_blank"
@@ -28,9 +28,9 @@ export function EventCard({ event, venue }: Props) {
               {event.title}
             </a>
           </h3>
-          <div className="mt-1 text-sm text-muted">
-            {v?.name ?? 'Unknown venue'}
-            {v ? <> · <span className="tag">{categoryLabel(v.category)}</span></> : null}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+            {v ? <span className="tag-filled">{categoryLabel(v.category)}</span> : null}
+            <span className="tag">{v?.name ?? 'Unknown venue'}</span>
           </div>
           {event.description ? (
             <ExpandableText text={event.description} className="mt-2" />

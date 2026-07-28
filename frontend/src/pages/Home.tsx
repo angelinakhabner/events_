@@ -33,7 +33,7 @@ export function HomePage() {
   return (
     <section>
       <div className="mb-6">
-        <h1 className="font-serif text-4xl tracking-tight">What&rsquo;s on</h1>
+        <h1 className="headline text-4xl">What&rsquo;s on</h1>
         <p className="mt-2 text-muted max-w-prose">
           Live screenings in Warsaw, refreshed every few minutes.
         </p>

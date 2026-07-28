@@ -7,7 +7,7 @@ interface EmptyProps {
 export function EmptyState({ title, hint, action }: EmptyProps) {
   return (
     <div className="py-20 text-center">
-      <p className="font-serif text-xl text-ink">{title}</p>
+      <p className="headline text-xl text-ink">{title}</p>
       {hint ? <p className="mt-2 text-sm text-muted">{hint}</p> : null}
       {action ? (
         <button
@@ -46,7 +46,7 @@ interface ErrorProps {
 export function ErrorState({ message = 'Something went wrong.', onRetry }: ErrorProps) {
   return (
     <div role="alert" className="py-20 text-center">
-      <p className="font-serif text-xl">{message}</p>
+      <p className="headline text-xl">{message}</p>
       {onRetry ? (
         <button
           type="button"

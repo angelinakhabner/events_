@@ -56,7 +56,7 @@ export function NewFolderModal({ venues, onCancel, onSubmit, submitting, serverE
         onSubmit={submit}
         className="w-full max-w-lg bg-paper p-8"
       >
-        <h2 id={titleId} className="font-serif text-2xl mb-6">New folder</h2>
+        <h2 id={titleId} className="headline text-2xl mb-6">New folder</h2>
 
         <label className="block">
           <span className="tag block mb-2">Name</span>

@@ -1,13 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Inter:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Poster style (GOI-34).
+ *
+ * The newsletter was rebuilt to the "poster masthead" design; the app was
+ * still the earlier quiet-editorial look, so the two didn't read as one
+ * product. The vocabulary here is the newsletter's, translated from
+ * email-safe tables into ordinary CSS: heavy grotesque display type, 2px
+ * rules, boxed uppercase tags, and one hot accent on warm paper.
+ */
+
 @layer base {
   html, body, #root { height: 100%; }
   body {
-    @apply bg-paper text-ink antialiased font-sans;
+    /* The cooler `page` outside the column makes the content read as a sheet
+       laid on a surface, which is what gives the layout its poster framing. */
+    @apply bg-page text-ink antialiased font-sans;
     font-feature-settings: 'ss01', 'cv11';
   }
   a { @apply text-ink underline-offset-4; }
@@ -15,12 +27,35 @@
 }
 
 @layer components {
+  /* Small uppercase label. Heavier and tighter than before — in this design a
+     tag is a printed stamp, not a whispered aside. */
   .tag {
-    @apply text-[10px] tracking-[0.14em] uppercase text-muted;
+    @apply font-display text-[11px] font-semibold tracking-[0.12em] uppercase text-muted;
   }
+
+  /* Boxed tags, mirroring the newsletter's tagCell: filled for the row's own
+     category, outlined for secondary detail, so a listing carries one visual
+     accent per row rather than a uniform grey wash. */
+  .tag-box {
+    @apply font-display text-[11px] font-semibold tracking-[0.06em] uppercase text-ink px-2 py-0.5 leading-none;
+  }
+  .tag-filled {
+    @apply tag-box bg-accentSoft;
+  }
+  .tag-outline {
+    @apply tag-box border border-ink;
+  }
+
+  /* 2px, as drawn in the newsletter. A hairline disappears against `paper`. */
   .rule {
-    @apply border-t border-rule;
+    @apply border-t-2 border-rule;
   }
+
+  /* Poster headline: heavy, tight, unafraid of size. */
+  .headline {
+    @apply font-display font-extrabold tracking-[-0.01em] leading-[1.05];
+  }
+
   .link-accent {
     @apply text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent;
   }

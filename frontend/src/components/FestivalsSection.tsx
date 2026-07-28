@@ -12,7 +12,7 @@ export function FestivalsSection() {
 
   return (
     <section className="mt-12">
-      <h2 className="mb-4 font-serif text-2xl tracking-tight">Festivals</h2>
+      <h2 className="mb-4 headline text-2xl">Festivals</h2>
       <ul className="divide-y divide-rule list-none m-0 p-0">
         {festivals.data.map((f) => (
           <li key={f.id} className="py-3">

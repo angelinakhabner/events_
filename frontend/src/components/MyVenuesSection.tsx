@@ -58,7 +58,7 @@ export function MyVenuesSection() {
     <section>
       <div className="mb-6 flex flex-wrap items-baseline justify-between gap-4">
         <div>
-          <h2 className="font-serif text-2xl tracking-tight">My venues</h2>
+          <h2 className="headline text-2xl">My venues</h2>
           <p className="mt-1 text-sm text-muted max-w-prose">
             Every venue you follow, filed into folders. Rename a venue, change its category
             or add your own tags — those changes are only visible to you.

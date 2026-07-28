@@ -40,7 +40,7 @@ export function DevGate({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-full flex items-center justify-center px-5">
       <form onSubmit={handleSubmit} className="w-full max-w-xs space-y-4 text-center">
-        <p className="font-serif text-2xl tracking-tight">Goin — dev preview</p>
+        <p className="headline text-2xl">Goin — dev preview</p>
         <input
           type="password"
           name="password"

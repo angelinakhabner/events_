@@ -27,11 +27,11 @@ function BucketSection({ bucket, venues }: { bucket: Bucket; venues: Map<string,
   const accent = bucket.key === 'soon';
   return (
     <section className="mb-12">
-      <div className="flex items-baseline justify-between border-b border-rule pb-3 mb-2">
-        <h2 className={`font-serif text-2xl ${accent ? 'text-accent' : ''}`}>{bucket.label}</h2>
+      <div className="flex items-baseline justify-between border-b-2 border-rule pb-3 mb-2">
+        <h2 className={`headline text-2xl ${accent ? 'text-accent' : ''}`}>{bucket.label}</h2>
         <span className="tag">{bucket.items.length} event{bucket.items.length === 1 ? '' : 's'}</span>
       </div>
-      <ul className="divide-y divide-rule">
+      <ul className="divide-y-2 divide-rule">
         {bucket.items.map((e) => (
           <li key={e.id}>
             <EventRow event={e} venue={venues.get(e.venueId)} showDate={showDate} highlight={accent} bucketKey={bucket.key} />
@@ -65,17 +65,21 @@ function EventRow({
               rel="noreferrer"
               className="no-underline"
             >
-              <h3 className="font-serif text-xl leading-snug text-ink group-hover:text-accent transition-colors">
+              <h3 className="headline text-xl text-ink group-hover:text-accent transition-colors">
                 {event.title}
               </h3>
             </a>
             {bucketKey === 'soon' ? <span className="tag text-accent">Soon</span> : null}
           </div>
-          <div className="mt-1 text-sm text-muted flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{venue?.name ?? 'Unknown venue'}</span>
-            <span className="tag">{categoryLabel(event.category)}</span>
-            {event.durationMinutes ? <span>{event.durationMinutes} min</span> : null}
-            {showLang ? <span className="tag uppercase">{lang}</span> : null}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+            {/* The row's own category is the stamp; everything else stays
+                quiet, so each listing has exactly one accent. */}
+            <span className="tag-filled">{categoryLabel(event.category)}</span>
+            <span className="tag">{venue?.name ?? 'Unknown venue'}</span>
+            {event.durationMinutes ? (
+              <span className="text-sm text-muted">{event.durationMinutes} min</span>
+            ) : null}
+            {showLang ? <span className="tag-outline">{lang}</span> : null}
           </div>
           {event.description ? (
             <ExpandableText text={event.description} className="mt-2" />

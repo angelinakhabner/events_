@@ -44,7 +44,7 @@ export function MyPage() {
     <div>
       <header className="mb-10 flex items-baseline justify-between">
         <div>
-          <h1 className="font-serif text-4xl tracking-tight">My page</h1>
+          <h1 className="headline text-4xl">My page</h1>
           {me.data ? <p className="mt-2 text-muted">{me.data.email}</p> : null}
         </div>
         <LogoutButton />
@@ -99,7 +99,7 @@ function LoginSection() {
   if (request.isSuccess) {
     return (
       <section className="mx-auto mt-16 max-w-sm text-center">
-        <h1 className="font-serif text-3xl tracking-tight">Check your email</h1>
+        <h1 className="headline text-3xl">Check your email</h1>
         <p className="mt-3 text-sm text-muted">
           {request.data.emailSent ? (
             <>
@@ -125,7 +125,7 @@ function LoginSection() {
   return (
     <section className="mx-auto mt-16 max-w-sm">
       <div className="text-center">
-        <h1 className="font-serif text-3xl tracking-tight">Sign in</h1>
+        <h1 className="headline text-3xl">Sign in</h1>
         <p className="mt-2 text-sm text-muted">Enter your email to receive a sign-in link</p>
       </div>
 
