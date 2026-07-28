@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { Event } from '@goin/shared';
 import {
   briefWindowDays,
@@ -13,6 +13,7 @@ import {
   wasRecentlySent,
 } from './newsletter.js';
 import { InMemoryUserVenueStore } from './user-venue-store.js';
+import { defaultEventStore } from './event-store.js';
 import { InMemoryNewsletterStore } from './newsletter-store.js';
 import type { NewsletterSubscription } from './newsletter-store.js';
 
@@ -301,17 +302,42 @@ describe('sendNewsletterBriefs', () => {
     expect(res.outcomes[0]).toMatchObject({ email: 'a@b.pl', status: 'skipped', reason: 'not-due' });
   });
 
-  it('force ignores the schedule, and a broken lookup names its cause', async () => {
+  it('force ignores the schedule but still needs venues', async () => {
     const store = await storeWith({
       email: 'a@b.pl', frequency: 'daily', venueIds: [], sendHour: 8, enabled: true,
     });
+    // 03:00 Warsaw — nowhere near the 08:00 slot, so this would be 'not-due'
+    // without force. Past that gate it reports the real obstacle: an empty
+    // selection resolves to the user's own venues, and this user follows none.
     const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), { dryRun: true, force: true });
 
-    // Past the not-due gate the sweep reaches the event lookup, which has no
-    // DATABASE_URL under test — the point being that the reason reaches the
-    // caller rather than vanishing into a skip counter.
-    expect(res.outcomes[0]).toMatchObject({ status: 'failed', reason: 'send-failed' });
-    expect(res.outcomes[0]?.detail).toContain('DATABASE_URL');
+    expect(res.outcomes[0]).toMatchObject({ status: 'skipped', reason: 'no-venues' });
+  });
+
+  it('narrows the event query to the brief\'s venues and window', async () => {
+    // The row limit cuts the globally earliest events, so asking for "the next
+    // 500" and filtering by venue afterwards drops the later days of a weekly
+    // brief once the database holds more than that. The venues and the window
+    // have to reach SQL.
+    const store = await storeWith({
+      email: 'a@b.pl', frequency: 'weekly', venueIds: ['v1', 'v2'], sendHour: 8, sendWeekday: 1, enabled: true,
+    });
+    const spy = vi.spyOn(defaultEventStore, 'listUpcoming').mockResolvedValue([]);
+    let calls: Parameters<typeof defaultEventStore.listUpcoming>[];
+    try {
+      await sendNewsletterBriefs(store, NOW, { dryRun: true, force: true });
+    } finally {
+      // Snapshot before restoring — mockRestore() also clears recorded calls.
+      calls = [...spy.mock.calls];
+      spy.mockRestore();
+    }
+
+    expect(calls).toHaveLength(1);
+    const query = calls[0]![0]!;
+    expect(query.venueIds).toEqual(['v1', 'v2']);
+    expect(query.now).toEqual(NOW);
+    // Weekly → seven days ahead.
+    expect(query.until?.getTime()).toBe(NOW.getTime() + 7 * 24 * 3_600_000);
   });
 
   it('only restricts the sweep to one subscriber', async () => {

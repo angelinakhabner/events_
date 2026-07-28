@@ -1,12 +1,18 @@
-import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
 import type { Event, EventVenue, Category } from '@goin/shared';
 
 export interface EventListInput {
   city?: string;
   venueId?: string;
+  /** Restrict to a set of venues — the newsletter's "my venues" selection.
+   *  Narrowing in SQL matters: `limit` cuts the *globally* earliest rows, so
+   *  filtering by venue afterwards can leave a caller with nothing. */
+  venueIds?: string[];
   /** Exact title, matched case-insensitively — same film at every cinema. */
   title?: string;
+  /** Upper bound on start time — the caller's window, e.g. a week ahead. */
+  until?: Date;
   /** Hard upper bound on rows. */
   limit?: number;
   now?: Date;
@@ -19,7 +25,12 @@ export class EventStore {
     const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
 
     const conditions = [gte(schema.events.startsAt, now)];
+    if (input.until) conditions.push(lte(schema.events.startsAt, input.until));
     if (input.venueId) conditions.push(eq(schema.events.venueId, input.venueId));
+    // An explicitly empty list means "no venues", not "all of them" — matching
+    // it to nothing is what keeps a subscriber with no venues from being
+    // briefed on the whole database.
+    if (input.venueIds) conditions.push(inArray(schema.events.venueId, input.venueIds));
     if (input.city) conditions.push(eq(schema.venues.city, input.city));
     if (input.title) {
       conditions.push(sql`lower(${schema.events.title}) = lower(${input.title})`);

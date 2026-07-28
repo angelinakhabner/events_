@@ -291,7 +291,6 @@ export async function sendNewsletterBriefs(
       }
     }
     try {
-      const events = await defaultEventStore.listUpcoming({ limit: 500 });
       const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds);
       // No venues followed at all — nothing to brief on, and an empty list
       // must not fall through to "every venue in the database".
@@ -299,11 +298,21 @@ export async function sendNewsletterBriefs(
         outcomes.push({ ...base, status: 'skipped', reason: 'no-venues' });
         continue;
       }
+      // Narrow in SQL, not after the fact: `limit` cuts the globally earliest
+      // rows, so fetching "the next 500 events" and filtering by venue here
+      // silently truncated a weekly brief once the database held more than 500
+      // upcoming events across all venues — the later days just vanished.
+      const events = await defaultEventStore.listUpcoming({
+        venueIds,
+        now,
+        until: new Date(now.getTime() + briefWindowDays(sub.frequency) * 24 * 3_600_000),
+        limit: 500,
+      });
       const selected = selectBriefEvents(events, { ...sub, venueIds }, now);
       if (selected.length === 0) {
         outcomes.push({
           ...base, status: 'skipped', reason: 'no-events', eventCount: 0,
-          detail: `${events.length} upcoming event(s) in the database, none matched this brief's venues/hours`,
+          detail: `${events.length} upcoming event(s) at ${venueIds.length} venue(s) in the window, none matched this brief's hours/day scope`,
         });
         continue;
       }
