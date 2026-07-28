@@ -63,26 +63,46 @@ describe('matchesEvent', () => {
     expect(matchesEvent(evt(), venue, { countries: ['Germany'] })).toBe(false);
   });
 
-  // Time/day branches are evaluated with the server's local Date (a known
-  // timezone weakness). Derive expectations from the same Date methods the
-  // implementation uses so these assertions hold in any runner timezone.
+  // Wed 4 Jun 2025, 19:30 UTC = 21:30 Wednesday in Warsaw (CEST +02:00).
+  // These are fixed, not derived from Date#getHours: the point of the filter is
+  // that it answers in the venue's zone regardless of where the server runs.
   const iso = '2025-06-04T19:30:00.000Z';
-  const localHour = new Date(iso).getHours();
-  const localDay = new Date(iso).getDay();
+  const WARSAW_HOUR = 21;
+  const WEDNESDAY = 3;
 
   it('filters by startHour (starts at or after)', () => {
-    expect(matchesEvent(evt({ startsAt: iso }), venue, { startHour: localHour })).toBe(true);
-    expect(matchesEvent(evt({ startsAt: iso }), venue, { startHour: localHour + 1 })).toBe(false);
+    expect(matchesEvent(evt({ startsAt: iso }), venue, { startHour: WARSAW_HOUR })).toBe(true);
+    expect(matchesEvent(evt({ startsAt: iso }), venue, { startHour: WARSAW_HOUR + 1 })).toBe(false);
   });
 
   it('filters by endHour (starts at or before)', () => {
-    expect(matchesEvent(evt({ startsAt: iso }), venue, { endHour: localHour })).toBe(true);
-    expect(matchesEvent(evt({ startsAt: iso }), venue, { endHour: localHour - 1 })).toBe(false);
+    expect(matchesEvent(evt({ startsAt: iso }), venue, { endHour: WARSAW_HOUR })).toBe(true);
+    expect(matchesEvent(evt({ startsAt: iso }), venue, { endHour: WARSAW_HOUR - 1 })).toBe(false);
   });
 
   it('filters by daysOfWeek', () => {
-    expect(matchesEvent(evt({ startsAt: iso }), venue, { daysOfWeek: [localDay] })).toBe(true);
-    expect(matchesEvent(evt({ startsAt: iso }), venue, { daysOfWeek: [(localDay + 1) % 7] })).toBe(false);
+    expect(matchesEvent(evt({ startsAt: iso }), venue, { daysOfWeek: [WEDNESDAY] })).toBe(true);
+    expect(matchesEvent(evt({ startsAt: iso }), venue, { daysOfWeek: [WEDNESDAY + 1] })).toBe(false);
+  });
+
+  it('reads the hour in the venue timezone, not the server\'s', () => {
+    // 23:30 Warsaw on Wed is still 21:30 UTC — a UTC reading would let this
+    // through an "after 22:00" filter and misfile it on the wrong weekday.
+    const lateIso = '2025-06-04T21:30:00.000Z'; // 23:30 Wed in Warsaw
+    expect(matchesEvent(evt({ startsAt: lateIso }), venue, { startHour: 23 })).toBe(true);
+    expect(matchesEvent(evt({ startsAt: lateIso }), venue, { daysOfWeek: [WEDNESDAY] })).toBe(true);
+
+    // 22:30 UTC Wed has already rolled over to 00:30 Thursday in Warsaw.
+    const pastMidnight = '2025-06-04T22:30:00.000Z';
+    expect(matchesEvent(evt({ startsAt: pastMidnight }), venue, { startHour: 1 })).toBe(false);
+    expect(matchesEvent(evt({ startsAt: pastMidnight }), venue, { daysOfWeek: [WEDNESDAY + 1] })).toBe(true);
+  });
+
+  it('respects DST — the same UTC hour shifts by one in winter', () => {
+    // 19:30Z is 21:30 in June (CEST) but 20:30 in January (CET).
+    const winter = '2025-01-08T19:30:00.000Z';
+    expect(matchesEvent(evt({ startsAt: winter }), venue, { startHour: 20 })).toBe(true);
+    expect(matchesEvent(evt({ startsAt: winter }), venue, { startHour: 21 })).toBe(false);
   });
 
   it('lets events with no price pass a priceMax filter (absence ≠ too expensive)', () => {
