@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Event, Festival } from '@goin/shared';
-import { listSentence, renderBriefHtml, type BriefSection } from './newsletter-render.js';
+import { groupPicks, listSentence, renderBriefHtml, type BriefSection } from './newsletter-render.js';
 
 // A Wednesday noon in Warsaw (CEST = UTC+2).
 const NOW = new Date('2026-07-22T10:00:00Z');
@@ -192,5 +192,190 @@ describe('listSentence', () => {
     expect(listSentence(['Cinema', 'Comedy'])).toBe('Cinema & Comedy');
     expect(listSentence(['Cinema', 'Comedy', 'Museums'])).toBe('Cinema, Comedy & Museums');
     expect(listSentence([])).toBe('');
+  });
+});
+
+// GOI-36: one title, one day, several venues and times → one card.
+describe('groupPicks', () => {
+  const at = (iso: string, venue: string, over: Partial<Event> = {}) =>
+    makeEvent({
+      startsAt: iso,
+      venue: { id: venue, name: venue, category: 'cinema', city: 'Warsaw', country: 'PL' },
+      ...over,
+    });
+
+  it('collapses the same title on the same day across venues', () => {
+    const picks = groupPicks([
+      at('2026-07-22T20:30:00+02:00', 'Muranów'),
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka'),
+    ]);
+    expect(picks).toHaveLength(1);
+    expect(picks[0]!.count).toBe(2);
+    expect(picks[0]!.venues.map((v) => v.name)).toEqual(['Kinoteka', 'Muranów']);
+  });
+
+  it('orders venues by their first showing, not alphabetically', () => {
+    const picks = groupPicks([
+      at('2026-07-22T21:00:00+02:00', 'Atlantic'),
+      at('2026-07-22T18:00:00+02:00', 'Zorza'),
+    ]);
+    expect(picks[0]!.venues.map((v) => v.name)).toEqual(['Zorza', 'Atlantic']);
+  });
+
+  it('collects several showings at one venue under that venue', () => {
+    const picks = groupPicks([
+      at('2026-07-22T14:00:00+02:00', 'Kinoteka'),
+      at('2026-07-22T20:30:00+02:00', 'Kinoteka'),
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka'),
+    ]);
+    expect(picks).toHaveLength(1);
+    expect(picks[0]!.count).toBe(3);
+    expect(picks[0]!.venues).toHaveLength(1);
+    expect(picks[0]!.venues[0]!.startsAt).toHaveLength(3);
+    // Ascending, so the rendered time list reads chronologically.
+    expect(picks[0]!.venues[0]!.startsAt[0]).toBe('2026-07-22T14:00:00+02:00');
+  });
+
+  it('keeps different days apart', () => {
+    const picks = groupPicks([
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka'),
+      at('2026-07-23T18:00:00+02:00', 'Kinoteka'),
+    ]);
+    expect(picks).toHaveLength(2);
+  });
+
+  it('groups by the Warsaw day, so a small-hours show joins its own evening', () => {
+    // 23:00 and 00:30 are the same night out, but different UTC dates.
+    const picks = groupPicks([
+      at('2026-07-22T23:00:00+02:00', 'Kinoteka'),
+      at('2026-07-22T22:30:00+02:00', 'Muranów'),
+    ]);
+    expect(picks).toHaveLength(1);
+    // …while 00:30 the next morning is a different Warsaw day, and stays apart.
+    expect(groupPicks([
+      at('2026-07-22T23:00:00+02:00', 'Kinoteka'),
+      at('2026-07-23T00:30:00+02:00', 'Muranów'),
+    ])).toHaveLength(2);
+  });
+
+  it('matches titles case- and whitespace-insensitively', () => {
+    // Different venues spell the same film differently in their markup.
+    const picks = groupPicks([
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka', { title: 'Chungking Express' }),
+      at('2026-07-22T20:00:00+02:00', 'Muranów', { title: '  chungking express ' }),
+    ]);
+    expect(picks).toHaveLength(1);
+  });
+
+  it('keeps genuinely different titles apart', () => {
+    const picks = groupPicks([
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka', { title: 'Chungking Express' }),
+      at('2026-07-22T20:00:00+02:00', 'Kinoteka', { title: 'Fallen Angels' }),
+    ]);
+    expect(picks).toHaveLength(2);
+  });
+
+  it('leads with the earliest showing and borrows a description from a later one', () => {
+    // Enrichment is per-page, so one venue's listing may carry the blurb the
+    // other's lacks. Dropping it because the earliest row is bare would lose
+    // information the brief already has.
+    const picks = groupPicks([
+      at('2026-07-22T20:00:00+02:00', 'Muranów', { description: 'A Wong Kar-wai classic.' }),
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka', { description: null }),
+    ]);
+    expect(picks[0]!.startsAt).toBe('2026-07-22T18:00:00+02:00');
+    expect(picks[0]!.lead.venue!.name).toBe('Kinoteka');
+    expect(picks[0]!.lead.description).toBe('A Wong Kar-wai classic.');
+  });
+
+  it('sorts picks by first showing', () => {
+    const picks = groupPicks([
+      at('2026-07-22T21:00:00+02:00', 'Kinoteka', { title: 'Late' }),
+      at('2026-07-22T12:00:00+02:00', 'Kinoteka', { title: 'Early' }),
+    ]);
+    expect(picks.map((p) => p.lead.title)).toEqual(['Early', 'Late']);
+  });
+
+  it('is a no-op on an ordinary one-showing list', () => {
+    const picks = groupPicks([at('2026-07-22T18:00:00+02:00', 'Kinoteka')]);
+    expect(picks).toHaveLength(1);
+    expect(picks[0]!.count).toBe(1);
+  });
+});
+
+describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
+  const at = (iso: string, venue: string, over: Partial<Event> = {}) =>
+    makeEvent({
+      startsAt: iso,
+      venue: { id: venue, name: venue, category: 'cinema', city: 'Warsaw', country: 'PL' },
+      ...over,
+    });
+
+  it('renders one card naming every venue and its times', () => {
+    const html = render({
+      sections: [section({
+        events: [
+          at('2026-07-22T18:00:00+02:00', 'Kinoteka', { title: 'Chungking Express' }),
+          at('2026-07-22T20:30:00+02:00', 'Muranów', { title: 'Chungking Express' }),
+        ],
+      })],
+    });
+    // The title appears once, not once per venue.
+    expect(html.match(/Chungking Express/g)).toHaveLength(1);
+    expect(html).toContain('KINOTEKA 18:00 · MURANÓW 20:30');
+    expect(html).toContain('2 shows');
+  });
+
+  it('counts cards, not showings, in the masthead', () => {
+    const html = render({
+      sections: [section({
+        events: [
+          at('2026-07-22T18:00:00+02:00', 'Kinoteka', { title: 'Same Film' }),
+          at('2026-07-22T20:30:00+02:00', 'Muranów', { title: 'Same Film' }),
+          at('2026-07-22T19:00:00+02:00', 'Zorza', { title: 'Another Film' }),
+        ],
+      })],
+    });
+    // Three screenings, two cards — saying "3 picks" would contradict the list.
+    expect(html).toContain('2 picks');
+    expect(html).not.toContain('3 picks');
+  });
+
+  it('leaves a single-venue pick reading exactly as before', () => {
+    const html = render({
+      sections: [section({ events: [at('2026-07-22T18:00:00+02:00', 'Kinoteka')] })],
+    });
+    expect(html).toContain('KINOTEKA');
+    // No time repeated in the venue line, no count line.
+    expect(html).not.toContain('KINOTEKA 18:00');
+    expect(html).not.toContain('shows</div>');
+    expect(html).toContain('1 pick');
+  });
+
+  it('keeps the same title on different days as separate cards in a weekly brief', () => {
+    const html = render({
+      sections: [section({
+        frequency: 'weekly',
+        events: [
+          at('2026-07-22T18:00:00+02:00', 'Kinoteka', { title: 'Chungking Express' }),
+          at('2026-07-24T18:00:00+02:00', 'Kinoteka', { title: 'Chungking Express' }),
+        ],
+      })],
+    });
+    expect(html.match(/Chungking Express/g)).toHaveLength(2);
+    expect(dayHeadings(html)).toEqual(['WED 22 JUL', 'FRI 24 JUL']);
+  });
+
+  it('escapes venue names in the aggregated line', () => {
+    const html = render({
+      sections: [section({
+        events: [
+          at('2026-07-22T18:00:00+02:00', 'Kino <script>x</script>'),
+          at('2026-07-22T20:00:00+02:00', 'Muranów'),
+        ],
+      })],
+    });
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).toContain('&lt;SCRIPT&gt;');
   });
 });
