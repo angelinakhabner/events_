@@ -9,7 +9,10 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
-import { renderBriefHtml, resolveBriefVenueIds, selectBriefEvents } from '../services/newsletter.js';
+import {
+  buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
+} from '../services/newsletter.js';
+import { renderBriefHtml } from '../services/newsletter-render.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -154,7 +157,9 @@ const myVenueUpdateInput = z.object({
 
 const newsletterSaveInput = z.object({
   email: z.string().email(),
-  frequency: z.enum(['daily', 'weekly']),
+  /** Name the brief greets you by; blank greets you without one. */
+  recipientName: z.string().trim().max(80).nullable().optional(),
+  frequency: z.enum(['daily', 'weekly', 'monthly']),
   venueIds: z.array(z.string()).default([]),
   afterHour: z.number().int().min(0).max(23).nullable().optional(),
   beforeHour: z.number().int().min(0).max(23).nullable().optional(),
@@ -162,8 +167,17 @@ const newsletterSaveInput = z.object({
   sendHour: z.number().int().min(0).max(23).default(8),
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). */
   sendWeekday: z.number().int().min(0).max(6).default(1),
-  eventDayMode: z.enum(['all', 'daily', 'specific']).default('all'),
-  eventDay: z.number().int().min(0).max(6).nullable().optional(),
+  /** Per-category cadence + detail; empty = one brief covering everything. */
+  categoryRules: z
+    .array(
+      z.object({
+        category: z.string().trim().min(1).max(40),
+        frequency: z.enum(['daily', 'weekly', 'monthly']),
+        detail: z.enum(['short', 'full']),
+      }),
+    )
+    .max(20)
+    .default([]),
   enabled: z.boolean().default(true),
 });
 
@@ -327,12 +341,23 @@ const my = router({
     preview: userProcedure
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
-        const venueIds = await resolveBriefVenueIds(ctx.user.id, input.venueIds, ctx.userVenues);
+        const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
         const all = env.DATABASE_URL
           ? await defaultEventStore.listUpcoming({ limit: 500 })
           : [];
-        const events = selectBriefEvents(all, { ...input, venueIds });
-        return { events, html: renderBriefHtml(events, input.frequency) };
+        // The preview shows what would go out *now*, so a section whose
+        // cadence isn't due today is genuinely absent from it — same rule the
+        // sweep applies.
+        const sections = buildBriefSections(all, input, venues);
+        return {
+          events: sections.flatMap((s) => s.events),
+          html: renderBriefHtml({
+            sections,
+            fallbackFrequency: plannedFrequency(input),
+            recipientName: input.recipientName,
+            festival: currentFestival(),
+          }),
+        };
       }),
   }),
 

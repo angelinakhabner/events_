@@ -230,14 +230,15 @@ describe('auth + /my flow (in-process)', () => {
         venueIds: [],
         sendHour: 9,
         sendWeekday: 4,
-        eventDayMode: 'all',
+        eventTags: [],
         enabled: true,
       },
       token: hana,
     });
     expect(res.status).toBe(200);
     const { html, events } = res.data as { html: string; events: unknown[] };
-    expect(html).toContain('This week at your venues');
+    expect(html).toContain('This week in<br>Warsaw');
+    expect(html).toContain('GOIN · WEEKLY');
     expect(Array.isArray(events)).toBe(true);
     // Preview must not create a subscription.
     expect((await trpcCall('my.newsletter.get', { token: hana })).data).toBeNull();
