@@ -3,6 +3,11 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      screens: {
+        // Wide enough that the 64rem readable column leaves a gutter big
+        // enough to hold the /my menu beside it (see MyPage).
+        wide: '90rem',
+      },
       colors: {
         paper: '#FAFAF7',
         ink: '#141414',
