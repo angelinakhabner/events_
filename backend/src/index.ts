@@ -19,10 +19,11 @@ if (env.SCRAPE_CRON_ENABLED && env.DATABASE_URL) {
   console.log('[scheduler] disabled (set SCRAPE_CRON_ENABLED=true to enable)');
 }
 
-// Newsletter briefs go out on their own daily tick — needs the DB (events +
-// subscriptions) and a Resend key to actually deliver anything.
+// Newsletter briefs go out on their own hourly tick — each subscription picks
+// the hour (and weekday) it wants, and the sweep sends the ones due. Needs the
+// DB (events + subscriptions) and a Resend key to actually deliver anything.
 if (env.NEWSLETTER_CRON_ENABLED && env.DATABASE_URL) {
-  startNewsletterScheduler({ hour: env.NEWSLETTER_CRON_HOUR });
+  startNewsletterScheduler();
 } else {
   console.log('[newsletter] disabled (set NEWSLETTER_CRON_ENABLED=true to enable)');
 }

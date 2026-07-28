@@ -9,6 +9,7 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
+import { renderBriefHtml, resolveBriefVenueIds, selectBriefEvents } from '../services/newsletter.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -145,6 +146,25 @@ const myVenueUpdateInput = z.object({
   category: categorySchema.nullable().optional(),
   /** Personal scrape horizon in days; null = category default. */
   windowDays: z.number().int().min(1).max(90).nullable().optional(),
+  /** Whole replacement tag set (GOI-25). */
+  tags: z.array(z.string().trim().max(40)).max(20).optional(),
+  /** Move the venue into another folder (GOI-25). */
+  listId: z.string().optional(),
+});
+
+const newsletterSaveInput = z.object({
+  email: z.string().email(),
+  frequency: z.enum(['daily', 'weekly']),
+  venueIds: z.array(z.string()).default([]),
+  afterHour: z.number().int().min(0).max(23).nullable().optional(),
+  beforeHour: z.number().int().min(0).max(23).nullable().optional(),
+  /** Warsaw hour the brief is sent at. */
+  sendHour: z.number().int().min(0).max(23).default(8),
+  /** Weekday weekly briefs go out on (0=Sun … 6=Sat). */
+  sendWeekday: z.number().int().min(0).max(6).default(1),
+  eventDayMode: z.enum(['all', 'daily', 'specific']).default('all'),
+  eventDay: z.number().int().min(0).max(6).nullable().optional(),
+  enabled: z.boolean().default(true),
 });
 
 const my = router({
@@ -199,6 +219,13 @@ const my = router({
         await ctx.userVenues.ensureSeeded(ctx.user.id);
         return ctx.userVenues.list(ctx.user.id, input?.listId);
       }),
+
+    /** Every venue the user follows, across all folders — the "My venues"
+     *  tab groups these by folder itself (GOI-25). */
+    listAll: userProcedure.query(async ({ ctx }) => {
+      await ctx.userVenues.ensureSeeded(ctx.user.id);
+      return ctx.userVenues.listAll(ctx.user.id);
+    }),
 
     add: userProcedure
       .input(
@@ -292,21 +319,27 @@ const my = router({
   newsletter: router({
     get: userProcedure.query(({ ctx }) => ctx.newsletter.get(ctx.user.id)),
     save: userProcedure
-      .input(
-        z.object({
-          email: z.string().email(),
-          frequency: z.enum(['daily', 'weekly']),
-          venueIds: z.array(z.string()).default([]),
-          afterHour: z.number().int().min(0).max(23).nullable().optional(),
-          beforeHour: z.number().int().min(0).max(23).nullable().optional(),
-          enabled: z.boolean().default(true),
-        }),
-      )
+      .input(newsletterSaveInput)
       .mutation(({ ctx, input }) => ctx.newsletter.save(ctx.user.id, input)),
+
+    /** "Generate" (GOI-28): render the brief the current settings would
+     *  produce, without saving or sending anything. */
+    preview: userProcedure
+      .input(newsletterSaveInput)
+      .mutation(async ({ ctx, input }) => {
+        const venueIds = await resolveBriefVenueIds(ctx.user.id, input.venueIds, ctx.userVenues);
+        const all = env.DATABASE_URL
+          ? await defaultEventStore.listUpcoming({ limit: 500 })
+          : [];
+        const events = selectBriefEvents(all, { ...input, venueIds });
+        return { events, html: renderBriefHtml(events, input.frequency) };
+      }),
   }),
 
   wantToGo: router({
     list: userProcedure.query(({ ctx }) => ctx.wantToGo.list(ctx.user.id)),
+    /** Saved events with their seen state — the /my "Want to go" list. */
+    entries: userProcedure.query(({ ctx }) => ctx.wantToGo.listEntries(ctx.user.id)),
     ids: userProcedure.query(({ ctx }) => ctx.wantToGo.listIds(ctx.user.id)),
     add: userProcedure
       .input(z.object({ eventId: z.string() }))
@@ -314,11 +347,41 @@ const my = router({
         await ctx.wantToGo.add(ctx.user.id, input.eventId);
         return { ok: true };
       }),
+    setSeen: userProcedure
+      .input(z.object({ eventId: z.string(), seen: z.boolean() }))
+      .mutation(async ({ ctx, input }) => ({
+        success: await ctx.wantToGo.setSeen(ctx.user.id, input.eventId, input.seen),
+      })),
     remove: userProcedure
       .input(z.object({ eventId: z.string() }))
       .mutation(async ({ ctx, input }) => ({
         success: await ctx.wantToGo.remove(ctx.user.id, input.eventId),
       })),
+  }),
+
+  /** GOI-27: what's on at the venues the user follows. */
+  events: router({
+    list: userProcedure
+      .input(z.object({ listId: z.string().optional(), filters: eventFiltersSchema.optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        if (!env.DATABASE_URL) return [];
+        await ctx.userVenues.ensureSeeded(ctx.user.id);
+        const venues = await ctx.userVenues.list(ctx.user.id, input?.listId);
+        if (venues.length === 0) return [];
+        const mine = new Set(venues.map((v) => v.id));
+        const all = await defaultEventStore.listUpcoming({ limit: 500 });
+        const scoped = all.filter((e) => mine.has(e.venueId));
+        // The user's own name/category overrides are what they expect to
+        // filter and read, so apply them over the shared venue summary.
+        const venueMap = new Map(venues.map((v) => [v.id, v]));
+        const shown = scoped.map((e) => {
+          const mineVenue = venueMap.get(e.venueId);
+          return mineVenue
+            ? { ...e, venue: { ...(e.venue ?? mineVenue), name: mineVenue.name, category: mineVenue.category } }
+            : e;
+        });
+        return filterEvents(shown, new Map(), input?.filters ?? {});
+      }),
   }),
 });
 

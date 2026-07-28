@@ -44,13 +44,12 @@ const Env = z.object({
     (v) => (v === undefined || v === '' ? undefined : v),
     z.coerce.number().int().min(0).max(6).optional(),
   ),
-  // Newsletter briefs (GOI-8). One daily tick at this Warsaw hour serves both
-  // daily and weekly subscriptions (weekly go out on Mondays).
+  // Newsletter briefs (GOI-8). The tick is hourly; each subscription picks its
+  // own send hour and (for weekly briefs) weekday — see GOI-28.
   NEWSLETTER_CRON_ENABLED: z
     .string()
     .optional()
     .transform((v) => v === 'true' || v === '1'),
-  NEWSLETTER_CRON_HOUR: z.coerce.number().int().min(0).max(23).default(8),
 });
 
 export const env = Env.parse(process.env);

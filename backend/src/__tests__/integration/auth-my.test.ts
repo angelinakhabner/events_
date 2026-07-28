@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createApp } from '../../app.js';
 import { defaultAuthStore, requestMagicLink } from '../../services/auth.js';
 import { DEFAULT_VENUES } from '../../data/default-venues.js';
@@ -124,6 +125,122 @@ describe('auth + /my flow (in-process)', () => {
     const rm = await trpcCall('my.wantToGo.remove', { body: { eventId }, token: alice });
     expect((rm.data as { success: boolean }).success).toBe(true);
     expect((await trpcCall('my.wantToGo.ids', { token: alice })).data).toEqual([]);
+  });
+
+  // GOI-26: marking an entry seen keeps it on the list rather than dropping it.
+  it.skipIf(!HAS_DB)('want-to-go entries carry a seen mark that toggles', async () => {
+    const erin = await login(`erin-${RUN}@example.com`);
+    const eventId = await usableEventId();
+    await trpcCall('my.wantToGo.add', { body: { eventId }, token: erin });
+
+    type Entry = { event: { id: string }; seenAt: string | null };
+    const fresh = (await trpcCall('my.wantToGo.entries', { token: erin })).data as Entry[];
+    expect(fresh.map((e) => e.event.id)).toEqual([eventId]);
+    expect(fresh[0]!.seenAt).toBeNull();
+
+    const marked = await trpcCall('my.wantToGo.setSeen', { body: { eventId, seen: true }, token: erin });
+    expect((marked.data as { success: boolean }).success).toBe(true);
+    const seen = (await trpcCall('my.wantToGo.entries', { token: erin })).data as Entry[];
+    expect(seen).toHaveLength(1); // still on the list
+    expect(seen[0]!.seenAt).not.toBeNull();
+
+    await trpcCall('my.wantToGo.setSeen', { body: { eventId, seen: false }, token: erin });
+    const unmarked = (await trpcCall('my.wantToGo.entries', { token: erin })).data as Entry[];
+    expect(unmarked[0]!.seenAt).toBeNull();
+  });
+
+  // GOI-25: the "My venues" tab needs every venue at once, each tagged and
+  // labelled with the folder it sits in.
+  it('venues.listAll spans folders and carries per-user tags', async () => {
+    const frank = await login(`frank-${RUN}@example.com`);
+    const warsaw = ((await trpcCall('my.lists.list', { token: frank })).data as Array<{ id: string }>)[0]!;
+    const other = (await trpcCall('my.lists.create', { body: { name: 'Kraków' }, token: frank }))
+      .data as { id: string };
+
+    const parked = (await trpcCall('my.venues.add', {
+      body: {
+        name: 'Kino Pod Baranami',
+        url: `https://baranami.example/${RUN}`,
+        category: 'cinema',
+        listId: other.id,
+      },
+      token: frank,
+    })).data as { id: string };
+
+    // Scoped list only sees the active folder; listAll sees both.
+    const scoped = (await trpcCall('my.venues.list', { token: frank })).data as Array<{ id: string }>;
+    expect(scoped.some((v) => v.id === parked.id)).toBe(false);
+    const all = (await trpcCall('my.venues.listAll', { token: frank })).data as Array<{
+      id: string; listId: string | null; tags: string[];
+    }>;
+    expect(all.find((v) => v.id === parked.id)!.listId).toBe(other.id);
+    expect(all.every((v) => Array.isArray(v.tags))).toBe(true);
+
+    // Tagging, then moving the venue back into the seeded folder.
+    const tagged = (await trpcCall('my.venues.update', {
+      body: { venueId: parked.id, tags: ['weekend', 'weekend', ' arthouse '] },
+      token: frank,
+    })).data as { tags: string[] };
+    expect(tagged.tags).toEqual(['weekend', 'arthouse']); // trimmed + de-duped
+
+    const moved = (await trpcCall('my.venues.update', {
+      body: { venueId: parked.id, listId: warsaw.id },
+      token: frank,
+    })).data as { listId: string; tags: string[] };
+    expect(moved.listId).toBe(warsaw.id);
+    expect(moved.tags).toEqual(['weekend', 'arthouse']); // the move keeps them
+  });
+
+  // GOI-27: the Events tab is scoped to the user's own venues.
+  it.skipIf(!HAS_DB)('my.events.list only returns events at venues the user follows', async () => {
+    const gina = await login(`gina-${RUN}@example.com`);
+    // usableEventId inserts a venue + event nobody is subscribed to.
+    const strangerEvent = await usableEventId();
+
+    const before = (await trpcCall('my.events.list', { token: gina })).data as Array<{ id: string }>;
+    expect(before.some((e) => e.id === strangerEvent)).toBe(false);
+
+    const { getDb, schema } = await import('../../db/index.js');
+    const [row] = await getDb()
+      .select({ venueId: schema.events.venueId })
+      .from(schema.events)
+      .where(eq(schema.events.id, strangerEvent));
+    const venue = await getDb()
+      .select({ url: schema.venues.url })
+      .from(schema.venues)
+      .where(eq(schema.venues.id, row!.venueId));
+
+    // Subscribing to that venue by URL re-uses the same row, so its event
+    // shows up on Gina's Events tab.
+    await trpcCall('my.venues.add', {
+      body: { name: 'Followed venue', url: venue[0]!.url, category: 'music' },
+      token: gina,
+    });
+    const after = (await trpcCall('my.events.list', { token: gina })).data as Array<{ id: string }>;
+    expect(after.some((e) => e.id === strangerEvent)).toBe(true);
+  });
+
+  // GOI-28: "Generate" renders the brief without saving or sending.
+  it('newsletter preview renders a brief from unsaved settings', async () => {
+    const hana = await login(`hana-${RUN}@example.com`);
+    const res = await trpcCall('my.newsletter.preview', {
+      body: {
+        email: `hana-${RUN}@example.com`,
+        frequency: 'weekly',
+        venueIds: [],
+        sendHour: 9,
+        sendWeekday: 4,
+        eventDayMode: 'all',
+        enabled: true,
+      },
+      token: hana,
+    });
+    expect(res.status).toBe(200);
+    const { html, events } = res.data as { html: string; events: unknown[] };
+    expect(html).toContain('This week at your venues');
+    expect(Array.isArray(events)).toBe(true);
+    // Preview must not create a subscription.
+    expect((await trpcCall('my.newsletter.get', { token: hana })).data).toBeNull();
   });
 
   it('logout kills the session', async () => {

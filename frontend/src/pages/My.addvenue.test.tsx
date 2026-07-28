@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { AddVenueForm } from './My';
+import { AddVenueForm } from '../components/AddVenueForm';
 import type { ProbeResult } from '../../../backend/src/services/scraper/probe';
 
 /** Result the mocked checkUrl mutation resolves with; set per test. */

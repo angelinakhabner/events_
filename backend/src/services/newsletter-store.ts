@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { NewsletterFrequency, NewsletterSettings } from '@goin/shared';
+import type { NewsletterEventDayMode, NewsletterFrequency, NewsletterSettings } from '@goin/shared';
 import { getDb, schema } from '../db/index.js';
 
 // Newsletter subscriptions (GOI-8): one per user. The user picks an email,
@@ -12,6 +12,10 @@ export interface NewsletterSaveInput {
   venueIds: string[];
   afterHour?: number | null;
   beforeHour?: number | null;
+  sendHour?: number;
+  sendWeekday?: number;
+  eventDayMode?: NewsletterEventDayMode;
+  eventDay?: number | null;
   enabled: boolean;
 }
 
@@ -36,8 +40,24 @@ function toSettings(row: Row): NewsletterSettings {
     venueIds: row.venueIds,
     afterHour: row.afterHour,
     beforeHour: row.beforeHour,
+    sendHour: row.sendHour,
+    sendWeekday: row.sendWeekday,
+    eventDayMode: row.eventDayMode as NewsletterEventDayMode,
+    eventDay: row.eventDay,
     enabled: row.enabled,
     lastSentAt: row.lastSentAt ? row.lastSentAt.toISOString() : null,
+  };
+}
+
+/** Fill the schedule/scope fields a caller left out with their defaults, and
+ *  keep `eventDay` consistent with the mode it belongs to. */
+function withScheduleDefaults(input: NewsletterSaveInput) {
+  const eventDayMode = input.eventDayMode ?? 'all';
+  return {
+    sendHour: input.sendHour ?? 8,
+    sendWeekday: input.sendWeekday ?? 1,
+    eventDayMode,
+    eventDay: eventDayMode === 'specific' ? input.eventDay ?? null : null,
   };
 }
 
@@ -59,6 +79,7 @@ export class DbNewsletterStore implements NewsletterStore {
       venueIds: input.venueIds,
       afterHour: input.afterHour ?? null,
       beforeHour: input.beforeHour ?? null,
+      ...withScheduleDefaults(input),
       enabled: input.enabled,
       updatedAt: new Date(),
     };
@@ -93,6 +114,10 @@ function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
     venueIds: sub.venueIds,
     afterHour: sub.afterHour,
     beforeHour: sub.beforeHour,
+    sendHour: sub.sendHour,
+    sendWeekday: sub.sendWeekday,
+    eventDayMode: sub.eventDayMode,
+    eventDay: sub.eventDay,
     enabled: sub.enabled,
     lastSentAt: sub.lastSentAt,
   };
@@ -116,6 +141,7 @@ export class InMemoryNewsletterStore implements NewsletterStore {
       venueIds: [...input.venueIds],
       afterHour: input.afterHour ?? null,
       beforeHour: input.beforeHour ?? null,
+      ...withScheduleDefaults(input),
       enabled: input.enabled,
       lastSentAt: prev?.lastSentAt ?? null,
     };
