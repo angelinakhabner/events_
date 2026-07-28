@@ -3,7 +3,7 @@ import { defaultEventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenueStore } from './user-venue-store.js';
 import { sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
-import { msUntilNextWarsawHour, warsawHourOf, warsawWeekday } from './scheduler.js';
+import { lastWarsawTimeAtOrBefore, msUntilNextWarsawHour, warsawHourOf, warsawWeekday } from './scheduler.js';
 import { env } from '../config.js';
 
 const TZ = 'Europe/Warsaw';
@@ -159,6 +159,49 @@ export function isSendHour(at: Date, sendHour: number = 8): boolean {
 }
 
 /**
+ * How late a missed slot may still be delivered. The sweep runs hourly, so a
+ * deploy, a restart or a timer that fires a hair before the top of the hour
+ * would otherwise drop a brief for a whole day (or week) — matching on "is it
+ * exactly the send hour right now?" only ever gets one chance. Within this
+ * grace window the next tick picks the slot back up; past it the brief is
+ * stale and we wait for the next one rather than mailing yesterday's evening
+ * plans at lunchtime.
+ */
+export const CATCH_UP_HOURS = 6;
+
+/**
+ * The slot this subscription was most recently due to go out in, at or before
+ * `now` — null before its first one ever comes around.
+ */
+export function dueSlot(sub: BriefSchedule, now: Date): Date | null {
+  const weekday = sub.frequency === 'weekly' ? sub.sendWeekday ?? 1 : undefined;
+  return lastWarsawTimeAtOrBefore(sub.sendHour ?? 8, weekday, now);
+}
+
+/** The scheduling fields the due check reads. */
+export interface BriefSchedule {
+  frequency: NewsletterFrequency;
+  sendHour?: number;
+  sendWeekday?: number;
+  lastSentAt?: string | null;
+}
+
+/**
+ * Whether a brief is owed right now: its latest slot has arrived, is still
+ * within the catch-up window, and nothing has been sent for it yet. This
+ * replaces the old exact-hour comparison — `lastSentAt` versus the slot is
+ * what actually prevents a double send, so the sweep no longer has to land on
+ * the one tick that matches the hour.
+ */
+export function isDue(sub: BriefSchedule, now: Date): boolean {
+  const slot = dueSlot(sub, now);
+  if (!slot) return false;
+  if (now.getTime() - slot.getTime() > CATCH_UP_HOURS * 3_600_000) return false;
+  if (!sub.lastSentAt) return true;
+  return new Date(sub.lastSentAt).getTime() < slot.getTime();
+}
+
+/**
  * Which venues a brief covers. An empty selection means "all *your* venues",
  * as the form says — not every venue in the database, which is what an empty
  * `venueIds` would mean to `selectBriefEvents` on its own.
@@ -180,54 +223,172 @@ export function wasRecentlySent(sub: NewsletterSubscription, now: Date): boolean
   return now.getTime() - new Date(sub.lastSentAt).getTime() < periodMs * 0.8;
 }
 
+/** Why a subscription did or didn't get a brief on a given sweep. Reported so
+ *  "the newsletter isn't arriving" has an answer that isn't guesswork. */
+export interface BriefOutcome {
+  userId: string;
+  email: string;
+  frequency: NewsletterFrequency;
+  status: 'sent' | 'skipped' | 'failed';
+  /** Machine-readable reason for anything other than a plain send. */
+  reason?: 'not-due' | 'recently-sent' | 'no-venues' | 'no-events' | 'send-failed';
+  /** Human detail — the provider's message for a failure, counts otherwise. */
+  detail?: string;
+  /** The slot this subscription was last due in, ISO; null before its first. */
+  dueAt?: string | null;
+  eventCount?: number;
+}
+
+export interface SweepOptions {
+  /** Work out every outcome without sending or recording anything. */
+  dryRun?: boolean;
+  /** Ignore the schedule (due slot + recent-send guard) and brief everyone
+   *  who has events. For manual "send it now" checks after a config change. */
+  force?: boolean;
+  /** Restrict the sweep to one subscriber, by user id or email. */
+  only?: string;
+}
+
+export interface SweepResult {
+  sent: number;
+  skipped: number;
+  failed: number;
+  outcomes: BriefOutcome[];
+}
+
 /**
- * One send sweep: every subscription whose chosen send hour is the current
- * Warsaw hour — and, for weekly ones, whose chosen weekday is today (GOI-28).
- * Empty briefs are skipped — no "nothing on" emails. Errors are per-recipient:
- * one bad address doesn't stop the sweep.
+ * One send sweep: every subscription whose slot is due (see `isDue`) gets the
+ * brief its settings describe. Empty briefs are skipped — no "nothing on"
+ * emails. Errors are per-recipient: one bad address doesn't stop the sweep,
+ * it just lands in that recipient's outcome.
  */
 export async function sendNewsletterBriefs(
   store: NewsletterStore = defaultNewsletterStore,
   now: Date = new Date(),
-): Promise<{ sent: number; skipped: number }> {
-  const subs = await store.listEnabled();
-  let sent = 0;
-  let skipped = 0;
+  opts: SweepOptions = {},
+): Promise<SweepResult> {
+  const all = await store.listEnabled();
+  const subs = opts.only
+    ? all.filter((s) => s.userId === opts.only || s.email.toLowerCase() === opts.only!.toLowerCase())
+    : all;
+  const outcomes: BriefOutcome[] = [];
+
   for (const sub of subs) {
-    if (!isSendHour(now, sub.sendHour)) { skipped++; continue; }
-    if (sub.frequency === 'weekly' && !isWeeklySendDay(now, sub.sendWeekday)) { skipped++; continue; }
-    if (wasRecentlySent(sub, now)) { skipped++; continue; }
+    const base = {
+      userId: sub.userId,
+      email: sub.email,
+      frequency: sub.frequency,
+      dueAt: dueSlot(sub, now)?.toISOString() ?? null,
+    };
+    if (!opts.force) {
+      if (!isDue(sub, now)) {
+        outcomes.push({ ...base, status: 'skipped', reason: 'not-due' });
+        continue;
+      }
+      if (wasRecentlySent(sub, now)) {
+        outcomes.push({ ...base, status: 'skipped', reason: 'recently-sent', detail: `last sent ${sub.lastSentAt}` });
+        continue;
+      }
+    }
     try {
-      const all = await defaultEventStore.listUpcoming({ limit: 500 });
+      const events = await defaultEventStore.listUpcoming({ limit: 500 });
       const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds);
       // No venues followed at all — nothing to brief on, and an empty list
       // must not fall through to "every venue in the database".
-      if (venueIds.length === 0) { skipped++; continue; }
-      const events = selectBriefEvents(all, { ...sub, venueIds }, now);
-      if (events.length === 0) { skipped++; continue; }
+      if (venueIds.length === 0) {
+        outcomes.push({ ...base, status: 'skipped', reason: 'no-venues' });
+        continue;
+      }
+      const selected = selectBriefEvents(events, { ...sub, venueIds }, now);
+      if (selected.length === 0) {
+        outcomes.push({
+          ...base, status: 'skipped', reason: 'no-events', eventCount: 0,
+          detail: `${events.length} upcoming event(s) in the database, none matched this brief's venues/hours`,
+        });
+        continue;
+      }
+      if (opts.dryRun) {
+        outcomes.push({ ...base, status: 'sent', eventCount: selected.length, detail: 'dry run — not actually sent' });
+        continue;
+      }
       await sendEmail({
         to: sub.email,
         subject: sub.frequency === 'daily' ? 'Goin — today at your venues' : 'Goin — your week ahead',
-        html: renderBriefHtml(events, sub.frequency),
+        html: renderBriefHtml(selected, sub.frequency),
       });
       await store.markSent(sub.userId, now);
-      sent++;
+      outcomes.push({ ...base, status: 'sent', eventCount: selected.length });
     } catch (e) {
-      console.error(`[newsletter] send to ${sub.email} failed:`, e instanceof Error ? e.message : e);
+      const detail = e instanceof Error ? e.message : String(e);
+      console.error(`[newsletter] send to ${sub.email} failed:`, detail);
+      outcomes.push({ ...base, status: 'failed', reason: 'send-failed', detail });
     }
   }
-  return { sent, skipped };
+
+  return {
+    sent: outcomes.filter((o) => o.status === 'sent').length,
+    skipped: outcomes.filter((o) => o.status === 'skipped').length,
+    failed: outcomes.filter((o) => o.status === 'failed').length,
+    outcomes,
+  };
 }
+
+/** Config the sender needs to actually deliver anything, as booleans a human
+ *  can read off `/admin/newsletter` instead of inferring from silence. */
+export function newsletterConfigStatus() {
+  const problems: string[] = [];
+  if (!env.NEWSLETTER_CRON_ENABLED) problems.push('NEWSLETTER_CRON_ENABLED is not set — the hourly sweep never starts');
+  if (!env.DATABASE_URL) problems.push('DATABASE_URL is not set — subscriptions and events are in-memory only');
+  if (!env.RESEND_API_KEY) problems.push('RESEND_API_KEY is not set — sends throw before reaching Resend');
+  return {
+    schedulerEnabled: env.NEWSLETTER_CRON_ENABLED && !!env.DATABASE_URL,
+    newsletterCronEnabled: !!env.NEWSLETTER_CRON_ENABLED,
+    databaseConfigured: !!env.DATABASE_URL,
+    resendConfigured: !!env.RESEND_API_KEY,
+    fromEmail: env.RESEND_FROM_EMAIL,
+    catchUpHours: CATCH_UP_HOURS,
+    problems,
+  };
+}
+
+/** Delay before the sweep that runs on boot. Long enough for the DB pool to
+ *  be up, short enough that a deploy landing on a send hour still delivers. */
+const STARTUP_SWEEP_DELAY_MS = 60_000;
 
 /**
  * In-process newsletter scheduler, same shape as the scrape scheduler. Since
  * GOI-28 each subscription picks its own send hour (and weekday), so the tick
  * runs hourly and the sweep decides who is due — one loop serves every
  * cadence and every chosen time.
+ *
+ * A sweep also runs shortly after boot. Deploys are the common way to miss a
+ * slot (Railway restarts the process, and the first hourly tick can be up to
+ * an hour out), and the catch-up window in `isDue` makes that sweep safe to
+ * repeat — already-sent subscriptions are no longer due.
  */
 export function startNewsletterScheduler(): { stop: () => void } {
   let timer: NodeJS.Timeout | null = null;
+  let startupTimer: NodeJS.Timeout | null = null;
   let stopped = false;
+
+  const sweep = async (label: string) => {
+    try {
+      const res = await sendNewsletterBriefs();
+      console.log(`[newsletter] ${label} done: ${res.sent} sent, ${res.skipped} skipped, ${res.failed} failed`);
+      for (const o of res.outcomes.filter((x) => x.status === 'failed')) {
+        console.error(`[newsletter] ${o.email}: ${o.detail}`);
+      }
+    } catch (e) {
+      console.error(`[newsletter] ${label} failed:`, e);
+    }
+  };
+
+  for (const problem of newsletterConfigStatus().problems) {
+    console.warn(`[newsletter] ${problem}`);
+  }
+
+  startupTimer = setTimeout(() => { void sweep('startup sweep'); }, STARTUP_SWEEP_DELAY_MS);
+  startupTimer.unref?.();
 
   const arm = () => {
     if (stopped) return;
@@ -236,14 +397,8 @@ export function startNewsletterScheduler(): { stop: () => void } {
     const delay = msUntilNextWarsawHour((warsawHourOf(new Date()) + 1) % 24);
     console.log(`[newsletter] next send sweep in ${(delay / 60_000).toFixed(0)}m (hourly, ${TZ})`);
     timer = setTimeout(async () => {
-      try {
-        const res = await sendNewsletterBriefs();
-        console.log(`[newsletter] sweep done: ${res.sent} sent, ${res.skipped} skipped`);
-      } catch (e) {
-        console.error('[newsletter] sweep failed:', e);
-      } finally {
-        arm();
-      }
+      await sweep('sweep');
+      arm();
     }, delay);
     timer.unref?.();
   };
@@ -253,6 +408,7 @@ export function startNewsletterScheduler(): { stop: () => void } {
     stop: () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      if (startupTimer) clearTimeout(startupTimer);
     },
   };
 }

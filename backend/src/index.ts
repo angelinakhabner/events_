@@ -22,8 +22,14 @@ if (env.SCRAPE_CRON_ENABLED && env.DATABASE_URL) {
 // Newsletter briefs go out on their own hourly tick — each subscription picks
 // the hour (and weekday) it wants, and the sweep sends the ones due. Needs the
 // DB (events + subscriptions) and a Resend key to actually deliver anything.
+// Silence here is indistinguishable from "no one is subscribed", so name the
+// missing piece rather than printing one generic line for both causes.
 if (env.NEWSLETTER_CRON_ENABLED && env.DATABASE_URL) {
   startNewsletterScheduler();
 } else {
-  console.log('[newsletter] disabled (set NEWSLETTER_CRON_ENABLED=true to enable)');
+  const missing = [
+    env.NEWSLETTER_CRON_ENABLED ? null : 'NEWSLETTER_CRON_ENABLED=true',
+    env.DATABASE_URL ? null : 'DATABASE_URL',
+  ].filter(Boolean).join(' and ');
+  console.log(`[newsletter] disabled — no briefs will be sent (needs ${missing}). See docs/RUNBOOK.md`);
 }

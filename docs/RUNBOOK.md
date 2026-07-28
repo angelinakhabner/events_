@@ -32,6 +32,52 @@ When a venue scrape produces nothing:
 > is invalid (no per-entry degradation), and there is no `scrape:one` script or
 > `scrape_runs` table yet. Build those as part of the scrape milestone.
 
+## Newsletter isn't arriving
+
+Briefs are sent by an in-process hourly sweep (`services/newsletter.ts`), not by
+an external cron. Work down this list — the first item is the usual answer.
+
+1. **Is the sweep even running?** It only starts when **`NEWSLETTER_CRON_ENABLED=true`
+   *and* `DATABASE_URL`** are set. With the flag unset the backend logs
+   `[newsletter] disabled (set NEWSLETTER_CRON_ENABLED=true to enable)` at boot
+   and no brief is ever mailed, no matter what users configured on `/my`. Set it
+   in Railway → Variables and redeploy.
+2. **Ask the backend.** With `ADMIN_TOKEN` set:
+   ```bash
+   curl "https://<backend>/admin/newsletter?token=$ADMIN_TOKEN"
+   ```
+   Returns `config` (which of the three requirements are satisfied, plus a
+   `problems` list) and a **dry run** of the sweep: one entry per enabled
+   subscription with `status`, `reason`, `dueAt` and how many events its filters
+   matched. Nothing is sent or recorded.
+3. **Read the reason.**
+   - `not-due` — its send hour hasn't come round yet (or its slot is already
+     sent). `dueAt` shows the slot being compared against `lastSentAt`.
+   - `no-venues` — the subscriber follows no venues, so there is nothing to
+     brief on. An empty venue selection means "all *my* venues", never "all
+     venues in the database".
+   - `no-events` — filters matched nothing in the window. Usually an empty
+     events table (is `SCRAPE_CRON_ENABLED` on?) or a narrow after/before-hour
+     window. Empty briefs are deliberately not mailed.
+   - `send-failed` — `detail` carries Resend's own message; see 5.
+4. **Send one now** rather than waiting for the next tick:
+   ```bash
+   curl "https://<backend>/admin/newsletter/send?token=$ADMIN_TOKEN&user=<email>&force=1"
+   ```
+   `force=1` bypasses the schedule; empty briefs are still skipped.
+5. **Isolate Resend** from brief-selection problems with a fixed test email:
+   ```bash
+   curl "https://<backend>/admin/newsletter/send?token=$ADMIN_TOKEN&to=you@example.com"
+   ```
+   A failure here is a mail-config problem: missing `RESEND_API_KEY`, or a
+   `RESEND_FROM_EMAIL` whose domain isn't verified in Resend. The fallback
+   sender `onboarding@resend.dev` only delivers to your own Resend account
+   address — everything else is rejected.
+
+A missed slot (deploy, restart) is picked up by the next hourly sweep and by the
+one that runs a minute after boot, as long as it's within `CATCH_UP_HOURS` (6h)
+of the send hour. Past that the brief is stale and waits for the next slot.
+
 ## Railway deploy fails
 
 Check **Railway → service → Deployments → build/deploy logs** first. Common

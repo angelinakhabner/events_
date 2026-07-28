@@ -6,7 +6,10 @@ import {
   renderBriefHtml,
   isWeeklySendDay,
   isSendHour,
+  isDue,
+  dueSlot,
   resolveBriefVenueIds,
+  sendNewsletterBriefs,
   wasRecentlySent,
 } from './newsletter.js';
 import { InMemoryUserVenueStore } from './user-venue-store.js';
@@ -220,6 +223,104 @@ describe('wasRecentlySent', () => {
 
   it('never skips a sub that was never sent', () => {
     expect(wasRecentlySent(makeSub({ lastSentAt: null }), NOW)).toBe(false);
+  });
+});
+
+describe('dueSlot', () => {
+  it('is the most recent send hour on the Warsaw wall clock', () => {
+    // NOW is Wed 12:00 Warsaw; 08:00 Warsaw that day is 06:00 UTC.
+    expect(dueSlot(makeSub({ sendHour: 8 }), NOW)?.toISOString()).toBe('2026-07-22T06:00:00.000Z');
+  });
+
+  it('reaches back to yesterday when today\'s hour has not arrived yet', () => {
+    expect(dueSlot(makeSub({ sendHour: 20 }), NOW)?.toISOString()).toBe('2026-07-21T18:00:00.000Z');
+  });
+
+  it('for weekly subs lands on the chosen weekday', () => {
+    // Weekly Monday brief, asked for on a Wednesday → last Monday 08:00 Warsaw.
+    const sub = makeSub({ frequency: 'weekly', sendWeekday: 1, sendHour: 8 });
+    expect(dueSlot(sub, NOW)?.toISOString()).toBe('2026-07-20T06:00:00.000Z');
+  });
+});
+
+describe('isDue', () => {
+  it('is due at the send hour when nothing has been sent yet', () => {
+    expect(isDue(makeSub({ sendHour: 8, lastSentAt: null }), new Date('2026-07-22T06:00:00Z'))).toBe(true);
+  });
+
+  it('is not due before the first slot of the day arrives', () => {
+    // 05:00 UTC = 07:00 Warsaw, an hour before the 08:00 slot. Yesterday's slot
+    // is well outside the catch-up window.
+    expect(isDue(makeSub({ sendHour: 8, lastSentAt: null }), new Date('2026-07-22T05:00:00Z'))).toBe(false);
+  });
+
+  it('catches up a slot missed by a restart, within the grace window', () => {
+    // Two hours after the 08:00 Warsaw slot, nothing sent for it yet: the old
+    // exact-hour check dropped this brief for the whole day.
+    expect(isDue(makeSub({ sendHour: 8, lastSentAt: null }), new Date('2026-07-22T08:00:00Z'))).toBe(true);
+  });
+
+  it('gives up on a slot older than the catch-up window', () => {
+    const lateAfternoon = new Date('2026-07-22T13:00:00Z'); // 15:00 Warsaw, 7h late
+    expect(isDue(makeSub({ sendHour: 8, lastSentAt: null }), lateAfternoon)).toBe(false);
+  });
+
+  it('does not re-send a slot already sent', () => {
+    const sub = makeSub({ sendHour: 8, lastSentAt: '2026-07-22T06:00:00Z' });
+    expect(isDue(sub, new Date('2026-07-22T07:00:00Z'))).toBe(false);
+  });
+
+  it('is due again once the next day\'s slot comes round', () => {
+    const sub = makeSub({ sendHour: 8, lastSentAt: '2026-07-22T06:00:00Z' });
+    expect(isDue(sub, new Date('2026-07-23T06:00:00Z'))).toBe(true);
+  });
+
+  it('holds a weekly brief until its weekday', () => {
+    const sub = makeSub({ frequency: 'weekly', sendWeekday: 1, sendHour: 8, lastSentAt: '2026-07-20T06:00:00Z' });
+    expect(isDue(sub, new Date('2026-07-22T06:00:00Z'))).toBe(false); // Wednesday
+    expect(isDue(sub, new Date('2026-07-27T06:00:00Z'))).toBe(true); // next Monday
+  });
+});
+
+describe('sendNewsletterBriefs', () => {
+  async function storeWith(over: Parameters<InMemoryNewsletterStore['save']>[1]) {
+    const store = new InMemoryNewsletterStore();
+    await store.save('u1', over);
+    return store;
+  }
+
+  it('reports why nothing was sent instead of skipping silently', async () => {
+    const store = await storeWith({
+      email: 'a@b.pl', frequency: 'daily', venueIds: [], sendHour: 8, enabled: true,
+    });
+    // 03:00 Warsaw — no slot in the catch-up window.
+    const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), { dryRun: true });
+
+    expect(res.sent).toBe(0);
+    expect(res.outcomes).toHaveLength(1);
+    expect(res.outcomes[0]).toMatchObject({ email: 'a@b.pl', status: 'skipped', reason: 'not-due' });
+  });
+
+  it('force ignores the schedule, and a broken lookup names its cause', async () => {
+    const store = await storeWith({
+      email: 'a@b.pl', frequency: 'daily', venueIds: [], sendHour: 8, enabled: true,
+    });
+    const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), { dryRun: true, force: true });
+
+    // Past the not-due gate the sweep reaches the event lookup, which has no
+    // DATABASE_URL under test — the point being that the reason reaches the
+    // caller rather than vanishing into a skip counter.
+    expect(res.outcomes[0]).toMatchObject({ status: 'failed', reason: 'send-failed' });
+    expect(res.outcomes[0]?.detail).toContain('DATABASE_URL');
+  });
+
+  it('only restricts the sweep to one subscriber', async () => {
+    const store = new InMemoryNewsletterStore();
+    await store.save('u1', { email: 'a@b.pl', frequency: 'daily', venueIds: [], enabled: true });
+    await store.save('u2', { email: 'c@d.pl', frequency: 'daily', venueIds: [], enabled: true });
+
+    const res = await sendNewsletterBriefs(store, NOW, { dryRun: true, only: 'c@d.pl' });
+    expect(res.outcomes.map((o) => o.email)).toEqual(['c@d.pl']);
   });
 });
 
