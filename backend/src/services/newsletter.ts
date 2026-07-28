@@ -269,6 +269,38 @@ export function wasRecentlySent(sub: Pick<NewsletterSubscription, 'lastSentAt'>,
   return now.getTime() - new Date(sub.lastSentAt).getTime() < 50 * 60_000;
 }
 
+/**
+ * The footer's unsubscribe link (GOI-35).
+ *
+ * It points at the SPA, not the API, so it works on any deploy: the frontend
+ * origin is always configured (`APP_URL`), while `API_PUBLIC_URL` is optional
+ * and only set when Google sign-in is in use. The page calls the public
+ * `newsletter.unsubscribe` mutation with the token.
+ */
+export function unsubscribeUrl(token: string): string {
+  return `${env.APP_URL.replace(/\/$/, '')}/unsubscribe?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * RFC 8058 one-click unsubscribe — the button Gmail and friends put next to
+ * the sender name. It requires a URL the *client* can POST to unattended, so
+ * it must be the API, and is therefore only offered when `API_PUBLIC_URL` is
+ * configured. `List-Unsubscribe-Post` is what distinguishes a one-click header
+ * from one that merely opens a page; both must be present or clients ignore it.
+ */
+export function unsubscribeHeaders(
+  token: string,
+  apiPublicUrl: string | undefined = env.API_PUBLIC_URL,
+): Record<string, string> | undefined {
+  const api = apiPublicUrl?.replace(/\/$/, '');
+  if (!api) return undefined;
+  const url = `${api}/newsletter/unsubscribe?token=${encodeURIComponent(token)}`;
+  return {
+    'List-Unsubscribe': `<${url}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
+}
+
 /** Why a subscription did or didn't get a brief on a given sweep. Reported so
  *  "the newsletter isn't arriving" has an answer that isn't guesswork. */
 export interface BriefOutcome {
@@ -383,8 +415,10 @@ export async function sendNewsletterBriefs(
           fallbackFrequency: plannedFrequency(sub),
           recipientName: sub.recipientName,
           festival: currentFestival(),
+          unsubscribeUrl: unsubscribeUrl(sub.unsubscribeToken),
           now,
         }),
+        headers: unsubscribeHeaders(sub.unsubscribeToken),
       });
       await store.markSent(sub.userId, now);
       outcomes.push({ ...base, status: 'sent', eventCount });

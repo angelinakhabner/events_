@@ -7,6 +7,8 @@ import {
   dueSlot,
   resolveBriefVenues,
   sendNewsletterBriefs,
+  unsubscribeUrl,
+  unsubscribeHeaders,
   buildBriefSections,
   isRuleDue,
   eventInCategory,
@@ -58,6 +60,7 @@ function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription 
     sendWeekday: 1,
     categoryRules: [],
     enabled: true,
+    unsubscribeToken: 'unsub-token-u1',
     lastSentAt: null,
     ...over,
   };
@@ -523,5 +526,31 @@ describe('InMemoryNewsletterStore', () => {
 
     const subs = await store.listEnabled();
     expect(subs.map((s) => s.userId)).toEqual(['on']);
+  });
+});
+
+describe('unsubscribe link and headers (GOI-35)', () => {
+  it('points the footer link at the SPA, token URL-encoded', () => {
+    // APP_URL is always configured; API_PUBLIC_URL is optional, so the human
+    // link must not depend on it.
+    const url = unsubscribeUrl('abc/def+gh');
+    expect(url).toContain('/unsubscribe?token=');
+    expect(url).toContain(encodeURIComponent('abc/def+gh'));
+    expect(url).not.toContain('abc/def+gh');
+  });
+
+  it('emits RFC 8058 one-click headers when the API origin is known', () => {
+    const headers = unsubscribeHeaders('tok', 'https://api.example.com/');
+    expect(headers).toEqual({
+      'List-Unsubscribe': '<https://api.example.com/newsletter/unsubscribe?token=tok>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+  });
+
+  it('omits the headers entirely when no API origin is configured', () => {
+    // Half a pair is worse than none — clients ignore List-Unsubscribe without
+    // the -Post companion, and a URL the client cannot POST to is a dead end.
+    expect(unsubscribeHeaders('tok', undefined)).toBeUndefined();
+    expect(unsubscribeHeaders('tok', '')).toBeUndefined();
   });
 });

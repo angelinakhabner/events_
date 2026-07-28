@@ -9,6 +9,7 @@ import { scrapeVenue } from './services/scraper/runner.js';
 import { firecrawlScrape } from './services/scraper/fetcher.js';
 import { defaultAuthStore, loginWithVerifiedEmail } from './services/auth.js';
 import { newsletterConfigStatus, sendNewsletterBriefs } from './services/newsletter.js';
+import { defaultNewsletterStore } from './services/newsletter-store.js';
 import { sendEmail } from './services/email.js';
 import {
   exchangeGoogleCode,
@@ -58,6 +59,30 @@ export function createApp() {
     } catch (e) {
       return fail(e instanceof Error ? e.message : 'Google sign-in failed.');
     }
+  });
+
+  // ─── Newsletter unsubscribe (GOI-35) ──────────────────────────────────────
+  // Deliberately unauthenticated: the per-subscription token in the link is
+  // the credential, and it can do nothing but switch this one brief off. GET
+  // serves a human clicking the footer link (and any client that pre-fetches
+  // it); POST is the RFC 8058 one-click target named in List-Unsubscribe.
+
+  const doUnsubscribe = async (token: string | undefined) =>
+    defaultNewsletterStore.unsubscribeByToken(token ?? '');
+
+  app.get('/newsletter/unsubscribe', async (c) => {
+    const result = await doUnsubscribe(c.req.query('token'));
+    // Hand off to the SPA so the reader gets the styled confirmation — and can
+    // turn the brief straight back on if they hit the link by accident.
+    const appUrl = env.APP_URL.replace(/\/$/, '');
+    return c.redirect(`${appUrl}/unsubscribe?status=${result.status}`);
+  });
+
+  app.post('/newsletter/unsubscribe', async (c) => {
+    const result = await doUnsubscribe(c.req.query('token'));
+    // One-click senders want a 2xx for a token they accepted and a 4xx only
+    // for one they didn't; "already off" is a success from the client's side.
+    return c.json({ status: result.status }, result.status === 'unknown' ? 404 : 200);
   });
 
   // ─── Admin debug endpoints ────────────────────────────────────────────────

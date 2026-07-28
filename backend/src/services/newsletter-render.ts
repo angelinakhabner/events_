@@ -267,18 +267,24 @@ function ctaRow(): string {
   );
 }
 
-function footerRow(categories: string[]): string {
+function footerRow(categories: string[], unsubscribeUrl: string | null): string {
   const manage = `${env.APP_URL}/my?tab=newsletter`;
   const reason = categories.length
     ? `Sent because you saved ${escapeHtml(listSentence(categories.map(titleCase)))} on Goin.`
     : 'Sent because you turned this brief on in Goin.';
   const link = `color:${C.footer};text-decoration:underline`;
+  // Without a token there is nothing honest to link to, so the word is dropped
+  // rather than pointed back at the login-walled settings page — which is what
+  // it used to do, making "Unsubscribe" a dead end for anyone not signed in.
+  const unsubscribe = unsubscribeUrl
+    ? ` · <a href="${escapeHtml(unsubscribeUrl)}" style="${link}">Unsubscribe</a>`
+    : '';
   return (
     `<tr><td style="border-top:2px solid ${C.divider};padding:20px 40px 32px;text-align:center;` +
       `font-family:${FONT};font-size:11px;line-height:1.6;color:${C.footer}">` +
       `${reason}<br>` +
-      `<a href="${escapeHtml(manage)}" style="${link}">Manage preferences</a> · ` +
-      `<a href="${escapeHtml(manage)}" style="${link}">Unsubscribe</a>` +
+      `<a href="${escapeHtml(manage)}" style="${link}">Manage preferences</a>` +
+      unsubscribe +
     `</td></tr>`
   );
 }
@@ -302,6 +308,9 @@ export interface BriefContent {
   recipientName?: string | null;
   /** Ongoing festival for the "Also on" line, when there is one. */
   festival?: Festival | null;
+  /** One-click unsubscribe link for this subscription (GOI-35). Omitted by
+   *  the preview, which has no recipient to unsubscribe. */
+  unsubscribeUrl?: string | null;
   now?: Date;
 }
 
@@ -364,7 +373,7 @@ export function renderBriefHtml(content: BriefContent): string {
             `<tr><td style="padding:8px 40px">${body}</td></tr>` +
             (content.festival ? festivalRow(content.festival) : '') +
             ctaRow() +
-            footerRow(categories) +
+            footerRow(categories, content.unsubscribeUrl ?? null) +
           `</table>` +
         `</td></tr>` +
       `</table>` +

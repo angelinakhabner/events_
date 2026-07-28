@@ -3,6 +3,7 @@ import { Layout } from './components/Layout';
 import { HomePage } from './pages/Home';
 import { MyPage } from './pages/My';
 import { AuthCallbackPage } from './pages/AuthCallback';
+import { UnsubscribePage } from './pages/Unsubscribe';
 
 export function App() {
   return (
@@ -11,6 +12,7 @@ export function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/my" element={<MyPage />} />
         <Route path="/auth" element={<AuthCallbackPage />} />
+        <Route path="/unsubscribe" element={<UnsubscribePage />} />
       </Route>
     </Routes>
   );

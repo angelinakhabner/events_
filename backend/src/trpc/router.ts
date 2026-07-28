@@ -371,6 +371,16 @@ const my = router({
           }),
         };
       }),
+
+    /**
+     * One-click unsubscribe (GOI-35). Public on purpose: the whole point is
+     * that a recipient can stop the mail without signing in — the per-
+     * subscription token in the link is the only credential, and it grants
+     * nothing but "turn this brief off".
+     */
+    unsubscribe: publicProcedure
+      .input(z.object({ token: z.string().min(1) }))
+      .mutation(({ ctx, input }) => ctx.newsletter.unsubscribeByToken(input.token)),
   }),
 
   wantToGo: router({

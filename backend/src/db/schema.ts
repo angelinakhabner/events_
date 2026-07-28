@@ -217,6 +217,10 @@ export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
     .notNull()
     .default([]),
   enabled: boolean('enabled').notNull().default(true),
+  /** Opaque per-subscription secret behind the brief's one-click unsubscribe
+   *  link (GOI-35). Unique — the request carries no session, so this is the
+   *  only thing identifying the row. */
+  unsubscribeToken: text('unsubscribe_token').notNull(),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

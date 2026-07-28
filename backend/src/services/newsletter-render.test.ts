@@ -194,3 +194,31 @@ describe('listSentence', () => {
     expect(listSentence([])).toBe('');
   });
 });
+
+describe('renderBriefHtml — unsubscribe footer (GOI-35)', () => {
+  it('links the real one-click URL when one is supplied', () => {
+    const html = render({
+      sections: [section({ category: 'cinema', events: [makeEvent({})] })],
+      unsubscribeUrl: 'https://goin.example/unsubscribe?token=abc123',
+    });
+    expect(html).toContain('>Unsubscribe</a>');
+    expect(html).toContain('https://goin.example/unsubscribe?token=abc123');
+  });
+
+  it('escapes the URL rather than interpolating it raw', () => {
+    const html = render({
+      sections: [section({ category: 'cinema', events: [makeEvent({})] })],
+      unsubscribeUrl: 'https://goin.example/unsubscribe?token=a"><script>x</script>',
+    });
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).toContain('&quot;&gt;&lt;script&gt;');
+  });
+
+  it('drops the word entirely when there is no link, keeping "Manage preferences"', () => {
+    // The preview has no recipient. Pointing "Unsubscribe" back at the
+    // login-walled settings page — the old behaviour — made it a dead end.
+    const html = render({ sections: [section({ category: 'cinema', events: [makeEvent({})] })] });
+    expect(html).toContain('Manage preferences');
+    expect(html).not.toContain('>Unsubscribe</a>');
+  });
+});

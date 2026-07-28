@@ -14,6 +14,9 @@ export interface EmailMessage {
   to: string;
   subject: string;
   html: string;
+  /** Extra MIME headers. Used for List-Unsubscribe / List-Unsubscribe-Post,
+   *  which put the client's own "Unsubscribe" button next to the sender name. */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -33,6 +36,7 @@ export async function sendEmail(msg: EmailMessage): Promise<{ id: string }> {
     to: msg.to,
     subject: msg.subject,
     html: msg.html,
+    ...(msg.headers ? { headers: msg.headers } : {}),
   });
   if (error) {
     throw new Error(`Resend rejected the email to ${msg.to}: ${error.message}`);

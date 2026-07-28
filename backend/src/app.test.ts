@@ -48,3 +48,31 @@ describe('google auth endpoints (unconfigured)', () => {
     expect(res.status).toBe(503);
   });
 });
+
+// GOI-35. Unauthenticated by design — the per-subscription token in the link
+// is the credential. Without DATABASE_URL the default store is in-memory, so
+// every token is unknown; that is exactly the case worth pinning here, since
+// an unknown token must never be treated as a success.
+describe('newsletter unsubscribe', () => {
+  it('answers 404 to a POST with an unknown token', async () => {
+    const res = await createApp().request('/newsletter/unsubscribe?token=nope', { method: 'POST' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ status: 'unknown' });
+  });
+
+  it('answers 404 to a POST with no token at all', async () => {
+    const res = await createApp().request('/newsletter/unsubscribe', { method: 'POST' });
+    expect(res.status).toBe(404);
+  });
+
+  it('redirects a GET to the SPA carrying the outcome', async () => {
+    const res = await createApp().request('/newsletter/unsubscribe?token=nope');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toMatch(/\/unsubscribe\?status=unknown$/);
+  });
+
+  it('needs no admin token, unlike /admin/*', async () => {
+    const res = await createApp().request('/newsletter/unsubscribe?token=nope', { method: 'POST' });
+    expect(res.status).not.toBe(401);
+  });
+});
