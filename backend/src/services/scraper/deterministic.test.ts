@@ -38,6 +38,12 @@ describe('getDeterministicScraper', () => {
     );
   });
 
+  it('resolves Jassmine by host, whose slug id (jazzmine) differs from its domain', () => {
+    expect(getDeterministicScraper('some-uuid', 'https://jassmine.com/koncerty/')).toBe(
+      DETERMINISTIC_SCRAPERS.jazzmine,
+    );
+  });
+
   it('returns undefined for hosts without a deterministic scraper', () => {
     expect(getDeterministicScraper('some-uuid', 'https://teatrdramatyczny.pl/repertuar/')).toBeUndefined();
     expect(getDeterministicScraper('some-uuid', 'not a url')).toBeUndefined();
