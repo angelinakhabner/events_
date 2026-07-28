@@ -5,6 +5,13 @@ const Env = z.object({
   PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  // Extraction model. Overridable so a cheaper model can be trialled without a
+  // deploy; see EXTRACTOR_MODEL_STRUCTURED and the note in extractor.ts.
+  EXTRACTOR_MODEL: z.string().default('claude-sonnet-4-6'),
+  // GOI-16: model used only for pages whose input is structured data (JSON-LD
+  // or __NEXT_DATA__) rather than HTML — transcription, not interpretation.
+  // Unset → EXTRACTOR_MODEL, i.e. no behaviour change.
+  EXTRACTOR_MODEL_STRUCTURED: z.string().optional(),
   // When set, the scraper renders venue *listing* pages through Firecrawl
   // (JS execution + anti-bot) instead of a plain fetch, falling back to native
   // fetch on any Firecrawl error. Absent → native fetch only (today's behaviour).

@@ -5,7 +5,7 @@ import { env } from '../../config.js';
 import { fetchVenueHTML } from './fetcher.js';
 import { preprocessForVenue, isDeterministicallyParsable } from './preprocessor.js';
 import { parseJsonLdEvents } from './jsonld.js';
-import { extractEvents, EXTRACTOR_VERSION, windowDaysForCategory, type ExtractorClient } from './extractor.js';
+import { extractEvents, EXTRACTOR_VERSION, modelFor, windowDaysForCategory, type ExtractorClient } from './extractor.js';
 import { getDeterministicScraper } from './deterministic.js';
 import { defaultUserVenueStore } from '../user-venue-store.js';
 import { validateEvents } from './validator.js';
@@ -189,6 +189,11 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
           client: opts.extractor,
           hint,
           windowDays: effectiveWindowDays,
+          // A page whose body the preprocessor replaced with its JSON-LD /
+          // __NEXT_DATA__ payload is transcription, not interpretation, and
+          // may not need Sonnet (GOI-16). No-op unless
+          // EXTRACTOR_MODEL_STRUCTURED is set.
+          model: modelFor(isDeterministicallyParsable(structured)),
         }));
     }
     const { valid, invalid } = validateEvents(raw, {

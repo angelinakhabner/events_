@@ -17,7 +17,8 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "scrape:all": "node dist/backend/src/scripts/scrape-all.js",
     "scrape:all:dev": "tsx src/scripts/scrape-all.ts",
-    "scrape:one": "tsx src/scripts/scrape-one.ts"
+    "scrape:one": "tsx src/scripts/scrape-one.ts",
+    "compare:models": "tsx src/scripts/compare-extractor-models.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

@@ -78,6 +78,8 @@ npm run lint
 | `PORT` | `3001` | injected by Railway | Backend HTTP port (server binds `0.0.0.0`) |
 | `DATABASE_URL` | `postgresql://goin:goin@localhost:5432/goin` | `${{ Postgres.DATABASE_URL }}` | Postgres connection. Unset ⇒ in-memory folder store |
 | `ANTHROPIC_API_KEY` | `sk-ant-…` (optional locally) | `sk-ant-…` | Claude API key for AI event parsing |
+| `EXTRACTOR_MODEL` | `claude-sonnet-4-6` | `claude-sonnet-4-6` | Extraction model. Override to trial a candidate without a deploy |
+| `EXTRACTOR_MODEL_STRUCTURED` | unset | unset | Model used **only** for pages whose input is structured data (JSON-LD / `__NEXT_DATA__`) rather than HTML — see [Choosing an extraction model](#choosing-an-extraction-model). Unset ⇒ `EXTRACTOR_MODEL` |
 | `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
 | `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email. The domain must be verified in Resend |
 | `APP_URL` | `http://localhost:5173` | `https://<owner>.github.io/<repo>` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
@@ -249,3 +251,48 @@ Short version:
    `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `APP_URL`, `NODE_ENV=production`.
 4. Generate a public domain → set `VITE_API_URL` (repo Actions variable) to it
    → re-run the **Deploy frontend** workflow.
+
+## Choosing an extraction model
+
+`EXTRACTOR_MODEL` (default `claude-sonnet-4-6`) is what parses venue listings.
+Sonnet is there because real venue markup is messy — Polish copy, ambiguous
+date formats, dates split across elements — and a smaller model is a real
+accuracy risk on that job.
+
+That argument does not apply to every page. When a listing carries trustworthy
+structured data, `preprocessForVenue` throws the HTML body away and sends only
+the JSON payload, so the model's job is transcribing well-formed JSON into
+well-formed JSON. `EXTRACTOR_MODEL_STRUCTURED` targets *that path only*, leaving
+every HTML-parsing venue on Sonnet:
+
+```bash
+EXTRACTOR_MODEL_STRUCTURED=claude-haiku-4-5-20251001
+```
+
+It is unset by default. Measure before setting it:
+
+```bash
+npm run compare:models --workspace backend -- \
+  test/fixtures/<fixture>.html <venue-slug> \
+  claude-sonnet-4-6 claude-haiku-4-5-20251001
+```
+
+The harness sends the byte-identical prompt the scraper would send through each
+model and reports rows extracted, rows surviving the validator, token counts,
+wall time, and a field-level diff. It reads a saved fixture rather than
+fetching the venue, so a comparison is repeatable on the same bytes. It needs
+`ANTHROPIC_API_KEY` and costs real tokens.
+
+**Adopt a candidate only if it loses no events.** A missing screening is a
+screening no reader ever hears about, and it is invisible in aggregate counts —
+which is why the harness diffs event-by-event rather than comparing totals.
+
+### Where the LLM spend actually is
+
+Worth knowing before optimising this: venues whose pages carry **≥2 JSON-LD
+event nodes never reach the model at all**. `parseJsonLdEvents` maps them in
+code for zero tokens, and the LLM is only a fallback for when that mapping
+comes back empty. The structured path is therefore already close to free, and
+the bulk of extraction cost sits on the HTML-parsing venues — the ones where
+swapping the model is least safe. Both knobs above exist so that trade-off can
+be measured rather than argued about.
