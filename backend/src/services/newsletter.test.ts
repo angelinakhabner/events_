@@ -49,8 +49,7 @@ function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription 
     beforeHour: null,
     sendHour: 8,
     sendWeekday: 1,
-    eventDayMode: 'all',
-    eventDay: null,
+    eventTags: [],
     enabled: true,
     lastSentAt: null,
     ...over,
@@ -101,56 +100,29 @@ describe('selectBriefEvents', () => {
     expect(picked.map((e) => e.id)).toEqual(['matinee']);
   });
 
-  // GOI-28: "all the events" / "events happening every day" / "a specific day".
-  describe('event day scope', () => {
-    /** A weekly window (Wed 22nd → Wed 29th) with one title on every day and
-     *  one that plays a single evening. */
-    function weekOfEvents() {
-      const daily = ['22', '23', '24', '25', '26', '27', '28', '29'].map((d) =>
-        makeEvent({ id: `daily-${d}`, title: 'Every Day', startsAt: `2026-07-${d}T20:00:00+02:00` }),
-      );
-      const oneOff = makeEvent({ id: 'one-off', title: 'One Night', startsAt: '2026-07-24T20:00:00+02:00' });
-      return [...daily, oneOff];
-    }
-
-    it('keeps everything under "all"', () => {
-      const picked = selectBriefEvents(weekOfEvents(), makeSub({ frequency: 'weekly', eventDayMode: 'all' }), NOW);
-      expect(picked.map((e) => e.title)).toContain('One Night');
-      expect(picked.map((e) => e.title)).toContain('Every Day');
-    });
-
-    it('keeps only titles running every day of the window under "daily"', () => {
-      const picked = selectBriefEvents(weekOfEvents(), makeSub({ frequency: 'weekly', eventDayMode: 'daily' }), NOW);
-      expect(new Set(picked.map((e) => e.title))).toEqual(new Set(['Every Day']));
-    });
-
-    it('keeps only the chosen weekday under "specific"', () => {
-      // Friday the 24th is the only Friday in the window.
-      const picked = selectBriefEvents(
-        weekOfEvents(),
-        makeSub({ frequency: 'weekly', eventDayMode: 'specific', eventDay: 5 }),
-        NOW,
-      );
-      expect(picked.map((e) => e.id).sort()).toEqual(['daily-24', 'one-off']);
-    });
-
-    it('falls back to everything when "specific" has no day picked', () => {
-      const events = weekOfEvents();
-      const picked = selectBriefEvents(
-        events,
-        makeSub({ frequency: 'weekly', eventDayMode: 'specific', eventDay: null }),
-        NOW,
-      );
-      const all = selectBriefEvents(events, makeSub({ frequency: 'weekly', eventDayMode: 'all' }), NOW);
-      expect(picked.map((e) => e.id)).toEqual(all.map((e) => e.id));
-    });
-  });
 });
 
+// Both of the form's scoping controls — the venue checkboxes and the tag
+// categories — land here, because a tag is only ever a way of picking venues.
 describe('resolveBriefVenueIds', () => {
-  it('keeps an explicit selection', async () => {
-    const venues = new InMemoryUserVenueStore();
-    expect(await resolveBriefVenueIds('u1', ['v1', 'v2'], venues)).toEqual(['v1', 'v2']);
+  const KINOTEKA = {
+    name: 'Kinoteka', url: 'https://kinoteka.example/', category: 'cinema' as const,
+    city: 'Warsaw', country: 'PL',
+  };
+  const KOMEDIOWY = { ...KINOTEKA, name: 'Klub Komediowy', url: 'https://komediowy.example/', category: 'comedy' as const };
+
+  /** One user with two venues: a tagged cinema and an untagged comedy club. */
+  async function twoVenues() {
+    const venues = new InMemoryUserVenueStore([]);
+    const cinema = await venues.addCustom('u1', KINOTEKA);
+    const comedy = await venues.addCustom('u1', KOMEDIOWY);
+    await venues.update('u1', cinema.id, { tags: ['Arthouse', 'date night'] });
+    return { venues, cinema, comedy };
+  }
+
+  it('keeps an explicit venue selection', async () => {
+    const { venues, cinema } = await twoVenues();
+    expect(await resolveBriefVenueIds('u1', [cinema.id], [], venues)).toEqual([cinema.id]);
   });
 
   it('expands an empty selection to the user\'s own venues, not every venue', async () => {
@@ -159,10 +131,36 @@ describe('resolveBriefVenueIds', () => {
     const mine = (await venues.listAll('u1')).map((v) => v.id);
 
     expect(mine.length).toBeGreaterThan(0);
-    expect(await resolveBriefVenueIds('u1', [], venues)).toEqual(mine);
+    expect(await resolveBriefVenueIds('u1', [], [], venues)).toEqual(mine);
     // A user who follows nothing resolves to nothing — the sweep skips them
     // rather than mailing them the whole database.
-    expect(await resolveBriefVenueIds('nobody', [], new InMemoryUserVenueStore([]))).toEqual([]);
+    expect(await resolveBriefVenueIds('nobody', [], [], new InMemoryUserVenueStore([]))).toEqual([]);
+  });
+
+  it('narrows to the venues carrying a chosen tag, case-insensitively', async () => {
+    const { venues, cinema } = await twoVenues();
+    expect(await resolveBriefVenueIds('u1', [], ['arthouse'], venues)).toEqual([cinema.id]);
+    expect(await resolveBriefVenueIds('u1', [], ['Date Night'], venues)).toEqual([cinema.id]);
+  });
+
+  it('treats several tags as "any of"', async () => {
+    const { venues, cinema, comedy } = await twoVenues();
+    await venues.update('u1', comedy.id, { tags: ['late night'] });
+    const picked = await resolveBriefVenueIds('u1', [], ['arthouse', 'late night'], venues);
+    expect(picked.sort()).toEqual([cinema.id, comedy.id].sort());
+  });
+
+  it('intersects tags with an explicit venue selection', async () => {
+    const { venues, cinema, comedy } = await twoVenues();
+    // The comedy club is picked but carries no matching tag → nothing in scope,
+    // which the sweep reads as "skip", never as "send everything".
+    expect(await resolveBriefVenueIds('u1', [comedy.id], ['arthouse'], venues)).toEqual([]);
+    expect(await resolveBriefVenueIds('u1', [cinema.id], ['arthouse'], venues)).toEqual([cinema.id]);
+  });
+
+  it('resolves to nothing when no venue carries the tag', async () => {
+    const { venues } = await twoVenues();
+    expect(await resolveBriefVenueIds('u1', [], ['nonexistent'], venues)).toEqual([]);
   });
 });
 

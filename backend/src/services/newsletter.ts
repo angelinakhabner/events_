@@ -1,4 +1,4 @@
-import type { Event, NewsletterEventDayMode, NewsletterFrequency } from '@goin/shared';
+import type { Event, NewsletterFrequency } from '@goin/shared';
 import { defaultEventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenueStore } from './user-venue-store.js';
 import { sendEmail } from './email.js';
@@ -24,57 +24,29 @@ function warsawHour(iso: string): number {
   return Number(h) % 24;
 }
 
-/** Warsaw calendar day (YYYY-MM-DD) of an ISO instant. */
-function warsawDay(iso: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(iso));
-}
-
 /** The subset of a subscription that decides what lands in a brief. Written
  *  out (rather than Pick'd) so callers holding freshly-parsed input, where the
  *  optional narrowing fields may be absent, can pass it straight through. */
 export interface BriefScope {
   frequency: NewsletterFrequency;
+  /** The venues the brief covers. Already narrowed by the chosen tags — see
+   *  `resolveBriefVenueIds`, which is what turns tags into venue ids. */
   venueIds: string[];
   afterHour?: number | null;
   beforeHour?: number | null;
-  eventDayMode?: NewsletterEventDayMode;
-  eventDay?: number | null;
-}
-
-/**
- * Titles that run on *every* calendar day of the window — the "events
- * happening every day" scope. A one-day window (daily briefs) makes every
- * title trivially qualify, which is the sensible reading there.
- */
-function titlesRunningEveryDay(events: Event[], windowDays: number): Set<string> {
-  const daysByTitle = new Map<string, Set<string>>();
-  for (const e of events) {
-    const key = e.title.toLowerCase();
-    const days = daysByTitle.get(key) ?? new Set<string>();
-    days.add(warsawDay(e.startsAt));
-    daysByTitle.set(key, days);
-  }
-  const out = new Set<string>();
-  for (const [title, days] of daysByTitle) {
-    if (days.size >= windowDays) out.add(title);
-  }
-  return out;
 }
 
 /**
  * Which events belong in a brief: within the cadence window, at one of the
- * chosen venues (empty selection = all), inside the after/before-hour window,
- * and matching the chosen day scope (everything / only titles running every
- * day / only one weekday).
+ * chosen venues (empty selection = all), inside the after/before-hour window.
  */
 export function selectBriefEvents(
   events: Event[],
   sub: BriefScope,
   now: Date = new Date(),
 ): Event[] {
-  const windowDays = briefWindowDays(sub.frequency);
-  const horizon = new Date(now.getTime() + windowDays * 24 * 3_600_000);
-  const inWindow = events.filter((e) => {
+  const horizon = new Date(now.getTime() + briefWindowDays(sub.frequency) * 24 * 3_600_000);
+  return events.filter((e) => {
     const starts = new Date(e.startsAt);
     if (starts < now || starts > horizon) return false;
     if (sub.venueIds.length > 0 && !sub.venueIds.includes(e.venueId)) return false;
@@ -83,17 +55,6 @@ export function selectBriefEvents(
     if (sub.beforeHour != null && hour >= sub.beforeHour) return false;
     return true;
   });
-
-  const mode = sub.eventDayMode ?? 'all';
-  if (mode === 'specific') {
-    if (sub.eventDay == null) return inWindow;
-    return inWindow.filter((e) => warsawWeekday(new Date(e.startsAt)) === sub.eventDay);
-  }
-  if (mode === 'daily') {
-    const everyDay = titlesRunningEveryDay(inWindow, windowDays);
-    return inWindow.filter((e) => everyDay.has(e.title.toLowerCase()));
-  }
-  return inWindow;
 }
 
 function escapeHtml(s: string): string {
@@ -159,17 +120,31 @@ export function isSendHour(at: Date, sendHour: number = 8): boolean {
 }
 
 /**
- * Which venues a brief covers. An empty selection means "all *your* venues",
- * as the form says — not every venue in the database, which is what an empty
- * `venueIds` would mean to `selectBriefEvents` on its own.
+ * Which venues a brief covers, resolving both of the form's scoping controls
+ * against the user's own venues:
+ *
+ *  - an empty venue selection means "all *your* venues", as the form says —
+ *    not every venue in the database, which is what an empty `venueIds` would
+ *    mean to `selectBriefEvents` on its own;
+ *  - `tags` then narrows that to the venues the user filed under one of those
+ *    tags (GOI-25), which is how "only this kind of thing" is expressed.
+ *
+ * Returning an empty array means "brief nothing" and the caller skips the
+ * send — never "brief everything".
  */
 export async function resolveBriefVenueIds(
   userId: string,
   venueIds: string[],
+  tags: string[] = [],
   venues: UserVenueStore = defaultUserVenueStore,
 ): Promise<string[]> {
-  if (venueIds.length > 0) return venueIds;
-  return (await venues.listAll(userId)).map((v) => v.id);
+  const mine = await venues.listAll(userId);
+  const picked = venueIds.length > 0 ? mine.filter((v) => venueIds.includes(v.id)) : mine;
+  if (tags.length === 0) return picked.map((v) => v.id);
+  const wanted = new Set(tags.map((t) => t.toLowerCase()));
+  return picked
+    .filter((v) => v.tags.some((t) => wanted.has(t.toLowerCase())))
+    .map((v) => v.id);
 }
 
 /** Guard against double sends (e.g. a restart re-running the tick): skip
@@ -199,9 +174,10 @@ export async function sendNewsletterBriefs(
     if (wasRecentlySent(sub, now)) { skipped++; continue; }
     try {
       const all = await defaultEventStore.listUpcoming({ limit: 500 });
-      const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds);
-      // No venues followed at all — nothing to brief on, and an empty list
-      // must not fall through to "every venue in the database".
+      const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds, sub.eventTags);
+      // Nothing in scope — no venues followed, or no venue carries the chosen
+      // tags. Either way an empty list must not fall through to "every venue
+      // in the database".
       if (venueIds.length === 0) { skipped++; continue; }
       const events = selectBriefEvents(all, { ...sub, venueIds }, now);
       if (events.length === 0) { skipped++; continue; }

@@ -117,15 +117,6 @@ export interface WantToGoEntry {
 
 export type NewsletterFrequency = 'daily' | 'weekly';
 
-/**
- * Which events a brief covers:
- *  - `all`      — everything in the cadence window.
- *  - `daily`    — only titles that run on *every* day of the window, i.e. the
- *                 things you can catch whenever you feel like it.
- *  - `specific` — only events on `eventDay` (0=Sun … 6=Sat).
- */
-export type NewsletterEventDayMode = 'all' | 'daily' | 'specific';
-
 export interface NewsletterSettings {
   email: string;
   frequency: NewsletterFrequency;
@@ -139,9 +130,9 @@ export interface NewsletterSettings {
   sendHour: number;
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). Ignored when daily. */
   sendWeekday: number;
-  eventDayMode: NewsletterEventDayMode;
-  /** The chosen weekday when `eventDayMode` is 'specific' (0=Sun … 6=Sat). */
-  eventDay: number | null;
+  /** Narrows the brief to venues you tagged with one of these. Empty = every
+   *  venue in `venueIds`. */
+  eventTags: string[];
   enabled: boolean;
   lastSentAt: string | null;
 }

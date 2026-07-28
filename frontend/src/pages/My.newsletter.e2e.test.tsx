@@ -89,13 +89,17 @@ describe('MyPage — newsletter end-to-end', () => {
     // instant the form appears (the race made CI flaky).
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
-    // Daily at 07:00, after 18:00, only events on Fridays.
+    // Any hour of the day is offered, not a hand-picked handful.
+    const sendHour = within(section).getByLabelText(/time of day/i);
+    expect(within(sendHour).getAllByRole('option')).toHaveLength(24);
+    expect(within(sendHour).getByRole('option', { name: 'at 03:00' })).toBeInTheDocument();
+    expect(within(sendHour).getByRole('option', { name: 'at 23:00' })).toBeInTheDocument();
+
+    // Daily at 03:00, after 22:00 — both only reachable with the full range.
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
-    await user.selectOptions(within(section).getByLabelText(/time of day/i), '7');
-    await user.selectOptions(within(section).getByLabelText(/only events after/i), '18');
-    await user.click(within(section).getByLabelText(/only events on a specific day/i));
-    await user.selectOptions(within(section).getByLabelText(/which day/i), '5');
-    await user.click(within(section).getByRole('button', { name: /save newsletter/i }));
+    await user.selectOptions(sendHour, '3');
+    await user.selectOptions(within(section).getByLabelText(/only events after/i), '22');
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 
     // Settings landed in the store.
@@ -103,10 +107,9 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(saved).toMatchObject({
       email: USER_EMAIL,
       frequency: 'daily',
-      sendHour: 7,
-      afterHour: 18,
-      eventDayMode: 'specific',
-      eventDay: 5,
+      sendHour: 3,
+      afterHour: 22,
+      eventTags: [],
       enabled: true,
     });
   });
@@ -126,7 +129,7 @@ describe('MyPage — newsletter end-to-end', () => {
 
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'weekly');
     await user.selectOptions(await within(section).findByLabelText(/day of the week/i), '4');
-    await user.click(within(section).getByRole('button', { name: /save newsletter/i }));
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 
     expect(await defaultNewsletterStore.get(userId)).toMatchObject({
@@ -134,10 +137,46 @@ describe('MyPage — newsletter end-to-end', () => {
       sendWeekday: 4,
     });
 
-    // "Generate" renders the brief the settings would produce. Without a
+    // "Generate now" renders the brief the settings would produce. Without a
     // database there are no events, so the preview says so rather than 404ing.
-    await user.click(within(section).getByRole('button', { name: /generate/i }));
+    await user.click(within(section).getByRole('button', { name: /generate now/i }));
     const preview = await screen.findByTestId('newsletter-preview');
     expect(preview.textContent).toMatch(/this week at your venues/i);
+  });
+
+  // The categories are the tags from "My venues" — nothing is typed in here.
+  it('offers the venue tags as categories, and only once one exists', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    let section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    // No tags yet → the category option is offered but not selectable, and
+    // says where categories come from.
+    expect(within(section).getByLabelText(/only a specific category/i)).toBeDisabled();
+    expect(within(section).getByText(/categories come from the tags you put on venues/i)).toBeInTheDocument();
+
+    // Tag a venue over in "My venues"…
+    await user.click(screen.getByRole('button', { name: 'My venues' }));
+    const venuesSection = (await screen.findByRole('heading', { name: 'My venues' })).closest('section')!;
+    const row = (await within(venuesSection).findByText('Kinoteka')).closest('li')!;
+    await user.click(within(row).getByRole('button', { name: /add tag to kinoteka/i }));
+    await user.type(within(row).getByLabelText(/new tag for kinoteka/i), 'arthouse');
+    await user.click(within(row).getByRole('button', { name: /^add$/i }));
+    await within(venuesSection).findByText('arthouse');
+
+    // …and it shows up as a category to scope the brief by.
+    await user.click(screen.getByRole('button', { name: 'Newsletter' }));
+    section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const category = await within(section).findByLabelText(/only a specific category/i);
+    await waitFor(() => expect(category).toBeEnabled());
+
+    await user.click(category);
+    await within(section).findByLabelText('arthouse');
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    expect(await defaultNewsletterStore.get(userId)).toMatchObject({ eventTags: ['arthouse'] });
   });
 });

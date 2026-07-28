@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { NewsletterEventDayMode, NewsletterFrequency, NewsletterSettings } from '@goin/shared';
+import type { NewsletterFrequency, NewsletterSettings } from '@goin/shared';
 import { getDb, schema } from '../db/index.js';
 
 // Newsletter subscriptions (GOI-8): one per user. The user picks an email,
@@ -14,8 +14,7 @@ export interface NewsletterSaveInput {
   beforeHour?: number | null;
   sendHour?: number;
   sendWeekday?: number;
-  eventDayMode?: NewsletterEventDayMode;
-  eventDay?: number | null;
+  eventTags?: string[];
   enabled: boolean;
 }
 
@@ -42,8 +41,7 @@ function toSettings(row: Row): NewsletterSettings {
     beforeHour: row.beforeHour,
     sendHour: row.sendHour,
     sendWeekday: row.sendWeekday,
-    eventDayMode: row.eventDayMode as NewsletterEventDayMode,
-    eventDay: row.eventDay,
+    eventTags: row.eventTags,
     enabled: row.enabled,
     lastSentAt: row.lastSentAt ? row.lastSentAt.toISOString() : null,
   };
@@ -52,12 +50,10 @@ function toSettings(row: Row): NewsletterSettings {
 /** Fill the schedule/scope fields a caller left out with their defaults, and
  *  keep `eventDay` consistent with the mode it belongs to. */
 function withScheduleDefaults(input: NewsletterSaveInput) {
-  const eventDayMode = input.eventDayMode ?? 'all';
   return {
     sendHour: input.sendHour ?? 8,
     sendWeekday: input.sendWeekday ?? 1,
-    eventDayMode,
-    eventDay: eventDayMode === 'specific' ? input.eventDay ?? null : null,
+    eventTags: input.eventTags ?? [],
   };
 }
 
@@ -116,8 +112,7 @@ function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
     beforeHour: sub.beforeHour,
     sendHour: sub.sendHour,
     sendWeekday: sub.sendWeekday,
-    eventDayMode: sub.eventDayMode,
-    eventDay: sub.eventDay,
+    eventTags: sub.eventTags,
     enabled: sub.enabled,
     lastSentAt: sub.lastSentAt,
   };

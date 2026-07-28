@@ -230,7 +230,7 @@ describe('auth + /my flow (in-process)', () => {
         venueIds: [],
         sendHour: 9,
         sendWeekday: 4,
-        eventDayMode: 'all',
+        eventTags: [],
         enabled: true,
       },
       token: hana,

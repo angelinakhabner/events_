@@ -206,10 +206,9 @@ export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
   sendHour: integer('send_hour').notNull().default(8),
   /** Weekday weekly briefs go out on, JS convention (0=Sun … 6=Sat). */
   sendWeekday: integer('send_weekday').notNull().default(1),
-  /** Which events the brief covers: 'all', 'daily' (titles running every day
-   *  of the window) or 'specific' (one weekday, see eventDay). */
-  eventDayMode: text('event_day_mode').notNull().default('all'),
-  eventDay: integer('event_day'),
+  /** Narrows the brief to venues carrying one of these personal tags
+   *  (user_venues.tags). Empty = every venue picked above. */
+  eventTags: text('event_tags').array().notNull().default(sql`ARRAY[]::text[]`),
   enabled: boolean('enabled').notNull().default(true),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -162,8 +162,8 @@ const newsletterSaveInput = z.object({
   sendHour: z.number().int().min(0).max(23).default(8),
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). */
   sendWeekday: z.number().int().min(0).max(6).default(1),
-  eventDayMode: z.enum(['all', 'daily', 'specific']).default('all'),
-  eventDay: z.number().int().min(0).max(6).nullable().optional(),
+  /** Narrow to venues carrying one of these personal tags; empty = no narrowing. */
+  eventTags: z.array(z.string().trim().max(40)).max(20).default([]),
   enabled: z.boolean().default(true),
 });
 
@@ -327,7 +327,9 @@ const my = router({
     preview: userProcedure
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
-        const venueIds = await resolveBriefVenueIds(ctx.user.id, input.venueIds, ctx.userVenues);
+        const venueIds = await resolveBriefVenueIds(
+          ctx.user.id, input.venueIds, input.eventTags, ctx.userVenues,
+        );
         const all = env.DATABASE_URL
           ? await defaultEventStore.listUpcoming({ limit: 500 })
           : [];
