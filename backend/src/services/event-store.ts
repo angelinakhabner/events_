@@ -18,6 +18,15 @@ export interface EventListInput {
   now?: Date;
 }
 
+/** How busy a venue's calendar is right now — the raw input to the "dark
+ *  until…" notice on /my (GOI-13). */
+export interface VenueActivity {
+  venueId: string;
+  /** ISO start of the soonest upcoming event, or null when there is none. */
+  nextStartsAt: string | null;
+  upcomingCount: number;
+}
+
 export class EventStore {
   async listUpcoming(input: EventListInput = {}): Promise<Event[]> {
     const db = getDb();
@@ -67,6 +76,43 @@ export class EventStore {
         },
         venueLanguage: r.venueLanguage,
       }),
+    );
+  }
+
+  /**
+   * Per-venue upcoming activity: when the next event is, and how many are
+   * listed. Venues with nothing upcoming are returned with a null date and a
+   * zero count rather than being omitted, so a caller can tell "dark" apart
+   * from "not asked about" (GOI-13).
+   */
+  async venueActivity(
+    venueIds: string[],
+    now: Date = new Date(),
+  ): Promise<VenueActivity[]> {
+    if (venueIds.length === 0) return [];
+    const rows = await getDb()
+      .select({
+        venueId: schema.events.venueId,
+        nextStartsAt: sql<Date | null>`min(${schema.events.startsAt})`,
+        upcomingCount: sql<number>`count(*)::int`,
+      })
+      .from(schema.events)
+      .where(and(inArray(schema.events.venueId, venueIds), gte(schema.events.startsAt, now)))
+      .groupBy(schema.events.venueId);
+
+    const found = new Map(
+      rows.map((r) => [
+        r.venueId,
+        {
+          venueId: r.venueId,
+          // drizzle hands back whatever pg's driver parsed; normalise to ISO.
+          nextStartsAt: r.nextStartsAt ? new Date(r.nextStartsAt).toISOString() : null,
+          upcomingCount: Number(r.upcomingCount),
+        },
+      ]),
+    );
+    return venueIds.map(
+      (id) => found.get(id) ?? { venueId: id, nextStartsAt: null, upcomingCount: 0 },
     );
   }
 
