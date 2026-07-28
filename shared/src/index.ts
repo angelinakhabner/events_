@@ -147,6 +147,8 @@ export interface NewsletterSettings {
   beforeHour: number | null;
   /** Warsaw hour the brief is sent at (0-23). */
   sendHour: number;
+  /** Minute past `sendHour` the brief is sent at (0-59). */
+  sendMinute: number;
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). Ignored when daily. */
   sendWeekday: number;
   /** Per-category cadence and detail. Empty = one brief covering everything,

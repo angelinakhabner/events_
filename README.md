@@ -81,6 +81,8 @@ npm run lint
 | `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
 | `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email. The domain must be verified in Resend |
 | `APP_URL` | `http://localhost:5173` | `https://<owner>.github.io/<repo>` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
+| `NEWSLETTER_CRON_ENABLED` | unset | `true` | **Required for newsletter briefs to go out at all.** Unset ⇒ the send sweep never starts and no brief is ever mailed, however subscriptions are configured |
+| `ADMIN_TOKEN` | unset (optional) | a long random string | Enables the `/admin/*` debug endpoints, including the newsletter diagnostics below. Callers pass `?token=<value>` |
 | `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | set as a **GitHub Actions repo variable**, baked into the Pages build | Backend base URL the frontend calls |
 | `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/<repo>/` | Vite `base` for the GitHub Pages subpath |
 

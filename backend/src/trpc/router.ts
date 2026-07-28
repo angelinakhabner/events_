@@ -10,7 +10,7 @@ import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
 import {
-  buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
+  briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
 import { env } from '../config.js';
@@ -165,6 +165,8 @@ const newsletterSaveInput = z.object({
   beforeHour: z.number().int().min(0).max(23).nullable().optional(),
   /** Warsaw hour the brief is sent at. */
   sendHour: z.number().int().min(0).max(23).default(8),
+  /** Minute past that hour (0-59). */
+  sendMinute: z.number().int().min(0).max(59).default(0),
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). */
   sendWeekday: z.number().int().min(0).max(6).default(1),
   /** Per-category cadence + detail; empty = one brief covering everything. */
@@ -342,13 +344,22 @@ const my = router({
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
         const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
-        const all = env.DATABASE_URL
-          ? await defaultEventStore.listUpcoming({ limit: 500 })
+        // Narrowed in SQL for the same reason the sender is: `limit` cuts the
+        // globally earliest rows, so a preview built from "the next 500 events"
+        // showed a short week once the database outgrew that.
+        const now = new Date();
+        const all = env.DATABASE_URL && venues.length > 0
+          ? await defaultEventStore.listUpcoming({
+            venueIds: venues.map((v) => v.id),
+            now,
+            until: new Date(now.getTime() + briefWindowDays(plannedFrequency(input)) * 24 * 3_600_000),
+            limit: 500,
+          })
           : [];
         // The preview shows what would go out *now*, so a section whose
         // cadence isn't due today is genuinely absent from it — same rule the
         // sweep applies.
-        const sections = buildBriefSections(all, input, venues);
+        const sections = buildBriefSections(all, input, venues, now);
         return {
           events: sections.flatMap((s) => s.events),
           html: renderBriefHtml({
@@ -356,6 +367,7 @@ const my = router({
             fallbackFrequency: plannedFrequency(input),
             recipientName: input.recipientName,
             festival: currentFestival(),
+            now,
           }),
         };
       }),
@@ -393,9 +405,13 @@ const my = router({
         await ctx.userVenues.ensureSeeded(ctx.user.id);
         const venues = await ctx.userVenues.list(ctx.user.id, input?.listId);
         if (venues.length === 0) return [];
-        const mine = new Set(venues.map((v) => v.id));
-        const all = await defaultEventStore.listUpcoming({ limit: 500 });
-        const scoped = all.filter((e) => mine.has(e.venueId));
+        // Ask for this user's venues in SQL rather than filtering the globally
+        // earliest 500 rows — otherwise following a quiet venue shows nothing
+        // as soon as busier ones fill the limit.
+        const scoped = await defaultEventStore.listUpcoming({
+          venueIds: venues.map((v) => v.id),
+          limit: 500,
+        });
         // The user's own name/category overrides are what they expect to
         // filter and read, so apply them over the shared venue summary.
         const venueMap = new Map(venues.map((v) => [v.id, v]));

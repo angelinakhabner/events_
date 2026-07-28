@@ -14,6 +14,7 @@ export interface NewsletterSaveInput {
   afterHour?: number | null;
   beforeHour?: number | null;
   sendHour?: number;
+  sendMinute?: number;
   sendWeekday?: number;
   categoryRules?: NewsletterCategoryRule[];
   enabled: boolean;
@@ -42,6 +43,7 @@ function toSettings(row: Row): NewsletterSettings {
     afterHour: row.afterHour,
     beforeHour: row.beforeHour,
     sendHour: row.sendHour,
+    sendMinute: row.sendMinute,
     sendWeekday: row.sendWeekday,
     categoryRules: row.categoryRules as NewsletterCategoryRule[],
     enabled: row.enabled,
@@ -53,6 +55,7 @@ function toSettings(row: Row): NewsletterSettings {
 function withScheduleDefaults(input: NewsletterSaveInput) {
   return {
     sendHour: input.sendHour ?? 8,
+    sendMinute: input.sendMinute ?? 0,
     sendWeekday: input.sendWeekday ?? 1,
     categoryRules: input.categoryRules ?? [],
   };
@@ -114,6 +117,7 @@ function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
     afterHour: sub.afterHour,
     beforeHour: sub.beforeHour,
     sendHour: sub.sendHour,
+    sendMinute: sub.sendMinute,
     sendWeekday: sub.sendWeekday,
     categoryRules: sub.categoryRules,
     enabled: sub.enabled,
