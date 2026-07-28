@@ -2,6 +2,7 @@ import { parseKinotekaListing, scrapeKinoteka } from './venues/kinoteka.js';
 import { parseMuranowCalendar, scrapeMuranow } from './venues/muranow.js';
 import { parseKomediowyListing, scrapeKomediowy } from './venues/komediowy.js';
 import { parseFilharmoniaListing, scrapeFilharmonia } from './venues/filharmonia.js';
+import { parseJassmineListing, scrapeJassmine } from './venues/jassmine.js';
 import { parseEditoListing, scrapeEdito } from './venues/edito.js';
 import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js';
 import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
@@ -58,6 +59,12 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     // htmlOverride path has no scrape date — anchor year inference to now.
     parse: (html, timezone) => parseFilharmoniaListing(html, ymdInTz(new Date(), timezone), timezone),
     scrape: (args) => scrapeFilharmonia(args),
+  },
+  jazzmine: {
+    // htmlOverride path has no scrape date — anchor year inference to now.
+    parse: (html, timezone) => parseJassmineListing(html, ymdInTz(new Date(), timezone), timezone),
+    scrape: (args) => scrapeJassmine(args),
+    enrich: true,
   },
   // MNW and Królikarnia share the edito CMS month-list markup; the page URL
   // passed to the parser anchors link absolutizing + the same-host filter
