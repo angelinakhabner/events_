@@ -66,6 +66,47 @@ typecheck → lint → `npm test`. Typical causes, in order:
 - **Migration step red** — a malformed `backend/drizzle/*.sql` fails before
   tests even run.
 
+## Sign-in emails arrive for the owner but not for anyone else
+
+The classic symptom when adding a tester: you can log in, they ask for a link
+and nothing ever shows up (not even in spam). The app is fine — Resend is
+refusing the send.
+
+Resend only accepts arbitrary recipients once the **sending domain is
+verified**. Until then it delivers solely to the Resend account's own address
+and rejects everyone else with *"you can only send testing emails to your own
+email address"*. There is no per-recipient allowlist to add someone to — the
+account owner's address works by default and that's the whole exception.
+
+**Confirm it in one call** (needs `ADMIN_TOKEN` set on the backend):
+
+```
+GET https://<backend>/admin/email-test?to=<their-address>&token=<ADMIN_TOKEN>
+```
+
+It sends one real email and returns Resend's verbatim answer, plus the
+`from` address actually in use. `{"ok": true}` means the address is
+deliverable and the problem is elsewhere (spam filter, typo). An error
+naming the account's own address confirms the unverified-domain case.
+
+**The fix** — verify a domain you control in Resend:
+
+1. Resend → **Domains** → **Add Domain**, enter the domain (e.g. `goin.app`).
+2. Add the DKIM/SPF DNS records Resend shows to that domain's DNS, then hit
+   **Verify**. Propagation is usually minutes.
+3. Set `RESEND_FROM_EMAIL` on Railway to an address on the verified domain
+   (`hello@goin.app`) and redeploy.
+4. Re-run the `/admin/email-test` call above for the tester's address.
+
+Notes:
+
+- `onboarding@resend.dev` is Resend's built-in sender and is **permanently**
+  limited to your own account address — it can't be made to reach a tester.
+- Verification is per **domain**, not per recipient: once it passes, every
+  address works, and no code change is needed to add a person.
+- A feed inbox like `…@feed.readwise.io` can receive newsletter briefs, but
+  nobody can click a magic link from it — it's not a sign-in address.
+
 ## Claude API errors _(AI parsing)_
 
 `services/ai-parser.ts` calls the Anthropic messages API. Failure modes:
@@ -124,5 +165,6 @@ GitHub Pages is showing repo content, not the built SPA. Debug:
 | Folders don't persist | `DATABASE_URL` unset → in-memory store |
 | `UNAUTHORIZED` on folder ops | missing/!matching `x-device-id` header |
 | AI parse 401 | `ANTHROPIC_API_KEY` invalid/expired |
+| Login email reaches you but no one else | Resend sending domain unverified → `/admin/email-test?to=…` |
 | Deploy red, health never green | migration crash on boot, or not binding `0.0.0.0` |
 | Pages shows README | Pages Source not set to "GitHub Actions" |

@@ -21,6 +21,13 @@ describe('admin endpoints', () => {
     expect(res.status).toBe(401);
   });
 
+  // Guarded like the rest — it sends a real email, so an open version would be
+  // a free relay for anyone who found the URL.
+  it('rejects /admin/email-test without a token', async () => {
+    const res = await createApp().request('/admin/email-test?to=someone@example.com');
+    expect(res.status).toBe(401);
+  });
+
   it('keeps /health open', async () => {
     const res = await createApp().request('/health');
     expect(res.status).toBe(200);

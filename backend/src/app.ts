@@ -8,6 +8,7 @@ import { getDb, schema } from './db/index.js';
 import { scrapeVenue } from './services/scraper/runner.js';
 import { firecrawlScrape } from './services/scraper/fetcher.js';
 import { defaultAuthStore, loginWithVerifiedEmail } from './services/auth.js';
+import { sendEmail } from './services/email.js';
 import {
   exchangeGoogleCode,
   googleAuthConfig,
@@ -137,6 +138,44 @@ export function createApp() {
       summary.find = { needle: find, matches: snippets.length, snippets };
     }
     return c.json(summary);
+  });
+
+  // GET /admin/email-test?to=<address>&token=...  — send one real email through
+  // Resend and report verbatim what Resend answered. "The login link never
+  // arrives for X" is otherwise invisible from the outside: the SPA shows a
+  // generic failure and the provider's reason is buried in the deploy logs.
+  //
+  // The reason that matters most: on an unverified sending domain Resend only
+  // delivers to the Resend account's own address and refuses every other
+  // recipient, so the owner's inbox works while every tester's silently doesn't.
+  app.get('/admin/email-test', async (c) => {
+    if (!authorized(c.req.query('token'))) return c.json({ error: 'unauthorized' }, 401);
+    const to = c.req.query('to');
+    if (!to) return c.json({ error: 'pass ?to=<recipient address>' }, 400);
+    if (!env.RESEND_API_KEY) {
+      return c.json(
+        { ok: false, to, from: env.RESEND_FROM_EMAIL, error: 'RESEND_API_KEY is not set — this deploy sends no email at all' },
+        400,
+      );
+    }
+
+    try {
+      const { id } = await sendEmail({
+        to,
+        subject: 'Goin deliverability check',
+        html: '<p>This is a deliverability check from Goin. Nothing to do — if you can read it, sign-in emails reach this address.</p>',
+      });
+      return c.json({ ok: true, to, from: env.RESEND_FROM_EMAIL, id });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      // Resend phrases the unverified-domain refusal as "you can only send
+      // testing emails to your own email address" — worth naming outright,
+      // since the fix (verify the domain) isn't obvious from the message.
+      const hint = /own email address|not verified|domain/i.test(error)
+        ? `The domain of ${env.RESEND_FROM_EMAIL} is not verified in Resend, so Resend refuses every recipient except the Resend account's own address. Verify the sending domain in Resend → Domains (DNS records), then set RESEND_FROM_EMAIL to an address on it.`
+        : undefined;
+      return c.json({ ok: false, to, from: env.RESEND_FROM_EMAIL, error, ...(hint ? { hint } : {}) }, 502);
+    }
   });
 
   app.use(
