@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Event } from '@goin/shared';
 import { trpc } from '../lib/trpc';
+import { isLoggedIn } from '../lib/auth';
 import { formatShortDate, formatTime } from '../lib/format';
 
 /** Cap on venue rows in the panel, soonest venues first. */
@@ -134,6 +135,39 @@ function ScreeningsPanel({ event }: { event: Event }) {
     <div className="absolute z-10 left-0 mt-2 bg-paper border border-rule p-3 min-w-[16rem] max-w-[22rem]">
       <div className="text-xs uppercase tracking-wide text-muted mb-2">{panelLabel(event)}</div>
       {body}
+      {isFilm && isLoggedIn() ? <TrackFilmButton title={event.title} /> : null}
+    </div>
+  );
+}
+
+/**
+ * "Track film" (GOI-26): the only way a film reaches your "want to go" list —
+ * there is no free-text field anywhere, so a tracked title always comes from a
+ * real screening and matches how the venue spells it.
+ */
+function TrackFilmButton({ title }: { title: string }) {
+  const utils = trpc.useUtils();
+  const films = trpc.my.films.list.useQuery();
+  const add = trpc.my.films.add.useMutation({
+    onSuccess: () => utils.my.films.list.invalidate(),
+  });
+
+  const tracked =
+    add.isSuccess || (films.data ?? []).some((f) => f.title.toLowerCase() === title.toLowerCase());
+
+  return (
+    <div className="mt-3 border-t border-rule pt-2">
+      <button
+        type="button"
+        disabled={tracked || add.isPending}
+        onClick={() => add.mutate({ title })}
+        className="text-sm link-accent bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50 disabled:cursor-default"
+      >
+        {tracked ? '✓ On your want-to-go list' : add.isPending ? 'Adding…' : '+ Track film'}
+      </button>
+      {add.error && !tracked ? (
+        <p className="mt-1 text-xs text-muted">{add.error.message}</p>
+      ) : null}
     </div>
   );
 }

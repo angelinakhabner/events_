@@ -321,3 +321,15 @@ export function msUntilNextWarsawTime(hour: number, dayOfWeek?: number, now: Dat
 export function msUntilNextWarsawHour(hour: number, now: Date = new Date()): number {
   return msUntilNextWarsawTime(hour, undefined, now);
 }
+
+/** Weekday of an instant in Europe/Warsaw, JS convention (0=Sun … 6=Sat). */
+export function warsawWeekday(at: Date): number {
+  const wd = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short' }).format(at);
+  return WEEKDAY_NUM[wd] ?? at.getUTCDay();
+}
+
+/** Wall-clock hour of an instant in Europe/Warsaw (0-23). */
+export function warsawHourOf(at: Date): number {
+  const h = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false }).format(at);
+  return Number(h) % 24;
+}

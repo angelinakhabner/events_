@@ -18,6 +18,10 @@ export interface UserVenue extends Venue {
   windowDays: number | null;
   /** True when name/category shown differ from the shared venue row. */
   customized: boolean;
+  /** Which of the user's folders (lists) the subscription sits in. */
+  listId: string | null;
+  /** Free-form personal tags. */
+  tags: string[];
 }
 
 export interface AddCustomVenueInput {
@@ -54,6 +58,10 @@ export interface UpdateUserVenueInput {
   /** New personal category; null clears the override. */
   category?: Category | null;
   windowDays?: number | null;
+  /** Replacement tag set — the caller sends the whole list. */
+  tags?: string[];
+  /** Move the subscription into another of the user's folders (lists). */
+  listId?: string;
 }
 
 export interface UserVenueStore {
@@ -61,6 +69,9 @@ export interface UserVenueStore {
    *  given, otherwise the user's active list (all subscriptions if the user
    *  somehow has no lists yet). */
   list(userId: string, listId?: string): Promise<UserVenue[]>;
+  /** Every subscription the user has, across all folders — what the /my
+   *  "My venues" tab groups by folder. */
+  listAll(userId: string): Promise<UserVenue[]>;
   /** First-login seeding: create the default list, make it active, and
    *  subscribe the user to every default venue so /my starts populated.
    *  No-op when the user already has lists/subscriptions. */
@@ -100,7 +111,9 @@ export function normalizeVenueUrl(url: string): string {
 type VenueRow = typeof schema.venues.$inferSelect;
 type SubRow = typeof schema.userVenues.$inferSelect;
 
-function toUserVenue(v: VenueRow, s: Pick<SubRow, 'nameOverride' | 'categoryOverride' | 'windowDays'>): UserVenue {
+type SubFields = Pick<SubRow, 'nameOverride' | 'categoryOverride' | 'windowDays' | 'listId' | 'tags'>;
+
+function toUserVenue(v: VenueRow, s: SubFields): UserVenue {
   return {
     id: v.id,
     name: s.nameOverride ?? v.name,
@@ -113,7 +126,25 @@ function toUserVenue(v: VenueRow, s: Pick<SubRow, 'nameOverride' | 'categoryOver
     createdAt: v.createdAt.toISOString(),
     windowDays: s.windowDays,
     customized: s.nameOverride !== null || s.categoryOverride !== null,
+    listId: s.listId,
+    tags: s.tags ?? [],
   };
+}
+
+/** Trim, drop blanks, de-duplicate case-insensitively, cap the length. */
+export function normalizeTags(tags: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of tags) {
+    const tag = raw.trim().slice(0, 40);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= 20) break;
+  }
+  return out;
 }
 
 export class DbUserVenueStore implements UserVenueStore {
@@ -127,6 +158,17 @@ export class DbUserVenueStore implements UserVenueStore {
       .from(schema.userVenues)
       .innerJoin(schema.venues, eq(schema.venues.id, schema.userVenues.venueId))
       .where(and(...conditions));
+    return rows
+      .map((r) => toUserVenue(r.venue, r.sub))
+      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  }
+
+  async listAll(userId: string): Promise<UserVenue[]> {
+    const rows = await getDb()
+      .select({ venue: schema.venues, sub: schema.userVenues })
+      .from(schema.userVenues)
+      .innerJoin(schema.venues, eq(schema.venues.id, schema.userVenues.venueId))
+      .where(eq(schema.userVenues.userId, userId));
     return rows
       .map((r) => toUserVenue(r.venue, r.sub))
       .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
@@ -359,6 +401,8 @@ export class DbUserVenueStore implements UserVenueStore {
     if (patch.name !== undefined) set.nameOverride = patch.name;
     if (patch.category !== undefined) set.categoryOverride = patch.category;
     if (patch.windowDays !== undefined) set.windowDays = patch.windowDays;
+    if (patch.tags !== undefined) set.tags = normalizeTags(patch.tags);
+    if (patch.listId !== undefined) set.listId = await this.resolveTargetList(userId, patch.listId);
     if (Object.keys(set).length === 0) throw new Error('Nothing to update');
     const [sub] = await db
       .update(schema.userVenues)
@@ -402,6 +446,7 @@ interface MemSub {
   nameOverride: string | null;
   categoryOverride: string | null;
   windowDays: number | null;
+  tags: string[];
 }
 
 interface MemList {
@@ -444,6 +489,15 @@ export class InMemoryUserVenueStore implements UserVenueStore {
     return out.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   }
 
+  async listAll(userId: string): Promise<UserVenue[]> {
+    const out: UserVenue[] = [];
+    for (const [venueId, sub] of this.userSubs(userId)) {
+      const v = this.venues.get(venueId);
+      if (v) out.push(this.toUserVenue(v, sub));
+    }
+    return out.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  }
+
   async ensureSeeded(userId: string): Promise<void> {
     if (this.listsOf(userId).length === 0) {
       await this.createList(userId, DEFAULT_LIST_NAME);
@@ -452,7 +506,7 @@ export class InMemoryUserVenueStore implements UserVenueStore {
     const subs = this.userSubs(userId);
     if (subs.size === 0) {
       for (const id of this.venues.keys()) {
-        subs.set(id, { listId: active, nameOverride: null, categoryOverride: null, windowDays: null });
+        subs.set(id, { listId: active, nameOverride: null, categoryOverride: null, windowDays: null, tags: [] });
       }
     }
     // Adopt legacy subscriptions into the active list.
@@ -551,6 +605,7 @@ export class InMemoryUserVenueStore implements UserVenueStore {
         nameOverride: created || venue.name === input.name ? null : input.name,
         categoryOverride: created || venue.category === input.category ? null : input.category,
         windowDays: input.windowDays ?? null,
+        tags: [],
       });
     }
     return this.toUserVenue(venue, subs.get(venue.id)!);
@@ -563,6 +618,11 @@ export class InMemoryUserVenueStore implements UserVenueStore {
     if (patch.name !== undefined) sub.nameOverride = patch.name;
     if (patch.category !== undefined) sub.categoryOverride = patch.category;
     if (patch.windowDays !== undefined) sub.windowDays = patch.windowDays;
+    if (patch.tags !== undefined) sub.tags = normalizeTags(patch.tags);
+    if (patch.listId !== undefined) {
+      if (!this.listsOf(userId).some((l) => l.id === patch.listId)) throw new Error('List not found');
+      sub.listId = patch.listId;
+    }
     return this.toUserVenue(venue, sub);
   }
 
@@ -586,6 +646,8 @@ export class InMemoryUserVenueStore implements UserVenueStore {
       category: (s.categoryOverride ?? v.category) as Category,
       windowDays: s.windowDays,
       customized: s.nameOverride !== null || s.categoryOverride !== null,
+      listId: s.listId,
+      tags: [...s.tags],
     };
   }
 }
