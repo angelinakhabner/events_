@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { Event } from '@goin/shared';
 import {
   briefWindowDays,
@@ -13,7 +13,7 @@ import {
   wasRecentlySent,
 } from './newsletter.js';
 import { InMemoryUserVenueStore } from './user-venue-store.js';
-import { defaultEventStore } from './event-store.js';
+import type { EventListInput } from './event-store.js';
 import { InMemoryNewsletterStore } from './newsletter-store.js';
 import type { NewsletterSubscription } from './newsletter-store.js';
 
@@ -290,12 +290,22 @@ describe('sendNewsletterBriefs', () => {
     return store;
   }
 
+  /** Venue and event sources for the sweep. Injected rather than left to the
+   *  module defaults, which follow DATABASE_URL — under CI that means real SQL,
+   *  and these fixtures' user ids aren't UUIDs. */
+  function deps() {
+    return {
+      venues: new InMemoryUserVenueStore([]),
+      events: { listUpcoming: async () => [] },
+    };
+  }
+
   it('reports why nothing was sent instead of skipping silently', async () => {
     const store = await storeWith({
       email: 'a@b.pl', frequency: 'daily', venueIds: [], sendHour: 8, enabled: true,
     });
     // 03:00 Warsaw — no slot in the catch-up window.
-    const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), { dryRun: true });
+    const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), { ...deps(), dryRun: true });
 
     expect(res.sent).toBe(0);
     expect(res.outcomes).toHaveLength(1);
@@ -309,7 +319,9 @@ describe('sendNewsletterBriefs', () => {
     // 03:00 Warsaw — nowhere near the 08:00 slot, so this would be 'not-due'
     // without force. Past that gate it reports the real obstacle: an empty
     // selection resolves to the user's own venues, and this user follows none.
-    const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), { dryRun: true, force: true });
+    const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), {
+      ...deps(), dryRun: true, force: true,
+    });
 
     expect(res.outcomes[0]).toMatchObject({ status: 'skipped', reason: 'no-venues' });
   });
@@ -322,22 +334,19 @@ describe('sendNewsletterBriefs', () => {
     const store = await storeWith({
       email: 'a@b.pl', frequency: 'weekly', venueIds: ['v1', 'v2'], sendHour: 8, sendWeekday: 1, enabled: true,
     });
-    const spy = vi.spyOn(defaultEventStore, 'listUpcoming').mockResolvedValue([]);
-    let calls: Parameters<typeof defaultEventStore.listUpcoming>[];
-    try {
-      await sendNewsletterBriefs(store, NOW, { dryRun: true, force: true });
-    } finally {
-      // Snapshot before restoring — mockRestore() also clears recorded calls.
-      calls = [...spy.mock.calls];
-      spy.mockRestore();
-    }
+    const queries: EventListInput[] = [];
+    await sendNewsletterBriefs(store, NOW, {
+      ...deps(),
+      events: { listUpcoming: async (q = {}) => { queries.push(q); return []; } },
+      dryRun: true,
+      force: true,
+    });
 
-    expect(calls).toHaveLength(1);
-    const query = calls[0]![0]!;
-    expect(query.venueIds).toEqual(['v1', 'v2']);
-    expect(query.now).toEqual(NOW);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]!.venueIds).toEqual(['v1', 'v2']);
+    expect(queries[0]!.now).toEqual(NOW);
     // Weekly → seven days ahead.
-    expect(query.until?.getTime()).toBe(NOW.getTime() + 7 * 24 * 3_600_000);
+    expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 7 * 24 * 3_600_000);
   });
 
   it('only restricts the sweep to one subscriber', async () => {
@@ -345,7 +354,7 @@ describe('sendNewsletterBriefs', () => {
     await store.save('u1', { email: 'a@b.pl', frequency: 'daily', venueIds: [], enabled: true });
     await store.save('u2', { email: 'c@d.pl', frequency: 'daily', venueIds: [], enabled: true });
 
-    const res = await sendNewsletterBriefs(store, NOW, { dryRun: true, only: 'c@d.pl' });
+    const res = await sendNewsletterBriefs(store, NOW, { ...deps(), dryRun: true, only: 'c@d.pl' });
     expect(res.outcomes.map((o) => o.email)).toEqual(['c@d.pl']);
   });
 });

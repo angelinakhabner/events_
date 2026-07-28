@@ -1,5 +1,5 @@
 import type { Event, NewsletterEventDayMode, NewsletterFrequency } from '@goin/shared';
-import { defaultEventStore } from './event-store.js';
+import { defaultEventStore, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenueStore } from './user-venue-store.js';
 import { sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
@@ -247,6 +247,11 @@ export interface SweepOptions {
   force?: boolean;
   /** Restrict the sweep to one subscriber, by user id or email. */
   only?: string;
+  /** The venue and event sources, injectable the way `store` already is.
+   *  Without these the sweep reaches for the process-wide stores, which makes
+   *  a test's behaviour depend on whether DATABASE_URL happens to be set. */
+  venues?: UserVenueStore;
+  events?: Pick<EventStore, 'listUpcoming'>;
 }
 
 export interface SweepResult {
@@ -267,6 +272,8 @@ export async function sendNewsletterBriefs(
   now: Date = new Date(),
   opts: SweepOptions = {},
 ): Promise<SweepResult> {
+  const venueStore = opts.venues ?? defaultUserVenueStore;
+  const eventStore = opts.events ?? defaultEventStore;
   const all = await store.listEnabled();
   const subs = opts.only
     ? all.filter((s) => s.userId === opts.only || s.email.toLowerCase() === opts.only!.toLowerCase())
@@ -291,7 +298,7 @@ export async function sendNewsletterBriefs(
       }
     }
     try {
-      const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds);
+      const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds, venueStore);
       // No venues followed at all — nothing to brief on, and an empty list
       // must not fall through to "every venue in the database".
       if (venueIds.length === 0) {
@@ -302,7 +309,7 @@ export async function sendNewsletterBriefs(
       // rows, so fetching "the next 500 events" and filtering by venue here
       // silently truncated a weekly brief once the database held more than 500
       // upcoming events across all venues — the later days just vanished.
-      const events = await defaultEventStore.listUpcoming({
+      const events = await eventStore.listUpcoming({
         venueIds,
         now,
         until: new Date(now.getTime() + briefWindowDays(sub.frequency) * 24 * 3_600_000),
