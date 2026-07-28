@@ -115,7 +115,24 @@ export interface WantToGoEntry {
 
 // ─── Newsletter ──────────────────────────────────────────────────────────────
 
-export type NewsletterFrequency = 'daily' | 'weekly';
+export type NewsletterFrequency = 'daily' | 'weekly' | 'monthly';
+
+/** How much of each event a section shows: a trimmed one-liner, or the whole
+ *  blurb ("wide"). */
+export type NewsletterDetail = 'short' | 'full';
+
+/**
+ * One category's own place in the brief: how often it turns up, and how much
+ * it says. "Cinema daily, short; museums monthly, wide."
+ *
+ * `category` matches either a built-in event category ("cinema") or one of the
+ * reader's own venue tags ("arthouse") — whichever they picked.
+ */
+export interface NewsletterCategoryRule {
+  category: string;
+  frequency: NewsletterFrequency;
+  detail: NewsletterDetail;
+}
 
 export interface NewsletterSettings {
   email: string;
@@ -132,9 +149,9 @@ export interface NewsletterSettings {
   sendHour: number;
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). Ignored when daily. */
   sendWeekday: number;
-  /** Narrows the brief to venues you tagged with one of these. Empty = every
-   *  venue in `venueIds`. */
-  eventTags: string[];
+  /** Per-category cadence and detail. Empty = one brief covering everything,
+   *  on the subscription's own `frequency`. */
+  categoryRules: NewsletterCategoryRule[];
   enabled: boolean;
   lastSentAt: string | null;
 }

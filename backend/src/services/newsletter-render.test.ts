@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Event, Festival } from '@goin/shared';
-import { briefCategories, listSentence, renderBriefHtml } from './newsletter-render.js';
+import { listSentence, renderBriefHtml, type BriefSection } from './newsletter-render.js';
 
 // A Wednesday noon in Warsaw (CEST = UTC+2).
 const NOW = new Date('2026-07-22T10:00:00Z');
@@ -40,8 +40,13 @@ const FESTIVAL: Festival = {
   status: 'ongoing',
 };
 
+/** A one-section brief — the shape most of these assertions care about. */
+function section(over: Partial<BriefSection> = {}): BriefSection {
+  return { category: '', frequency: 'daily', detail: 'short', events: [makeEvent()], ...over };
+}
+
 function render(over: Partial<Parameters<typeof renderBriefHtml>[0]> = {}) {
-  return renderBriefHtml({ events: [makeEvent()], frequency: 'daily', now: NOW, ...over });
+  return renderBriefHtml({ sections: [section()], now: NOW, ...over });
 }
 
 /** The day-label rows only — the date also appears in the masthead and the
@@ -54,15 +59,17 @@ function dayHeadings(html: string): string[] {
 describe('renderBriefHtml — content', () => {
   it('renders the masthead, picks, festival and CTA', () => {
     const html = render({
-      events: [makeEvent({ title: 'Chungking Express', sourceUrl: 'https://x.pl/a' })],
+      sections: [
+        section({ category: 'cinema', events: [makeEvent({ title: 'Chungking Express', sourceUrl: 'https://x.pl/a' })] }),
+        section({ category: 'comedy', events: [makeEvent({ title: 'Improv 101', category: 'comedy' })] }),
+      ],
       recipientName: 'Ania',
-      categories: ['Cinema', 'Comedy'],
       festival: FESTIVAL,
     });
 
     expect(html).toContain('GOIN · DAILY');
     expect(html).toContain('Today in<br>Warsaw');
-    expect(html).toContain('Hi Ania — 1 pick from Cinema &amp; Comedy');
+    expect(html).toContain('Hi Ania — 2 picks from Cinema &amp; Comedy');
     expect(html).toContain('Chungking Express');
     expect(html).toContain('https://x.pl/a');
     expect(html).toContain('KINOTEKA');
@@ -72,13 +79,13 @@ describe('renderBriefHtml — content', () => {
   });
 
   it('greets without a name when none is saved', () => {
-    const html = render({ recipientName: null, categories: ['Cinema'] });
+    const html = render({ recipientName: null, sections: [section({ category: 'cinema' })] });
     expect(html).not.toContain('Hi ');
     expect(html).toContain('1 pick from Cinema');
   });
 
   it('switches the masthead and subject wording for weekly briefs', () => {
-    const html = render({ frequency: 'weekly' });
+    const html = render({ sections: [section({ frequency: 'weekly' })] });
     expect(html).toContain('GOIN · WEEKLY');
     expect(html).toContain('This week in<br>Warsaw');
   });
@@ -88,16 +95,16 @@ describe('renderBriefHtml — content', () => {
       makeEvent({ title: 'Film A', startsAt: '2026-07-22T18:00:00+02:00' }),
       makeEvent({ title: 'Film B', startsAt: '2026-07-23T20:00:00+02:00' }),
     ];
-    const weekly = render({ events, frequency: 'weekly' });
+    const weekly = render({ sections: [section({ frequency: 'weekly', events })] });
     expect(dayHeadings(weekly)).toEqual(['WED 22 JUL', 'THU 23 JUL']);
 
     // A daily brief is one day by definition — the design shows no day label.
-    const daily = render({ events: [events[0]!], frequency: 'daily' });
+    const daily = render({ sections: [section({ frequency: 'daily', events: [events[0]!] })] });
     expect(dayHeadings(daily)).toEqual([]);
   });
 
   it('says so rather than sending an empty card when nothing is on', () => {
-    const html = render({ events: [] });
+    const html = render({ sections: [] });
     expect(html).toContain('Nothing on in this window.');
   });
 
@@ -107,10 +114,13 @@ describe('renderBriefHtml — content', () => {
 
   it('escapes event text, including in the description and venue name', () => {
     const html = render({
-      events: [makeEvent({
-        title: '<script>alert(1)</script>',
-        description: 'Tom & Jerry <b>live</b>',
-        venue: { id: 'v', name: 'A & B', category: 'cinema', city: 'Warsaw', country: 'PL' },
+      sections: [section({
+        category: '<b>evil</b>',
+        events: [makeEvent({
+          title: '<script>alert(1)</script>',
+          description: 'Tom & Jerry <b>live</b>',
+          venue: { id: 'v', name: 'A & B', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        })],
       })],
       recipientName: '<img src=x>',
     });
@@ -122,7 +132,7 @@ describe('renderBriefHtml — content', () => {
   });
 
   it('trims a long description to one line', () => {
-    const html = render({ events: [makeEvent({ description: 'x'.repeat(400) })] });
+    const html = render({ sections: [section({ events: [makeEvent({ description: 'x'.repeat(400) })] })] });
     expect(html).toContain('…');
     expect(html).not.toContain('x'.repeat(200));
   });
@@ -132,10 +142,11 @@ describe('renderBriefHtml — content', () => {
 // the properties that make it do so.
 describe('renderBriefHtml — email safety', () => {
   const html = renderBriefHtml({
-    events: [makeEvent(), makeEvent({ category: 'comedy', startsAt: '2026-07-22T20:00:00+02:00' })],
-    frequency: 'daily',
+    sections: [section({
+      category: 'cinema',
+      events: [makeEvent(), makeEvent({ category: 'comedy', startsAt: '2026-07-22T20:00:00+02:00' })],
+    })],
     recipientName: 'Ania',
-    categories: ['Cinema'],
     festival: FESTIVAL,
     now: NOW,
   });
@@ -172,17 +183,6 @@ describe('renderBriefHtml — email safety', () => {
 
   it('stays well under the ~100KB Gmail clipping threshold', () => {
     expect(Buffer.byteLength(html, 'utf8')).toBeLessThan(100_000);
-  });
-});
-
-describe('briefCategories', () => {
-  it('prefers the tags the reader actually chose', () => {
-    expect(briefCategories(['arthouse'], [makeEvent()])).toEqual(['arthouse']);
-  });
-
-  it('falls back to the categories present, so the copy stays true', () => {
-    const events = [makeEvent({ category: 'cinema' }), makeEvent({ category: 'comedy' })];
-    expect(briefCategories([], events)).toEqual(['cinema', 'comedy']);
   });
 });
 

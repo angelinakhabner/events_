@@ -1,4 +1,6 @@
-import type { Category, Event, Festival, NewsletterFrequency } from '@goin/shared';
+import type {
+  Event, Festival, NewsletterDetail, NewsletterFrequency,
+} from '@goin/shared';
 import { env } from '../config.js';
 
 /**
@@ -85,11 +87,14 @@ function tagCell(label: string, filled: boolean): string {
 
 /** Every pick is ruled underneath, and the first row in the list is ruled
  *  above too, so the list reads as a closed block — as in the design. */
-function pickRow(event: Event, top: boolean): string {
+function pickRow(event: Event, top: boolean, detail: NewsletterDetail): string {
   const border =
     (top ? `border-top:2px solid ${C.divider};` : '') + `border-bottom:2px solid ${C.divider};`;
   const venue = event.venue?.name ?? '';
-  const description = event.description ? oneLine(event.description) : '';
+  // "Wide" keeps the whole blurb; "short" trims it to the design's one line.
+  const description = event.description
+    ? (detail === 'full' ? oneLine(event.description, 600) : oneLine(event.description))
+    : '';
   const link = event.sourceUrl
     ? `<a href="${escapeHtml(event.sourceUrl)}" style="color:${C.ink};text-decoration:none">${escapeHtml(event.title)}</a>`
     : escapeHtml(event.title);
@@ -129,24 +134,59 @@ function dayHeadingRow(iso: string, top: boolean): string {
   );
 }
 
-function picksTable(events: Event[], frequency: NewsletterFrequency): string {
-  const sorted = [...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  const rows: string[] = [];
-  let lastDay: string | null = null;
+/** A category's own heading, when the brief carries more than one section.
+ *  Larger than the day labels below it so the two never read as the same
+ *  level. */
+function sectionHeadingRow(section: BriefSection, top: boolean): string {
+  const border = top ? `border-top:2px solid ${C.divider};` : '';
+  return (
+    `<tr><td colspan="2" style="${border}padding:22px 0 2px;` +
+      `font-family:${FONT};font-weight:800;font-size:20px;line-height:1.2;` +
+      `letter-spacing:-.01em;color:${C.ink}">${escapeHtml(titleCase(section.category))}` +
+      `<span style="font-weight:400;font-size:11px;letter-spacing:.06em;text-transform:uppercase;` +
+        `color:${C.meta}"> · ${escapeHtml(cadenceLabel(section.frequency))}</span>` +
+    `</td></tr>`
+  );
+}
 
-  for (const event of sorted) {
-    // Only whatever lands first carries the rule that opens the list.
-    const opensList = rows.length === 0;
-    if (frequency === 'weekly') {
-      const day = fmtDayKey(event.startsAt);
-      if (day !== lastDay) {
-        lastDay = day;
-        rows.push(dayHeadingRow(event.startsAt, opensList));
-        rows.push(pickRow(event, false));
-        continue;
-      }
+/** "arthouse" → "Arthouse". Categories are free-form tags, so they arrive in
+ *  whatever case the reader typed. */
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function cadenceLabel(frequency: NewsletterFrequency): string {
+  if (frequency === 'daily') return 'today';
+  return frequency === 'weekly' ? 'this week' : 'this month';
+}
+
+function picksTable(sections: BriefSection[]): string {
+  const rows: string[] = [];
+  const named = sections.length > 1 || (sections[0]?.category ?? '') !== '';
+
+  for (const section of sections) {
+    const sorted = [...section.events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    let lastDay: string | null = null;
+
+    if (named && section.category) {
+      rows.push(sectionHeadingRow(section, rows.length === 0));
     }
-    rows.push(pickRow(event, opensList));
+    for (const event of sorted) {
+      // Only whatever lands first carries the rule that opens the list.
+      const opensList = rows.length === 0;
+      // A section spanning more than a day gets its days labelled; a daily
+      // one is a single day by definition.
+      if (section.frequency !== 'daily') {
+        const day = fmtDayKey(event.startsAt);
+        if (day !== lastDay) {
+          lastDay = day;
+          rows.push(dayHeadingRow(event.startsAt, opensList));
+          rows.push(pickRow(event, false, section.detail));
+          continue;
+        }
+      }
+      rows.push(pickRow(event, opensList, section.detail));
+    }
   }
 
   return (
@@ -162,11 +202,17 @@ function mastheadRow(opts: {
   count: number;
   date: string;
 }): string {
-  const eyebrow = opts.frequency === 'daily' ? 'GOIN · DAILY' : 'GOIN · WEEKLY';
-  const headline = opts.frequency === 'daily' ? 'Today in<br>Warsaw' : 'This week in<br>Warsaw';
+  const eyebrow =
+    opts.frequency === 'daily' ? 'GOIN · DAILY'
+    : opts.frequency === 'weekly' ? 'GOIN · WEEKLY'
+    : 'GOIN · MONTHLY';
+  const headline =
+    opts.frequency === 'daily' ? 'Today in<br>Warsaw'
+    : opts.frequency === 'weekly' ? 'This week in<br>Warsaw'
+    : 'This month in<br>Warsaw';
   // Categories are user-authored tags, so they escape like any other input.
   const from = opts.categories.length
-    ? ` from ${escapeHtml(listSentence(opts.categories))}`
+    ? ` from ${escapeHtml(listSentence(opts.categories.map(titleCase)))}`
     : ' from your venues';
   const picks = `${opts.count} pick${opts.count === 1 ? '' : 's'}${from}`;
   const sub = opts.name ? `Hi ${escapeHtml(opts.name)} — ${picks}` : picks;
@@ -224,7 +270,7 @@ function ctaRow(): string {
 function footerRow(categories: string[]): string {
   const manage = `${env.APP_URL}/my?tab=newsletter`;
   const reason = categories.length
-    ? `Sent because you saved ${escapeHtml(listSentence(categories))} on Goin.`
+    ? `Sent because you saved ${escapeHtml(listSentence(categories.map(titleCase)))} on Goin.`
     : 'Sent because you turned this brief on in Goin.';
   const link = `color:${C.footer};text-decoration:underline`;
   return (
@@ -237,13 +283,23 @@ function footerRow(categories: string[]): string {
   );
 }
 
-export interface BriefContent {
-  events: Event[];
+/** One category's slice of the brief. Mirrors the service's BriefSection so
+ *  the renderer needs no import from it. */
+export interface BriefSection {
+  /** Empty for an unnamed brief covering everything. */
+  category: string;
   frequency: NewsletterFrequency;
+  detail: NewsletterDetail;
+  events: Event[];
+}
+
+export interface BriefContent {
+  sections: BriefSection[];
+  /** Cadence to word the masthead by when there are no sections at all —
+   *  otherwise an empty weekly brief would announce itself as "Today". */
+  fallbackFrequency?: NewsletterFrequency;
   /** Greeting name; null greets without one. */
   recipientName?: string | null;
-  /** The reader's chosen tag categories, for the subcopy and footer reason. */
-  categories?: string[];
   /** Ongoing festival for the "Also on" line, when there is one. */
   festival?: Festival | null;
   now?: Date;
@@ -258,13 +314,23 @@ function preheader(text: string): string {
 }
 
 export function renderBriefHtml(content: BriefContent): string {
-  const { events, frequency } = content;
+  const sections = content.sections;
   const now = content.now ?? new Date();
-  const categories = content.categories ?? [];
+  const events = sections.flatMap((s) => s.events);
+  const categories = sections.map((s) => s.category).filter(Boolean);
+  // The widest cadence present sets the masthead's wording — a brief carrying
+  // a monthly section is not "today in Warsaw". With nothing on, fall back to
+  // the cadence the brief *would* have run at.
+  const frequency: NewsletterFrequency = sections.length
+    ? sections.reduce<NewsletterFrequency>(
+        (acc, s) => (briefWindow(s.frequency) > briefWindow(acc) ? s.frequency : acc),
+        sections[0]!.frequency,
+      )
+    : content.fallbackFrequency ?? 'daily';
   const date = fmtDay(now.toISOString());
 
   const body = events.length
-    ? picksTable(events, frequency)
+    ? picksTable(sections)
     : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
       `style="border-collapse:collapse"><tr><td style="border-top:2px solid ${C.divider};padding:24px 0;` +
       `font-family:${FONT};font-size:13px;line-height:1.5;color:${C.body}">Nothing on in this window.</td></tr></table>`;
@@ -306,12 +372,8 @@ export function renderBriefHtml(content: BriefContent): string {
   );
 }
 
-/** Categories are the tags the reader chose; when they chose none, fall back
- *  to the event categories actually present so the copy still says something
- *  true rather than naming tags nobody picked. */
-export function briefCategories(eventTags: string[], events: Event[]): string[] {
-  if (eventTags.length) return eventTags;
-  const present = new Set<Category>();
-  for (const e of events) present.add(e.category);
-  return [...present].sort();
+/** Cadence ordering, so the masthead can pick the widest one present. */
+function briefWindow(frequency: NewsletterFrequency): number {
+  if (frequency === 'daily') return 1;
+  return frequency === 'weekly' ? 7 : 30;
 }

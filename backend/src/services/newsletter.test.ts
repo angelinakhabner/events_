@@ -5,7 +5,11 @@ import {
   selectBriefEvents,
   isWeeklySendDay,
   isSendHour,
-  resolveBriefVenueIds,
+  resolveBriefVenues,
+  buildBriefSections,
+  isRuleDue,
+  eventInCategory,
+  briefSubject,
   wasRecentlySent,
 } from './newsletter.js';
 import { InMemoryUserVenueStore } from './user-venue-store.js';
@@ -49,7 +53,7 @@ function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription 
     beforeHour: null,
     sendHour: 8,
     sendWeekday: 1,
-    eventTags: [],
+    categoryRules: [],
     enabled: true,
     lastSentAt: null,
     ...over,
@@ -57,9 +61,63 @@ function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription 
 }
 
 describe('briefWindowDays', () => {
-  it('is 1 day for daily and 7 for weekly', () => {
+  it('is a day, a week or a month', () => {
     expect(briefWindowDays('daily')).toBe(1);
     expect(briefWindowDays('weekly')).toBe(7);
+    expect(briefWindowDays('monthly')).toBe(30);
+  });
+});
+
+// A category is whichever the reader picked — a built-in event category or
+// one of their own venue tags — so both have to match.
+describe('eventInCategory', () => {
+  const tags = new Map([['v1', ['Arthouse', 'date night']]]);
+
+  it('matches a built-in event category', () => {
+    expect(eventInCategory(makeEvent({ category: 'cinema' }), 'cinema', tags)).toBe(true);
+    expect(eventInCategory(makeEvent({ category: 'cinema' }), 'comedy', tags)).toBe(false);
+  });
+
+  it('matches a venue tag, case-insensitively', () => {
+    expect(eventInCategory(makeEvent({ venueId: 'v1' }), 'arthouse', tags)).toBe(true);
+    expect(eventInCategory(makeEvent({ venueId: 'v1' }), 'DATE NIGHT', tags)).toBe(true);
+    expect(eventInCategory(makeEvent({ venueId: 'v2' }), 'arthouse', tags)).toBe(false);
+  });
+
+  it('never matches on an empty category', () => {
+    expect(eventInCategory(makeEvent({}), '  ', tags)).toBe(false);
+  });
+});
+
+describe('isRuleDue', () => {
+  const monday = new Date('2026-07-20T06:00:00Z');
+  const wednesday = new Date('2026-07-22T06:00:00Z');
+  const firstOfMonth = new Date('2026-08-01T06:00:00Z');
+
+  it('is always due when daily', () => {
+    expect(isRuleDue('daily', wednesday, 1)).toBe(true);
+  });
+
+  it('is due weekly only on the subscription\'s send weekday', () => {
+    expect(isRuleDue('weekly', monday, 1)).toBe(true);
+    expect(isRuleDue('weekly', wednesday, 1)).toBe(false);
+    expect(isRuleDue('weekly', wednesday, 3)).toBe(true);
+  });
+
+  it('is due monthly only on the 1st', () => {
+    expect(isRuleDue('monthly', firstOfMonth, 1)).toBe(true);
+    expect(isRuleDue('monthly', wednesday, 1)).toBe(false);
+  });
+});
+
+describe('briefSubject', () => {
+  const s = (frequency: 'daily' | 'weekly' | 'monthly') =>
+    ({ category: 'x', frequency, detail: 'short' as const, events: [] });
+
+  it('reads to the widest cadence in the email', () => {
+    expect(briefSubject([s('daily')])).toMatch(/today/i);
+    expect(briefSubject([s('daily'), s('weekly')])).toMatch(/week/i);
+    expect(briefSubject([s('daily'), s('monthly')])).toMatch(/month/i);
   });
 });
 
@@ -102,65 +160,156 @@ describe('selectBriefEvents', () => {
 
 });
 
-// Both of the form's scoping controls — the venue checkboxes and the tag
-// categories — land here, because a tag is only ever a way of picking venues.
-describe('resolveBriefVenueIds', () => {
-  const KINOTEKA = {
-    name: 'Kinoteka', url: 'https://kinoteka.example/', category: 'cinema' as const,
-    city: 'Warsaw', country: 'PL',
-  };
-  const KOMEDIOWY = { ...KINOTEKA, name: 'Klub Komediowy', url: 'https://komediowy.example/', category: 'comedy' as const };
+// The heart of per-category briefs: which sections turn up today, what each
+// one covers, and how much it says.
+describe('buildBriefSections', () => {
+  const VENUES = [
+    { id: 'v1', tags: ['arthouse'] },
+    { id: 'v2', tags: [] },
+  ] as Parameters<typeof buildBriefSections>[2];
 
-  /** One user with two venues: a tagged cinema and an untagged comedy club. */
-  async function twoVenues() {
-    const venues = new InMemoryUserVenueStore([]);
-    const cinema = await venues.addCustom('u1', KINOTEKA);
-    const comedy = await venues.addCustom('u1', KOMEDIOWY);
-    await venues.update('u1', cinema.id, { tags: ['Arthouse', 'date night'] });
-    return { venues, cinema, comedy };
+  /** A cinema tonight, a comedy night tonight, and a cinema next week. */
+  function week() {
+    return [
+      makeEvent({ id: 'film-today', category: 'cinema', startsAt: '2026-07-22T20:00:00+02:00' }),
+      makeEvent({ id: 'comedy-today', category: 'comedy', venueId: 'v2', startsAt: '2026-07-22T21:00:00+02:00' }),
+      makeEvent({ id: 'film-next-week', category: 'cinema', startsAt: '2026-07-27T20:00:00+02:00' }),
+    ];
   }
 
-  it('keeps an explicit venue selection', async () => {
-    const { venues, cinema } = await twoVenues();
-    expect(await resolveBriefVenueIds('u1', [cinema.id], [], venues)).toEqual([cinema.id]);
+  it('with no rules, returns one unnamed section on the subscription cadence', () => {
+    const sections = buildBriefSections(week(), makeSub({ frequency: 'daily' }), VENUES, NOW);
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.category).toBe('');
+    expect(sections[0]!.events.map((e) => e.id).sort()).toEqual(['comedy-today', 'film-today']);
   });
 
+  it('gives each category its own window, so a weekly section reaches further', () => {
+    const sections = buildBriefSections(
+      week(),
+      makeSub({
+        categoryRules: [
+          { category: 'cinema', frequency: 'weekly', detail: 'short' },
+          { category: 'comedy', frequency: 'daily', detail: 'full' },
+        ],
+        sendWeekday: 3, // Wednesday — the weekly rule is due today
+      }),
+      VENUES,
+      NOW,
+    );
+
+    expect(sections.map((s) => s.category)).toEqual(['cinema', 'comedy']);
+    // The weekly cinema section reaches into next week; comedy stays on today.
+    expect(sections[0]!.events.map((e) => e.id)).toEqual(['film-today', 'film-next-week']);
+    expect(sections[1]!.events.map((e) => e.id)).toEqual(['comedy-today']);
+    expect(sections[1]!.detail).toBe('full');
+  });
+
+  it('leaves out a section whose cadence is not due today', () => {
+    // Monthly is due on the 1st; NOW is the 22nd.
+    const sections = buildBriefSections(
+      week(),
+      makeSub({
+        categoryRules: [
+          { category: 'cinema', frequency: 'daily', detail: 'short' },
+          { category: 'comedy', frequency: 'monthly', detail: 'full' },
+        ],
+      }),
+      VENUES,
+      NOW,
+    );
+    expect(sections.map((s) => s.category)).toEqual(['cinema']);
+  });
+
+  it('brings the monthly section in on the 1st, alongside the daily one', () => {
+    const firstOfMonth = new Date('2026-08-01T10:00:00Z');
+    const events = [
+      makeEvent({ id: 'film', category: 'cinema', startsAt: '2026-08-01T20:00:00+02:00' }),
+      makeEvent({ id: 'show', category: 'comedy', venueId: 'v2', startsAt: '2026-08-20T20:00:00+02:00' }),
+    ];
+    const sections = buildBriefSections(
+      events,
+      makeSub({
+        categoryRules: [
+          { category: 'cinema', frequency: 'daily', detail: 'short' },
+          { category: 'comedy', frequency: 'monthly', detail: 'full' },
+        ],
+      }),
+      VENUES,
+      firstOfMonth,
+    );
+    expect(sections.map((s) => s.category)).toEqual(['cinema', 'comedy']);
+    // The monthly window reaches the event three weeks out; a daily one would not.
+    expect(sections[1]!.events.map((e) => e.id)).toEqual(['show']);
+  });
+
+  it('matches a rule naming one of the reader\'s venue tags', () => {
+    const sections = buildBriefSections(
+      week(),
+      makeSub({ categoryRules: [{ category: 'arthouse', frequency: 'daily', detail: 'short' }] }),
+      VENUES,
+      NOW,
+    );
+    // v1 carries the tag; the comedy night at v2 does not.
+    expect(sections[0]!.events.map((e) => e.id)).toEqual(['film-today']);
+  });
+
+  it('never lists one event twice when two due rules would both catch it', () => {
+    const sections = buildBriefSections(
+      week(),
+      makeSub({
+        categoryRules: [
+          { category: 'cinema', frequency: 'daily', detail: 'short' },
+          { category: 'arthouse', frequency: 'daily', detail: 'full' },
+        ],
+      }),
+      VENUES,
+      NOW,
+    );
+    const ids = sections.flatMap((s) => s.events.map((e) => e.id));
+    expect(ids).toEqual([...new Set(ids)]);
+    expect(sections.map((s) => s.category)).toEqual(['cinema']); // arthouse had nothing left
+  });
+
+  it('drops a rule that caught nothing rather than showing an empty section', () => {
+    const sections = buildBriefSections(
+      week(),
+      makeSub({ categoryRules: [{ category: 'opera', frequency: 'daily', detail: 'short' }] }),
+      VENUES,
+      NOW,
+    );
+    expect(sections).toEqual([]);
+  });
+});
+
+describe('resolveBriefVenues', () => {
   it('expands an empty selection to the user\'s own venues, not every venue', async () => {
     const venues = new InMemoryUserVenueStore();
     await venues.ensureSeeded('u1');
     const mine = (await venues.listAll('u1')).map((v) => v.id);
 
     expect(mine.length).toBeGreaterThan(0);
-    expect(await resolveBriefVenueIds('u1', [], [], venues)).toEqual(mine);
+    expect((await resolveBriefVenues('u1', [], venues)).map((v) => v.id)).toEqual(mine);
     // A user who follows nothing resolves to nothing — the sweep skips them
     // rather than mailing them the whole database.
-    expect(await resolveBriefVenueIds('nobody', [], [], new InMemoryUserVenueStore([]))).toEqual([]);
+    expect(await resolveBriefVenues('nobody', [], new InMemoryUserVenueStore([]))).toEqual([]);
   });
 
-  it('narrows to the venues carrying a chosen tag, case-insensitively', async () => {
-    const { venues, cinema } = await twoVenues();
-    expect(await resolveBriefVenueIds('u1', [], ['arthouse'], venues)).toEqual([cinema.id]);
-    expect(await resolveBriefVenueIds('u1', [], ['Date Night'], venues)).toEqual([cinema.id]);
-  });
+  it('keeps an explicit selection, and carries each venue\'s tags for rules', async () => {
+    const venues = new InMemoryUserVenueStore([]);
+    const cinema = await venues.addCustom('u1', {
+      name: 'Kinoteka', url: 'https://kinoteka.example/', category: 'cinema',
+      city: 'Warsaw', country: 'PL',
+    });
+    await venues.addCustom('u1', {
+      name: 'Klub Komediowy', url: 'https://komediowy.example/', category: 'comedy',
+      city: 'Warsaw', country: 'PL',
+    });
+    await venues.update('u1', cinema.id, { tags: ['arthouse'] });
 
-  it('treats several tags as "any of"', async () => {
-    const { venues, cinema, comedy } = await twoVenues();
-    await venues.update('u1', comedy.id, { tags: ['late night'] });
-    const picked = await resolveBriefVenueIds('u1', [], ['arthouse', 'late night'], venues);
-    expect(picked.sort()).toEqual([cinema.id, comedy.id].sort());
-  });
-
-  it('intersects tags with an explicit venue selection', async () => {
-    const { venues, cinema, comedy } = await twoVenues();
-    // The comedy club is picked but carries no matching tag → nothing in scope,
-    // which the sweep reads as "skip", never as "send everything".
-    expect(await resolveBriefVenueIds('u1', [comedy.id], ['arthouse'], venues)).toEqual([]);
-    expect(await resolveBriefVenueIds('u1', [cinema.id], ['arthouse'], venues)).toEqual([cinema.id]);
-  });
-
-  it('resolves to nothing when no venue carries the tag', async () => {
-    const { venues } = await twoVenues();
-    expect(await resolveBriefVenueIds('u1', [], ['nonexistent'], venues)).toEqual([]);
+    const picked = await resolveBriefVenues('u1', [cinema.id], venues);
+    expect(picked.map((v) => v.id)).toEqual([cinema.id]);
+    expect(picked[0]!.tags).toEqual(['arthouse']);
   });
 });
 
@@ -189,13 +338,16 @@ describe('isSendHour', () => {
 });
 
 describe('wasRecentlySent', () => {
-  it('skips a daily sub sent a few hours ago but not one sent yesterday', () => {
-    expect(wasRecentlySent(makeSub({ lastSentAt: '2026-07-22T06:00:00Z' }), NOW)).toBe(true);
-    expect(wasRecentlySent(makeSub({ lastSentAt: '2026-07-21T06:00:00Z' }), NOW)).toBe(false);
+  it('skips a repeat inside the same hour but not the next scheduled send', () => {
+    // The tick is hourly and isSendHour gates it to one hour a day, so only a
+    // re-run within that hour is a duplicate.
+    expect(wasRecentlySent({ lastSentAt: '2026-07-22T09:40:00Z' }, NOW)).toBe(true);
+    expect(wasRecentlySent({ lastSentAt: '2026-07-22T09:00:00Z' }, NOW)).toBe(false);
+    expect(wasRecentlySent({ lastSentAt: '2026-07-21T06:00:00Z' }, NOW)).toBe(false);
   });
 
   it('never skips a sub that was never sent', () => {
-    expect(wasRecentlySent(makeSub({ lastSentAt: null }), NOW)).toBe(false);
+    expect(wasRecentlySent({ lastSentAt: null }, NOW)).toBe(false);
   });
 });
 

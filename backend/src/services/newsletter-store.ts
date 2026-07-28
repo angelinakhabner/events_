@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { NewsletterFrequency, NewsletterSettings } from '@goin/shared';
+import type { NewsletterCategoryRule, NewsletterFrequency, NewsletterSettings } from '@goin/shared';
 import { getDb, schema } from '../db/index.js';
 
 // Newsletter subscriptions (GOI-8): one per user. The user picks an email,
@@ -15,7 +15,7 @@ export interface NewsletterSaveInput {
   beforeHour?: number | null;
   sendHour?: number;
   sendWeekday?: number;
-  eventTags?: string[];
+  categoryRules?: NewsletterCategoryRule[];
   enabled: boolean;
 }
 
@@ -43,7 +43,7 @@ function toSettings(row: Row): NewsletterSettings {
     beforeHour: row.beforeHour,
     sendHour: row.sendHour,
     sendWeekday: row.sendWeekday,
-    eventTags: row.eventTags,
+    categoryRules: row.categoryRules as NewsletterCategoryRule[],
     enabled: row.enabled,
     lastSentAt: row.lastSentAt ? row.lastSentAt.toISOString() : null,
   };
@@ -54,7 +54,7 @@ function withScheduleDefaults(input: NewsletterSaveInput) {
   return {
     sendHour: input.sendHour ?? 8,
     sendWeekday: input.sendWeekday ?? 1,
-    eventTags: input.eventTags ?? [],
+    categoryRules: input.categoryRules ?? [],
   };
 }
 
@@ -115,7 +115,7 @@ function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
     beforeHour: sub.beforeHour,
     sendHour: sub.sendHour,
     sendWeekday: sub.sendWeekday,
-    eventTags: sub.eventTags,
+    categoryRules: sub.categoryRules,
     enabled: sub.enabled,
     lastSentAt: sub.lastSentAt,
   };

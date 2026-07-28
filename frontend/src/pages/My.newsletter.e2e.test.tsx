@@ -109,7 +109,7 @@ describe('MyPage — newsletter end-to-end', () => {
       frequency: 'daily',
       sendHour: 3,
       afterHour: 22,
-      eventTags: [],
+      categoryRules: [],
       enabled: true,
     });
   });
@@ -150,39 +150,68 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(preview.srcdoc).toContain('Nothing on in this window.');
   });
 
-  // The categories are the tags from "My venues" — nothing is typed in here.
-  it('offers the venue tags as categories, and only once one exists', async () => {
+  // Per-category rules: each category gets its own cadence and depth.
+  it('gives a category its own cadence and description width', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
     let section = (await screen.findByLabelText(/email address/i)).closest('section')!;
 
-    // No tags yet → the category option is offered but not selectable, and
-    // says where categories come from.
-    expect(within(section).getByLabelText(/only a specific category/i)).toBeDisabled();
-    expect(within(section).getByText(/categories come from the tags you put on venues/i)).toBeInTheDocument();
+    // Categories come from your venues and their tags — cinema is there
+    // because the seeded venues are cinemas.
+    const picker = await within(section).findByLabelText(/add a category/i);
+    await user.selectOptions(picker, 'cinema');
 
-    // Tag a venue over in "My venues"…
+    await user.selectOptions(await within(section).findByLabelText(/how often for cinema/i), 'daily');
+    await user.selectOptions(within(section).getByLabelText(/description for cinema/i), 'short');
+    // Save before leaving: switching tabs unmounts the form, so anything not
+    // yet saved is gone — the same as for any other section.
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    // A tag added over in "My venues" shows up here as a category too.
     await user.click(screen.getByRole('button', { name: 'My venues' }));
     const venuesSection = (await screen.findByRole('heading', { name: 'My venues' })).closest('section')!;
     const row = (await within(venuesSection).findByText('Kinoteka')).closest('li')!;
     await user.click(within(row).getByRole('button', { name: /add tag to kinoteka/i }));
-    await user.type(within(row).getByLabelText(/new tag for kinoteka/i), 'arthouse');
+    await user.type(within(row).getByLabelText(/new tag for kinoteka/i), 'museums');
     await user.click(within(row).getByRole('button', { name: /^add$/i }));
-    await within(venuesSection).findByText('arthouse');
+    await within(venuesSection).findByText('museums');
 
-    // …and it shows up as a category to scope the brief by.
     await user.click(screen.getByRole('button', { name: 'Newsletter' }));
     section = (await screen.findByLabelText(/email address/i)).closest('section')!;
-    const category = await within(section).findByLabelText(/only a specific category/i);
-    await waitFor(() => expect(category).toBeEnabled());
+    // The saved cinema rule comes back with the form.
+    await within(section).findByLabelText(/how often for cinema/i);
+    await user.selectOptions(await within(section).findByLabelText(/add a category/i), 'museums');
 
-    await user.click(category);
-    await within(section).findByLabelText('arthouse');
+    // Museums monthly, with the wide write-up — the example from the brief.
+    await user.selectOptions(await within(section).findByLabelText(/how often for museums/i), 'monthly');
+    await user.selectOptions(within(section).getByLabelText(/description for museums/i), 'full');
+
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 
-    expect(await defaultNewsletterStore.get(userId)).toMatchObject({ eventTags: ['arthouse'] });
+    expect((await defaultNewsletterStore.get(userId))!.categoryRules).toEqual([
+      { category: 'cinema', frequency: 'daily', detail: 'short' },
+      { category: 'museums', frequency: 'monthly', detail: 'full' },
+    ]);
+  });
+
+  it('drops a category rule again', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    // The saved rules from the previous test are loaded back into the form.
+    await within(section).findByLabelText(/how often for cinema/i);
+    await user.click(within(section).getByRole('button', { name: /remove cinema/i }));
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    expect((await defaultNewsletterStore.get(userId))!.categoryRules.map((r) => r.category))
+      .toEqual(['museums']);
   });
 });

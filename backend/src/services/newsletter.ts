@@ -1,8 +1,10 @@
-import type { Event, Festival, NewsletterFrequency } from '@goin/shared';
+import type {
+  Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
+} from '@goin/shared';
 import { listFestivals } from '../data/festivals.js';
-import { briefCategories, renderBriefHtml } from './newsletter-render.js';
+import { renderBriefHtml } from './newsletter-render.js';
 import { defaultEventStore } from './event-store.js';
-import { defaultUserVenueStore, type UserVenueStore } from './user-venue-store.js';
+import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
 import { sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
 import { msUntilNextWarsawHour, warsawHourOf, warsawWeekday } from './scheduler.js';
@@ -13,9 +15,10 @@ const TZ = 'Europe/Warsaw';
 // venues the user picked, optionally narrowed to a time-of-day window
 // ("Kino Muranów and Kinoteka every day, everything after 6 pm").
 
-/** How far ahead a brief looks: today's events for daily, the week for weekly. */
+/** How far ahead a section looks — one day, one week, or one month. */
 export function briefWindowDays(frequency: NewsletterFrequency): number {
-  return frequency === 'daily' ? 1 : 7;
+  if (frequency === 'daily') return 1;
+  return frequency === 'weekly' ? 7 : 30;
 }
 
 /** Warsaw wall-clock hour of an ISO instant. */
@@ -63,6 +66,31 @@ export function currentFestival(): Festival | null {
   return listFestivals().find((f) => f.status === 'ongoing') ?? null;
 }
 
+/** The widest cadence a subscription can produce — what an *empty* brief
+ *  should still call itself. */
+export function plannedFrequency(sub: {
+  frequency: NewsletterFrequency;
+  categoryRules: NewsletterCategoryRule[];
+}): NewsletterFrequency {
+  if (sub.categoryRules.length === 0) return sub.frequency;
+  return sub.categoryRules.reduce<NewsletterFrequency>(
+    (acc, r) => (briefWindowDays(r.frequency) > briefWindowDays(acc) ? r.frequency : acc),
+    'daily',
+  );
+}
+
+/** Subject line: the widest cadence in the email decides how it reads, since
+ *  a brief carrying a monthly section is not "today in Warsaw". */
+export function briefSubject(sections: BriefSection[]): string {
+  const widest = sections.reduce(
+    (acc, s) => Math.max(acc, briefWindowDays(s.frequency)),
+    0,
+  );
+  if (widest > 7) return 'Goin — your month in Warsaw';
+  if (widest > 1) return 'Goin — your week in Warsaw';
+  return 'Goin — today in Warsaw';
+}
+
 /** True when `at` falls on the weekday this subscription's weekly brief goes
  *  out (Warsaw). Defaults to Monday for rows saved before send days existed. */
 export function isWeeklySendDay(at: Date, sendWeekday: number = 1): boolean {
@@ -75,39 +103,131 @@ export function isSendHour(at: Date, sendHour: number = 8): boolean {
 }
 
 /**
- * Which venues a brief covers, resolving both of the form's scoping controls
- * against the user's own venues:
+ * The venues a brief covers. An empty selection means "all *your* venues", as
+ * the form says — not every venue in the database, which is what an empty
+ * `venueIds` would mean to `selectBriefEvents` on its own.
  *
- *  - an empty venue selection means "all *your* venues", as the form says —
- *    not every venue in the database, which is what an empty `venueIds` would
- *    mean to `selectBriefEvents` on its own;
- *  - `tags` then narrows that to the venues the user filed under one of those
- *    tags (GOI-25), which is how "only this kind of thing" is expressed.
- *
- * Returning an empty array means "brief nothing" and the caller skips the
- * send — never "brief everything".
+ * Returning an empty list means "brief nothing" and the caller skips the send
+ * — never "brief everything".
  */
-export async function resolveBriefVenueIds(
+export async function resolveBriefVenues(
   userId: string,
   venueIds: string[],
-  tags: string[] = [],
   venues: UserVenueStore = defaultUserVenueStore,
-): Promise<string[]> {
+): Promise<UserVenue[]> {
   const mine = await venues.listAll(userId);
-  const picked = venueIds.length > 0 ? mine.filter((v) => venueIds.includes(v.id)) : mine;
-  if (tags.length === 0) return picked.map((v) => v.id);
-  const wanted = new Set(tags.map((t) => t.toLowerCase()));
-  return picked
-    .filter((v) => v.tags.some((t) => wanted.has(t.toLowerCase())))
-    .map((v) => v.id);
+  return venueIds.length > 0 ? mine.filter((v) => venueIds.includes(v.id)) : mine;
 }
 
-/** Guard against double sends (e.g. a restart re-running the tick): skip
- *  subscriptions already sent within ~80% of their cadence period. */
-export function wasRecentlySent(sub: NewsletterSubscription, now: Date): boolean {
+/**
+ * Does this event belong to the named category?
+ *
+ * A "category" is whichever the reader picked: a built-in event category
+ * ("cinema") or one of their own venue tags ("arthouse"). Accepting both means
+ * the picker can offer one combined list and neither kind needs its own
+ * plumbing.
+ */
+export function eventInCategory(event: Event, category: string, venueTags: Map<string, string[]>): boolean {
+  const want = category.trim().toLowerCase();
+  if (!want) return false;
+  if (event.category.toLowerCase() === want) return true;
+  return (venueTags.get(event.venueId) ?? []).some((t) => t.toLowerCase() === want);
+}
+
+/**
+ * Is a rule due right now? Its cadence decides which day it lands on; the
+ * subscription's `sendHour` decides the hour, so every due section arrives in
+ * the same email rather than trickling out through the day.
+ *
+ *  - daily — every day;
+ *  - weekly — on the subscription's chosen weekday;
+ *  - monthly — on the 1st.
+ */
+export function isRuleDue(
+  frequency: NewsletterFrequency,
+  now: Date,
+  sendWeekday: number,
+): boolean {
+  if (frequency === 'daily') return true;
+  if (frequency === 'weekly') return warsawWeekday(now) === sendWeekday;
+  return warsawDayOfMonth(now) === 1;
+}
+
+/** Day of the month in Warsaw (1-31). */
+function warsawDayOfMonth(at: Date): number {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: 'numeric' }).format(at));
+}
+
+/** One category's slice of a brief: the rule, plus the events it caught. */
+export interface BriefSection {
+  category: string;
+  frequency: NewsletterFrequency;
+  detail: NewsletterDetail;
+  events: Event[];
+}
+
+/**
+ * Split the candidate events into the sections due right now.
+ *
+ * With no rules the brief is one unnamed section covering everything on the
+ * subscription's own cadence — the behaviour before per-category rules
+ * existed. With rules, only the due ones appear, so a daily cinema section can
+ * turn up every morning while a monthly museums section joins it on the 1st.
+ *
+ * An event matching two due rules is placed in the first, so nothing is
+ * listed twice in one email.
+ */
+export function buildBriefSections(
+  events: Event[],
+  sub: {
+    frequency: NewsletterFrequency;
+    sendWeekday: number;
+    categoryRules: NewsletterCategoryRule[];
+    afterHour?: number | null;
+    beforeHour?: number | null;
+  },
+  venues: UserVenue[],
+  now: Date = new Date(),
+): BriefSection[] {
+  const venueIds = venues.map((v) => v.id);
+  const venueTags = new Map(venues.map((v) => [v.id, v.tags]));
+
+  if (sub.categoryRules.length === 0) {
+    const picked = selectBriefEvents(events, { ...sub, venueIds }, now);
+    return picked.length
+      ? [{ category: '', frequency: sub.frequency, detail: 'short', events: picked }]
+      : [];
+  }
+
+  const taken = new Set<string>();
+  const sections: BriefSection[] = [];
+  for (const rule of sub.categoryRules) {
+    if (!isRuleDue(rule.frequency, now, sub.sendWeekday)) continue;
+    const inWindow = selectBriefEvents(events, { ...sub, frequency: rule.frequency, venueIds }, now);
+    const picked = inWindow.filter(
+      (e) => !taken.has(e.id) && eventInCategory(e, rule.category, venueTags),
+    );
+    if (picked.length === 0) continue;
+    for (const e of picked) taken.add(e.id);
+    sections.push({
+      category: rule.category,
+      frequency: rule.frequency,
+      detail: rule.detail,
+      events: picked,
+    });
+  }
+  return sections;
+}
+
+/**
+ * Guard against double sends — a restart re-running the tick inside the same
+ * hour. Since sections can now carry different cadences, there is no single
+ * "period" to measure against; what actually bounds sends is the hourly tick
+ * plus `isSendHour`, so anything within the last 50 minutes is a repeat.
+ */
+export function wasRecentlySent(sub: Pick<NewsletterSubscription, 'lastSentAt'>, now: Date): boolean {
   if (!sub.lastSentAt) return false;
-  const periodMs = briefWindowDays(sub.frequency) * 24 * 3_600_000;
-  return now.getTime() - new Date(sub.lastSentAt).getTime() < periodMs * 0.8;
+  return now.getTime() - new Date(sub.lastSentAt).getTime() < 50 * 60_000;
 }
 
 /**
@@ -125,25 +245,27 @@ export async function sendNewsletterBriefs(
   let skipped = 0;
   for (const sub of subs) {
     if (!isSendHour(now, sub.sendHour)) { skipped++; continue; }
-    if (sub.frequency === 'weekly' && !isWeeklySendDay(now, sub.sendWeekday)) { skipped++; continue; }
+    // With no per-category rules the whole brief runs on one cadence, so the
+    // old weekday gate still applies. With rules, each section brings its own.
+    if (sub.categoryRules.length === 0 && !isRuleDue(sub.frequency, now, sub.sendWeekday)) {
+      skipped++; continue;
+    }
     if (wasRecentlySent(sub, now)) { skipped++; continue; }
     try {
       const all = await defaultEventStore.listUpcoming({ limit: 500 });
-      const venueIds = await resolveBriefVenueIds(sub.userId, sub.venueIds, sub.eventTags);
-      // Nothing in scope — no venues followed, or no venue carries the chosen
-      // tags. Either way an empty list must not fall through to "every venue
-      // in the database".
-      if (venueIds.length === 0) { skipped++; continue; }
-      const events = selectBriefEvents(all, { ...sub, venueIds }, now);
-      if (events.length === 0) { skipped++; continue; }
+      const venues = await resolveBriefVenues(sub.userId, sub.venueIds);
+      // Nothing in scope — no venues followed, or none matched the selection.
+      // An empty list must not fall through to "every venue in the database".
+      if (venues.length === 0) { skipped++; continue; }
+      const sections = buildBriefSections(all, sub, venues, now);
+      if (sections.length === 0) { skipped++; continue; }
       await sendEmail({
         to: sub.email,
-        subject: sub.frequency === 'daily' ? 'Goin — today in Warsaw' : 'Goin — your week in Warsaw',
+        subject: briefSubject(sections),
         html: renderBriefHtml({
-          events,
-          frequency: sub.frequency,
+          sections,
+          fallbackFrequency: plannedFrequency(sub),
           recipientName: sub.recipientName,
-          categories: briefCategories(sub.eventTags, events),
           festival: currentFestival(),
           now,
         }),

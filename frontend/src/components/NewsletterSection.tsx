@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { NewsletterFrequency, NewsletterSettings } from '@goin/shared';
+import type {
+  NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency, NewsletterSettings,
+} from '@goin/shared';
 import { trpc } from '../lib/trpc';
 import { ErrorState, SkeletonList } from './states';
 
@@ -82,6 +84,7 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
 interface PickableVenue {
   id: string;
   name: string;
+  category: string;
   listId: string | null;
   tags: string[];
 }
@@ -103,7 +106,7 @@ function NewsletterForm({
   const [sendHour, setSendHour] = useState(saved?.sendHour ?? 8);
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
-  const [eventTags, setEventTags] = useState<string[]>(saved?.eventTags ?? []);
+  const [rules, setRules] = useState<NewsletterCategoryRule[]>(saved?.categoryRules ?? []);
   const [afterHour, setAfterHour] = useState<string>(saved?.afterHour != null ? String(saved.afterHour) : ANY);
   const [enabled, setEnabled] = useState(saved?.enabled ?? true);
   const [justSaved, setJustSaved] = useState(false);
@@ -120,16 +123,26 @@ function NewsletterForm({
     return groups.filter((g) => g.venues.length > 0);
   }, [venues, folders]);
 
-  /** Every tag the user has put on a venue — the categories to choose from. */
-  const allTags = useMemo(() => {
+  /**
+   * Everything a rule can name: the built-in event categories your venues
+   * actually cover, plus every tag you have put on one. Both work the same
+   * way, so they share one list.
+   */
+  const allCategories = useMemo(() => {
     const seen = new Map<string, string>();
     for (const v of venues) {
+      if (!seen.has(v.category.toLowerCase())) seen.set(v.category.toLowerCase(), v.category);
       for (const tag of v.tags) {
         if (!seen.has(tag.toLowerCase())) seen.set(tag.toLowerCase(), tag);
       }
     }
     return [...seen.values()].sort((a, b) => a.localeCompare(b));
   }, [venues]);
+
+  /** Categories not yet spoken for — a rule each is the useful maximum. */
+  const unusedCategories = allCategories.filter(
+    (c) => !rules.some((r) => r.category.toLowerCase() === c.toLowerCase()),
+  );
 
   // The login email can arrive after the form mounts (auth.me resolves in
   // parallel with the settings query) — adopt it as long as the field is
@@ -161,17 +174,18 @@ function NewsletterForm({
     sendHour,
     sendWeekday,
     venueIds,
-    eventTags,
+    categoryRules: rules,
     afterHour: afterHour === ANY ? null : Number(afterHour),
     enabled,
   });
 
   const toggleVenue = (id: string) =>
     setVenueIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
-  const toggleTag = (tag: string) =>
-    setEventTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
-
-  const radio = 'flex items-center gap-2 text-sm cursor-pointer';
+  const addRule = (category: string) =>
+    setRules((prev) => [...prev, { category, frequency: 'weekly', detail: 'short' }]);
+  const patchRule = (i: number, patch: Partial<NewsletterCategoryRule>) =>
+    setRules((prev) => prev.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+  const removeRule = (i: number) => setRules((prev) => prev.filter((_, n) => n !== i));
 
   return (
     <section>
@@ -295,50 +309,85 @@ function NewsletterForm({
         </fieldset>
 
         <fieldset className="border-0 m-0 p-0">
-          <legend className="text-xs uppercase tracking-widest text-muted mb-2">Which events</legend>
-          <div className="space-y-2">
-            <label className={radio}>
-              <input
-                type="radio"
-                name="event-scope"
-                checked={eventTags.length === 0}
-                onChange={() => setEventTags([])}
-              />
-              All the events
-            </label>
-            <label className={radio}>
-              <input
-                type="radio"
-                name="event-scope"
-                checked={eventTags.length > 0}
-                disabled={allTags.length === 0}
-                // Picking the category option with nothing chosen yet would
-                // mean "no venues at all", so start it on the first tag.
-                onChange={() => setEventTags(allTags.slice(0, 1))}
-              />
-              Only a specific category
-            </label>
-            {allTags.length === 0 ? (
-              <p className="pl-6 text-sm text-muted">
-                Categories come from the tags you put on venues — add one under
-                &ldquo;My venues&rdquo; to filter by it here.
-              </p>
-            ) : null}
-            {eventTags.length > 0 ? (
-              <div className="pl-6 flex flex-wrap gap-x-5 gap-y-2">
-                {allTags.map((tag) => (
-                  <label key={tag} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={eventTags.includes(tag)}
-                      onChange={() => toggleTag(tag)}
-                    />
-                    {tag}
+          <legend className="text-xs uppercase tracking-widest text-muted mb-2">
+            How often, per category
+          </legend>
+          <p className="mb-3 text-sm text-muted max-w-prose">
+            Give a category its own rhythm and depth — cinema every day in brief, museums
+            once a month with the full write-up. Categories are your venues&rsquo; own
+            categories and any tags you added to them. With none set, one brief covers
+            everything on the schedule above.
+          </p>
+
+          {rules.length > 0 ? (
+            <ul className="mb-3 divide-y divide-rule border-y border-rule list-none m-0 p-0">
+              {rules.map((rule, i) => (
+                <li key={`${rule.category}-${i}`} className="flex flex-wrap items-center gap-3 py-3">
+                  <span className="min-w-[7rem] text-sm text-ink">{rule.category}</span>
+
+                  <label className="sr-only" htmlFor={`rule-freq-${i}`}>
+                    How often for {rule.category}
                   </label>
+                  <select
+                    id={`rule-freq-${i}`}
+                    value={rule.frequency}
+                    onChange={(e) => patchRule(i, { frequency: e.target.value as NewsletterFrequency })}
+                    className="border border-rule bg-paper px-2 py-1 text-sm"
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+
+                  <label className="sr-only" htmlFor={`rule-detail-${i}`}>
+                    Description for {rule.category}
+                  </label>
+                  <select
+                    id={`rule-detail-${i}`}
+                    value={rule.detail}
+                    onChange={(e) => patchRule(i, { detail: e.target.value as NewsletterDetail })}
+                    className="border border-rule bg-paper px-2 py-1 text-sm"
+                  >
+                    <option value="short">Short description</option>
+                    <option value="full">Wide description</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    aria-label={`Remove ${rule.category}`}
+                    onClick={() => removeRule(i)}
+                    className="ml-auto text-sm text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {allCategories.length === 0 ? (
+            <p className="text-sm text-muted">
+              Categories come from your venues and the tags you put on them — add a venue
+              under &ldquo;My venues&rdquo; first.
+            </p>
+          ) : unusedCategories.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="add-rule">Add a category</label>
+              <select
+                id="add-rule"
+                value=""
+                onChange={(e) => { if (e.target.value) addRule(e.target.value); }}
+                className="border border-rule bg-paper px-2 py-1 text-sm"
+              >
+                <option value="">+ Add a category…</option>
+                {unusedCategories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
                 ))}
-              </div>
-            ) : null}
-          </div>
+              </select>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">Every category has a rule.</p>
+          )}
         </fieldset>
 
         <div>
