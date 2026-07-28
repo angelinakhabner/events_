@@ -69,12 +69,11 @@ the usual answer.
    `force=1` bypasses the schedule; empty briefs are still skipped.
 5. **Isolate Resend** from brief-selection problems with a fixed test email:
    ```bash
-   curl "https://<backend>/admin/newsletter/send?token=$ADMIN_TOKEN&to=you@example.com"
+   curl "https://<backend>/admin/email-test?to=you@example.com&token=$ADMIN_TOKEN"
    ```
-   A failure here is a mail-config problem: missing `RESEND_API_KEY`, or a
-   `RESEND_FROM_EMAIL` whose domain isn't verified in Resend. The fallback
-   sender `onboarding@resend.dev` only delivers to your own Resend account
-   address — everything else is rejected.
+   A failure here is a mail-config problem, not a newsletter one — see
+   [Sign-in emails arrive for the owner but not for anyone else](#sign-in-emails-arrive-for-the-owner-but-not-for-anyone-else),
+   which covers the same unverified-domain cause.
 
 A missed slot (deploy, restart) is picked up by the next tick and by the sweep
 that runs a minute after boot, as long as it's within `CATCH_UP_HOURS` (6h) of
