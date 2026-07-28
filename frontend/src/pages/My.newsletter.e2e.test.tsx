@@ -89,9 +89,13 @@ describe('MyPage — newsletter end-to-end', () => {
     // instant the form appears (the race made CI flaky).
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
-    // Daily at 07:00, after 18:00, only events on Fridays.
+    // Daily at 07:45, after 18:00, only events on Fridays.
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
-    await user.selectOptions(within(section).getByLabelText(/time of day/i), '7');
+    await user.selectOptions(within(section).getByLabelText(/^hour$/i), '7');
+    await user.selectOptions(within(section).getByLabelText(/^minute$/i), '45');
+    // Every hour and every minute is offered, not a curated shortlist.
+    expect(within(section).getByLabelText(/^hour$/i).querySelectorAll('option')).toHaveLength(24);
+    expect(within(section).getByLabelText(/^minute$/i).querySelectorAll('option')).toHaveLength(60);
     await user.selectOptions(within(section).getByLabelText(/only events after/i), '18');
     await user.click(within(section).getByLabelText(/only events on a specific day/i));
     await user.selectOptions(within(section).getByLabelText(/which day/i), '5');
@@ -104,6 +108,7 @@ describe('MyPage — newsletter end-to-end', () => {
       email: USER_EMAIL,
       frequency: 'daily',
       sendHour: 7,
+      sendMinute: 45,
       afterHour: 18,
       eventDayMode: 'specific',
       eventDay: 5,

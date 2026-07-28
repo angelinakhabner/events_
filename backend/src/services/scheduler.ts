@@ -323,7 +323,7 @@ export function msUntilNextWarsawHour(hour: number, now: Date = new Date()): num
 }
 
 /**
- * The most recent HH:00 in Europe/Warsaw at or before `now`, optionally pinned
+ * The most recent HH:MM in Europe/Warsaw at or before `now`, optionally pinned
  * to a weekday — the mirror of `msUntilNextWarsawTime`, and the same DST-safe
  * probing (scan candidate UTC instants, ask Intl how each renders in Warsaw).
  *
@@ -331,9 +331,13 @@ export function msUntilNextWarsawHour(hour: number, now: Date = new Date()): num
  * catch-up possible: comparing that instant against `lastSentAt` survives a
  * missed tick, unlike asking whether the current hour happens to be the send
  * hour. Returns null when no such instant falls within `maxDaysBack`.
+ *
+ * The minute passes straight through from UTC because every offset Warsaw has
+ * ever used is a whole number of hours; only the hour needs probing.
  */
 export function lastWarsawTimeAtOrBefore(
   hour: number,
+  minute: number,
   dayOfWeek: number | undefined,
   now: Date = new Date(),
   maxDaysBack = 8,
@@ -342,18 +346,19 @@ export function lastWarsawTimeAtOrBefore(
     timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
   });
   const targetHour = String(hour).padStart(2, '0');
+  const targetMinute = String(minute).padStart(2, '0');
   for (let backDays = 0; backDays <= maxDaysBack; backDays++) {
     // Descending so the first match within a day is the latest one.
     for (let utcHour = hour + 1; utcHour >= hour - 3; utcHour--) {
       const candidate = new Date(now);
       candidate.setUTCDate(candidate.getUTCDate() - backDays);
-      candidate.setUTCHours(utcHour, 0, 0, 0);
+      candidate.setUTCHours(utcHour, minute, 0, 0);
       if (candidate.getTime() > now.getTime()) continue;
       const parts = fmt.formatToParts(candidate);
       const h = parts.find((p) => p.type === 'hour')?.value;
       const min = parts.find((p) => p.type === 'minute')?.value;
       const wd = parts.find((p) => p.type === 'weekday')?.value ?? '';
-      if (h !== targetHour || min !== '00') continue;
+      if (h !== targetHour || min !== targetMinute) continue;
       if (dayOfWeek !== undefined && WEEKDAY_NUM[wd] !== dayOfWeek) continue;
       return candidate;
     }

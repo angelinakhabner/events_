@@ -6,8 +6,10 @@ import { ErrorState, SkeletonList } from './states';
 /** "No time filter" sentinel for the after-hour select. */
 const ANY = 'any';
 const AFTER_HOURS = [15, 16, 17, 18, 19, 20];
-/** Hours a brief can be sent at — early enough to plan the evening. */
-const SEND_HOURS = [6, 7, 8, 9, 10, 12, 17, 18, 19, 20];
+/** Any hour of the day, and any minute past it — the send time is the user's
+ *  to pick, and the sender ticks every minute so all 1440 are reachable. */
+const SEND_HOURS = Array.from({ length: 24 }, (_, h) => h);
+const SEND_MINUTES = Array.from({ length: 60 }, (_, m) => m);
 const WEEKDAYS = [
   { value: 1, label: 'Monday' },
   { value: 2, label: 'Tuesday' },
@@ -20,6 +22,33 @@ const WEEKDAYS = [
 
 function hourLabel(h: number): string {
   return `${String(h).padStart(2, '0')}:00`;
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Marks the send-time controls. Decorative — the selects carry their own
+ *  labels, so it stays out of the accessibility tree. */
+function ClockIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-muted shrink-0"
+      aria-hidden
+      focusable="false"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
 }
 
 /**
@@ -73,6 +102,7 @@ function NewsletterForm({
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
   const [frequency, setFrequency] = useState<NewsletterFrequency>(saved?.frequency ?? 'weekly');
   const [sendHour, setSendHour] = useState(saved?.sendHour ?? 8);
+  const [sendMinute, setSendMinute] = useState(saved?.sendMinute ?? 0);
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
   const [eventDayMode, setEventDayMode] = useState<NewsletterEventDayMode>(saved?.eventDayMode ?? 'all');
@@ -108,6 +138,7 @@ function NewsletterForm({
     email: email.trim(),
     frequency,
     sendHour,
+    sendMinute,
     sendWeekday,
     venueIds,
     eventDayMode,
@@ -181,18 +212,38 @@ function NewsletterForm({
               </>
             ) : null}
 
-            <label className="sr-only" htmlFor="newsletter-send-hour">Time of day</label>
-            <select
-              id="newsletter-send-hour"
-              value={sendHour}
-              onChange={(e) => setSendHour(Number(e.target.value))}
-              className="border border-rule bg-paper px-3 py-2 text-sm"
-            >
-              {SEND_HOURS.map((h) => (
-                <option key={h} value={h}>at {hourLabel(h)}</option>
-              ))}
-            </select>
+            <span className="flex items-center gap-2">
+              <ClockIcon />
+              <span className="text-sm text-muted">at</span>
+              <label className="sr-only" htmlFor="newsletter-send-hour">Hour</label>
+              <select
+                id="newsletter-send-hour"
+                value={sendHour}
+                onChange={(e) => setSendHour(Number(e.target.value))}
+                className="border border-rule bg-paper px-3 py-2 text-sm"
+              >
+                {SEND_HOURS.map((h) => (
+                  <option key={h} value={h}>{pad(h)}</option>
+                ))}
+              </select>
+              <span aria-hidden className="text-sm text-muted">:</span>
+              <label className="sr-only" htmlFor="newsletter-send-minute">Minute</label>
+              <select
+                id="newsletter-send-minute"
+                value={sendMinute}
+                onChange={(e) => setSendMinute(Number(e.target.value))}
+                className="border border-rule bg-paper px-3 py-2 text-sm"
+              >
+                {SEND_MINUTES.map((m) => (
+                  <option key={m} value={m}>{pad(m)}</option>
+                ))}
+              </select>
+            </span>
           </div>
+          <p className="mt-2 text-xs text-muted">
+            Warsaw time — next brief at {pad(sendHour)}:{pad(sendMinute)}
+            {frequency === 'weekly' ? ` on ${WEEKDAYS.find((d) => d.value === sendWeekday)?.label}` : ', every day'}.
+          </p>
         </fieldset>
 
         <fieldset className="border-0 m-0 p-0">

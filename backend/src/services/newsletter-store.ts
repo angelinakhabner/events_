@@ -13,6 +13,7 @@ export interface NewsletterSaveInput {
   afterHour?: number | null;
   beforeHour?: number | null;
   sendHour?: number;
+  sendMinute?: number;
   sendWeekday?: number;
   eventDayMode?: NewsletterEventDayMode;
   eventDay?: number | null;
@@ -41,6 +42,7 @@ function toSettings(row: Row): NewsletterSettings {
     afterHour: row.afterHour,
     beforeHour: row.beforeHour,
     sendHour: row.sendHour,
+    sendMinute: row.sendMinute,
     sendWeekday: row.sendWeekday,
     eventDayMode: row.eventDayMode as NewsletterEventDayMode,
     eventDay: row.eventDay,
@@ -55,6 +57,7 @@ function withScheduleDefaults(input: NewsletterSaveInput) {
   const eventDayMode = input.eventDayMode ?? 'all';
   return {
     sendHour: input.sendHour ?? 8,
+    sendMinute: input.sendMinute ?? 0,
     sendWeekday: input.sendWeekday ?? 1,
     eventDayMode,
     eventDay: eventDayMode === 'specific' ? input.eventDay ?? null : null,
@@ -115,6 +118,7 @@ function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
     afterHour: sub.afterHour,
     beforeHour: sub.beforeHour,
     sendHour: sub.sendHour,
+    sendMinute: sub.sendMinute,
     sendWeekday: sub.sendWeekday,
     eventDayMode: sub.eventDayMode,
     eventDay: sub.eventDay,

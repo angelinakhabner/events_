@@ -19,9 +19,9 @@ if (env.SCRAPE_CRON_ENABLED && env.DATABASE_URL) {
   console.log('[scheduler] disabled (set SCRAPE_CRON_ENABLED=true to enable)');
 }
 
-// Newsletter briefs go out on their own hourly tick — each subscription picks
-// the hour (and weekday) it wants, and the sweep sends the ones due. Needs the
-// DB (events + subscriptions) and a Resend key to actually deliver anything.
+// Newsletter briefs go out on their own tick — each subscription picks the time
+// (and weekday) it wants, and the sweep sends the ones due. Needs the DB
+// (events + subscriptions) and a Resend key to actually deliver anything.
 // Silence here is indistinguishable from "no one is subscribed", so name the
 // missing piece rather than printing one generic line for both causes.
 if (env.NEWSLETTER_CRON_ENABLED && env.DATABASE_URL) {

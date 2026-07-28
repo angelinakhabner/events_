@@ -4,8 +4,6 @@ import {
   briefWindowDays,
   selectBriefEvents,
   renderBriefHtml,
-  isWeeklySendDay,
-  isSendHour,
   isDue,
   dueSlot,
   resolveBriefVenueIds,
@@ -52,6 +50,7 @@ function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription 
     afterHour: null,
     beforeHour: null,
     sendHour: 8,
+    sendMinute: 0,
     sendWeekday: 1,
     eventDayMode: 'all',
     eventDay: null,
@@ -192,30 +191,6 @@ describe('renderBriefHtml', () => {
   });
 });
 
-describe('isWeeklySendDay', () => {
-  it('defaults to Mondays in Warsaw', () => {
-    expect(isWeeklySendDay(new Date('2026-07-20T06:00:00Z'))).toBe(true); // Monday
-    expect(isWeeklySendDay(new Date('2026-07-22T06:00:00Z'))).toBe(false); // Wednesday
-  });
-
-  it('honours the subscription\'s chosen weekday (GOI-28)', () => {
-    const wednesday = new Date('2026-07-22T06:00:00Z');
-    expect(isWeeklySendDay(wednesday, 3)).toBe(true);
-    expect(isWeeklySendDay(wednesday, 1)).toBe(false);
-  });
-});
-
-describe('isSendHour', () => {
-  it('compares against the Warsaw wall clock, not UTC', () => {
-    // 06:00 UTC is 08:00 in Warsaw (CEST).
-    const at = new Date('2026-07-22T06:00:00Z');
-    expect(isSendHour(at, 8)).toBe(true);
-    expect(isSendHour(at, 6)).toBe(false);
-    // Default matches the pre-GOI-28 fixed hour.
-    expect(isSendHour(at)).toBe(true);
-  });
-});
-
 describe('wasRecentlySent', () => {
   it('skips a daily sub sent a few hours ago but not one sent yesterday', () => {
     expect(wasRecentlySent(makeSub({ lastSentAt: '2026-07-22T06:00:00Z' }), NOW)).toBe(true);
@@ -241,6 +216,18 @@ describe('dueSlot', () => {
     // Weekly Monday brief, asked for on a Wednesday → last Monday 08:00 Warsaw.
     const sub = makeSub({ frequency: 'weekly', sendWeekday: 1, sendHour: 8 });
     expect(dueSlot(sub, NOW)?.toISOString()).toBe('2026-07-20T06:00:00.000Z');
+  });
+
+  it('carries the chosen minute', () => {
+    // 08:37 Warsaw is 06:37 UTC under CEST.
+    expect(dueSlot(makeSub({ sendHour: 8, sendMinute: 37 }), NOW)?.toISOString())
+      .toBe('2026-07-22T06:37:00.000Z');
+  });
+
+  it('falls back a day when the minute has not arrived yet', () => {
+    // NOW is 12:00 Warsaw exactly; a 12:30 slot is still ahead of it today.
+    expect(dueSlot(makeSub({ sendHour: 12, sendMinute: 30 }), NOW)?.toISOString())
+      .toBe('2026-07-21T10:30:00.000Z');
   });
 });
 
@@ -269,6 +256,14 @@ describe('isDue', () => {
   it('does not re-send a slot already sent', () => {
     const sub = makeSub({ sendHour: 8, lastSentAt: '2026-07-22T06:00:00Z' });
     expect(isDue(sub, new Date('2026-07-22T07:00:00Z'))).toBe(false);
+  });
+
+  it('respects the minute, not just the hour', () => {
+    const sub = makeSub({ sendHour: 8, sendMinute: 30, lastSentAt: null });
+    // 08:29 Warsaw — the hour matches but the slot hasn't arrived, and
+    // yesterday's is long past the catch-up window.
+    expect(isDue(sub, new Date('2026-07-22T06:29:00Z'))).toBe(false);
+    expect(isDue(sub, new Date('2026-07-22T06:30:00Z'))).toBe(true);
   });
 
   it('is due again once the next day\'s slot comes round', () => {

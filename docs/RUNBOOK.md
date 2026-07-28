@@ -34,8 +34,10 @@ When a venue scrape produces nothing:
 
 ## Newsletter isn't arriving
 
-Briefs are sent by an in-process hourly sweep (`services/newsletter.ts`), not by
-an external cron. Work down this list — the first item is the usual answer.
+Briefs are sent by an in-process sweep that ticks every minute
+(`services/newsletter.ts`), not by an external cron — each subscription picks
+its own send time down to the minute. Work down this list; the first item is
+the usual answer.
 
 1. **Is the sweep even running?** It only starts when **`NEWSLETTER_CRON_ENABLED=true`
    *and* `DATABASE_URL`** are set. With the flag unset the backend logs
@@ -51,7 +53,7 @@ an external cron. Work down this list — the first item is the usual answer.
    subscription with `status`, `reason`, `dueAt` and how many events its filters
    matched. Nothing is sent or recorded.
 3. **Read the reason.**
-   - `not-due` — its send hour hasn't come round yet (or its slot is already
+   - `not-due` — its send time hasn't come round yet (or its slot is already
      sent). `dueAt` shows the slot being compared against `lastSentAt`.
    - `no-venues` — the subscriber follows no venues, so there is nothing to
      brief on. An empty venue selection means "all *my* venues", never "all
@@ -74,9 +76,9 @@ an external cron. Work down this list — the first item is the usual answer.
    sender `onboarding@resend.dev` only delivers to your own Resend account
    address — everything else is rejected.
 
-A missed slot (deploy, restart) is picked up by the next hourly sweep and by the
-one that runs a minute after boot, as long as it's within `CATCH_UP_HOURS` (6h)
-of the send hour. Past that the brief is stale and waits for the next slot.
+A missed slot (deploy, restart) is picked up by the next tick and by the sweep
+that runs a minute after boot, as long as it's within `CATCH_UP_HOURS` (6h) of
+the send time. Past that the brief is stale and waits for the next slot.
 
 ## Railway deploy fails
 

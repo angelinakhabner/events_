@@ -3,7 +3,7 @@ import { defaultEventStore, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenueStore } from './user-venue-store.js';
 import { sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
-import { lastWarsawTimeAtOrBefore, msUntilNextWarsawHour, warsawHourOf, warsawWeekday } from './scheduler.js';
+import { lastWarsawTimeAtOrBefore, warsawWeekday } from './scheduler.js';
 import { env } from '../config.js';
 
 const TZ = 'Europe/Warsaw';
@@ -147,17 +147,6 @@ export function renderBriefHtml(events: Event[], frequency: NewsletterFrequency)
   );
 }
 
-/** True when `at` falls on the weekday this subscription's weekly brief goes
- *  out (Warsaw). Defaults to Monday for rows saved before send days existed. */
-export function isWeeklySendDay(at: Date, sendWeekday: number = 1): boolean {
-  return warsawWeekday(at) === sendWeekday;
-}
-
-/** True when `at` is the Warsaw hour this subscription asked to be sent at. */
-export function isSendHour(at: Date, sendHour: number = 8): boolean {
-  return warsawHourOf(at) === sendHour;
-}
-
 /**
  * How late a missed slot may still be delivered. The sweep runs hourly, so a
  * deploy, a restart or a timer that fires a hair before the top of the hour
@@ -175,13 +164,14 @@ export const CATCH_UP_HOURS = 6;
  */
 export function dueSlot(sub: BriefSchedule, now: Date): Date | null {
   const weekday = sub.frequency === 'weekly' ? sub.sendWeekday ?? 1 : undefined;
-  return lastWarsawTimeAtOrBefore(sub.sendHour ?? 8, weekday, now);
+  return lastWarsawTimeAtOrBefore(sub.sendHour ?? 8, sub.sendMinute ?? 0, weekday, now);
 }
 
 /** The scheduling fields the due check reads. */
 export interface BriefSchedule {
   frequency: NewsletterFrequency;
   sendHour?: number;
+  sendMinute?: number;
   sendWeekday?: number;
   lastSentAt?: string | null;
 }
@@ -368,19 +358,28 @@ export function newsletterConfigStatus() {
 }
 
 /** Delay before the sweep that runs on boot. Long enough for the DB pool to
- *  be up, short enough that a deploy landing on a send hour still delivers. */
+ *  be up, short enough that a deploy landing on a send time still delivers. */
 const STARTUP_SWEEP_DELAY_MS = 60_000;
 
 /**
- * In-process newsletter scheduler, same shape as the scrape scheduler. Since
- * GOI-28 each subscription picks its own send hour (and weekday), so the tick
- * runs hourly and the sweep decides who is due — one loop serves every
+ * How often the sweep looks for due briefs. Subscriptions pick their own send
+ * time down to the minute, so the tick has to be at least that fine — anything
+ * coarser rounds every send to the tick boundary. A sweep with nothing due is
+ * one indexed query against a table with a row per subscriber, which is cheap
+ * enough to run every minute.
+ */
+const TICK_MS = 60_000;
+
+/**
+ * In-process newsletter scheduler, same shape as the scrape scheduler. Each
+ * subscription picks its own send time (and weekday), so the loop ticks on a
+ * fixed interval and the sweep decides who is due — one loop serves every
  * cadence and every chosen time.
  *
  * A sweep also runs shortly after boot. Deploys are the common way to miss a
- * slot (Railway restarts the process, and the first hourly tick can be up to
- * an hour out), and the catch-up window in `isDue` makes that sweep safe to
- * repeat — already-sent subscriptions are no longer due.
+ * slot (Railway restarts the process), and the catch-up window in `isDue`
+ * makes that sweep safe to repeat — already-sent subscriptions are no longer
+ * due.
  */
 export function startNewsletterScheduler(): { stop: () => void } {
   let timer: NodeJS.Timeout | null = null;
@@ -406,19 +405,18 @@ export function startNewsletterScheduler(): { stop: () => void } {
   startupTimer = setTimeout(() => { void sweep('startup sweep'); }, STARTUP_SWEEP_DELAY_MS);
   startupTimer.unref?.();
 
+  // Re-armed after each sweep rather than setInterval'd, so a slow sweep can't
+  // overlap itself.
   const arm = () => {
     if (stopped) return;
-    // Next top of the hour, Warsaw. msUntilNextWarsawHour takes an hour of the
-    // day, so ask for the one after the current wall-clock hour.
-    const delay = msUntilNextWarsawHour((warsawHourOf(new Date()) + 1) % 24);
-    console.log(`[newsletter] next send sweep in ${(delay / 60_000).toFixed(0)}m (hourly, ${TZ})`);
     timer = setTimeout(async () => {
       await sweep('sweep');
       arm();
-    }, delay);
+    }, TICK_MS);
     timer.unref?.();
   };
 
+  console.log(`[newsletter] send sweep every ${TICK_MS / 1000}s; each subscription goes out at its own time (${TZ})`);
   arm();
   return {
     stop: () => {

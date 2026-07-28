@@ -204,6 +204,8 @@ export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
   beforeHour: integer('before_hour'),
   /** Warsaw hour the brief goes out at (0-23). */
   sendHour: integer('send_hour').notNull().default(8),
+  /** Minute past that hour (0-59). */
+  sendMinute: integer('send_minute').notNull().default(0),
   /** Weekday weekly briefs go out on, JS convention (0=Sun … 6=Sat). */
   sendWeekday: integer('send_weekday').notNull().default(1),
   /** Which events the brief covers: 'all', 'daily' (titles running every day

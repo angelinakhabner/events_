@@ -160,6 +160,8 @@ const newsletterSaveInput = z.object({
   beforeHour: z.number().int().min(0).max(23).nullable().optional(),
   /** Warsaw hour the brief is sent at. */
   sendHour: z.number().int().min(0).max(23).default(8),
+  /** Minute past that hour (0-59). */
+  sendMinute: z.number().int().min(0).max(59).default(0),
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). */
   sendWeekday: z.number().int().min(0).max(6).default(1),
   eventDayMode: z.enum(['all', 'daily', 'specific']).default('all'),
