@@ -198,6 +198,8 @@ export const films = pgTable(
 export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   email: text('email').notNull(),
+  /** What the brief calls the reader; null = greet without a name. */
+  recipientName: text('recipient_name'),
   frequency: text('frequency').notNull().default('weekly'),
   venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
   afterHour: integer('after_hour'),

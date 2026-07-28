@@ -3,7 +3,6 @@ import type { Event } from '@goin/shared';
 import {
   briefWindowDays,
   selectBriefEvents,
-  renderBriefHtml,
   isWeeklySendDay,
   isSendHour,
   resolveBriefVenueIds,
@@ -43,6 +42,7 @@ function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription 
   return {
     userId: 'u1',
     email: 'user@example.com',
+    recipientName: null,
     frequency: 'daily',
     venueIds: [],
     afterHour: null,
@@ -161,28 +161,6 @@ describe('resolveBriefVenueIds', () => {
   it('resolves to nothing when no venue carries the tag', async () => {
     const { venues } = await twoVenues();
     expect(await resolveBriefVenueIds('u1', [], ['nonexistent'], venues)).toEqual([]);
-  });
-});
-
-describe('renderBriefHtml', () => {
-  it('groups events by day and links each title', () => {
-    const events = [
-      makeEvent({ title: 'Film A', startsAt: '2026-07-22T18:00:00+02:00', sourceUrl: 'https://x.pl/a' }),
-      makeEvent({ title: 'Film B', startsAt: '2026-07-23T20:00:00+02:00', sourceUrl: 'https://x.pl/b' }),
-    ];
-    const html = renderBriefHtml(events, 'weekly');
-    expect(html).toContain('This week at your venues');
-    expect(html).toContain('Film A');
-    expect(html).toContain('https://x.pl/b');
-    expect(html).toContain('Kinoteka');
-    // Two day headings.
-    expect(html.match(/<h3/g)).toHaveLength(2);
-  });
-
-  it('escapes HTML in titles', () => {
-    const html = renderBriefHtml([makeEvent({ title: '<script>alert(1)</script>' })], 'daily');
-    expect(html).not.toContain('<script>');
-    expect(html).toContain('&lt;script&gt;');
   });
 });
 

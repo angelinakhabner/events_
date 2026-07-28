@@ -8,6 +8,7 @@ import { getDb, schema } from '../db/index.js';
 
 export interface NewsletterSaveInput {
   email: string;
+  recipientName?: string | null;
   frequency: NewsletterFrequency;
   venueIds: string[];
   afterHour?: number | null;
@@ -35,6 +36,7 @@ type Row = typeof schema.newsletterSubscriptions.$inferSelect;
 function toSettings(row: Row): NewsletterSettings {
   return {
     email: row.email,
+    recipientName: row.recipientName,
     frequency: row.frequency as NewsletterFrequency,
     venueIds: row.venueIds,
     afterHour: row.afterHour,
@@ -47,8 +49,7 @@ function toSettings(row: Row): NewsletterSettings {
   };
 }
 
-/** Fill the schedule/scope fields a caller left out with their defaults, and
- *  keep `eventDay` consistent with the mode it belongs to. */
+/** Fill the schedule/scope fields a caller left out with their defaults. */
 function withScheduleDefaults(input: NewsletterSaveInput) {
   return {
     sendHour: input.sendHour ?? 8,
@@ -71,6 +72,7 @@ export class DbNewsletterStore implements NewsletterStore {
     const values = {
       userId,
       email: input.email.trim(),
+      recipientName: input.recipientName?.trim() || null,
       frequency: input.frequency,
       venueIds: input.venueIds,
       afterHour: input.afterHour ?? null,
@@ -106,6 +108,7 @@ export class DbNewsletterStore implements NewsletterStore {
 function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
   return {
     email: sub.email,
+    recipientName: sub.recipientName,
     frequency: sub.frequency,
     venueIds: sub.venueIds,
     afterHour: sub.afterHour,
@@ -132,6 +135,7 @@ export class InMemoryNewsletterStore implements NewsletterStore {
     const sub: NewsletterSubscription = {
       userId,
       email: input.email.trim(),
+      recipientName: input.recipientName?.trim() || null,
       frequency: input.frequency,
       venueIds: [...input.venueIds],
       afterHour: input.afterHour ?? null,

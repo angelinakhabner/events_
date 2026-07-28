@@ -1,10 +1,11 @@
-import type { Event, NewsletterFrequency } from '@goin/shared';
+import type { Event, Festival, NewsletterFrequency } from '@goin/shared';
+import { listFestivals } from '../data/festivals.js';
+import { briefCategories, renderBriefHtml } from './newsletter-render.js';
 import { defaultEventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenueStore } from './user-venue-store.js';
 import { sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
 import { msUntilNextWarsawHour, warsawHourOf, warsawWeekday } from './scheduler.js';
-import { env } from '../config.js';
 
 const TZ = 'Europe/Warsaw';
 
@@ -57,55 +58,9 @@ export function selectBriefEvents(
   });
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-}
-
-function fmtDay(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short',
-  }).format(new Date(iso));
-}
-
-function fmtTime(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false })
-    .format(new Date(iso));
-}
-
-/** Render the brief: events grouped by day, each row time · title · venue. */
-export function renderBriefHtml(events: Event[], frequency: NewsletterFrequency): string {
-  const sorted = [...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  const byDay = new Map<string, Event[]>();
-  for (const e of sorted) {
-    const day = fmtDay(e.startsAt);
-    const list = byDay.get(day) ?? [];
-    list.push(e);
-    byDay.set(day, list);
-  }
-  const intro = frequency === 'daily' ? 'Today at your venues' : 'This week at your venues';
-  const sections = [...byDay.entries()]
-    .map(
-      ([day, dayEvents]) =>
-        `<h3 style="margin:16px 0 4px;font-size:14px">${escapeHtml(day)}</h3>` +
-        `<ul style="margin:0;padding-left:18px">` +
-        dayEvents
-          .map(
-            (e) =>
-              `<li style="margin:2px 0;font-size:14px">${fmtTime(e.startsAt)} — ` +
-              `<a href="${escapeHtml(e.sourceUrl)}">${escapeHtml(e.title)}</a>` +
-              (e.venue ? ` <span style="color:#777">· ${escapeHtml(e.venue.name)}</span>` : '') +
-              `</li>`,
-          )
-          .join('') +
-        `</ul>`,
-    )
-    .join('');
-  return (
-    `<p style="font-size:15px">${intro}:</p>` +
-    (sections || '<p style="color:#777;font-size:14px">Nothing on in this window.</p>') +
-    `<p style="margin-top:20px;font-size:12px;color:#777">You get this brief because you enabled it on ` +
-    `<a href="${escapeHtml(env.APP_URL)}/my">your Goin page</a> — manage or disable it there.</p>`
-  );
+/** The ongoing festival the brief's "Also on" line calls out, if any. */
+export function currentFestival(): Festival | null {
+  return listFestivals().find((f) => f.status === 'ongoing') ?? null;
 }
 
 /** True when `at` falls on the weekday this subscription's weekly brief goes
@@ -183,8 +138,15 @@ export async function sendNewsletterBriefs(
       if (events.length === 0) { skipped++; continue; }
       await sendEmail({
         to: sub.email,
-        subject: sub.frequency === 'daily' ? 'Goin — today at your venues' : 'Goin — your week ahead',
-        html: renderBriefHtml(events, sub.frequency),
+        subject: sub.frequency === 'daily' ? 'Goin — today in Warsaw' : 'Goin — your week in Warsaw',
+        html: renderBriefHtml({
+          events,
+          frequency: sub.frequency,
+          recipientName: sub.recipientName,
+          categories: briefCategories(sub.eventTags, events),
+          festival: currentFestival(),
+          now,
+        }),
       });
       await store.markSent(sub.userId, now);
       sent++;

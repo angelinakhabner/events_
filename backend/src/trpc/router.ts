@@ -9,7 +9,8 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
-import { renderBriefHtml, resolveBriefVenueIds, selectBriefEvents } from '../services/newsletter.js';
+import { currentFestival, resolveBriefVenueIds, selectBriefEvents } from '../services/newsletter.js';
+import { briefCategories, renderBriefHtml } from '../services/newsletter-render.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -154,6 +155,8 @@ const myVenueUpdateInput = z.object({
 
 const newsletterSaveInput = z.object({
   email: z.string().email(),
+  /** Name the brief greets you by; blank greets you without one. */
+  recipientName: z.string().trim().max(80).nullable().optional(),
   frequency: z.enum(['daily', 'weekly']),
   venueIds: z.array(z.string()).default([]),
   afterHour: z.number().int().min(0).max(23).nullable().optional(),
@@ -334,7 +337,16 @@ const my = router({
           ? await defaultEventStore.listUpcoming({ limit: 500 })
           : [];
         const events = selectBriefEvents(all, { ...input, venueIds });
-        return { events, html: renderBriefHtml(events, input.frequency) };
+        return {
+          events,
+          html: renderBriefHtml({
+            events,
+            frequency: input.frequency,
+            recipientName: input.recipientName,
+            categories: briefCategories(input.eventTags, events),
+            festival: currentFestival(),
+          }),
+        };
       }),
   }),
 

@@ -98,6 +98,7 @@ function NewsletterForm({
   folders: { id: string; name: string }[];
 }) {
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
+  const [recipientName, setRecipientName] = useState(saved?.recipientName ?? '');
   const [frequency, setFrequency] = useState<NewsletterFrequency>(saved?.frequency ?? 'weekly');
   const [sendHour, setSendHour] = useState(saved?.sendHour ?? 8);
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
@@ -155,6 +156,7 @@ function NewsletterForm({
 
   const payload = () => ({
     email: email.trim(),
+    recipientName: recipientName.trim() || null,
     frequency,
     sendHour,
     sendWeekday,
@@ -186,19 +188,37 @@ function NewsletterForm({
           save.mutate(payload());
         }}
       >
-        <div>
-          <label className="block text-xs uppercase tracking-widest text-muted mb-1" htmlFor="newsletter-email">
-            Email address
-          </label>
-          <input
-            id="newsletter-email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="w-full border border-rule bg-paper px-3 py-2 text-sm"
-          />
+        <div className="flex flex-wrap gap-3">
+          <div className="flex-1 min-w-[14rem]">
+            <label className="block text-xs uppercase tracking-widest text-muted mb-1" htmlFor="newsletter-email">
+              Email address
+            </label>
+            <input
+              id="newsletter-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full border border-rule bg-paper px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="flex-1 min-w-[10rem]">
+            <label className="block text-xs uppercase tracking-widest text-muted mb-1" htmlFor="newsletter-name">
+              Your name (optional)
+            </label>
+            <input
+              id="newsletter-name"
+              type="text"
+              value={recipientName}
+              onChange={(e) => setRecipientName(e.target.value)}
+              placeholder="Ania"
+              className="w-full border border-rule bg-paper px-3 py-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-muted">
+              The brief opens with &ldquo;Hi {recipientName.trim() || '…'}&rdquo; — leave it empty to skip the name.
+            </p>
+          </div>
         </div>
 
         <fieldset className="border-0 m-0 p-0">
@@ -373,10 +393,14 @@ function NewsletterForm({
 }
 
 /**
- * The generated brief, rendered as the recipient would see it. The HTML comes
- * from the same renderer the sender uses and is built entirely server-side
- * from our own event rows — no user-authored markup reaches it (titles are
- * escaped in `renderBriefHtml`).
+ * The generated brief, shown exactly as the recipient will see it.
+ *
+ * It goes in an iframe rather than inline: the renderer returns a complete
+ * email *document* (doctype, head, its own body background), which a browser
+ * would strip and mangle if injected into the page — and the email's own
+ * styles would sit in the same cascade as the app's. `sandbox` with no tokens
+ * also means the markup gets no script or navigation privileges, which is the
+ * right posture for content that embeds venue-authored titles.
  */
 function NewsletterPreview({
   html,
@@ -390,14 +414,16 @@ function NewsletterPreview({
   if (error) return <p className="mt-6 text-sm text-red-700">Couldn&rsquo;t generate a preview: {error}</p>;
   if (html === null) return null;
   return (
-    <div className="mt-8 max-w-prose">
+    <div className="mt-8">
       <h3 className="mb-2 text-xs uppercase tracking-widest text-muted">
         Preview{count !== null ? ` — ${count} event${count === 1 ? '' : 's'}` : ''}
       </h3>
-      <div
+      <iframe
         data-testid="newsletter-preview"
-        className="border border-rule p-4 text-sm"
-        dangerouslySetInnerHTML={{ __html: html }}
+        title="Newsletter preview"
+        srcDoc={html}
+        sandbox=""
+        className="w-full max-w-[640px] h-[720px] border border-rule bg-white"
       />
     </div>
   );

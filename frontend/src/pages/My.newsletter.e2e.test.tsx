@@ -137,11 +137,17 @@ describe('MyPage — newsletter end-to-end', () => {
       sendWeekday: 4,
     });
 
-    // "Generate now" renders the brief the settings would produce. Without a
-    // database there are no events, so the preview says so rather than 404ing.
+    // "Generate now" renders the brief the settings would produce, as the
+    // recipient will see it. Without a database there are no events, so it
+    // says so rather than 404ing.
     await user.click(within(section).getByRole('button', { name: /generate now/i }));
-    const preview = await screen.findByTestId('newsletter-preview');
-    expect(preview.textContent).toMatch(/this week at your venues/i);
+    const preview = (await screen.findByTestId('newsletter-preview')) as HTMLIFrameElement;
+    // An email document, sandboxed — not markup spliced into the page.
+    expect(preview.tagName).toBe('IFRAME');
+    expect(preview.getAttribute('sandbox')).toBe('');
+    expect(preview.srcdoc).toContain('GOIN · WEEKLY');
+    expect(preview.srcdoc).toContain('This week in<br>Warsaw');
+    expect(preview.srcdoc).toContain('Nothing on in this window.');
   });
 
   // The categories are the tags from "My venues" — nothing is typed in here.

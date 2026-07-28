@@ -119,6 +119,8 @@ export type NewsletterFrequency = 'daily' | 'weekly';
 
 export interface NewsletterSettings {
   email: string;
+  /** Name the brief greets you by; null greets you without one. */
+  recipientName: string | null;
   frequency: NewsletterFrequency;
   /** Venues the brief covers; empty = all of the user's venues. */
   venueIds: string[];
