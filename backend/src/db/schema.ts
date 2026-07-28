@@ -198,6 +198,8 @@ export const films = pgTable(
 export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   email: text('email').notNull(),
+  /** What the brief calls the reader; null = greet without a name. */
+  recipientName: text('recipient_name'),
   frequency: text('frequency').notNull().default('weekly'),
   venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
   afterHour: integer('after_hour'),
@@ -208,10 +210,12 @@ export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
   sendMinute: integer('send_minute').notNull().default(0),
   /** Weekday weekly briefs go out on, JS convention (0=Sun … 6=Sat). */
   sendWeekday: integer('send_weekday').notNull().default(1),
-  /** Which events the brief covers: 'all', 'daily' (titles running every day
-   *  of the window) or 'specific' (one weekday, see eventDay). */
-  eventDayMode: text('event_day_mode').notNull().default('all'),
-  eventDay: integer('event_day'),
+  /** Per-category cadence + detail; see NewsletterCategoryRule. Empty = one
+   *  brief covering everything on the subscription's own frequency. */
+  categoryRules: jsonb('category_rules')
+    .$type<{ category: string; frequency: string; detail: string }[]>()
+    .notNull()
+    .default([]),
   enabled: boolean('enabled').notNull().default(true),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

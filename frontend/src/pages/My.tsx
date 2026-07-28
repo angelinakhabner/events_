@@ -50,8 +50,16 @@ export function MyPage() {
         <LogoutButton />
       </header>
 
-      <div className="flex flex-col gap-10 md:flex-row md:gap-12">
-        <nav aria-label="My page sections" className="shrink-0 md:w-44">
+      {/* Three widths. Narrow: the menu stacks above the section. Medium: it
+          sits beside it, inside the readable column. Wide (≥90rem): the
+          readable column no longer fills the viewport, so the menu moves out
+          into the left gutter — which also lets the section line up with the
+          "My page" heading instead of being indented past the menu. */}
+      <div className="relative flex flex-col gap-10 md:flex-row md:gap-12 wide:block">
+        <nav
+          aria-label="My page sections"
+          className="shrink-0 md:w-44 wide:absolute wide:right-full wide:top-0 wide:mr-8 wide:w-40"
+        >
           <ul className="flex flex-wrap gap-x-4 gap-y-2 list-none m-0 p-0 md:flex-col md:gap-2">
             {SECTIONS.map((s) => (
               <li key={s.key}>

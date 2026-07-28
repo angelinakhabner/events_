@@ -89,17 +89,20 @@ describe('MyPage — newsletter end-to-end', () => {
     // instant the form appears (the race made CI flaky).
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
-    // Daily at 07:45, after 18:00, only events on Fridays.
+    // Every hour and every minute is offered, not a hand-picked handful.
+    const sendHour = within(section).getByLabelText(/^hour$/i);
+    const sendMinute = within(section).getByLabelText(/^minute$/i);
+    expect(within(sendHour).getAllByRole('option')).toHaveLength(24);
+    expect(within(sendMinute).getAllByRole('option')).toHaveLength(60);
+    expect(within(sendHour).getByRole('option', { name: '23' })).toBeInTheDocument();
+
+    // Daily at 03:45, after 22:00 — none of the three reachable without the
+    // full ranges.
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
-    await user.selectOptions(within(section).getByLabelText(/^hour$/i), '7');
-    await user.selectOptions(within(section).getByLabelText(/^minute$/i), '45');
-    // Every hour and every minute is offered, not a curated shortlist.
-    expect(within(section).getByLabelText(/^hour$/i).querySelectorAll('option')).toHaveLength(24);
-    expect(within(section).getByLabelText(/^minute$/i).querySelectorAll('option')).toHaveLength(60);
-    await user.selectOptions(within(section).getByLabelText(/only events after/i), '18');
-    await user.click(within(section).getByLabelText(/only events on a specific day/i));
-    await user.selectOptions(within(section).getByLabelText(/which day/i), '5');
-    await user.click(within(section).getByRole('button', { name: /save newsletter/i }));
+    await user.selectOptions(sendHour, '3');
+    await user.selectOptions(sendMinute, '45');
+    await user.selectOptions(within(section).getByLabelText(/only events after/i), '22');
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 
     // Settings landed in the store.
@@ -107,11 +110,10 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(saved).toMatchObject({
       email: USER_EMAIL,
       frequency: 'daily',
-      sendHour: 7,
+      sendHour: 3,
       sendMinute: 45,
-      afterHour: 18,
-      eventDayMode: 'specific',
-      eventDay: 5,
+      afterHour: 22,
+      categoryRules: [],
       enabled: true,
     });
   });
@@ -131,7 +133,7 @@ describe('MyPage — newsletter end-to-end', () => {
 
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'weekly');
     await user.selectOptions(await within(section).findByLabelText(/day of the week/i), '4');
-    await user.click(within(section).getByRole('button', { name: /save newsletter/i }));
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 
     expect(await defaultNewsletterStore.get(userId)).toMatchObject({
@@ -139,10 +141,81 @@ describe('MyPage — newsletter end-to-end', () => {
       sendWeekday: 4,
     });
 
-    // "Generate" renders the brief the settings would produce. Without a
-    // database there are no events, so the preview says so rather than 404ing.
-    await user.click(within(section).getByRole('button', { name: /generate/i }));
-    const preview = await screen.findByTestId('newsletter-preview');
-    expect(preview.textContent).toMatch(/this week at your venues/i);
+    // "Generate now" renders the brief the settings would produce, as the
+    // recipient will see it. Without a database there are no events, so it
+    // says so rather than 404ing.
+    await user.click(within(section).getByRole('button', { name: /generate now/i }));
+    const preview = (await screen.findByTestId('newsletter-preview')) as HTMLIFrameElement;
+    // An email document, sandboxed — not markup spliced into the page.
+    expect(preview.tagName).toBe('IFRAME');
+    expect(preview.getAttribute('sandbox')).toBe('');
+    expect(preview.srcdoc).toContain('GOIN · WEEKLY');
+    expect(preview.srcdoc).toContain('This week in<br>Warsaw');
+    expect(preview.srcdoc).toContain('Nothing on in this window.');
+  });
+
+  // Per-category rules: each category gets its own cadence and depth.
+  it('gives a category its own cadence and description width', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    let section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    // Categories come from your venues and their tags — cinema is there
+    // because the seeded venues are cinemas.
+    const picker = await within(section).findByLabelText(/add a category/i);
+    await user.selectOptions(picker, 'cinema');
+
+    await user.selectOptions(await within(section).findByLabelText(/how often for cinema/i), 'daily');
+    await user.selectOptions(within(section).getByLabelText(/description for cinema/i), 'short');
+    // Save before leaving: switching tabs unmounts the form, so anything not
+    // yet saved is gone — the same as for any other section.
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    // A tag added over in "My venues" shows up here as a category too.
+    await user.click(screen.getByRole('button', { name: 'My venues' }));
+    const venuesSection = (await screen.findByRole('heading', { name: 'My venues' })).closest('section')!;
+    const row = (await within(venuesSection).findByText('Kinoteka')).closest('li')!;
+    await user.click(within(row).getByRole('button', { name: /add tag to kinoteka/i }));
+    await user.type(within(row).getByLabelText(/new tag for kinoteka/i), 'museums');
+    await user.click(within(row).getByRole('button', { name: /^add$/i }));
+    await within(venuesSection).findByText('museums');
+
+    await user.click(screen.getByRole('button', { name: 'Newsletter' }));
+    section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    // The saved cinema rule comes back with the form.
+    await within(section).findByLabelText(/how often for cinema/i);
+    await user.selectOptions(await within(section).findByLabelText(/add a category/i), 'museums');
+
+    // Museums monthly, with the wide write-up — the example from the brief.
+    await user.selectOptions(await within(section).findByLabelText(/how often for museums/i), 'monthly');
+    await user.selectOptions(within(section).getByLabelText(/description for museums/i), 'full');
+
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    expect((await defaultNewsletterStore.get(userId))!.categoryRules).toEqual([
+      { category: 'cinema', frequency: 'daily', detail: 'short' },
+      { category: 'museums', frequency: 'monthly', detail: 'full' },
+    ]);
+  });
+
+  it('drops a category rule again', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    // The saved rules from the previous test are loaded back into the form.
+    await within(section).findByLabelText(/how often for cinema/i);
+    await user.click(within(section).getByRole('button', { name: /remove cinema/i }));
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    expect((await defaultNewsletterStore.get(userId))!.categoryRules.map((r) => r.category))
+      .toEqual(['museums']);
   });
 });

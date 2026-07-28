@@ -115,19 +115,29 @@ export interface WantToGoEntry {
 
 // ─── Newsletter ──────────────────────────────────────────────────────────────
 
-export type NewsletterFrequency = 'daily' | 'weekly';
+export type NewsletterFrequency = 'daily' | 'weekly' | 'monthly';
+
+/** How much of each event a section shows: a trimmed one-liner, or the whole
+ *  blurb ("wide"). */
+export type NewsletterDetail = 'short' | 'full';
 
 /**
- * Which events a brief covers:
- *  - `all`      — everything in the cadence window.
- *  - `daily`    — only titles that run on *every* day of the window, i.e. the
- *                 things you can catch whenever you feel like it.
- *  - `specific` — only events on `eventDay` (0=Sun … 6=Sat).
+ * One category's own place in the brief: how often it turns up, and how much
+ * it says. "Cinema daily, short; museums monthly, wide."
+ *
+ * `category` matches either a built-in event category ("cinema") or one of the
+ * reader's own venue tags ("arthouse") — whichever they picked.
  */
-export type NewsletterEventDayMode = 'all' | 'daily' | 'specific';
+export interface NewsletterCategoryRule {
+  category: string;
+  frequency: NewsletterFrequency;
+  detail: NewsletterDetail;
+}
 
 export interface NewsletterSettings {
   email: string;
+  /** Name the brief greets you by; null greets you without one. */
+  recipientName: string | null;
   frequency: NewsletterFrequency;
   /** Venues the brief covers; empty = all of the user's venues. */
   venueIds: string[];
@@ -141,9 +151,9 @@ export interface NewsletterSettings {
   sendMinute: number;
   /** Weekday weekly briefs go out on (0=Sun … 6=Sat). Ignored when daily. */
   sendWeekday: number;
-  eventDayMode: NewsletterEventDayMode;
-  /** The chosen weekday when `eventDayMode` is 'specific' (0=Sun … 6=Sat). */
-  eventDay: number | null;
+  /** Per-category cadence and detail. Empty = one brief covering everything,
+   *  on the subscription's own `frequency`. */
+  categoryRules: NewsletterCategoryRule[];
   enabled: boolean;
   lastSentAt: string | null;
 }

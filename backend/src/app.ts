@@ -158,32 +158,56 @@ export function createApp() {
   });
 
   // POST-ish debug trigger (GET so it's browser-checkable, same as the scrape
-  // one): run a real sweep now instead of waiting for the next hourly tick.
-  //   ?force=1     ignore the schedule — brief everyone who has events
+  // one): run a real sweep now instead of waiting for the next tick.
+  //   ?force=1           ignore the schedule — brief everyone who has events
   //   ?user=<id|email>   restrict to one subscriber
-  //   ?to=<email>  skip briefs entirely and send a fixed test email, which is
-  //                the quickest way to tell a Resend/domain problem apart from
-  //                an empty-brief one.
+  // For "does Resend work at all", use /admin/email-test below — it isolates
+  // delivery from brief selection.
   app.get('/admin/newsletter/send', async (c) => {
     if (!authorized(c.req.query('token'))) return c.json({ error: 'unauthorized' }, 401);
-    const to = c.req.query('to');
-    if (to) {
-      try {
-        const sent = await sendEmail({
-          to,
-          subject: 'Goin — newsletter test',
-          html: '<p>Test email from the Goin backend. If this arrived, Resend and the sending domain are configured correctly.</p>',
-        });
-        return c.json({ test: { to, id: sent.id, from: env.RESEND_FROM_EMAIL } });
-      } catch (e) {
-        return c.json({ test: { to, error: e instanceof Error ? e.message : String(e) } }, 502);
-      }
-    }
     const sweep = await sendNewsletterBriefs(undefined, new Date(), {
       force: c.req.query('force') === '1',
       only: c.req.query('user'),
     });
     return c.json({ config: newsletterConfigStatus(), ...sweep });
+  });
+
+  // GET /admin/email-test?to=<address>&token=...  — send one real email through
+  // Resend and report verbatim what Resend answered. "The login link never
+  // arrives for X" is otherwise invisible from the outside: the SPA shows a
+  // generic failure and the provider's reason is buried in the deploy logs.
+  //
+  // The reason that matters most: on an unverified sending domain Resend only
+  // delivers to the Resend account's own address and refuses every other
+  // recipient, so the owner's inbox works while every tester's silently doesn't.
+  app.get('/admin/email-test', async (c) => {
+    if (!authorized(c.req.query('token'))) return c.json({ error: 'unauthorized' }, 401);
+    const to = c.req.query('to');
+    if (!to) return c.json({ error: 'pass ?to=<recipient address>' }, 400);
+    if (!env.RESEND_API_KEY) {
+      return c.json(
+        { ok: false, to, from: env.RESEND_FROM_EMAIL, error: 'RESEND_API_KEY is not set — this deploy sends no email at all' },
+        400,
+      );
+    }
+
+    try {
+      const { id } = await sendEmail({
+        to,
+        subject: 'Goin deliverability check',
+        html: '<p>This is a deliverability check from Goin. Nothing to do — if you can read it, sign-in emails reach this address.</p>',
+      });
+      return c.json({ ok: true, to, from: env.RESEND_FROM_EMAIL, id });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      // Resend phrases the unverified-domain refusal as "you can only send
+      // testing emails to your own email address" — worth naming outright,
+      // since the fix (verify the domain) isn't obvious from the message.
+      const hint = /own email address|not verified|domain/i.test(error)
+        ? `The domain of ${env.RESEND_FROM_EMAIL} is not verified in Resend, so Resend refuses every recipient except the Resend account's own address. Verify the sending domain in Resend → Domains (DNS records), then set RESEND_FROM_EMAIL to an address on it.`
+        : undefined;
+      return c.json({ ok: false, to, from: env.RESEND_FROM_EMAIL, error, ...(hint ? { hint } : {}) }, 502);
+    }
   });
 
   app.use(

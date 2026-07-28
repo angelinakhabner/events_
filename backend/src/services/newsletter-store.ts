@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { NewsletterEventDayMode, NewsletterFrequency, NewsletterSettings } from '@goin/shared';
+import type { NewsletterCategoryRule, NewsletterFrequency, NewsletterSettings } from '@goin/shared';
 import { getDb, schema } from '../db/index.js';
 
 // Newsletter subscriptions (GOI-8): one per user. The user picks an email,
@@ -8,6 +8,7 @@ import { getDb, schema } from '../db/index.js';
 
 export interface NewsletterSaveInput {
   email: string;
+  recipientName?: string | null;
   frequency: NewsletterFrequency;
   venueIds: string[];
   afterHour?: number | null;
@@ -15,8 +16,7 @@ export interface NewsletterSaveInput {
   sendHour?: number;
   sendMinute?: number;
   sendWeekday?: number;
-  eventDayMode?: NewsletterEventDayMode;
-  eventDay?: number | null;
+  categoryRules?: NewsletterCategoryRule[];
   enabled: boolean;
 }
 
@@ -37,6 +37,7 @@ type Row = typeof schema.newsletterSubscriptions.$inferSelect;
 function toSettings(row: Row): NewsletterSettings {
   return {
     email: row.email,
+    recipientName: row.recipientName,
     frequency: row.frequency as NewsletterFrequency,
     venueIds: row.venueIds,
     afterHour: row.afterHour,
@@ -44,23 +45,19 @@ function toSettings(row: Row): NewsletterSettings {
     sendHour: row.sendHour,
     sendMinute: row.sendMinute,
     sendWeekday: row.sendWeekday,
-    eventDayMode: row.eventDayMode as NewsletterEventDayMode,
-    eventDay: row.eventDay,
+    categoryRules: row.categoryRules as NewsletterCategoryRule[],
     enabled: row.enabled,
     lastSentAt: row.lastSentAt ? row.lastSentAt.toISOString() : null,
   };
 }
 
-/** Fill the schedule/scope fields a caller left out with their defaults, and
- *  keep `eventDay` consistent with the mode it belongs to. */
+/** Fill the schedule/scope fields a caller left out with their defaults. */
 function withScheduleDefaults(input: NewsletterSaveInput) {
-  const eventDayMode = input.eventDayMode ?? 'all';
   return {
     sendHour: input.sendHour ?? 8,
     sendMinute: input.sendMinute ?? 0,
     sendWeekday: input.sendWeekday ?? 1,
-    eventDayMode,
-    eventDay: eventDayMode === 'specific' ? input.eventDay ?? null : null,
+    categoryRules: input.categoryRules ?? [],
   };
 }
 
@@ -78,6 +75,7 @@ export class DbNewsletterStore implements NewsletterStore {
     const values = {
       userId,
       email: input.email.trim(),
+      recipientName: input.recipientName?.trim() || null,
       frequency: input.frequency,
       venueIds: input.venueIds,
       afterHour: input.afterHour ?? null,
@@ -113,6 +111,7 @@ export class DbNewsletterStore implements NewsletterStore {
 function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
   return {
     email: sub.email,
+    recipientName: sub.recipientName,
     frequency: sub.frequency,
     venueIds: sub.venueIds,
     afterHour: sub.afterHour,
@@ -120,8 +119,7 @@ function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
     sendHour: sub.sendHour,
     sendMinute: sub.sendMinute,
     sendWeekday: sub.sendWeekday,
-    eventDayMode: sub.eventDayMode,
-    eventDay: sub.eventDay,
+    categoryRules: sub.categoryRules,
     enabled: sub.enabled,
     lastSentAt: sub.lastSentAt,
   };
@@ -141,6 +139,7 @@ export class InMemoryNewsletterStore implements NewsletterStore {
     const sub: NewsletterSubscription = {
       userId,
       email: input.email.trim(),
+      recipientName: input.recipientName?.trim() || null,
       frequency: input.frequency,
       venueIds: [...input.venueIds],
       afterHour: input.afterHour ?? null,
