@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>POLIN zakup biletów on-line</title>
+    <meta name="keywords"
+          content=""/>
+    <meta name="description"
+          content=""/>
+    <meta name="author"
+          content="SoftCOM - https://www.softcom.wroc.pl"/>
+    <meta name="robots"
+          content="all"/>
+    <meta name="viewport"
+          content="width=device-width,initial-scale=1"/>
+    <meta name="deklaracja-dostępności"
+          content="https://bilety.polin.pl/deklaracja-dostepnosci.html"/>
+    <link rel="preconnect"
+          href="https://fonts.googleapis.com">
+    <link rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap"
+          rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="/bootstrap-5.0.2-dist/css/bootstrap-modal.css" />
+<link rel="stylesheet" type="text/css" href="/bootstrap-icons-1.8.1/bootstrap-icons.css" />
+<link rel="stylesheet" type="text/css" href="/css/rodzaj-rezerwacji.css?v=17" />
+<link rel="stylesheet" type="text/css" href="/css/baselayout.css?v=17" />
+<link rel="stylesheet" type="text/css" href="/css/info-popup.css?v=17" />
+<link rel="stylesheet" type="text/css" href="/css/styles-softcom.css?v=17" />
+        <script src="/js-common/jquery.min.js"></script>
+<script src="/js-common/jquery.countdown.js"></script>
+<script src="/js-common/jquery.countdown-pl.js"></script>
+<script src="/bootstrap-5.0.2-dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js-common/core.js"></script>
+<script src="/js/main-polin.js"></script>
+<script src="/js/index.js?v=17" type="module"></script>
+    <script>//<![CDATA[
+(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":
+            new Date().getTime(),event:"gtm.js"});var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s),dl=l!="dataLayer"?"&l="+l:"";j.async=true;j.src=
+            "https://www.googletagmanager.com/gtm.js?id="+i+dl;f.parentNode.insertBefore(j,f);
+            })(window,document,"script","dataLayer","GTM-MFM2TLWK");
+            $(document).ready(function(){
+                if (localStorage.getItem("countdownNotice")) {
+                    // Usunięcie countdownNotice z localStorage.
+                    localStorage.removeItem("countdownNotice");   
+                }
+            });
+//]]></script>
+</head>
+<body          data-page_name="rezerwacja_index_index">
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MFM2TLWK" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript><ul id="skiplink"
+    class="list-group skiplink">
+    <li class="list-group-item"><a href="#nav-menu">Przejdź do menu głównego</a></li>
+    <li class="list-group-item"><a href="#content">Przejdź do treści</a></li>
+</ul>
+<div class="app">
+    <header>
+    <div class="nav">
+        <div class="logo">
+            <a href="https://polin.pl/"
+               class="d-inline-flex"
+               title="Przejdź do strony głównej Polin">
+                                    <img src="/images/layout/logo.svg"
+                         alt="Polin - strona główna">
+                                </a>
+        </div>
+        <div id="nav-menu"
+             class="actions ml-p">
+            <div class="pages">
+                <a href="/" class="fs-22  active" target="_self">Zakup biletów</a><a href="https://bilety.polin.pl/zwroty/index.html" class="fs-22 " target="_self">Zwrot biletów</a><a href="/bony/vouchery-serie.html" class="fs-22 " target="_self">Vouchery</a><a href="/towary/index.html?idg=0" class="fs-22 " target="_self">Sklep</a><a href="https://bilety.polin.pl/uzytkownik/login.html" class="fs-22 " target="_self">Logowanie</a><a href="https://bilety.polin.pl/uzytkownik/rejestracja.html" class="fs-22 " target="_self">Zarejestruj się</a>            </div>
+            <div class="links-wrapper">
+                                    <div class="links">
+                        <div class="links--languages">
+                            <a href="https://bilety.polin.pl/index.html?lang=pl" class="fs-22 active">PL</a><a href="https://bilety.polin.pl/index.html?lang=en" class="fs-22 ">EN</a>                        </div>
+                    </div>
+                                    <div class="shop-cart">
+                    <a href="https://bilety.polin.pl/koszyk/index.html"
+                       class="d-inline-flex"
+                       title="Przejdź do koszyka">
+                        <img src="/images/layout/shop-cart.svg"
+                             alt="Koszyk">
+
+                        <span class="badge"
+                              style="display: none">
+							<span class="fs-20"
+                                  id="shop-items">0</span>
+						</span>
+                    </a>
+                    <span class="countdown"></span>
+                </div>
+            </div>
+
+            <button type="button"
+                    class="burger-menu burger-menu--btn"
+                    id="burger-menu"
+                    onclick="openSidebar()"><img src="/images/layout/burger-menu.svg"
+                                                 alt="Menu"></button>
+        </div>
+    </div>
+    <div class="header__countdown d-none">
+        <span class="countdown"></span>
+    </div>
+</header>
+<div class="mobile-sidebar"
+     id="mobile-sidebar">
+    <div class="mobile-sidebar--top">
+        <div class="shop-cart">
+            <a href="/koszyk/index.html"
+               class="d-inline-flex"
+               title="Przejdź do koszyka">
+                <img src="/images/layout/shop-cart.svg"
+                     alt="Koszyk">
+                <span class="badge"
+                      style="display: none">
+                    <span class="fs-20"
+                          id="shop-items">0</span>
+                </span>
+            </a>
+            <span class="countdown"></span>
+        </div>
+        <button type="button"
+                class="action-button mobile-close-btn"
+                id="mobile-close"
+                onclick="closeSidebar()">
+            <img src="/images/layout/close.svg"
+                 alt="Ikonka służąca do zamknięcia menu mobilnego">
+        </button>
+    </div>
+    <div class="mobile-sidebar--content">
+        <div class="mobile-sidebar--content__links uppercase">
+            <!--			<a href="index.html" class="fs-25 active">Zakup biletów</a>-->
+            <!--			<a href="sklep.html" class="fs-25">Sklep</a>-->
+            <!--			<a href="login.html" class="fs-25">Logowanie</a>-->
+            <!--			<a href="rejestracja-faktura.html" class="fs-25">Rejestracja</a>-->
+            <!--			<a href="koszyk.html" class="fs-25">Koszyk</a>-->
+            <a href="/" class="fs-25 " target="_self">Zakup biletów</a><a href="https://bilety.polin.pl/zwroty/index.html" class="fs-25 " target="_self">Zwrot biletów</a><a href="/bony/vouchery-serie.html" class="fs-25 " target="_self">Vouchery</a><a href="/towary/index.html?idg=0" class="fs-25 " target="_self">Sklep</a><a href="https://bilety.polin.pl/uzytkownik/login.html" class="fs-25 " target="_self">Logowanie</a><a href="https://bilety.polin.pl/uzytkownik/rejestracja.html" class="fs-25 " target="_self">Zarejestruj się</a>        </div>
+    </div>
+    <div class="mobile-lang-switch">
+
+        <a href="https://bilety.polin.pl/index.html?lang=pl" class="fs-22 active">PL</a><a href="https://bilety.polin.pl/index.html?lang=en" class="fs-22 ">EN</a>
+    </div>
+    <div class="mobile-sidebar--bottom uppercase">
+        <div class="sidebar-link">
+            <a href="/index/regulamin.html"
+               class="fs-25">Regulamin</a>
+            <a href="/index/deklaracja-dostepnosci.html"
+               class="fs-25">Deklaracje dostępności</a>
+        </div>
+        <div class="sidebar-socials">
+            <a href="https://twitter.com/polinmuseum">
+                <img src="/images/layout/TW.svg"
+                     alt="Polin - Twitter">
+            </a>
+            <a href="https://www.facebook.com/polinmuseum">
+                <img src="/images/layout/FB.svg"
+                     alt="Polin - Facebook">
+            </a>
+            <a href="https://www.youtube.com/user/mhzp2013">
+                <img src="/images/layout/YT.svg"
+                     alt="Polin - YouTube">
+            </a>
+        </div>
+    </div>
+</div>
+    <div class="content-wrapper">
+                    <ol class="sidebar">
+                    <li class="item active  mobile-hidden" aria-current="step">
+        <img src="/images/layout/chevron-primary-left.svg"
+             alt="Poprzedni krok"
+             class="mobile">
+        <div class="step fs-27">1</div>
+        <div class="description fs-20">Rodzaj rezerwacji</div>
+        <img src="/images/layout/chevron-primary-right.svg"
+             alt="Następny krok"
+             class="mobile">
+    </li>
+    <li class="item   mobile-hidden background" >
+        <img src="/images/layout/chevron-primary-left.svg"
+             alt="Poprzedni krok"
+             class="mobile">
+        <div class="step fs-27">2</div>
+        <div class="description fs-20">Wydarzenie</div>
+        <img src="/images/layout/chevron-primary-right.svg"
+             alt="Następny krok"
+             class="mobile">
+    </li>
+    <li class="item   mobile-hidden background" >
+        <img src="/images/layout/chevron-primary-left.svg"
+             alt="Poprzedni krok"
+             class="mobile">
+        <div class="step fs-27">3</div>
+        <div class="description fs-20">Bilety</div>
+        <img src="/images/layout/chevron-primary-right.svg"
+             alt="Następny krok"
+             class="mobile">
+    </li>
+    <li class="item   mobile-hidden background" >
+        <img src="/images/layout/chevron-primary-left.svg"
+             alt="Poprzedni krok"
+             class="mobile">
+        <div class="step fs-27">4</div>
+        <div class="description fs-20">Koszyk / Podsumowanie</div>
+        <img src="/images/layout/chevron-primary-right.svg"
+             alt="Następny krok"
+             class="mobile">
+    </li>
+            <li class="item active mobile-item"
+            aria-current="step">
+            <div class="item-wrapper">
+                <a href="/" class="invisible">
+                    <img src="/images/layout/chevron-primary-left.svg"
+                         alt="Poprzedni krok"
+                         title="Poprzedni krok"
+                         class="mobile">
+                </a>
+                <div class="item-content">
+                    <div class="step fs-27">1</div>
+                    <div class="description fs-20">Rodzaj rezerwacji</div>
+                </div>
+                <a href="https://bilety.polin.pl/rezerwacja/termin.html">
+                    <img src="/images/layout/chevron-primary-right.svg"
+                         alt="Następny krok"
+                         class="mobile">
+                </a>
+            </div>
+        </li>
+                    </ol>
+                    <div id="content" class="content ml-p">
+            <h1 class="fs-46 uppercase title">Wybierz rodzaj rezerwacji</h1>
+<h2 class="fs-28 subtitle fw-n">Wystawy indywidualnie i wydarzenia (do 9 osób) lub zwiedzanie wystawy w grupie (powyżej 9 osób)    .</h2>
+
+<div class="options">
+    <a href="https://bilety.polin.pl/rezerwacja/termin.html?d=3" class="option ">
+        <div class="title uppercase fs-70">Zwiedzanie indywidualne </div>
+        <div class="arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="157.536" height="74.439"
+                 viewBox="0 0 157.536 74.439">
+                <g id="ic_arrow_forward_48px" transform="translate(27.722 -8)">
+                    <path id="Path_571" data-name="Path 571"
+                          d="M92.595,8l-6.583,6.583L112,40.567H-27.722v9.3H112L86.012,75.856l6.583,6.583,37.22-37.22Z" />
+                </g>
+            </svg>
+        </div>
+        <div class="description fs-46">Do 9 osób</div>
+    </a>
+    <a href="https://bilety.polin.pl/rezerwacja/termin.html?d=4" class="option zmiana_dostepnosci">
+        <div class="title uppercase fs-70">Zwiedzanie grupowe</div>
+        <div class="arrow margin-arrow-right">
+            <svg xmlns="http://www.w3.org/2000/svg" width="157.536" height="74.439"
+                 viewBox="0 0 157.536 74.439">
+                <g id="ic_arrow_forward_48px" transform="translate(27.722 -8)">
+                    <path id="Path_571" data-name="Path 571"
+                          d="M92.595,8l-6.583,6.583L112,40.567H-27.722v9.3H112L86.012,75.856l6.583,6.583,37.22-37.22Z" />
+                </g>
+            </svg>
+        </div>
+        <div class="description fs-46">Powyżej 9 osób</div>
+    </a>
+    
+</div>
+
+<script>
+    var dostepnoscKoszyk = 3;
+    var translates = {
+        nie_mozna_laczyc_dostepnosci: "Nie można łączyć zakupu biletów grupowych i indywidualnych",
+        usun_zawartosc_koszyka: "Usuń zawartość koszyka i kontynuuj",
+        przejdz_do_koszyka: "Przejdź do koszyka aby dokończyć bieżącą transakcję",
+    };
+    var koszykUrl = "https://bilety.polin.pl/koszyk/index.html";
+    var koszykCzyPelny = 0;
+</script>
+            <div id="loading">
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border"
+                         role="status">
+                        <span class="sr-only"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="shop-popup"
+     id="shopPopup">
+    <div class="content-info-wrapper">
+        <div class="content-info">
+            <div class="close-btn"
+                 onclick="closeShopPopup()">
+                <img src="/images/layout/close.svg"
+                     alt="Ikonka służąca do zamknięcia okna dialogowego">
+            </div>
+            <div class="info fs-28">
+                <p>Produkt został dodany do koszyka.</p>
+            </div>
+            <div class="action">
+                <button onclick="tools.closeShopPopup()"
+                        class="uppercase fs-28">
+                    Kontynuuj zakupy                </button>
+                <button onclick='window.location.href = "https://bilety.polin.pl/koszyk/rezerwujacy-wybor.html"'
+                        class="uppercase fs-28">
+                    Przejdź do koszyka                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="type-info-popup"
+     id="infoPopup">
+    <div class="content-info-wrapper">
+        <div class="content-info">
+            <h1 class="header-info fs-46"></h1>
+            <div class="overflow">
+                <div class="info fs-28 infoPopupMsg">...</div>
+                <div class="action">
+                    <button class="uppercase fs-28 fw-b"
+                            onclick="tools.hideInfoPopup()">
+                        Zamknij                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="container">
+        <span class="fs-20 fw-b">Muzeum Historii Żydów Polskich POLIN</span>
+        <div class="content links">
+                                    <a href="https://bilety.polin.pl/index/regulamin.html" class="fs-20 fw-b" target="_self">
+                            Regulamin                        </a>
+                                                <a href="https://bilety.polin.pl/index/deklaracja-dostepnosci.html" class="fs-20 fw-b" target="_self">
+                            Deklaracja dostępności                        </a>
+                                                <a href="https://bilety.polin.pl/index/polityka-plikow-cookie.html" class="fs-20 fw-b" target="_self">
+                            Polityka plików cookie                        </a>
+                                                <a href="https://polin.pl/pl/newsletter" class="fs-20 fw-b" target="_blank">
+                            Newsletter                        </a>
+                                    <div class="links--socials">
+                <a href="https://x.com/polinmuseum" target="_blank">
+                    <img src="/images/layout/tw-black.svg" alt="Polin - platforma X">
+                </a>
+                <a href="https://www.facebook.com/polinmuseum" target="_blank">
+                    <img src="/images/layout/fb-black.svg" alt="Polin - Facebook">
+                </a>
+                <a href="https://www.youtube.com/user/mhzp2013" target="_blank">
+                    <img src="/images/layout/yt-black.svg" alt="Polin - YouTube">
+                </a>
+            </div>
+        </div>
+    </div>
+</footer>
+    <script>
+        var commonTranslates = {
+            _fb93c98a54b37566c0c932e9de07c723: "Do końca realizacji zakupu pozostało:",
+            zamknij: "Zamknij",
+            _38cf51ab2911096fab96dc137b36d5f2: "Kliknięte łącze zostanie otwarte w nowej zakładce",
+            _3635ecc752ace36f5a5f28e87c2db963: "Przejdź do nowej zakładki",
+            Od: "Od",
+            Do: "Do",
+            Dowolny: "Dowolny",
+            Zastosuj: "Zastosuj",
+            Anuluj: "Anuluj",
+            "niedz.": "niedz.",
+            "pon.": "pon.",
+            "wt.": "wt.",
+            "sr.": "śr.",
+            "czw.": "czw.",
+            "pt.": "pt.",
+            "sob.": "sob.",
+            styczen: "Styczeń",
+            luty: "Luty",
+            marzec: "Marzec",
+            kwiecien: "Kwiecień",
+            maj: "Maj",
+            czerwiec: "Czerwiec",
+            lipiec: "Lipiec",
+            sierpien: "Sierpień",
+            wrzesien: "Wrzesień",
+            pazdziernik: "Październik",
+            listopad: "Listopad",
+            grudzien: "Grudzień",
+        }
+        var cssJsVersion = 17    </script>
+</div>
+</body>
+</html>
