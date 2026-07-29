@@ -1,15 +1,30 @@
-import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
 import type { Event, EventVenue, Category } from '@goin/shared';
 
 export interface EventListInput {
   city?: string;
   venueId?: string;
+  /** Restrict to a set of venues — the newsletter's "my venues" selection.
+   *  Narrowing in SQL matters: `limit` cuts the *globally* earliest rows, so
+   *  filtering by venue afterwards can leave a caller with nothing. */
+  venueIds?: string[];
   /** Exact title, matched case-insensitively — same film at every cinema. */
   title?: string;
+  /** Upper bound on start time — the caller's window, e.g. a week ahead. */
+  until?: Date;
   /** Hard upper bound on rows. */
   limit?: number;
   now?: Date;
+}
+
+/** How busy a venue's calendar is right now — the raw input to the "dark
+ *  until…" notice on /my (GOI-13). */
+export interface VenueActivity {
+  venueId: string;
+  /** ISO start of the soonest upcoming event, or null when there is none. */
+  nextStartsAt: string | null;
+  upcomingCount: number;
 }
 
 export class EventStore {
@@ -19,7 +34,12 @@ export class EventStore {
     const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
 
     const conditions = [gte(schema.events.startsAt, now)];
+    if (input.until) conditions.push(lte(schema.events.startsAt, input.until));
     if (input.venueId) conditions.push(eq(schema.events.venueId, input.venueId));
+    // An explicitly empty list means "no venues", not "all of them" — matching
+    // it to nothing is what keeps a subscriber with no venues from being
+    // briefed on the whole database.
+    if (input.venueIds) conditions.push(inArray(schema.events.venueId, input.venueIds));
     if (input.city) conditions.push(eq(schema.venues.city, input.city));
     if (input.title) {
       conditions.push(sql`lower(${schema.events.title}) = lower(${input.title})`);
@@ -56,6 +76,43 @@ export class EventStore {
         },
         venueLanguage: r.venueLanguage,
       }),
+    );
+  }
+
+  /**
+   * Per-venue upcoming activity: when the next event is, and how many are
+   * listed. Venues with nothing upcoming are returned with a null date and a
+   * zero count rather than being omitted, so a caller can tell "dark" apart
+   * from "not asked about" (GOI-13).
+   */
+  async venueActivity(
+    venueIds: string[],
+    now: Date = new Date(),
+  ): Promise<VenueActivity[]> {
+    if (venueIds.length === 0) return [];
+    const rows = await getDb()
+      .select({
+        venueId: schema.events.venueId,
+        nextStartsAt: sql<Date | null>`min(${schema.events.startsAt})`,
+        upcomingCount: sql<number>`count(*)::int`,
+      })
+      .from(schema.events)
+      .where(and(inArray(schema.events.venueId, venueIds), gte(schema.events.startsAt, now)))
+      .groupBy(schema.events.venueId);
+
+    const found = new Map(
+      rows.map((r) => [
+        r.venueId,
+        {
+          venueId: r.venueId,
+          // drizzle hands back whatever pg's driver parsed; normalise to ISO.
+          nextStartsAt: r.nextStartsAt ? new Date(r.nextStartsAt).toISOString() : null,
+          upcomingCount: Number(r.upcomingCount),
+        },
+      ]),
+    );
+    return venueIds.map(
+      (id) => found.get(id) ?? { venueId: id, nextStartsAt: null, upcomingCount: 0 },
     );
   }
 

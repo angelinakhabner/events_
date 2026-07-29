@@ -89,15 +89,18 @@ describe('MyPage — newsletter end-to-end', () => {
     // instant the form appears (the race made CI flaky).
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
-    // Any hour of the day is offered, not a hand-picked handful.
-    const sendHour = within(section).getByLabelText(/time of day/i);
+    // Every hour and every minute is offered, not a hand-picked handful.
+    const sendHour = within(section).getByLabelText(/^hour$/i);
+    const sendMinute = within(section).getByLabelText(/^minute$/i);
     expect(within(sendHour).getAllByRole('option')).toHaveLength(24);
-    expect(within(sendHour).getByRole('option', { name: 'at 03:00' })).toBeInTheDocument();
-    expect(within(sendHour).getByRole('option', { name: 'at 23:00' })).toBeInTheDocument();
+    expect(within(sendMinute).getAllByRole('option')).toHaveLength(60);
+    expect(within(sendHour).getByRole('option', { name: '23' })).toBeInTheDocument();
 
-    // Daily at 03:00, after 22:00 — both only reachable with the full range.
+    // Daily at 03:45, after 22:00 — none of the three reachable without the
+    // full ranges.
     await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
     await user.selectOptions(sendHour, '3');
+    await user.selectOptions(sendMinute, '45');
     await user.selectOptions(within(section).getByLabelText(/only events after/i), '22');
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
@@ -108,6 +111,7 @@ describe('MyPage — newsletter end-to-end', () => {
       email: USER_EMAIL,
       frequency: 'daily',
       sendHour: 3,
+      sendMinute: 45,
       afterHour: 22,
       categoryRules: [],
       enabled: true,

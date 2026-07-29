@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { bucketEvents, filterEventsByDay, warsawDayKey } from './buckets';
+import {
+  bucketEvents,
+  filterEventsByDay,
+  filterEventsFromHour,
+  warsawDayKey,
+  warsawHour,
+} from './buckets';
 import type { Event } from '@goin/shared';
 
 function evt(startsAt: string, id = startsAt): Event {
@@ -89,5 +95,45 @@ describe('warsawDayKey', () => {
     // 2026-06-08T22:30:00Z is 00:30 next day in Warsaw (CEST +02:00)
     expect(warsawDayKey(new Date('2026-06-08T22:30:00.000Z'))).toBe('2026-06-09');
     expect(warsawDayKey(new Date('2026-06-08T21:30:00.000Z'))).toBe('2026-06-08');
+  });
+});
+
+describe('warsawHour', () => {
+  it('reads the hour in Warsaw, not UTC', () => {
+    // 17:00Z in June is 19:00 in Warsaw (CEST +02:00).
+    expect(warsawHour(new Date('2026-06-08T17:00:00.000Z'))).toBe(19);
+    // 17:00Z in January is 18:00 in Warsaw (CET +01:00) — DST is respected.
+    expect(warsawHour(new Date('2026-01-08T17:00:00.000Z'))).toBe(18);
+  });
+
+  it('reports midnight as 0, not 24', () => {
+    expect(warsawHour(new Date('2026-06-08T22:00:00.000Z'))).toBe(0);
+  });
+});
+
+describe('filterEventsFromHour', () => {
+  const events = [
+    evt('2026-06-08T08:00:00.000Z', 'ten'), // 10:00 Warsaw
+    evt('2026-06-08T14:00:00.000Z', 'four'), // 16:00 Warsaw
+    evt('2026-06-08T18:00:00.000Z', 'eight'), // 20:00 Warsaw
+  ];
+
+  it('returns everything when no cutoff is set', () => {
+    expect(filterEventsFromHour(events, null)).toEqual(events);
+  });
+
+  it('keeps events starting at or after the cutoff, in Warsaw time', () => {
+    expect(filterEventsFromHour(events, 16).map((e) => e.id)).toEqual(['four', 'eight']);
+    expect(filterEventsFromHour(events, 17).map((e) => e.id)).toEqual(['eight']);
+  });
+
+  it('is inclusive of the cutoff hour itself', () => {
+    // 16:00 Warsaw must survive an "after 16:00" filter — the chip reads as
+    // "from 16:00 onwards", so dropping a 16:00 screening would surprise.
+    expect(filterEventsFromHour(events, 16).map((e) => e.id)).toContain('four');
+  });
+
+  it('drops events with unparseable start times', () => {
+    expect(filterEventsFromHour([evt('not-a-date', 'bad')], 8)).toEqual([]);
   });
 });

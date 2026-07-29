@@ -30,6 +30,29 @@ export function toStartsAt(day: string, hour: string, timeZone: string): string 
   return `${day}T${hh}:${mm}:00${offset}`;
 }
 
+/**
+ * Wall-clock hour (0–23) of `date` in `timeZone`. `Date#getHours` answers in
+ * the *process* zone, which is UTC on Railway — so an 20:00 Warsaw screening
+ * reads as 18 and drops out of an "after 19:00" filter.
+ */
+export function hourInTz(date: Date, timeZone: string): number {
+  const h = new Intl.DateTimeFormat('en-GB', {
+    timeZone, hour: '2-digit', hour12: false,
+  }).format(date);
+  // Some ICU versions render midnight as "24" under h23; normalise it.
+  return Number(h) % 24;
+}
+
+const WEEKDAY_NUM: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+/** Weekday of `date` in `timeZone`, JS convention (0=Sun … 6=Sat). */
+export function weekdayInTz(date: Date, timeZone: string): number {
+  const wd = new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'short' }).format(date);
+  return WEEKDAY_NUM[wd] ?? date.getUTCDay();
+}
+
 /** YYYY-MM-DD rendering of `date` in `timeZone`. */
 export function ymdInTz(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {

@@ -1,4 +1,9 @@
 import type { Event, EventFilters, Venue } from '@goin/shared';
+import { hourInTz, weekdayInTz } from './scraper/venues/datetime.js';
+
+// Every seeded venue is Warsaw; used only when a caller passes no venue (e.g.
+// events.listDefault, which filters on the event's own category alone).
+const DEFAULT_TZ = 'Europe/Warsaw';
 
 export function filterEvents(
   events: Event[],
@@ -25,11 +30,14 @@ export function matchesEvent(
     if (f.countries?.length && !f.countries.map(lc).includes(lc(venue.country))) return false;
   }
 
+  // Day and hour are wall-clock questions ("Friday", "after 19:00"), so they
+  // must be asked in the venue's zone — not the server's, which is UTC.
   const start = new Date(event.startsAt);
-  if (f.daysOfWeek?.length && !f.daysOfWeek.includes(start.getDay())) return false;
+  const tz = venue?.timezone ?? DEFAULT_TZ;
+  if (f.daysOfWeek?.length && !f.daysOfWeek.includes(weekdayInTz(start, tz))) return false;
 
-  if (typeof f.startHour === 'number' && start.getHours() < f.startHour) return false;
-  if (typeof f.endHour === 'number' && start.getHours() > f.endHour) return false;
+  if (typeof f.startHour === 'number' && hourInTz(start, tz) < f.startHour) return false;
+  if (typeof f.endHour === 'number' && hourInTz(start, tz) > f.endHour) return false;
 
   if (typeof f.priceMax === 'number') {
     const price = event.priceMin ?? event.priceMax;

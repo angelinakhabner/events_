@@ -8,6 +8,7 @@ import { getDb, schema } from './db/index.js';
 import { scrapeVenue } from './services/scraper/runner.js';
 import { firecrawlScrape } from './services/scraper/fetcher.js';
 import { defaultAuthStore, loginWithVerifiedEmail } from './services/auth.js';
+import { newsletterConfigStatus, sendNewsletterBriefs } from './services/newsletter.js';
 import { sendEmail } from './services/email.js';
 import {
   exchangeGoogleCode,
@@ -138,6 +139,37 @@ export function createApp() {
       summary.find = { needle: find, matches: snippets.length, snippets };
     }
     return c.json(summary);
+  });
+
+  // GET /admin/newsletter?token=...  — why briefs are or aren't going out.
+  // Reports the config the sender needs (cron flag, DB, Resend key) and then
+  // dry-runs the sweep: for every enabled subscription, whether it's due, when
+  // its last slot was, and how many events its filters actually match. Sends
+  // nothing and records nothing.
+  app.get('/admin/newsletter', async (c) => {
+    if (!authorized(c.req.query('token'))) return c.json({ error: 'unauthorized' }, 401);
+    const config = newsletterConfigStatus();
+    const sweep = await sendNewsletterBriefs(undefined, new Date(), {
+      dryRun: true,
+      force: c.req.query('force') === '1',
+      only: c.req.query('user'),
+    });
+    return c.json({ config, now: new Date().toISOString(), ...sweep });
+  });
+
+  // POST-ish debug trigger (GET so it's browser-checkable, same as the scrape
+  // one): run a real sweep now instead of waiting for the next tick.
+  //   ?force=1           ignore the schedule — brief everyone who has events
+  //   ?user=<id|email>   restrict to one subscriber
+  // For "does Resend work at all", use /admin/email-test below — it isolates
+  // delivery from brief selection.
+  app.get('/admin/newsletter/send', async (c) => {
+    if (!authorized(c.req.query('token'))) return c.json({ error: 'unauthorized' }, 401);
+    const sweep = await sendNewsletterBriefs(undefined, new Date(), {
+      force: c.req.query('force') === '1',
+      only: c.req.query('user'),
+    });
+    return c.json({ config: newsletterConfigStatus(), ...sweep });
   });
 
   // GET /admin/email-test?to=<address>&token=...  — send one real email through
