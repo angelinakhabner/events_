@@ -202,7 +202,12 @@ jobs:
               await page.waitForTimeout(3000);
               const html = await page.content();
               const title = await page.title();
-              const blocked = /just a moment|attention required/i.test(title);
+              // Cloudflare localises the interstitial — the Polish pages came
+              // back as "Cierpliwości...", which an English-only check saved
+              // as if it were a real page.
+              const blocked =
+                /just a moment|cierpliwo|attention required|checking your browser|verifying you are human/i.test(title) ||
+                /challenge-platform|cf_chl_opt/.test(html);
               if (!blocked && html.length > 5000) {
                 writeFileSync(`${out}/backend/test/fixtures/${slug}.html`, html);
                 line = `OK    ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
