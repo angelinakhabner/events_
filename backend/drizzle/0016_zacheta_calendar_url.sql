@@ -1,0 +1,12 @@
+-- GOI-31: Zachęta was seeded at its English homepage, which carries no dated
+-- listing at all — the venue sat at 0 events regardless of how it was scraped.
+-- /pl/kalendarz is fully server-rendered and marks every dated row
+-- `li.list-item.is-event` with a `DD.MM (DOW) HH:MM` stamp, which the new
+-- deterministic scraper parses.
+--
+-- Migrate the row in place so the post-migration seed (ON CONFLICT (url) DO
+-- UPDATE) updates the same row instead of inserting a duplicate venue with a
+-- new UUID. The new string must match default-venues.ts exactly.
+--
+-- Idempotent: no-op on a fresh DB (0 rows match) and after the first run.
+UPDATE venues SET url = 'https://zacheta.art.pl/pl/kalendarz' WHERE url = 'https://zacheta.art.pl/en';
