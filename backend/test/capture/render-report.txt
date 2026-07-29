@@ -1,0 +1,3 @@
+OK    403  27442  https://teatrdramatyczny.pl/repertuar/  (Cierpliwości...)
+OK    403  27474  https://polin.pl/pl/kalendarium  (Cierpliwości...)
+OK    200  264831  https://polin.pl/en/kalendarium  (Calendar | Muzeum Historii Żydów Polskich POLIN w Warszawie)
