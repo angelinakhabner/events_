@@ -83,7 +83,9 @@ jobs:
         env:
           CAPTURE: ${{ github.event.inputs.capture }}
         run: |
-          mkdir -p backend/test/fixtures
+          mkdir -p backend/test/fixtures backend/test/capture
+          report=backend/test/capture/report.txt
+          : > "$report"
           IFS='|' read -ra URLS <<< "$CAPTURE"
           for url in "${URLS[@]}"; do
             url="$(echo "$url" | xargs)"
@@ -91,25 +93,43 @@ jobs:
             # Slug from host+path: "trwarszawa.pl-repertuar.html"
             slug=$(echo "$url" | sed -E 's#^https?://##; s#[?/,=&]+#-#g; s#-+$##; s#-+#-#g')
             out="backend/test/fixtures/${slug}.html"
-            code=$(curl -sSL -o "$out" -w '%{http_code}' \
-              -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
-              -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
-              -H 'Accept-Language: pl,en;q=0.8' \
-              -H 'Upgrade-Insecure-Requests: 1' \
-              -H 'Sec-Fetch-Dest: document' \
-              -H 'Sec-Fetch-Mode: navigate' \
-              -H 'Sec-Fetch-Site: none' \
-              -H 'Sec-Fetch-User: ?1' \
-              "$url" || echo '000')
-            echo "$url → $out (HTTP $code, $(wc -c < "$out" 2>/dev/null || echo 0) bytes)"
-            if [ "$code" != "200" ]; then rm -f "$out"; fi
+            # -k and --compressed added: some venue hosts serve a broken chain
+            # or refuse identity encoding. HTTP/1.1 forced as a second attempt,
+            # since a few WAFs reject curl's h2 fingerprint outright.
+            fetch() {
+              curl -sSL -o "$out" -w '%{http_code}' --compressed --max-time 45 "$@" \
+                -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
+                -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
+                -H 'Accept-Language: pl-PL,pl;q=0.9,en;q=0.8' \
+                -H 'Upgrade-Insecure-Requests: 1' \
+                -H 'Sec-Fetch-Dest: document' \
+                -H 'Sec-Fetch-Mode: navigate' \
+                -H 'Sec-Fetch-Site: none' \
+                -H 'Sec-Fetch-User: ?1' \
+                "$url" || echo '000'
+            }
+            code=$(fetch)
+            [ "$code" = "200" ] || code=$(fetch --http1.1)
+            bytes=$(wc -c < "$out" 2>/dev/null || echo 0)
+            echo "$code  $bytes  $url" | tee -a "$report"
+            if [ "$code" != "200" ]; then
+              # Keep a short snippet of the refusal so the block can be
+              # identified (Cloudflare challenge vs 404 vs geo-block) without
+              # needing the Actions log, which isn't reachable from the sandbox.
+              if [ -s "$out" ]; then
+                echo "    body: $(head -c 300 "$out" | tr -d '\000' | tr '\n' ' ')" >> "$report"
+              fi
+              rm -f "$out"
+            fi
           done
+          echo '--- done ---' >> "$report"
+          cat "$report"
 
       - name: Commit fixtures
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add backend/test/fixtures/
+          git add backend/test/fixtures/ backend/test/capture/
           if git diff --cached --quiet; then
             echo 'Fixtures unchanged — nothing to commit'
             exit 0
