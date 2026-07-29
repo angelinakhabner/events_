@@ -63,6 +63,18 @@ export const DEFAULT_VENUES: Venue[] = [
     ...PL,
   },
   {
+    id: 'teatr-studio',
+    name: 'Teatr Studio',
+    // Removed in migration 0004 because /spektakl/ was a play catalogue with
+    // no showtimes. The site has since been rebuilt: /repertuar is a month
+    // grid carrying a time per stage, which the deterministic scraper parses
+    // (GOI-39). 0004 is already applied, and on a fresh database it runs
+    // before the seed, so re-adding here is enough — no new migration.
+    url: 'https://teatrstudio.pl/repertuar',
+    category: 'theatre',
+    ...PL,
+  },
+  {
     id: 'teatr-dramatyczny',
     name: 'Teatr Dramatyczny',
     url: 'https://teatrdramatyczny.pl/repertuar/',

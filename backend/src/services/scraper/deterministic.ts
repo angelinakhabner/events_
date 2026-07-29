@@ -9,6 +9,7 @@ import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
 import { parsePowszechnyRepertoire, scrapePowszechny } from './venues/powszechny.js';
 import { parseZachetaCalendar, scrapeZacheta } from './venues/zacheta.js';
 import { parseMsnProgram, scrapeMsn } from './venues/msn.js';
+import { parseTeatrStudioMonth, scrapeTeatrStudio } from './venues/teatrstudio.js';
 import { DEFAULT_VENUES } from '../../data/default-venues.js';
 import { ymdInTz } from './venues/datetime.js';
 
@@ -105,6 +106,14 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     parse: (html, timezone) => parseMsnProgram(html, ymdInTz(new Date(), timezone), timezone),
     scrape: (args) => scrapeMsn(args),
     // Cards carry a title and at most a label; blurbs live on event pages.
+    enrich: true,
+  },
+  'teatr-studio': {
+    // htmlOverride carries one month's grid; the page's own pager states the
+    // month, so nothing needs to be inferred from "now".
+    parse: (html, timezone) => parseTeatrStudioMonth(html, null, timezone),
+    scrape: (args) => scrapeTeatrStudio(args),
+    // The grid gives title, stage and time; blurbs live on each play's page.
     enrich: true,
   },
   'teatr-powszechny': {
