@@ -29,6 +29,10 @@ on:
         description: Pipe-separated URLs to fetch and commit as test fixtures (filename derived from URL)
         default: ''
         required: false
+      render:
+        description: Pipe-separated URLs to load in headless Chromium and commit (for sites behind a JS challenge)
+        default: ''
+        required: false
   # Registration-only: a dispatch-only workflow on a non-default branch never
   # gets registered with the Actions API. The job below skips push events.
   push:
@@ -135,5 +139,89 @@ jobs:
             exit 0
           fi
           git commit -m "chore(fixtures): capture venue pages from live sites"
+          git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          git push
+
+  # Some venues (teatrdramatyczny.pl, polin.pl) sit behind a Cloudflare
+  # "Just a moment..." interstitial, which answers curl with 403 no matter what
+  # headers it sends — the challenge has to actually run. A real browser clears
+  # it, so this job renders the page instead of fetching it.
+  render:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.render != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright Chromium
+        run: npx --yes playwright@1.49.0 install --with-deps chromium
+
+      - name: Render pages
+        env:
+          RENDER: ${{ github.event.inputs.render }}
+        run: |
+          mkdir -p backend/test/fixtures backend/test/capture
+          cat > /tmp/render.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import { writeFileSync, appendFileSync } from 'node:fs';
+
+          const urls = process.env.RENDER.split('|').map((u) => u.trim()).filter(Boolean);
+          const report = 'backend/test/capture/render-report.txt';
+          const browser = await chromium.launch();
+          const ctx = await browser.newContext({
+            locale: 'pl-PL',
+            userAgent:
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          });
+
+          for (const url of urls) {
+            const slug = url.replace(/^https?:\/\//, '').replace(/[?/,=&]+/g, '-').replace(/-+$/, '');
+            const page = await ctx.newPage();
+            let line;
+            try {
+              const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              // The interstitial refreshes itself once solved, so wait for the
+              // title to stop saying "Just a moment" rather than a fixed delay.
+              await page
+                .waitForFunction(() => !/just a moment/i.test(document.title), { timeout: 45000 })
+                .catch(() => {});
+              await page.waitForTimeout(3000);
+              const html = await page.content();
+              const title = await page.title();
+              const blocked = /just a moment|attention required/i.test(title);
+              if (!blocked && html.length > 5000) {
+                writeFileSync(`backend/test/fixtures/${slug}.html`, html);
+                line = `OK    ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
+              } else {
+                line = `BLOCK ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
+              }
+            } catch (e) {
+              line = `ERR   -     -  ${url}  (${String(e).slice(0, 120)})`;
+            }
+            console.log(line);
+            appendFileSync(report, line + '\n');
+            await page.close();
+          }
+          await browser.close();
+          JS
+          node /tmp/render.mjs
+          cat backend/test/capture/render-report.txt
+
+      - name: Commit rendered pages
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add backend/test/fixtures/ backend/test/capture/
+          if git diff --cached --quiet; then
+            echo 'Nothing rendered — nothing to commit'
+            exit 0
+          fi
+          git commit -m "chore(fixtures): render venue pages via headless Chromium"
           git pull --rebase origin "${GITHUB_REF_NAME}" || true
           git push

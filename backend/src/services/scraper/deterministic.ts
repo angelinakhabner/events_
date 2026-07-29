@@ -8,6 +8,7 @@ import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
 import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
 import { parsePowszechnyRepertoire, scrapePowszechny } from './venues/powszechny.js';
 import { parseZachetaCalendar, scrapeZacheta } from './venues/zacheta.js';
+import { parseMsnProgram, scrapeMsn } from './venues/msn.js';
 import { DEFAULT_VENUES } from '../../data/default-venues.js';
 import { ymdInTz } from './venues/datetime.js';
 
@@ -96,6 +97,14 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     scrape: (args) => scrapeZacheta(args),
     // The calendar gives a title and a venue line but no blurb; descriptions
     // live on each event's own page.
+    enrich: true,
+  },
+  msn: {
+    // htmlOverride carries the programme page; day headings print no year, so
+    // anchor to now and let each heading's weekday confirm or correct it.
+    parse: (html, timezone) => parseMsnProgram(html, ymdInTz(new Date(), timezone), timezone),
+    scrape: (args) => scrapeMsn(args),
+    // Cards carry a title and at most a label; blurbs live on event pages.
     enrich: true,
   },
   'teatr-powszechny': {

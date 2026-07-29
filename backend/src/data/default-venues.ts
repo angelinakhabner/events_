@@ -84,8 +84,9 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'msn',
     name: 'Muzeum Sztuki Nowoczesnej',
-    // {{YYYY-MM-DD}} → today's date at fetch time (see resolveVenueUrl).
-    url: 'https://artmuseum.pl/en/program-1?from={{YYYY-MM-DD}}&type=all',
+    // The site was rebuilt on Next.js and the old query string now 404s; the
+    // programme is server-rendered at the bare path (GOI-31).
+    url: 'https://artmuseum.pl/en/program-1',
     category: 'exhibition',
     ...PL,
   },

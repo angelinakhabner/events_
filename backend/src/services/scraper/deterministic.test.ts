@@ -57,3 +57,18 @@ it('resolves Zachęta by id and by hostname', () => {
     getDeterministicScraper('0b8f8f6e-0000-4000-8000-000000000002', 'https://zacheta.art.pl/en'),
   ).toBe(DETERMINISTIC_SCRAPERS.zacheta);
 });
+
+// GOI-31: MSN joins the deterministic set. Its seeded URL lost its query
+// string in the site rebuild, so both forms must resolve.
+it('resolves MSN by id and by hostname', () => {
+  expect(getDeterministicScraper('msn')).toBe(DETERMINISTIC_SCRAPERS.msn);
+  expect(
+    getDeterministicScraper('0b8f8f6e-0000-4000-8000-000000000003', 'https://artmuseum.pl/en/program-1'),
+  ).toBe(DETERMINISTIC_SCRAPERS.msn);
+  expect(
+    getDeterministicScraper(
+      '0b8f8f6e-0000-4000-8000-000000000004',
+      'https://artmuseum.pl/en/program-1?from=2026-07-29&type=all',
+    ),
+  ).toBe(DETERMINISTIC_SCRAPERS.msn);
+});
