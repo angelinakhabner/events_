@@ -7,6 +7,7 @@ import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js
 import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
 import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
 import { parsePowszechnyRepertoire, scrapePowszechny } from './venues/powszechny.js';
+import { parseZachetaCalendar, scrapeZacheta } from './venues/zacheta.js';
 import { DEFAULT_VENUES } from '../../data/default-venues.js';
 import { ymdInTz } from './venues/datetime.js';
 
@@ -86,6 +87,16 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     // htmlOverride carries one month's agenda; anchor day numbers to now.
     parse: (html, timezone) => parseNowyTeatrMonth(html, ymdInTz(new Date(), timezone).slice(0, 7), timezone),
     scrape: (args) => scrapeNowyTeatr(args),
+  },
+  zacheta: {
+    // htmlOverride carries the calendar page; the rows print DD.MM with no
+    // year, so anchor the inference to now (the weekday in each row then
+    // confirms or corrects it).
+    parse: (html, timezone) => parseZachetaCalendar(html, ymdInTz(new Date(), timezone), timezone),
+    scrape: (args) => scrapeZacheta(args),
+    // The calendar gives a title and a venue line but no blurb; descriptions
+    // live on each event's own page.
+    enrich: true,
   },
   'teatr-powszechny': {
     // The listing page is an RSC shell; htmlOverride carries the

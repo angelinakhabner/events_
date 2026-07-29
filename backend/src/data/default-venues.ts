@@ -74,7 +74,10 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'zacheta',
     name: 'Zachęta — National Gallery of Art',
-    url: 'https://zacheta.art.pl/en',
+    // /en is the homepage and carries no dated listing. The calendar is
+    // server-rendered and marks each dated row `li.list-item.is-event`, which
+    // the deterministic scraper parses (GOI-31).
+    url: 'https://zacheta.art.pl/pl/kalendarz',
     category: 'exhibition',
     ...PL,
   },

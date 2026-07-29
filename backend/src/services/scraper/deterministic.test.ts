@@ -44,3 +44,16 @@ describe('getDeterministicScraper', () => {
     expect(getDeterministicScraper('some-uuid')).toBeUndefined();
   });
 });
+
+// GOI-31: Zachęta joins the deterministic set. Its seeded URL changed with the
+// scraper (0015), so both the id and the hostname must resolve.
+it('resolves Zachęta by id and by hostname', () => {
+  expect(getDeterministicScraper('zacheta')).toBe(DETERMINISTIC_SCRAPERS.zacheta);
+  expect(
+    getDeterministicScraper('0b8f8f6e-0000-4000-8000-000000000001', 'https://zacheta.art.pl/pl/kalendarz'),
+  ).toBe(DETERMINISTIC_SCRAPERS.zacheta);
+  // A row seeded before the migration still carries the old homepage URL.
+  expect(
+    getDeterministicScraper('0b8f8f6e-0000-4000-8000-000000000002', 'https://zacheta.art.pl/en'),
+  ).toBe(DETERMINISTIC_SCRAPERS.zacheta);
+});
