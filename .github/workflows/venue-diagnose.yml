@@ -159,20 +159,28 @@ jobs:
         with:
           node-version: '20'
 
+      # Install into a real package dir: `npx playwright install` fetches the
+      # browsers but leaves the module unresolvable for `import` from a script
+      # outside a project, which is how the first attempt failed.
       - name: Install Playwright Chromium
-        run: npx --yes playwright@1.49.0 install --with-deps chromium
+        run: |
+          mkdir -p /tmp/pw && cd /tmp/pw
+          npm init -y >/dev/null
+          npm i --no-audit --no-fund playwright@1.49.0
+          npx playwright install --with-deps chromium
 
       - name: Render pages
         env:
           RENDER: ${{ github.event.inputs.render }}
         run: |
           mkdir -p backend/test/fixtures backend/test/capture
-          cat > /tmp/render.mjs <<'JS'
+          cat > /tmp/pw/render.mjs <<'JS'
           import { chromium } from 'playwright';
           import { writeFileSync, appendFileSync } from 'node:fs';
 
           const urls = process.env.RENDER.split('|').map((u) => u.trim()).filter(Boolean);
-          const report = 'backend/test/capture/render-report.txt';
+          const out = process.env.OUT_DIR ?? '.';
+          const report = `${out}/backend/test/capture/render-report.txt`;
           const browser = await chromium.launch();
           const ctx = await browser.newContext({
             locale: 'pl-PL',
@@ -196,7 +204,7 @@ jobs:
               const title = await page.title();
               const blocked = /just a moment|attention required/i.test(title);
               if (!blocked && html.length > 5000) {
-                writeFileSync(`backend/test/fixtures/${slug}.html`, html);
+                writeFileSync(`${out}/backend/test/fixtures/${slug}.html`, html);
                 line = `OK    ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
               } else {
                 line = `BLOCK ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
@@ -210,7 +218,9 @@ jobs:
           }
           await browser.close();
           JS
-          node /tmp/render.mjs
+          # Run from the package dir so the import resolves; paths written by
+          # the script stay relative to the checkout via OUT_DIR.
+          OUT_DIR="$PWD" node /tmp/pw/render.mjs
           cat backend/test/capture/render-report.txt
 
       - name: Commit rendered pages
