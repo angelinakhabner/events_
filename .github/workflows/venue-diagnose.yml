@@ -205,9 +205,14 @@ jobs:
               // Cloudflare localises the interstitial — the Polish pages came
               // back as "Cierpliwości...", which an English-only check saved
               // as if it were a real page.
+              // The title is the reliable signal — a page that *passed* the
+              // challenge still embeds the challenge script, so testing the
+              // markup alone rejected good renders. Markers only count as a
+              // block on a page too small to be a real listing.
+              const interstitial =
+                /just a moment|cierpliwo|attention required|checking your browser|verifying you are human/i.test(title);
               const blocked =
-                /just a moment|cierpliwo|attention required|checking your browser|verifying you are human/i.test(title) ||
-                /challenge-platform|cf_chl_opt/.test(html);
+                interstitial || (html.length < 60000 && /challenge-platform|cf_chl_opt/.test(html));
               if (!blocked && html.length > 5000) {
                 writeFileSync(`${out}/backend/test/fixtures/${slug}.html`, html);
                 line = `OK    ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
