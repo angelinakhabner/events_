@@ -60,10 +60,38 @@ export function filterEventsByDay(events: Event[], dayKey: string | null): Event
   });
 }
 
+/**
+ * Keep only events starting at or after `fromHour` on their own Europe/Warsaw
+ * day; null means any time. Pairs with `filterEventsByDay` to express "today
+ * after 16:00" — the hour is a wall-clock cutoff, not an absolute instant, so
+ * on an unfiltered day it reads as "evenings only" across the whole week.
+ */
+export function filterEventsFromHour(events: Event[], fromHour: number | null): Event[] {
+  if (fromHour === null) return events;
+  return events.filter((e) => {
+    const t = Date.parse(e.startsAt);
+    return !Number.isNaN(t) && warsawHour(new Date(t)) >= fromHour;
+  });
+}
+
 /** YYYY-MM-DD in Europe/Warsaw. */
 export function warsawDayKey(d: Date): string {
   const fmt = new Intl.DateTimeFormat('en-CA', {
     timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
   });
   return fmt.format(d);
+}
+
+const hourFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ, hour: '2-digit', hour12: false,
+});
+
+/**
+ * Hour-of-day (0–23) in Europe/Warsaw. `Date#getHours` would answer in the
+ * viewer's own zone, which is wrong for anyone reading the Warsaw listing from
+ * elsewhere — and wrong on the server, which runs in UTC.
+ */
+export function warsawHour(d: Date): number {
+  // en-GB h23 renders midnight as "24" in some ICU versions; normalise it.
+  return Number(hourFmt.format(d)) % 24;
 }

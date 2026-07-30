@@ -9,7 +9,7 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
-import { festivalsAtVenues } from '@goin/shared';
+import { festivalsAtVenues, venueSchedule } from '@goin/shared';
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
@@ -242,6 +242,20 @@ const my = router({
     listAll: userProcedure.query(async ({ ctx }) => {
       await ctx.userVenues.ensureSeeded(ctx.user.id);
       return ctx.userVenues.listAll(ctx.user.id);
+    }),
+
+    /**
+     * Whether each followed venue is running, quiet or dark (GOI-13). Kept
+     * separate from `listAll` so the venue list still renders instantly if
+     * this aggregate is slow, and so it can be refetched on its own.
+     */
+    activity: userProcedure.query(async ({ ctx }) => {
+      if (!env.DATABASE_URL) return [];
+      await ctx.userVenues.ensureSeeded(ctx.user.id);
+      const venues = await ctx.userVenues.listAll(ctx.user.id);
+      const now = new Date();
+      const activity = await defaultEventStore.venueActivity(venues.map((v) => v.id), now);
+      return activity.map((a) => ({ venueId: a.venueId, ...venueSchedule(a, now) }));
     }),
 
     add: userProcedure

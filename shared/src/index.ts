@@ -227,3 +227,56 @@ export function festivalsAtVenues(festivals: Festival[], venueNames: string[]): 
     .map((f) => ({ ...f, yourVenues: festivalVenueMatches(f, venueNames) }))
     .filter((f) => f.yourVenues.length > 0);
 }
+
+// ─── Venue break / "dark until" notice (GOI-13) ──────────────────────────────
+
+/**
+ * What a venue's calendar is doing, derived from its upcoming events rather
+ * than from a field someone has to remember to set.
+ *
+ * - `running`  — something is on within the next few days; nothing to say.
+ * - `quiet`    — nothing until a known date. Theatres go dark between seasons
+ *                and museums close for a re-hang; without this the venue just
+ *                looks broken.
+ * - `dark`     — nothing upcoming at all. Either genuinely closed, or the
+ *                listing hasn't been published yet; the copy can't tell those
+ *                apart and shouldn't pretend to.
+ */
+export type VenueScheduleState = 'running' | 'quiet' | 'dark';
+
+export interface VenueSchedule {
+  state: VenueScheduleState;
+  /** ISO start of the next event, when there is one. */
+  nextStartsAt: string | null;
+  upcomingCount: number;
+  /** Whole days from now until the next event; null when nothing is upcoming. */
+  daysUntilNext: number | null;
+}
+
+/**
+ * Days of empty calendar before a venue is called quiet. A week is normal
+ * slack for a theatre that publishes weekly; a fortnight is a real break.
+ */
+export const VENUE_QUIET_AFTER_DAYS = 14;
+
+/** Classify a venue's calendar. Pure — the caller supplies "now". */
+export function venueSchedule(
+  activity: { nextStartsAt: string | null; upcomingCount: number },
+  now: Date = new Date(),
+  quietAfterDays: number = VENUE_QUIET_AFTER_DAYS,
+): VenueSchedule {
+  const { nextStartsAt, upcomingCount } = activity;
+  const t = nextStartsAt ? Date.parse(nextStartsAt) : NaN;
+  if (!nextStartsAt || Number.isNaN(t)) {
+    return { state: 'dark', nextStartsAt: null, upcomingCount, daysUntilNext: null };
+  }
+  // Round down: an event 13.9 days out is still "13 days", so the threshold
+  // means what it says rather than tripping half a day early.
+  const daysUntilNext = Math.floor((t - now.getTime()) / 86_400_000);
+  return {
+    state: daysUntilNext >= quietAfterDays ? 'quiet' : 'running',
+    nextStartsAt,
+    upcomingCount,
+    daysUntilNext,
+  };
+}

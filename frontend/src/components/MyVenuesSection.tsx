@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { Category } from '@goin/shared';
 import { trpc } from '../lib/trpc';
+import type { VenueSchedule } from '@goin/shared';
 import { AddVenueForm, CATEGORIES } from './AddVenueForm';
 import { ErrorState, SkeletonList } from './states';
+import { VenueScheduleNote } from './VenueScheduleNote';
 
 /**
  * /my → "My venues" (GOI-25): every venue you follow, segregated by folder,
@@ -17,7 +19,15 @@ export function MyVenuesSection() {
   const utils = trpc.useUtils();
   const venuesQuery = trpc.my.venues.listAll.useQuery();
   const listsQuery = trpc.my.lists.list.useQuery();
+  const activityQuery = trpc.my.venues.activity.useQuery();
   const [adding, setAdding] = useState(false);
+
+  // Keyed lookup so a row costs nothing; an absent entry simply renders no
+  // note, which is also what happens while the query is still in flight.
+  const scheduleByVenue = useMemo(
+    () => new Map((activityQuery.data ?? []).map((a) => [a.venueId, a as VenueSchedule])),
+    [activityQuery.data],
+  );
 
   const invalidate = () => {
     utils.my.venues.listAll.invalidate();
@@ -107,7 +117,13 @@ export function MyVenuesSection() {
           ) : (
             <ul className="divide-y divide-rule border-y border-rule list-none m-0 p-0">
               {folder.venues.map((v) => (
-                <VenueRow key={v.id} venue={v} folders={folders} onChanged={invalidate} />
+                <VenueRow
+                  key={v.id}
+                  venue={v}
+                  folders={folders}
+                  schedule={scheduleByVenue.get(v.id)}
+                  onChanged={invalidate}
+                />
               ))}
             </ul>
           )}
@@ -283,10 +299,12 @@ interface FolderOption {
 function VenueRow({
   venue,
   folders,
+  schedule,
   onChanged,
 }: {
   venue: VenueRowVenue;
   folders: FolderOption[];
+  schedule: VenueSchedule | undefined;
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -319,6 +337,7 @@ function VenueRow({
             <span className="ml-3 text-xs text-muted">
               {venue.windowDays ? `${venue.windowDays}d window` : 'default window'}
             </span>
+            <VenueScheduleNote schedule={schedule} />
           </div>
           <div className="flex shrink-0 items-baseline gap-4 text-sm">
             {folders.length > 1 ? (

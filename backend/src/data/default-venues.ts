@@ -63,6 +63,18 @@ export const DEFAULT_VENUES: Venue[] = [
     ...PL,
   },
   {
+    id: 'teatr-studio',
+    name: 'Teatr Studio',
+    // Removed in migration 0004 because /spektakl/ was a play catalogue with
+    // no showtimes. The site has since been rebuilt: /repertuar is a month
+    // grid carrying a time per stage, which the deterministic scraper parses
+    // (GOI-39). 0004 is already applied, and on a fresh database it runs
+    // before the seed, so re-adding here is enough — no new migration.
+    url: 'https://teatrstudio.pl/repertuar',
+    category: 'theatre',
+    ...PL,
+  },
+  {
     id: 'teatr-dramatyczny',
     name: 'Teatr Dramatyczny',
     url: 'https://teatrdramatyczny.pl/repertuar/',
@@ -74,15 +86,19 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'zacheta',
     name: 'Zachęta — National Gallery of Art',
-    url: 'https://zacheta.art.pl/en',
+    // /en is the homepage and carries no dated listing. The calendar is
+    // server-rendered and marks each dated row `li.list-item.is-event`, which
+    // the deterministic scraper parses (GOI-31).
+    url: 'https://zacheta.art.pl/pl/kalendarz',
     category: 'exhibition',
     ...PL,
   },
   {
     id: 'msn',
     name: 'Muzeum Sztuki Nowoczesnej',
-    // {{YYYY-MM-DD}} → today's date at fetch time (see resolveVenueUrl).
-    url: 'https://artmuseum.pl/en/program-1?from={{YYYY-MM-DD}}&type=all',
+    // The site was rebuilt on Next.js and the old query string now 404s; the
+    // programme is server-rendered at the bare path (GOI-31).
+    url: 'https://artmuseum.pl/en/program-1',
     category: 'exhibition',
     ...PL,
   },
@@ -139,8 +155,12 @@ export const DEFAULT_VENUES: Venue[] = [
     ...PL,
   },
   {
+    // The club spells itself "Jassmine"; the `jazzmine` id is a leftover from
+    // its old jazzmine.pl domain (migrated to jassmine.com in 0003) and is
+    // internal only — venue rows key on url, and the deterministic scraper
+    // resolves by hostname.
     id: 'jazzmine',
-    name: 'Jazzmine',
+    name: 'Jassmine',
     url: 'https://jassmine.com/koncerty/',
     category: 'music',
     ...PL,
