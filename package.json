@@ -13,7 +13,7 @@
     "dev": "npm-run-all --parallel dev:backend dev:frontend",
     "dev:backend": "npm --workspace backend run dev",
     "dev:frontend": "npm --workspace frontend run dev",
-    "build": "npm --workspace backend run build && npm --workspace frontend run build",
+    "build": "npm --workspace shared run build && npm --workspace backend run build && npm --workspace frontend run build",
     "typecheck": "npm --workspace backend run typecheck && npm --workspace frontend run typecheck",
     "lint": "eslint .",
     "test": "npm --workspace backend run test && npm --workspace frontend run test",
@@ -36,3 +36,4 @@
     "node": "20.x"
   }
 }
+
