@@ -2,10 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import type { Event } from '@goin/shared';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
-import { formatShortDate, formatTime } from '../lib/format';
+import { formatDayKey, formatShortDate, formatTime } from '../lib/format';
 
-/** Cap on venue rows in the panel, soonest venues first. */
-const MAX_SHOWN = 6;
+/** Days shown before "See more" — today and tomorrow, as in the mock. */
+const DAYS_SHOWN = 2;
+/** Ceiling once expanded, so a long-running title can't grow the panel forever. */
+const MAX_DAYS = 14;
+/** Per-day caps: enough for a full cinema programme, short of a wall of times. */
+const MAX_VENUES_PER_DAY = 8;
+const MAX_TIMES_PER_VENUE = 8;
 
 /** "Screenings" for films; plays/concerts/exhibitions get the generic word. */
 function panelLabel(event: Event): string {
@@ -14,16 +19,32 @@ function panelLabel(event: Event): string {
 
 /**
  * "Nearest screenings" (films) / "Nearest dates" (everything else) — opens a
- * dropdown with one row per venue showing that venue's soonest upcoming
- * showing of the same title, soonest venue first. Grouping by venue (rather
- * than listing showings chronologically) keeps every cinema visible even when
- * one of them screens the film many times a day.
+ * dropdown laid out day by day, one row per venue showing that venue's times
+ * for the day (GOI-46):
+ *
+ *     TODAY
+ *     KINOTEKA 14:00 18:00      KINO MURANÓW 18:00 21:00
+ *
+ * Grouping by day and then by venue is what makes the panel readable when the
+ * same title runs at four cinemas: you scan the day you're free, then pick a
+ * place and a time. Each time links to that specific showing.
  *
  * The panel (and its query) only mounts once opened, so cards don't fire a
  * request per event and the button stays safe to render outside a tRPC
  * provider in unit tests.
+ *
+ * `includeSelf` keeps the passed event in the list. Event cards leave it off —
+ * the showing you clicked from is already on screen right above the panel —
+ * while the want-to-go list turns it on, because there its rows carry no date
+ * or time of their own and the panel is the only place times appear.
  */
-export function ClosestScreenings({ event }: { event: Event }) {
+export function ClosestScreenings({
+  event,
+  includeSelf = false,
+}: {
+  event: Event;
+  includeSelf?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -52,51 +73,94 @@ export function ClosestScreenings({ event }: { event: Event }) {
       >
         {panelLabel(event)}
       </button>
-      {open ? <ScreeningsPanel event={event} /> : null}
+      {open ? <ScreeningsPanel event={event} includeSelf={includeSelf} /> : null}
     </div>
   );
 }
 
-interface VenueGroup {
+// ─── Grouping ────────────────────────────────────────────────────────────────
+
+/** One venue's showings within a single day, in time order. */
+export interface VenueTimes {
   key: string;
   venueName: string;
-  /** Soonest upcoming showing at this venue. */
-  next: Event;
-  /** Further showings at the same venue beyond `next`. */
-  moreCount: number;
+  showings: Event[];
 }
 
-/** One group per venue, keeping only each venue's soonest showing. Relies on
- *  the API's soonest-first ordering, so the first hit per venue is its next
- *  showing and groups come out sorted by that time. */
-function groupByVenue(screenings: Event[]): VenueGroup[] {
-  const groups: VenueGroup[] = [];
-  const byKey = new Map<string, VenueGroup>();
+/** One Warsaw day's worth of showings, grouped by venue. */
+export interface ScreeningDay {
+  /** Warsaw calendar day, `YYYY-MM-DD`. */
+  dayKey: string;
+  label: string;
+  venues: VenueTimes[];
+}
+
+/** The Warsaw day after `key`, by calendar arithmetic rather than "+24h" — an
+ *  hours-based step lands on the wrong day across a DST change. */
+function nextDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * Screenings → days → venues → times, preserving the API's soonest-first
+ * order at every level, so days come out chronological, venues within a day
+ * are ordered by their first showing, and times run up the day.
+ */
+export function groupByDay(screenings: Event[], now: Date = new Date()): ScreeningDay[] {
+  const today = formatDayKey(now.toISOString());
+  const tomorrow = nextDayKey(today);
+
+  const days: ScreeningDay[] = [];
+  const byDay = new Map<string, ScreeningDay>();
+  const byDayVenue = new Map<string, VenueTimes>();
+
   for (const s of screenings) {
-    const key = s.venue?.id ?? s.venueId;
-    const existing = byKey.get(key);
-    if (existing) {
-      existing.moreCount += 1;
-    } else {
-      const group = { key, venueName: s.venue?.name ?? 'Unknown venue', next: s, moreCount: 0 };
-      byKey.set(key, group);
-      groups.push(group);
+    const dayKey = formatDayKey(s.startsAt);
+    let day = byDay.get(dayKey);
+    if (!day) {
+      const label =
+        dayKey === today ? 'Today' :
+        dayKey === tomorrow ? 'Tomorrow' :
+        formatShortDate(s.startsAt);
+      day = { dayKey, label, venues: [] };
+      byDay.set(dayKey, day);
+      days.push(day);
     }
+
+    const venueKey = s.venue?.id ?? s.venueId;
+    const groupKey = `${dayKey}|${venueKey}`;
+    let group = byDayVenue.get(groupKey);
+    if (!group) {
+      group = { key: groupKey, venueName: s.venue?.name ?? 'Unknown venue', showings: [] };
+      byDayVenue.set(groupKey, group);
+      day.venues.push(group);
+    }
+    group.showings.push(s);
   }
-  return groups;
+
+  for (const day of days) {
+    day.venues = day.venues.slice(0, MAX_VENUES_PER_DAY);
+    for (const v of day.venues) v.showings = v.showings.slice(0, MAX_TIMES_PER_VENUE);
+  }
+  return days.slice(0, MAX_DAYS);
 }
 
-function ScreeningsPanel({ event }: { event: Event }) {
+// ─── Panel ───────────────────────────────────────────────────────────────────
+
+function ScreeningsPanel({ event, includeSelf }: { event: Event; includeSelf: boolean }) {
+  const [expanded, setExpanded] = useState(false);
   const screenings = trpc.events.screenings.useQuery(
     { title: event.title },
     // Fail fast: with react-query's default 3 retries a dead endpoint keeps
     // the panel stuck on "Looking for…" for ~10s before the error shows.
     { retry: 1 },
   );
-  // The showing you clicked from is already on screen — group the
-  // alternatives (including later showings at the same venue) per venue.
-  const others = (screenings.data ?? []).filter((s) => s.id !== event.id);
-  const venues = groupByVenue(others).slice(0, MAX_SHOWN);
+  const shown = includeSelf
+    ? (screenings.data ?? [])
+    : (screenings.data ?? []).filter((s) => s.id !== event.id);
+  const days = groupByDay(shown);
+  const visible = expanded ? days : days.slice(0, DAYS_SHOWN);
 
   const isFilm = event.category === 'cinema';
   let body;
@@ -104,35 +168,52 @@ function ScreeningsPanel({ event }: { event: Event }) {
     body = <div className="text-sm text-muted">{isFilm ? 'Looking for screenings…' : 'Looking for dates…'}</div>;
   } else if (screenings.isError) {
     body = <div className="text-sm text-muted">{isFilm ? 'Couldn’t load screenings.' : 'Couldn’t load dates.'}</div>;
-  } else if (venues.length === 0) {
-    body = <div className="text-sm text-muted">{isFilm ? 'No other upcoming screenings.' : 'No other upcoming dates.'}</div>;
+  } else if (days.length === 0) {
+    const nothing = includeSelf ? 'No upcoming' : 'No other upcoming';
+    body = <div className="text-sm text-muted">{nothing} {isFilm ? 'screenings.' : 'dates.'}</div>;
   } else {
     body = (
-      <ul className="divide-y divide-rule list-none m-0 p-0">
-        {venues.map((g) => (
-          <li key={g.key}>
-            <a
-              href={g.next.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-baseline gap-3 py-1.5 text-sm text-ink hover:text-accent no-underline"
-            >
-              <span className="shrink-0 tabular-nums text-muted">
-                {formatShortDate(g.next.startsAt)} · {formatTime(g.next.startsAt)}
-              </span>
-              <span className="truncate">{g.venueName}</span>
-              {g.moreCount > 0 ? (
-                <span className="shrink-0 text-xs text-muted">+{g.moreCount} more</span>
-              ) : null}
-            </a>
-          </li>
-        ))}
-      </ul>
+      <>
+        <ul className="list-none m-0 p-0">
+          {visible.map((day) => (
+            <li key={day.dayKey} className="mb-3 last:mb-0">
+              <div className="text-xs uppercase tracking-widest text-muted">{day.label}</div>
+              <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1">
+                {day.venues.map((v) => (
+                  <div key={v.key} className="flex items-baseline gap-2">
+                    <span className="text-xs uppercase tracking-wide text-muted">{v.venueName}</span>
+                    {v.showings.map((s) => (
+                      <a
+                        key={s.id}
+                        href={s.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="tabular-nums text-sm text-ink hover:text-accent no-underline"
+                      >
+                        {formatTime(s.startsAt)}
+                      </a>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {!expanded && days.length > DAYS_SHOWN ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="mt-1 text-xs uppercase tracking-widest text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+          >
+            See more
+          </button>
+        ) : null}
+      </>
     );
   }
 
   return (
-    <div className="absolute z-10 left-0 mt-2 bg-paper border border-rule p-3 min-w-[16rem] max-w-[22rem]">
+    <div className="absolute z-10 left-0 mt-2 bg-paper border border-rule p-3 min-w-[18rem] max-w-[32rem]">
       <div className="text-xs uppercase tracking-wide text-muted mb-2">{panelLabel(event)}</div>
       {body}
       {isFilm && isLoggedIn() ? <TrackFilmButton title={event.title} /> : null}
