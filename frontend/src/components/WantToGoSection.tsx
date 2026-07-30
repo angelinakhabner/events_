@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { Event, Film, WantToGoEntry } from '@goin/shared';
+import type { Film, WantToGoEntry } from '@goin/shared';
 import { trpc } from '../lib/trpc';
 import { formatShortDate } from '../lib/format';
-import { ClosestScreenings } from './ClosestScreenings';
+import { SavedTitleRow, filmAsEvent } from './SavedTitleRow';
+import { ShareListLink } from './ShareListLink';
 import { ErrorState, SkeletonList } from './states';
 
 /**
@@ -37,6 +38,8 @@ export function WantToGoSection() {
         Everything you saved, in one list. Add events with &ldquo;Want to go&rdquo; on any
         event, and films with &ldquo;Track film&rdquo; in the nearest-screenings panel.
       </p>
+
+      <ShareListLink />
 
       <div className="mb-4 flex gap-2" role="tablist" aria-label="Want to go lists">
         <TabButton active={tab === 'want'} onClick={() => setTab('want')}>
@@ -129,12 +132,6 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
-/** The word stamped in front of a saved title. Films read as "FILM" rather
- *  than "CINEMA", which names the venue and not the thing you saved. */
-function kindLabel(category: string): string {
-  return category === 'cinema' ? 'film' : category;
-}
-
 /**
  * A saved event, shown without a date or time (GOI-46). You save a *title*,
  * not the 18:00 showing you happened to be looking at, so the row carries the
@@ -154,64 +151,35 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
   const seen = entry.seenAt !== null;
 
   return (
-    <li className="flex flex-wrap items-baseline justify-between gap-4 py-3">
-      <div className="min-w-0">
-        <span className="text-xs uppercase tracking-widest text-muted">{kindLabel(event.category)}</span>
-        <a
-          href={event.sourceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="ml-3 text-ink hover:text-accent no-underline"
-        >
-          {event.title}
-        </a>
-      </div>
-      <div className="flex shrink-0 items-baseline gap-4 text-sm">
-        {seen ? null : <ClosestScreenings event={event} includeSelf />}
-        <button
-          type="button"
-          aria-pressed={seen}
-          onClick={() => setSeen.mutate({ eventId: event.id, seen: !seen })}
-          disabled={setSeen.isPending}
-          className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
-        >
-          {seen ? 'Not seen' : 'Seen it'}
-        </button>
-        <button
-          type="button"
-          aria-label={`Remove ${event.title}`}
-          onClick={() => remove.mutate({ eventId: event.id })}
-          disabled={remove.isPending}
-          className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
-        >
-          Remove
-        </button>
-      </div>
+    <li className="py-3">
+      <SavedTitleRow
+        event={event}
+        showScreenings={!seen}
+        actions={
+          <>
+            <button
+              type="button"
+              aria-pressed={seen}
+              onClick={() => setSeen.mutate({ eventId: event.id, seen: !seen })}
+              disabled={setSeen.isPending}
+              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+            >
+              {seen ? 'Not seen' : 'Seen it'}
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove ${event.title}`}
+              onClick={() => remove.mutate({ eventId: event.id })}
+              disabled={remove.isPending}
+              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+            >
+              Remove
+            </button>
+          </>
+        }
+      />
     </li>
   );
-}
-
-/** The screenings panel expects an Event; a film is only a title, so build the
- *  minimal stand-in it needs (title drives the query, category the wording). */
-function filmAsEvent(film: Film): Event {
-  return {
-    id: `film-${film.id}`,
-    venueId: '',
-    title: film.title,
-    description: null,
-    startsAt: '',
-    endsAt: null,
-    category: 'cinema',
-    language: null,
-    director: null,
-    cast: [],
-    durationMinutes: null,
-    priceMin: null,
-    priceMax: null,
-    sourceUrl: '',
-    sourceId: null,
-    scrapedAt: '',
-  };
 }
 
 function FilmRow({ film }: { film: Film }) {
@@ -224,49 +192,50 @@ function FilmRow({ film }: { film: Film }) {
 
   return (
     <li className="py-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-4">
-        <div className="min-w-0">
-          <span className="text-xs uppercase tracking-widest text-muted">film</span>
-          <span className="ml-3 text-ink">{film.title}</span>
-          {seen ? (
-            <span className="ml-3 text-sm text-muted">
+      <SavedTitleRow
+        event={filmAsEvent(film)}
+        showScreenings={!seen}
+        meta={
+          seen ? (
+            <>
               {film.watchedVenue ? `at ${film.watchedVenue}` : null}
               {film.watchedVenue && film.watchedAt ? ' · ' : null}
               {film.watchedAt ? formatShortDate(film.watchedAt) : null}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 items-baseline gap-4 text-sm">
-          {seen ? null : <ClosestScreenings event={filmAsEvent(film)} includeSelf />}
-          {seen ? (
+            </>
+          ) : null
+        }
+        actions={
+          <>
+            {seen ? (
+              <button
+                type="button"
+                onClick={() => moveToWant.mutate({ filmId: film.id })}
+                disabled={moveToWant.isPending}
+                className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+              >
+                Not seen
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setMarking((v) => !v)}
+                className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+              >
+                Seen it
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => moveToWant.mutate({ filmId: film.id })}
-              disabled={moveToWant.isPending}
+              aria-label={`Remove ${film.title}`}
+              onClick={() => remove.mutate({ filmId: film.id })}
+              disabled={remove.isPending}
               className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
             >
-              Not seen
+              Remove
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setMarking((v) => !v)}
-              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
-            >
-              Seen it
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label={`Remove ${film.title}`}
-            onClick={() => remove.mutate({ filmId: film.id })}
-            disabled={remove.isPending}
-            className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
-          >
-            Remove
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
       {film.comment ? <p className="mt-1 text-sm text-muted">{film.comment}</p> : null}
       {marking ? <MarkSeenForm film={film} onDone={() => setMarking(false)} /> : null}
     </li>
