@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Event, Film, WantToGoEntry } from '@goin/shared';
 import { trpc } from '../lib/trpc';
-import { formatShortDate, formatTime } from '../lib/format';
+import { formatShortDate } from '../lib/format';
 import { ClosestScreenings } from './ClosestScreenings';
 import { ErrorState, SkeletonList } from './states';
 
@@ -84,27 +84,31 @@ type Row =
   | { kind: 'event'; key: string; seen: boolean; sortKey: string; entry: WantToGoEntry }
   | { kind: 'film'; key: string; seen: boolean; sortKey: string; film: Film };
 
-/** Saved events and tracked films in one list, soonest first. Films have no
- *  date of their own, so they sort after the dated events. */
+/**
+ * Saved events and tracked films in one list, most recently saved first.
+ *
+ * Since GOI-46 neither kind carries a date of its own — a saved event stands
+ * for the title, not the showing you happened to click — so there is no start
+ * time left to sort on and both sort by when they were added.
+ */
 export function mergeRows(entries: WantToGoEntry[], films: Film[]): Row[] {
   const rows: Row[] = [
     ...entries.map((entry) => ({
       kind: 'event' as const,
       key: `event-${entry.event.id}`,
       seen: entry.seenAt !== null,
-      sortKey: entry.event.startsAt,
+      sortKey: entry.savedAt,
       entry,
     })),
     ...films.map((film) => ({
       kind: 'film' as const,
       key: `film-${film.id}`,
       seen: film.status === 'seen',
-      // '~' sorts after any ISO timestamp, parking undated films at the end.
-      sortKey: `~${film.createdAt}`,
+      sortKey: film.createdAt,
       film,
     })),
   ];
-  return rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return rows.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 }
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -125,6 +129,18 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
+/** The word stamped in front of a saved title. Films read as "FILM" rather
+ *  than "CINEMA", which names the venue and not the thing you saved. */
+function kindLabel(category: string): string {
+  return category === 'cinema' ? 'film' : category;
+}
+
+/**
+ * A saved event, shown without a date or time (GOI-46). You save a *title*,
+ * not the 18:00 showing you happened to be looking at, so the row carries the
+ * title alone and every date lives behind "Nearest screenings" — which stays
+ * useful after the showing you clicked has passed.
+ */
 function EventRow({ entry }: { entry: WantToGoEntry }) {
   const { event } = entry;
   const utils = trpc.useUtils();
@@ -140,9 +156,7 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
   return (
     <li className="flex flex-wrap items-baseline justify-between gap-4 py-3">
       <div className="min-w-0">
-        <span className="tabular-nums text-sm text-muted">
-          {formatShortDate(event.startsAt)} · {formatTime(event.startsAt)}
-        </span>
+        <span className="text-xs uppercase tracking-widest text-muted">{kindLabel(event.category)}</span>
         <a
           href={event.sourceUrl}
           target="_blank"
@@ -151,9 +165,9 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
         >
           {event.title}
         </a>
-        {event.venue ? <span className="ml-3 text-sm text-muted">{event.venue.name}</span> : null}
       </div>
       <div className="flex shrink-0 items-baseline gap-4 text-sm">
+        {seen ? null : <ClosestScreenings event={event} includeSelf />}
         <button
           type="button"
           aria-pressed={seen}
@@ -223,7 +237,7 @@ function FilmRow({ film }: { film: Film }) {
           ) : null}
         </div>
         <div className="flex shrink-0 items-baseline gap-4 text-sm">
-          {seen ? null : <ClosestScreenings event={filmAsEvent(film)} />}
+          {seen ? null : <ClosestScreenings event={filmAsEvent(film)} includeSelf />}
           {seen ? (
             <button
               type="button"
