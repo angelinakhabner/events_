@@ -29,6 +29,10 @@ on:
         description: Pipe-separated URLs to fetch and commit as test fixtures (filename derived from URL)
         default: ''
         required: false
+      render:
+        description: Pipe-separated URLs to load in headless Chromium and commit (for sites behind a JS challenge)
+        default: ''
+        required: false
   # Registration-only: a dispatch-only workflow on a non-default branch never
   # gets registered with the Actions API. The job below skips push events.
   push:
@@ -83,7 +87,9 @@ jobs:
         env:
           CAPTURE: ${{ github.event.inputs.capture }}
         run: |
-          mkdir -p backend/test/fixtures
+          mkdir -p backend/test/fixtures backend/test/capture
+          report=backend/test/capture/report.txt
+          : > "$report"
           IFS='|' read -ra URLS <<< "$CAPTURE"
           for url in "${URLS[@]}"; do
             url="$(echo "$url" | xargs)"
@@ -91,29 +97,151 @@ jobs:
             # Slug from host+path: "trwarszawa.pl-repertuar.html"
             slug=$(echo "$url" | sed -E 's#^https?://##; s#[?/,=&]+#-#g; s#-+$##; s#-+#-#g')
             out="backend/test/fixtures/${slug}.html"
-            code=$(curl -sSL -o "$out" -w '%{http_code}' \
-              -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
-              -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
-              -H 'Accept-Language: pl,en;q=0.8' \
-              -H 'Upgrade-Insecure-Requests: 1' \
-              -H 'Sec-Fetch-Dest: document' \
-              -H 'Sec-Fetch-Mode: navigate' \
-              -H 'Sec-Fetch-Site: none' \
-              -H 'Sec-Fetch-User: ?1' \
-              "$url" || echo '000')
-            echo "$url → $out (HTTP $code, $(wc -c < "$out" 2>/dev/null || echo 0) bytes)"
-            if [ "$code" != "200" ]; then rm -f "$out"; fi
+            # -k and --compressed added: some venue hosts serve a broken chain
+            # or refuse identity encoding. HTTP/1.1 forced as a second attempt,
+            # since a few WAFs reject curl's h2 fingerprint outright.
+            fetch() {
+              curl -sSL -o "$out" -w '%{http_code}' --compressed --max-time 45 "$@" \
+                -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
+                -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
+                -H 'Accept-Language: pl-PL,pl;q=0.9,en;q=0.8' \
+                -H 'Upgrade-Insecure-Requests: 1' \
+                -H 'Sec-Fetch-Dest: document' \
+                -H 'Sec-Fetch-Mode: navigate' \
+                -H 'Sec-Fetch-Site: none' \
+                -H 'Sec-Fetch-User: ?1' \
+                "$url" || echo '000'
+            }
+            code=$(fetch)
+            [ "$code" = "200" ] || code=$(fetch --http1.1)
+            bytes=$(wc -c < "$out" 2>/dev/null || echo 0)
+            echo "$code  $bytes  $url" | tee -a "$report"
+            if [ "$code" != "200" ]; then
+              # Keep a short snippet of the refusal so the block can be
+              # identified (Cloudflare challenge vs 404 vs geo-block) without
+              # needing the Actions log, which isn't reachable from the sandbox.
+              if [ -s "$out" ]; then
+                echo "    body: $(head -c 300 "$out" | tr -d '\000' | tr '\n' ' ')" >> "$report"
+              fi
+              rm -f "$out"
+            fi
           done
+          echo '--- done ---' >> "$report"
+          cat "$report"
 
       - name: Commit fixtures
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add backend/test/fixtures/
+          git add backend/test/fixtures/ backend/test/capture/
           if git diff --cached --quiet; then
             echo 'Fixtures unchanged — nothing to commit'
             exit 0
           fi
           git commit -m "chore(fixtures): capture venue pages from live sites"
+          git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          git push
+
+  # Some venues (teatrdramatyczny.pl, polin.pl) sit behind a Cloudflare
+  # "Just a moment..." interstitial, which answers curl with 403 no matter what
+  # headers it sends — the challenge has to actually run. A real browser clears
+  # it, so this job renders the page instead of fetching it.
+  render:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.render != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install into a real package dir: `npx playwright install` fetches the
+      # browsers but leaves the module unresolvable for `import` from a script
+      # outside a project, which is how the first attempt failed.
+      - name: Install Playwright Chromium
+        run: |
+          mkdir -p /tmp/pw && cd /tmp/pw
+          npm init -y >/dev/null
+          npm i --no-audit --no-fund playwright@1.49.0
+          npx playwright install --with-deps chromium
+
+      - name: Render pages
+        env:
+          RENDER: ${{ github.event.inputs.render }}
+        run: |
+          mkdir -p backend/test/fixtures backend/test/capture
+          cat > /tmp/pw/render.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import { writeFileSync, appendFileSync } from 'node:fs';
+
+          const urls = process.env.RENDER.split('|').map((u) => u.trim()).filter(Boolean);
+          const out = process.env.OUT_DIR ?? '.';
+          const report = `${out}/backend/test/capture/render-report.txt`;
+          const browser = await chromium.launch();
+          const ctx = await browser.newContext({
+            locale: 'pl-PL',
+            userAgent:
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          });
+
+          for (const url of urls) {
+            const slug = url.replace(/^https?:\/\//, '').replace(/[?/,=&]+/g, '-').replace(/-+$/, '');
+            const page = await ctx.newPage();
+            let line;
+            try {
+              const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              // The interstitial refreshes itself once solved, so wait for the
+              // title to stop saying "Just a moment" rather than a fixed delay.
+              await page
+                .waitForFunction(() => !/just a moment/i.test(document.title), { timeout: 45000 })
+                .catch(() => {});
+              await page.waitForTimeout(3000);
+              const html = await page.content();
+              const title = await page.title();
+              // Cloudflare localises the interstitial — the Polish pages came
+              // back as "Cierpliwości...", which an English-only check saved
+              // as if it were a real page.
+              // The title is the reliable signal — a page that *passed* the
+              // challenge still embeds the challenge script, so testing the
+              // markup alone rejected good renders. Markers only count as a
+              // block on a page too small to be a real listing.
+              const interstitial =
+                /just a moment|cierpliwo|attention required|checking your browser|verifying you are human/i.test(title);
+              const blocked =
+                interstitial || (html.length < 60000 && /challenge-platform|cf_chl_opt/.test(html));
+              if (!blocked && html.length > 5000) {
+                writeFileSync(`${out}/backend/test/fixtures/${slug}.html`, html);
+                line = `OK    ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
+              } else {
+                line = `BLOCK ${res?.status() ?? '?'}  ${html.length}  ${url}  (${title.slice(0, 60)})`;
+              }
+            } catch (e) {
+              line = `ERR   -     -  ${url}  (${String(e).slice(0, 120)})`;
+            }
+            console.log(line);
+            appendFileSync(report, line + '\n');
+            await page.close();
+          }
+          await browser.close();
+          JS
+          # Run from the package dir so the import resolves; paths written by
+          # the script stay relative to the checkout via OUT_DIR.
+          OUT_DIR="$PWD" node /tmp/pw/render.mjs
+          cat backend/test/capture/render-report.txt
+
+      - name: Commit rendered pages
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add backend/test/fixtures/ backend/test/capture/
+          if git diff --cached --quiet; then
+            echo 'Nothing rendered — nothing to commit'
+            exit 0
+          fi
+          git commit -m "chore(fixtures): render venue pages via headless Chromium"
           git pull --rebase origin "${GITHUB_REF_NAME}" || true
           git push

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { Category } from '@goin/shared';
 import { trpc } from '../lib/trpc';
-import { filterEventsByDay } from '../lib/buckets';
+import { filterEventsByDay, filterEventsFromHour } from '../lib/buckets';
 import { EventBuckets } from '../components/EventBuckets';
 import { CategoryBar } from '../components/CategoryBar';
 import { DayBar } from '../components/DayBar';
+import { TimeBar } from '../components/TimeBar';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 import { FestivalsSection } from '../components/FestivalsSection';
 
@@ -13,6 +14,7 @@ const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 export function HomePage() {
   const [category, setCategory] = useState<Category | null>(null);
   const [day, setDay] = useState<string | null>(null);
+  const [fromHour, setFromHour] = useState<number | null>(null);
 
   const eventsQuery = trpc.events.listDefault.useQuery(
     category ? { filters: { categories: [category] } } : undefined,
@@ -26,8 +28,8 @@ export function HomePage() {
   );
 
   const events = useMemo(
-    () => filterEventsByDay(eventsQuery.data ?? [], day),
-    [eventsQuery.data, day],
+    () => filterEventsFromHour(filterEventsByDay(eventsQuery.data ?? [], day), fromHour),
+    [eventsQuery.data, day, fromHour],
   );
 
   return (
@@ -41,6 +43,7 @@ export function HomePage() {
 
       <CategoryBar selected={category} onChange={setCategory} />
       <DayBar selected={day} onChange={setDay} />
+      <TimeBar selected={fromHour} onChange={setFromHour} />
 
       <div className="mt-6">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
@@ -53,17 +56,18 @@ export function HomePage() {
         {!eventsQuery.isLoading && !eventsQuery.error && events.length === 0 ? (
           <EmptyState
             title={
-              category || day
+              category || day || fromHour !== null
                 ? 'No upcoming events match your selection.'
                 : 'No upcoming events.'
             }
             action={
-              category || day
+              category || day || fromHour !== null
                 ? {
                     label: 'Show all',
                     onClick: () => {
                       setCategory(null);
                       setDay(null);
+                      setFromHour(null);
                     },
                   }
                 : undefined

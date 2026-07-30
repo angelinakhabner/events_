@@ -85,12 +85,102 @@ function tagCell(label: string, filled: boolean): string {
   );
 }
 
+/** One venue's showings of a title on a given day. */
+export interface ShowingVenue {
+  name: string;
+  /** ISO starts, ascending. */
+  startsAt: string[];
+}
+
+/**
+ * A title on one day, however many times and wherever it is on (GOI-36).
+ *
+ * A film playing three cinemas on Saturday used to occupy three cards, which
+ * pushed everything else out of a brief that only shows a handful of picks and
+ * read as if the newsletter were repeating itself.
+ */
+export interface Pick {
+  /** The event that supplies the title, category, link and description —
+   *  always the earliest, so the card links to the first showing. */
+  lead: Event;
+  /** Earliest start across every showing; the list sorts on this. */
+  startsAt: string;
+  venues: ShowingVenue[];
+  /** Total showings across all venues — 1 for an ordinary pick. */
+  count: number;
+}
+
+/**
+ * Collapse events into one Pick per title per Warsaw day.
+ *
+ * Grouped on the day *in Warsaw*, not the UTC date: a 00:30 show belongs to
+ * the evening a reader would call it, and a UTC key would split a single
+ * evening across two cards. Titles match case-insensitively and ignore
+ * surrounding whitespace, since they come from different venues' markup.
+ */
+export function groupPicks(events: Event[]): Pick[] {
+  const byKey = new Map<string, Event[]>();
+  for (const e of events) {
+    const key = `${fmtDayKey(e.startsAt)}|${e.title.trim().toLowerCase()}`;
+    const list = byKey.get(key);
+    if (list) list.push(e);
+    else byKey.set(key, [e]);
+  }
+
+  const picks: Pick[] = [];
+  for (const group of byKey.values()) {
+    const sorted = [...group].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    const lead = sorted[0]!;
+
+    // Venues in the order their first showing runs, so the card reads
+    // chronologically rather than alphabetically.
+    const byVenue = new Map<string, ShowingVenue>();
+    for (const e of sorted) {
+      const name = e.venue?.name ?? '';
+      const existing = byVenue.get(name);
+      if (existing) existing.startsAt.push(e.startsAt);
+      else byVenue.set(name, { name, startsAt: [e.startsAt] });
+    }
+
+    picks.push({
+      // A later showing may carry the description the earliest one lacks —
+      // enrichment is per-page, so coverage is uneven across venues.
+      lead: sorted.find((e) => e.description)
+        ? { ...lead, description: sorted.find((e) => e.description)!.description }
+        : lead,
+      startsAt: lead.startsAt,
+      venues: [...byVenue.values()],
+      count: sorted.length,
+    });
+  }
+
+  return picks.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+/** "18:00, 20:30" — every showing at one venue. */
+function timeList(startsAt: string[]): string {
+  return startsAt.map(fmtTime).join(', ');
+}
+
+/**
+ * The venue line. A single showing keeps the design's plain venue name; an
+ * aggregated pick appends each venue's times, so "one card" still answers
+ * "where and when" without opening anything.
+ */
+function venueLine(pick: Pick): string {
+  if (pick.count <= 1) return pick.venues[0]?.name ?? '';
+  return pick.venues
+    .map((v) => (v.name ? `${v.name} ${timeList(v.startsAt)}` : timeList(v.startsAt)))
+    .join(' · ');
+}
+
 /** Every pick is ruled underneath, and the first row in the list is ruled
  *  above too, so the list reads as a closed block — as in the design. */
-function pickRow(event: Event, top: boolean, detail: NewsletterDetail): string {
+function pickRow(pick: Pick, top: boolean, detail: NewsletterDetail): string {
+  const event = pick.lead;
   const border =
     (top ? `border-top:2px solid ${C.divider};` : '') + `border-bottom:2px solid ${C.divider};`;
-  const venue = event.venue?.name ?? '';
+  const venue = venueLine(pick);
   // "Wide" keeps the whole blurb; "short" trims it to the design's one line.
   const description = event.description
     ? (detail === 'full' ? oneLine(event.description, 600) : oneLine(event.description))
@@ -98,13 +188,21 @@ function pickRow(event: Event, top: boolean, detail: NewsletterDetail): string {
   const link = event.sourceUrl
     ? `<a href="${escapeHtml(event.sourceUrl)}" style="color:${C.ink};text-decoration:none">${escapeHtml(event.title)}</a>`
     : escapeHtml(event.title);
+  // The time column shows the first showing; the venue line below carries the
+  // rest. A bare "18:00" on a card listing five screenings would mislead, so
+  // an aggregated pick says how many there are.
+  const showings =
+    pick.count > 1
+      ? `<div style="font-family:${FONT};font-weight:400;font-size:11px;line-height:1.3;` +
+        `color:${C.meta};margin-top:4px">${pick.count} shows</div>`
+      : '';
 
   return (
     `<tr>` +
       // 76px time column + 18px gutter, matching the design's grid.
       `<td width="76" valign="top" style="${border}width:76px;padding:20px 18px 20px 0;` +
         `font-family:${FONT};font-weight:800;font-size:15px;line-height:1.2;color:${C.ink}">` +
-        escapeHtml(fmtTime(event.startsAt)) +
+        escapeHtml(fmtTime(pick.startsAt)) + showings +
       `</td>` +
       `<td valign="top" style="${border}padding:20px 0">` +
         tagCell(event.category, event.category === 'cinema') +
@@ -165,27 +263,29 @@ function picksTable(sections: BriefSection[]): string {
   const named = sections.length > 1 || (sections[0]?.category ?? '') !== '';
 
   for (const section of sections) {
-    const sorted = [...section.events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    // One card per title per day, however many venues and times it runs at
+    // (GOI-36). Already sorted by first showing.
+    const picks = groupPicks(section.events);
     let lastDay: string | null = null;
 
     if (named && section.category) {
       rows.push(sectionHeadingRow(section, rows.length === 0));
     }
-    for (const event of sorted) {
+    for (const pick of picks) {
       // Only whatever lands first carries the rule that opens the list.
       const opensList = rows.length === 0;
       // A section spanning more than a day gets its days labelled; a daily
       // one is a single day by definition.
       if (section.frequency !== 'daily') {
-        const day = fmtDayKey(event.startsAt);
+        const day = fmtDayKey(pick.startsAt);
         if (day !== lastDay) {
           lastDay = day;
-          rows.push(dayHeadingRow(event.startsAt, opensList));
-          rows.push(pickRow(event, false, section.detail));
+          rows.push(dayHeadingRow(pick.startsAt, opensList));
+          rows.push(pickRow(pick, false, section.detail));
           continue;
         }
       }
-      rows.push(pickRow(event, opensList, section.detail));
+      rows.push(pickRow(pick, opensList, section.detail));
     }
   }
 
@@ -326,6 +426,9 @@ export function renderBriefHtml(content: BriefContent): string {
   const sections = content.sections;
   const now = content.now ?? new Date();
   const events = sections.flatMap((s) => s.events);
+  // "N picks" counts cards, not showings: after GOI-36 a film at three
+  // cinemas is one pick, and claiming three would contradict the list below.
+  const pickCount = sections.reduce((n, s) => n + groupPicks(s.events).length, 0);
   const categories = sections.map((s) => s.category).filter(Boolean);
   // The widest cadence present sets the masthead's wording — a brief carrying
   // a monthly section is not "today in Warsaw". With nothing on, fall back to
@@ -355,7 +458,7 @@ export function renderBriefHtml(content: BriefContent): string {
       `<title>Goin</title>` +
     `</head>` +
     `<body style="margin:0;padding:0;background-color:${C.page};-webkit-text-size-adjust:100%">` +
-      preheader(`${events.length} pick${events.length === 1 ? '' : 's'} in Warsaw · ${date}`) +
+      preheader(`${pickCount} pick${pickCount === 1 ? '' : 's'} in Warsaw · ${date}`) +
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
         `style="border-collapse:collapse;background-color:${C.page}">` +
         `<tr><td align="center" style="padding:0">` +
@@ -365,7 +468,7 @@ export function renderBriefHtml(content: BriefContent): string {
               frequency,
               name: content.recipientName ?? null,
               categories,
-              count: events.length,
+              count: pickCount,
               date,
             }) +
             // 8px below the list, matching the design's gap before the

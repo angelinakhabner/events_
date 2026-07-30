@@ -328,3 +328,67 @@ describe('auth + /my flow (in-process)', () => {
     expect(after).toContain(parked.id);
   });
 });
+
+// GOI-13. The classification is unit-tested; what needs a real database is the
+// grouped aggregate behind it — min(starts_at) + count per venue, with venues
+// that have nothing upcoming still coming back rather than being dropped by
+// the GROUP BY.
+describe('my.venues.activity (GOI-13)', () => {
+  it.skipIf(!HAS_DB)('reports running, quiet and dark venues from the calendar', async () => {
+    const { getDb, schema } = await import('../../db/index.js');
+    const db = getDb();
+    const token = await login(`activity-${RUN}@example.com`);
+
+    const makeVenue = async (slug: string) => {
+      const [v] = await db
+        .insert(schema.venues)
+        .values({
+          name: `Activity ${slug} ${RUN}`,
+          url: `https://activity-${slug}-${RUN}.example/program`,
+          city: 'Warsaw',
+          country: 'PL',
+          category: 'theatre',
+        })
+        .returning();
+      await trpcCall('my.venues.add', {
+        body: {
+          name: `Activity ${slug}`,
+          url: v!.url,
+          category: 'theatre' as const,
+        },
+        token,
+      });
+      return v!.id;
+    };
+
+    const inDays = (n: number) => new Date(Date.now() + n * 86_400_000);
+    const running = await makeVenue('running');
+    const quiet = await makeVenue('quiet');
+    const dark = await makeVenue('dark');
+
+    await db.insert(schema.events).values([
+      // Two soon, so the count is not trivially 1 and min() has to pick.
+      { venueId: running, title: 'Tonight', startsAt: inDays(1), category: 'theatre', sourceUrl: 'https://x/1' },
+      { venueId: running, title: 'Next week', startsAt: inDays(6), category: 'theatre', sourceUrl: 'https://x/2' },
+      // Well past the fortnight threshold — the "dark until 19 Sep" case.
+      { venueId: quiet, title: 'New season', startsAt: inDays(60), category: 'theatre', sourceUrl: 'https://x/3' },
+      // In the past: must not count, and must not make the venue look running.
+      { venueId: dark, title: 'Last season', startsAt: inDays(-5), category: 'theatre', sourceUrl: 'https://x/4' },
+    ]);
+
+    const res = await trpcCall('my.venues.activity', { token });
+    expect(res.status).toBe(200);
+    const byId = new Map(
+      (res.data as Array<{ venueId: string; state: string; upcomingCount: number }>).map((a) => [a.venueId, a]),
+    );
+
+    expect(byId.get(running)).toMatchObject({ state: 'running', upcomingCount: 2 });
+    expect(byId.get(quiet)).toMatchObject({ state: 'quiet', upcomingCount: 1 });
+    // Present in the result despite matching no event rows at all.
+    expect(byId.get(dark)).toMatchObject({ state: 'dark', upcomingCount: 0, nextStartsAt: null });
+  });
+
+  it('is unauthorized without a session', async () => {
+    expect((await trpcCall('my.venues.activity')).status).toBe(401);
+  });
+});
