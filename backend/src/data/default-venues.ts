@@ -155,8 +155,12 @@ export const DEFAULT_VENUES: Venue[] = [
     ...PL,
   },
   {
+    // The club spells itself "Jassmine"; the `jazzmine` id is a leftover from
+    // its old jazzmine.pl domain (migrated to jassmine.com in 0003) and is
+    // internal only — venue rows key on url, and the deterministic scraper
+    // resolves by hostname.
     id: 'jazzmine',
-    name: 'Jazzmine',
+    name: 'Jassmine',
     url: 'https://jassmine.com/koncerty/',
     category: 'music',
     ...PL,
