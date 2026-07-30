@@ -23,7 +23,11 @@ export function EventBuckets({ events, venues, now }: Props) {
 }
 
 function BucketSection({ bucket, venues }: { bucket: Bucket; venues: Map<string, Venue> }) {
-  const showDate = bucket.key === 'tomorrow' || bucket.key === 'thisWeek';
+  // "Later" can be months out, so the row must carry its date like the
+  // multi-day buckets do — the heading names the day, but the rows shouldn't
+  // rely on the reader having read it.
+  const showDate =
+    bucket.key === 'tomorrow' || bucket.key === 'thisWeek' || bucket.key === 'later';
   const accent = bucket.key === 'soon';
   return (
     <section className="mb-12">
