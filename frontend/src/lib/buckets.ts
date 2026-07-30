@@ -1,6 +1,6 @@
 import type { Event } from '@goin/shared';
 
-export type BucketKey = 'soon' | 'today' | 'tomorrow' | 'thisWeek';
+export type BucketKey = 'soon' | 'today' | 'tomorrow' | 'thisWeek' | 'later';
 
 export interface Bucket {
   key: BucketKey;
@@ -12,7 +12,20 @@ const TZ = 'Europe/Warsaw';
 const SOON_WINDOW_MS = 30 * 60 * 1000;
 const WEEK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Group events into the four time buckets used on the Home page. */
+/**
+ * Group events into the time buckets the listing shows.
+ *
+ * The four near buckets span a week. Anything further out used to fall through
+ * every branch and vanish — and because the callers only render their empty
+ * state when the *filtered* list is empty, a venue whose next event was more
+ * than a week away rendered nothing at all: no rows, no explanation. Warsaw
+ * theatres go dark across July and August, so in summer that was every theatre.
+ *
+ * So a fifth bucket carries the nearest day beyond the week, and it appears
+ * *only* when the near buckets are all empty — when there is something on this
+ * week, the page stays a "what's on now" listing rather than trailing months of
+ * autumn programme behind it.
+ */
 export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] {
   const sorted = [...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const soonCutoff = now.getTime() + SOON_WINDOW_MS;
@@ -25,6 +38,7 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
     today: [],
     tomorrow: [],
     thisWeek: [],
+    later: [],
   };
 
   for (const e of sorted) {
@@ -39,16 +53,37 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
       buckets.tomorrow.push(e);
     } else if (t <= weekCutoff) {
       buckets.thisWeek.push(e);
+    } else {
+      buckets.later.push(e);
     }
   }
 
-  const ordered: Bucket[] = [
+  const nearAll: Bucket[] = [
     { key: 'soon', label: 'Starting soon', items: buckets.soon },
     { key: 'today', label: 'Later today', items: buckets.today },
     { key: 'tomorrow', label: 'Tomorrow', items: buckets.tomorrow },
     { key: 'thisWeek', label: 'This week', items: buckets.thisWeek },
   ];
-  return ordered.filter((b) => b.items.length > 0);
+  const near = nearAll.filter((b) => b.items.length > 0);
+  if (near.length > 0 || buckets.later.length === 0) return near;
+
+  // Nothing this week, but something later: show that day and say when it is.
+  // Only the nearest day, not the whole tail — the question being answered is
+  // "when does this start again?", not "what is the autumn programme?".
+  const nearestDay = warsawDayKey(new Date(Date.parse(buckets.later[0]!.startsAt)));
+  const items = buckets.later.filter(
+    (e) => warsawDayKey(new Date(Date.parse(e.startsAt))) === nearestDay,
+  );
+  return [{ key: 'later', label: `Nearest screening on ${nearestDayLabel(items[0]!.startsAt)}`, items }];
+}
+
+const nearestDayFmt = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ,
+});
+
+/** "Fri 12 Sep" — the date named in the "Nearest screening on …" heading. */
+function nearestDayLabel(iso: string): string {
+  return nearestDayFmt.format(new Date(iso));
 }
 
 /** Keep only events that start on the given Europe/Warsaw day; null means any day. */
