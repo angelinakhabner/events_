@@ -137,3 +137,65 @@ describe('filterEventsFromHour', () => {
     expect(filterEventsFromHour([evt('not-a-date', 'bad')], 8)).toEqual([]);
   });
 });
+
+// Regression: events beyond the week used to fall through every branch and
+// vanish. Because the pages only render their empty state when the *filtered*
+// list is empty, a venue whose next event was further out rendered nothing at
+// all — no rows, no explanation. Every Warsaw theatre looked broken in summer.
+describe('bucketEvents — nothing this week', () => {
+  const now = new Date('2026-07-29T10:00:00.000Z');
+
+  it('names the nearest day instead of rendering nothing', () => {
+    const autumn = evt('2026-09-12T18:00:00+02:00', 'sep');
+    const buckets = bucketEvents([autumn], now);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.key).toBe('later');
+    // Matched loosely on purpose: the exact rendering is the runtime's ICU
+    // ("Sat 12 Sept" under Node, "Sat, 12 Sept" in Chromium), and pinning it
+    // makes the test assert the environment rather than the behaviour.
+    expect(buckets[0]!.label).toMatch(/^Nearest screening on \w{3},? 12 Sept/);
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['sep']);
+  });
+
+  it('shows every event on that nearest day, but not the days after it', () => {
+    // "When does this start again?" — not "what is the autumn programme?".
+    const buckets = bucketEvents(
+      [
+        evt('2026-09-12T18:00:00+02:00', 'a'),
+        evt('2026-09-12T20:30:00+02:00', 'b'),
+        evt('2026-09-13T18:00:00+02:00', 'next-day'),
+        evt('2026-10-01T18:00:00+02:00', 'october'),
+      ],
+      now,
+    );
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['a', 'b']);
+  });
+
+  it('picks the nearest day in Warsaw terms', () => {
+    // 22:30Z on the 11th is already 00:30 on the 12th in Warsaw, so both of
+    // these belong to the same nearest day.
+    const buckets = bucketEvents(
+      [evt('2026-09-11T22:30:00.000Z', 'past-midnight'), evt('2026-09-12T16:00:00.000Z', 'evening')],
+      now,
+    );
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['past-midnight', 'evening']);
+    expect(buckets[0]!.label).toMatch(/^Nearest screening on \w{3},? 12 Sept/);
+  });
+
+  it('stays out of the way when the week has something', () => {
+    // The listing is "what's on now"; a single show this week must not drag
+    // the whole autumn programme in behind it.
+    const buckets = bucketEvents(
+      [evt('2026-07-31T18:00:00+02:00', 'this-week'), evt('2026-09-12T18:00:00+02:00', 'autumn')],
+      now,
+    );
+    expect(buckets.map((b) => b.key)).toEqual(['thisWeek']);
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['this-week']);
+  });
+
+  it('returns nothing at all when there is genuinely nothing upcoming', () => {
+    expect(bucketEvents([], now)).toEqual([]);
+    expect(bucketEvents([evt('2026-07-01T18:00:00+02:00', 'past')], now)).toEqual([]);
+  });
+});
