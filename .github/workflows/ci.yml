@@ -59,3 +59,17 @@ jobs:
 
       - name: Unit + integration tests
         run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Compiled start chain smoke test
+        # Every other job here reaches @goin/shared through tsconfig `paths` or
+        # a bundler alias, so a broken package entrypoint stays invisible until
+        # Railway runs the compiled output. Replay the production chain
+        # (migrate → seed → load the server graph) from dist/ on plain node so
+        # a regression like ERR_UNKNOWN_FILE_EXTENSION fails here, not on deploy.
+        run: |
+          node backend/dist/backend/src/db/migrate.js
+          node backend/dist/backend/src/scripts/seed.js
+          node --input-type=module -e "await import('./backend/dist/backend/src/app.js')"
