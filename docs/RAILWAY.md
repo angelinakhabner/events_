@@ -1,4 +1,4 @@
-# Deploying the Goin backend to Railway
+# Deploying the AFISZ backend to Railway
 
 This walks you from "nothing on Railway" to "GitHub Pages frontend can read and write folders through the deployed backend."
 

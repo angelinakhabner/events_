@@ -1,4 +1,4 @@
-import type { Event, Venue } from '@goin/shared';
+import type { Event, Venue } from '@afisz/shared';
 import { EventCard } from './EventCard';
 import { formatDayKey, formatDayLabel } from '../lib/format';
 
@@ -13,13 +13,14 @@ export function EventList({ events, venues }: Props) {
     <div>
       {groups.map(({ key, label, items }) => (
         <section key={key} className="mb-12">
-          <div className="flex items-baseline justify-between border-b border-rule pb-3 mb-2">
-            <h2 className="font-serif text-2xl">{label}</h2>
-            <span className="tag">{items.length} event{items.length === 1 ? '' : 's'}</span>
+          <div className="flex items-baseline justify-between gap-4 pb-2">
+            <h2 className="font-display text-[28px] md:text-[34px] m-0">{label}</h2>
+            <span className="tag shrink-0">{items.length} event{items.length === 1 ? '' : 's'}</span>
           </div>
-          <ul className="divide-y divide-rule">
+          <div className="rule-ink" />
+          <ul className="list-none m-0 p-0">
             {items.map((e) => (
-              <li key={e.id}>
+              <li key={e.id} className="rule-soft">
                 <EventCard event={e} venue={venues.get(e.venueId)} />
               </li>
             ))}

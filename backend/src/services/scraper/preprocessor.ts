@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 
 export interface PreprocessResult {
   cleaned: string;

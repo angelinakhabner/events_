@@ -52,12 +52,12 @@ export function AuthCallbackPage() {
   }, []);
 
   if (!token && !oauthSession && !oauthError) {
-    return <p className="text-muted">Missing login token — use the link from your email.</p>;
+    return <p className="page-x pt-12 text-muted">Missing login token — use the link from your email.</p>;
   }
   if (error) {
     return (
-      <div>
-        <p className="text-muted">{error}</p>
+      <div className="page-x pt-12">
+        <p className="font-display text-2xl text-accent">{error}</p>
         <p className="mt-2 text-sm text-muted">
           {oauthError
             ? 'You can try again from the /my page.'
@@ -66,5 +66,5 @@ export function AuthCallbackPage() {
       </div>
     );
   }
-  return <p className="text-muted">Logging you in…</p>;
+  return <p className="page-x pt-12 text-muted">Logging you in…</p>;
 }

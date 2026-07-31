@@ -1,4 +1,4 @@
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 export type BucketKey = 'soon' | 'today' | 'tomorrow' | 'thisWeek' | 'later';
 

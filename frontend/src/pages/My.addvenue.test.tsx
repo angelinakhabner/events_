@@ -59,7 +59,7 @@ describe('AddVenueForm — guided flow', () => {
     expect(url.compareDocumentPosition(cinemaTag) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('checking a scrapable URL turns green and suggests the venue name from the page', async () => {
+  it('checking a scrapable URL confirms it and suggests the venue name from the page', async () => {
     render(<AddVenueForm onSubmit={vi.fn()} submitting={false} error={null} />);
 
     fireEvent.change(screen.getByLabelText(/venue page url/i), {
@@ -70,11 +70,11 @@ describe('AddVenueForm — guided flow', () => {
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent(/✓ scrapable/i);
     expect(status).toHaveTextContent(/12 upcoming events/i);
-    expect(status).toHaveClass('text-green-700');
+    expect(status).toHaveClass('text-ink');
     expect(screen.getByLabelText(/name/i)).toHaveValue('Kino Pałacowe');
   });
 
-  it('shows the reason in red when the URL cannot be scraped', async () => {
+  it('shows the reason in the accent colour when the URL cannot be scraped', async () => {
     probeResult = {
       ok: false, method: null, eventCount: null, title: null, language: null,
       reason: "Couldn't fetch the page: HTTP 403",
@@ -88,7 +88,7 @@ describe('AddVenueForm — guided flow', () => {
 
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent(/HTTP 403/);
-    expect(status).toHaveClass('text-red-700');
+    expect(status).toHaveClass('text-accent');
   });
 
   it('submits language + url + tag (name falls back to the hostname) and requires a tag', () => {

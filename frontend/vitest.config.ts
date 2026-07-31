@@ -12,7 +12,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@goin/shared': path.resolve(__dirname, '../shared/src/index.ts'),
+      '@afisz/shared': path.resolve(__dirname, '../shared/src/index.ts'),
     },
   },
 });

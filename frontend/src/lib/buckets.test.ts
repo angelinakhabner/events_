@@ -6,7 +6,7 @@ import {
   warsawDayKey,
   warsawHour,
 } from './buckets';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 function evt(startsAt: string, id = startsAt): Event {
   return {

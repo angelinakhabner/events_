@@ -1,4 +1,4 @@
-import type { Event, EventFilters, Venue } from '@goin/shared';
+import type { Event, EventFilters, Venue } from '@afisz/shared';
 import { hourInTz, weekdayInTz } from './scraper/venues/datetime.js';
 
 // Every seeded venue is Warsaw; used only when a caller passes no venue (e.g.

@@ -9,7 +9,7 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
-import { venueSchedule } from '@goin/shared';
+import { venueSchedule } from '@afisz/shared';
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EventActions } from './EventActions';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 const event: Event = {
   id: 'e1', venueId: 'v',

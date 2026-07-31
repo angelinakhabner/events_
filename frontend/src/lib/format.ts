@@ -1,4 +1,4 @@
-import type { Category, EventFilters } from '@goin/shared';
+import type { Category, EventFilters } from '@afisz/shared';
 
 const TZ = 'Europe/Warsaw';
 const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ });

@@ -1,4 +1,4 @@
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 export type ShareOutcome = 'shared' | 'copied' | 'cancelled' | 'failed';
 

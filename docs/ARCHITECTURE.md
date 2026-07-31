@@ -1,6 +1,6 @@
 # Architecture
 
-Goin is a customisable cultural-events aggregator: browse a curated default set
+AFISZ is a customisable cultural-events aggregator: browse a curated default set
 of events, add your own venue URLs, and group venues into folders with
 persistent filters. This document describes how the pieces fit together **as
 built today**, and flags the parts that are scaffolded but not yet wired.

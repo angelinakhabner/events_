@@ -1,9 +1,9 @@
 {
-  "name": "goin",
+  "name": "afisz",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Goin — customisable cultural events aggregator",
+  "description": "AFISZ — customisable cultural events aggregator",
   "workspaces": [
     "backend",
     "frontend",
