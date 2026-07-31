@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { WantToGoSection, mergeRows } from './WantToGoSection';
-import type { Event, Film, WantToGoEntry } from '@goin/shared';
+import type { Event, Film, WantToGoEntry } from '@afisz/shared';
 
 const entriesMock = vi.fn();
 const filmsMock = vi.fn();

@@ -194,8 +194,8 @@ export function createApp() {
     try {
       const { id } = await sendEmail({
         to,
-        subject: 'Goin deliverability check',
-        html: '<p>This is a deliverability check from Goin. Nothing to do — if you can read it, sign-in emails reach this address.</p>',
+        subject: 'AFISZ deliverability check',
+        html: '<p>This is a deliverability check from AFISZ. Nothing to do — if you can read it, sign-in emails reach this address.</p>',
       });
       return c.json({ ok: true, to, from: env.RESEND_FROM_EMAIL, id });
     } catch (e) {

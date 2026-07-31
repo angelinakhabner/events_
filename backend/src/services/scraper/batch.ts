@@ -1,4 +1,4 @@
-import type { ScrapeRun } from '@goin/shared';
+import type { ScrapeRun } from '@afisz/shared';
 import { scrapeVenue, type ScrapeOptions } from './runner.js';
 import type { BatchExtractorClient, ExtractorClient } from './extractor.js';
 

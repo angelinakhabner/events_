@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 import { downloadIcs, googleCalendarUrl } from '../lib/calendar';
 import { formatShortDate, formatTime } from '../lib/format';
 
@@ -53,24 +53,20 @@ export function AddToCalendar({
         aria-label={icon ? addToCalendarLabel(event) : undefined}
         title={icon ? addToCalendarLabel(event) : undefined}
         onClick={() => setOpen((v) => !v)}
-        className={
-          icon
-            ? 'text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 leading-none'
-            : 'text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0'
-        }
+        className={icon ? 'act act-sm leading-none' : 'act act-sm md:text-[13px]'}
       >
         {icon ? <CalendarPlusIcon /> : 'Add to calendar'}
       </button>
       {open ? (
         // z-20 clears the nearest-screenings panel (z-10) this can open inside.
-        <div role="menu" className="absolute z-20 left-0 top-full mt-2 bg-paper border border-rule p-2 min-w-[12rem]">
+        <div role="menu" className="absolute z-20 left-0 top-full mt-2 bg-panel border-2 border-ink p-2 min-w-[12rem]">
           <a
             role="menuitem"
             href={googleCalendarUrl(event)}
             target="_blank"
             rel="noreferrer"
             onClick={() => setOpen(false)}
-            className="block px-2 py-1 text-sm text-ink hover:text-accent no-underline"
+            className="block px-2 py-1.5 text-sm text-ink hover:text-accent"
           >
             Google Calendar
           </a>
@@ -78,7 +74,7 @@ export function AddToCalendar({
             role="menuitem"
             type="button"
             onClick={() => { downloadIcs(event); setOpen(false); }}
-            className="block w-full text-left px-2 py-1 text-sm text-ink hover:text-accent bg-transparent border-0 cursor-pointer"
+            className="block w-full text-left px-2 py-1.5 text-sm text-ink hover:text-accent bg-transparent border-0 cursor-pointer"
           >
             Apple / Outlook (.ics)
           </button>

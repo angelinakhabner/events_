@@ -9,7 +9,7 @@ export interface Fetcher {
 }
 
 const defaultFetcher: Fetcher = (url) => fetch(url, {
-  headers: { 'User-Agent': 'GoinBot/0.1 (+https://goin.app)' },
+  headers: { 'User-Agent': 'AfiszBot/0.1 (+https://goin.app)' },
 });
 
 export async function scrapeVenue(url: string, fetcher: Fetcher = defaultFetcher): Promise<ScrapeResult> {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Category } from '@goin/shared';
+import type { Category } from '@afisz/shared';
 import { categoryLabel } from '../lib/format';
 import { trpc } from '../lib/trpc';
 
@@ -68,11 +68,11 @@ export function AddVenueForm({
     check.mutate({ url: target });
   };
 
-  const stepLabel = 'block text-xs uppercase tracking-widest text-muted mb-1';
+  const stepLabel = 'label-caps mb-1.5';
 
   return (
     <form
-      className="mb-8 border border-rule p-4 space-y-4"
+      className="mb-8 border-3 border-ink bg-panel p-5 space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (!url.trim() || !category) return;
@@ -84,7 +84,7 @@ export function AddVenueForm({
         });
       }}
     >
-      <p className="text-sm text-muted max-w-prose">
+      <p className="text-sm text-body max-w-[520px]">
         Add any venue by its listing URL — nothing pre-defined. If someone already added the
         same URL, you&rsquo;ll share it; it&rsquo;s only scraped once for everyone.
       </p>
@@ -95,7 +95,7 @@ export function AddVenueForm({
           id="add-language"
           value={language}
           onChange={(e) => setLanguage(e.target.value)}
-          className="border border-rule bg-paper px-2 py-1 text-sm"
+          className="field-sm cursor-pointer"
         >
           {LANGUAGES.map((l) => (
             <option key={l.code} value={l.code}>{l.label}</option>
@@ -114,13 +114,13 @@ export function AddVenueForm({
             onChange={(e) => { setUrl(e.target.value); setCheckedUrl(null); check.reset(); }}
             onBlur={runCheck}
             placeholder="https://venue.example/program"
-            className="flex-1 min-w-[16rem] border border-rule bg-paper px-2 py-1 text-sm"
+            className="field-sm flex-1 min-w-[16rem]"
           />
           <button
             type="button"
             onClick={runCheck}
             disabled={!url.trim() || check.isPending}
-            className="text-sm text-muted hover:text-ink bg-transparent border border-rule px-3 py-1 cursor-pointer disabled:opacity-50"
+            className="btn-outline"
           >
             {check.isPending ? 'Checking…' : 'Check'}
           </button>
@@ -130,18 +130,18 @@ export function AddVenueForm({
         ) : null}
         {check.data ? (
           check.data.ok ? (
-            <p role="status" className="mt-2 text-sm text-green-700">
+            <p role="status" className="mt-2 text-sm font-bold text-ink">
               ✓ Scrapable
               {check.data.method === 'structured-data'
                 ? ` — found ${check.data.eventCount} upcoming event${check.data.eventCount === 1 ? '' : 's'} in the page's structured data`
                 : ' — the page has readable content the AI extractor can parse'}
             </p>
           ) : (
-            <p role="status" className="mt-2 text-sm text-red-700">✗ {check.data.reason}</p>
+            <p role="status" className="mt-2 text-sm font-bold text-accent">✗ {check.data.reason}</p>
           )
         ) : null}
         {check.error ? (
-          <p role="status" className="mt-2 text-sm text-red-700">✗ Check failed: {check.error.message}</p>
+          <p role="status" className="mt-2 text-sm font-bold text-accent">✗ Check failed: {check.error.message}</p>
         ) : null}
       </div>
 
@@ -154,11 +154,11 @@ export function AddVenueForm({
               type="button"
               aria-pressed={category === c}
               onClick={() => setCategory(c)}
-              className={
+              className={`border-2 border-ink px-3.5 py-2 text-xs font-extrabold uppercase tracking-[0.5px] cursor-pointer ${
                 category === c
-                  ? 'border border-ink bg-ink text-paper px-3 py-1 text-sm cursor-pointer'
-                  : 'border border-rule bg-transparent text-muted hover:text-ink px-3 py-1 text-sm cursor-pointer'
-              }
+                  ? 'bg-ink text-white'
+                  : 'bg-transparent text-ink hover:text-accent hover:border-accent'
+              }`}
             >
               {categoryLabel(c)}
             </button>
@@ -172,18 +172,18 @@ export function AddVenueForm({
           <input
             id="add-name" value={name} onChange={(e) => setName(e.target.value)}
             placeholder="Filled in after the URL check"
-            className="flex-1 min-w-[12rem] border border-rule bg-paper px-2 py-1 text-sm"
+            className="field-sm flex-1 min-w-[12rem]"
           />
           <button
             type="submit" disabled={submitting || !url.trim() || !category}
-            className="link-accent text-sm bg-transparent border border-rule px-3 py-1 cursor-pointer disabled:opacity-50"
+            className="btn-fill"
           >
             {submitting ? 'Adding…' : 'Add venue'}
           </button>
         </div>
       </div>
 
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="text-sm font-bold text-accent">{error}</p> : null}
     </form>
   );
 }

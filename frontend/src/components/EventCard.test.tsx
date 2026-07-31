@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EventCard } from './EventCard';
-import type { Event, Venue } from '@goin/shared';
+import type { Event, Venue } from '@afisz/shared';
 
 const venue: Venue = {
   id: 'v', name: 'Kino X', url: 'https://x', city: 'Warsaw', country: 'Poland',

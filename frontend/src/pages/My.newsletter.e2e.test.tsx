@@ -149,7 +149,7 @@ describe('MyPage — newsletter end-to-end', () => {
     // An email document, sandboxed — not markup spliced into the page.
     expect(preview.tagName).toBe('IFRAME');
     expect(preview.getAttribute('sandbox')).toBe('');
-    expect(preview.srcdoc).toContain('GOIN · WEEKLY');
+    expect(preview.srcdoc).toContain('AFISZ · WEEKLY');
     expect(preview.srcdoc).toContain('This week in<br>Warsaw');
     expect(preview.srcdoc).toContain('Nothing on in this window.');
   });

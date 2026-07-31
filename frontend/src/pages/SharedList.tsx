@@ -32,9 +32,9 @@ export function SharedListPage() {
   ].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 
   return (
-    <section>
-      <h1 className="mb-2 font-serif text-3xl tracking-tight">Want to go</h1>
-      <p className="mb-6 text-sm text-muted max-w-prose">
+    <section className="page-x pt-8 md:pt-12">
+      <h1 className="font-display text-[32px] md:text-[42px] m-0">Want to go</h1>
+      <p className="mt-1.5 mb-6 max-w-[520px] text-sm md:text-base text-body">
         A shared list. Open &ldquo;Nearest screenings&rdquo; on anything here to see where
         and when it&rsquo;s on.
       </p>
@@ -43,11 +43,11 @@ export function SharedListPage() {
 
       {list.error ? (
         <div>
-          <p role="alert" className="text-sm text-muted">
+          <p role="alert" className="border-t-3 border-ink pt-5 font-display text-2xl text-accent">
             This list isn&rsquo;t shared any more, or the link is wrong.
           </p>
-          <p className="mt-4 text-sm">
-            <Link to="/" className="link-accent no-underline">
+          <p className="mt-5">
+            <Link to="/" className="act act-on">
               Browse what&rsquo;s on instead
             </Link>
           </p>
@@ -55,13 +55,13 @@ export function SharedListPage() {
       ) : null}
 
       {list.data && rows.length === 0 ? (
-        <p className="text-sm text-muted">This list is empty for now.</p>
+        <p className="border-t-3 border-ink pt-5 text-sm text-muted">This list is empty for now.</p>
       ) : null}
 
       {rows.length > 0 ? (
-        <ul className="divide-y divide-rule border-y border-rule list-none m-0 p-0">
+        <ul className="border-t-3 border-ink list-none m-0 p-0">
           {rows.map((row) => (
-            <li key={row.key} className="py-3">
+            <li key={row.key} className="py-5 rule-soft">
               <SavedTitleRow event={row.event} />
             </li>
           ))}

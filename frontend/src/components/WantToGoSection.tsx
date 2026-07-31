@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import type { Film, WantToGoEntry } from '@goin/shared';
+import type { Film, WantToGoEntry } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { formatShortDate } from '../lib/format';
 import { SavedTitleRow, filmAsEvent } from './SavedTitleRow';
 import { ShareListLink } from './ShareListLink';
+import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
 /**
@@ -33,15 +34,15 @@ export function WantToGoSection() {
 
   return (
     <section>
-      <h2 className="mb-2 font-serif text-2xl tracking-tight">Want to go</h2>
-      <p className="mb-6 text-sm text-muted max-w-prose">
-        Everything you saved, in one list. Add events with &ldquo;Want to go&rdquo; on any
-        event, and films with &ldquo;Track film&rdquo; in the nearest-screenings panel.
-      </p>
+      <PanelHeading
+        title="Want to go"
+        blurb={'Everything you saved, in one list. Add events with "Want to go" on any event, and films with "Track film" in the nearest-screenings panel.'}
+        rule={false}
+      />
 
       <ShareListLink />
 
-      <div className="mb-4 flex gap-2" role="tablist" aria-label="Want to go lists">
+      <div className="mb-5 flex" role="tablist" aria-label="Want to go lists">
         <TabButton active={tab === 'want'} onClick={() => setTab('want')}>
           Want to go ({want.length})
         </TabButton>
@@ -59,7 +60,7 @@ export function WantToGoSection() {
       ) : null}
 
       {!loading && !error && shown.length === 0 ? (
-        <p className="text-sm text-muted">
+        <p className="border-t-3 border-ink pt-5 text-sm text-muted">
           {tab === 'want'
             ? 'Nothing saved yet — use “Want to go” on an event, or “Track film” in the nearest-screenings panel.'
             : 'Nothing marked seen yet.'}
@@ -67,7 +68,7 @@ export function WantToGoSection() {
       ) : null}
 
       {shown.length > 0 ? (
-        <ul className="divide-y divide-rule border-y border-rule list-none m-0 p-0">
+        <ul className="border-t-3 border-ink list-none m-0 p-0">
           {shown.map((row) =>
             row.kind === 'event' ? (
               <EventRow key={row.key} entry={row.entry} />
@@ -121,8 +122,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`text-sm border px-3 py-1.5 cursor-pointer bg-transparent ${
-        active ? 'border-ink text-ink' : 'border-rule text-muted hover:text-ink'
+      className={`border-2 border-ink px-4 py-2 text-xs font-extrabold uppercase tracking-[0.5px] cursor-pointer border-r-0 last:border-r-2 ${
+        active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'
       }`}
     >
       {children}
@@ -151,7 +152,7 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
   const seen = entry.seenAt !== null;
 
   return (
-    <li className="py-3">
+    <li className="py-5 rule-soft">
       <SavedTitleRow
         event={event}
         showScreenings={!seen}
@@ -162,7 +163,7 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
               aria-pressed={seen}
               onClick={() => setSeen.mutate({ eventId: event.id, seen: !seen })}
               disabled={setSeen.isPending}
-              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+              className="act act-sm md:text-xs"
             >
               {seen ? 'Not seen' : 'Seen it'}
             </button>
@@ -171,7 +172,7 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
               aria-label={`Remove ${event.title}`}
               onClick={() => remove.mutate({ eventId: event.id })}
               disabled={remove.isPending}
-              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+              className="act act-sm md:text-xs"
             >
               Remove
             </button>
@@ -191,7 +192,7 @@ function FilmRow({ film }: { film: Film }) {
   const seen = film.status === 'seen';
 
   return (
-    <li className="py-3">
+    <li className="py-5 rule-soft">
       <SavedTitleRow
         event={filmAsEvent(film)}
         showScreenings={!seen}
@@ -211,7 +212,7 @@ function FilmRow({ film }: { film: Film }) {
                 type="button"
                 onClick={() => moveToWant.mutate({ filmId: film.id })}
                 disabled={moveToWant.isPending}
-                className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+                className="act act-sm md:text-xs"
               >
                 Not seen
               </button>
@@ -219,7 +220,7 @@ function FilmRow({ film }: { film: Film }) {
               <button
                 type="button"
                 onClick={() => setMarking((v) => !v)}
-                className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+                className="act act-sm md:text-xs"
               >
                 Seen it
               </button>
@@ -229,14 +230,14 @@ function FilmRow({ film }: { film: Film }) {
               aria-label={`Remove ${film.title}`}
               onClick={() => remove.mutate({ filmId: film.id })}
               disabled={remove.isPending}
-              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+              className="act act-sm md:text-xs"
             >
               Remove
             </button>
           </>
         }
       />
-      {film.comment ? <p className="mt-1 text-sm text-muted">{film.comment}</p> : null}
+      {film.comment ? <p className="mt-2.5 text-sm text-body">{film.comment}</p> : null}
       {marking ? <MarkSeenForm film={film} onDone={() => setMarking(false)} /> : null}
     </li>
   );
@@ -272,7 +273,7 @@ function MarkSeenForm({ film, onDone }: { film: Film; onDone: () => void }) {
         value={venue}
         onChange={(e) => setVenue(e.target.value)}
         placeholder="Where? e.g. Kino Muranów"
-        className="border border-rule bg-paper px-3 py-2 text-sm"
+        className="field-sm"
       />
       <label className="sr-only" htmlFor={`seen-comment-${film.id}`}>Short comment</label>
       <input
@@ -281,16 +282,16 @@ function MarkSeenForm({ film, onDone }: { film: Film; onDone: () => void }) {
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         placeholder="Short comment (optional)"
-        className="flex-1 min-w-[10rem] border border-rule bg-paper px-3 py-2 text-sm"
+        className="field-sm flex-1 min-w-[10rem]"
       />
       <button
         type="submit"
         disabled={markSeen.isPending}
-        className="link-accent text-sm bg-transparent border border-rule px-4 py-2 cursor-pointer disabled:opacity-50"
+        className="btn-outline"
       >
         {markSeen.isPending ? 'Saving…' : 'Move to seen'}
       </button>
-      {markSeen.error ? <p className="self-center text-sm text-muted">{markSeen.error.message}</p> : null}
+      {markSeen.error ? <p className="self-center text-sm text-accent">{markSeen.error.message}</p> : null}
     </form>
   );
 }

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FolderCard } from './FolderCard';
-import type { Folder, Venue } from '@goin/shared';
+import type { Folder, Venue } from '@afisz/shared';
 
 const venues: Venue[] = [
   { id: 'v1', name: 'Kino X', url: 'https://x', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },

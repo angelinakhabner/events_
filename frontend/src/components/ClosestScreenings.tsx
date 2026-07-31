@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
 import { formatDayKey, formatShortDate, formatTime } from '../lib/format';
@@ -70,7 +70,7 @@ export function ClosestScreenings({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+        className={`act act-sm md:text-[13px] ${open ? 'act-on' : ''}`}
       >
         {panelLabel(event)}
       </button>
@@ -178,11 +178,15 @@ function ScreeningsPanel({ event, includeSelf }: { event: Event; includeSelf: bo
         <ul className="list-none m-0 p-0">
           {visible.map((day) => (
             <li key={day.dayKey} className="mb-3 last:mb-0">
-              <div className="text-xs uppercase tracking-widest text-muted">{day.label}</div>
-              <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1">
+              <div className="text-[10px] font-extrabold uppercase tracking-[1px] text-faint">
+                {day.label}
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-x-6 gap-y-1.5">
                 {day.venues.map((v) => (
                   <div key={v.key} className="flex items-baseline gap-2">
-                    <span className="text-xs uppercase tracking-wide text-muted">{v.venueName}</span>
+                    <span className="text-[11px] font-bold uppercase tracking-[0.5px] text-muted">
+                      {v.venueName}
+                    </span>
                     {v.showings.map((s) => (
                       // The time links to the showing's own page (where you buy
                       // the ticket); the glyph beside it books that exact
@@ -192,7 +196,7 @@ function ScreeningsPanel({ event, includeSelf }: { event: Event; includeSelf: bo
                           href={s.sourceUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="tabular-nums text-sm text-ink hover:text-accent no-underline"
+                          className="font-display text-base tabular-nums text-ink hover:text-accent"
                         >
                           {formatTime(s.startsAt)}
                         </a>
@@ -206,11 +210,7 @@ function ScreeningsPanel({ event, includeSelf }: { event: Event; includeSelf: bo
           ))}
         </ul>
         {!expanded && days.length > DAYS_SHOWN ? (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="mt-1 text-xs uppercase tracking-widest text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
-          >
+          <button type="button" onClick={() => setExpanded(true)} className="mt-1 act act-sm">
             See more
           </button>
         ) : null}
@@ -219,8 +219,8 @@ function ScreeningsPanel({ event, includeSelf }: { event: Event; includeSelf: bo
   }
 
   return (
-    <div className="absolute z-10 left-0 mt-2 bg-paper border border-rule p-3 min-w-[18rem] max-w-[32rem]">
-      <div className="text-xs uppercase tracking-wide text-muted mb-2">{panelLabel(event)}</div>
+    <div className="absolute z-10 left-0 mt-2 bg-panel border-3 border-ink p-3.5 min-w-[18rem] max-w-[32rem]">
+      <div className="label-caps mb-2.5">{panelLabel(event)}</div>
       {body}
       {isFilm && isLoggedIn() ? <TrackFilmButton title={event.title} /> : null}
     </div>
@@ -243,17 +243,17 @@ function TrackFilmButton({ title }: { title: string }) {
     add.isSuccess || (films.data ?? []).some((f) => f.title.toLowerCase() === title.toLowerCase());
 
   return (
-    <div className="mt-3 border-t border-rule pt-2">
+    <div className="mt-3 border-t-2 border-rule pt-2.5">
       <button
         type="button"
         disabled={tracked || add.isPending}
         onClick={() => add.mutate({ title })}
-        className="text-sm link-accent bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50 disabled:cursor-default"
+        className="act act-sm act-on"
       >
         {tracked ? '✓ On your want-to-go list' : add.isPending ? 'Adding…' : '+ Track film'}
       </button>
       {add.error && !tracked ? (
-        <p className="mt-1 text-xs text-muted">{add.error.message}</p>
+        <p className="mt-1 text-[11px] text-muted">{add.error.message}</p>
       ) : null}
     </div>
   );

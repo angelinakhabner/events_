@@ -31,18 +31,18 @@ export function ShareListLink() {
           type="button"
           onClick={() => enable.mutate()}
           disabled={busy}
-          className="text-sm link-accent bg-transparent border border-rule px-4 py-2 cursor-pointer disabled:opacity-50"
+          className="btn-outline"
         >
           {enable.isPending ? 'Creating link…' : 'Share this list'}
         </button>
-        {enable.error ? <p className="mt-2 text-sm text-muted">{enable.error.message}</p> : null}
+        {enable.error ? <p className="mt-2 text-sm text-accent">{enable.error.message}</p> : null}
       </div>
     );
   }
 
   return (
-    <div className="mb-6 border border-rule p-3">
-      <p className="text-xs uppercase tracking-widest text-muted">Shared link</p>
+    <div className="mb-6 border-3 border-ink bg-panel p-4">
+      <p className="label-caps">Shared link</p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <code className="text-sm text-ink break-all">{sharedListUrl(token)}</code>
         <CopyLinkButton url={sharedListUrl(token)} />
@@ -50,12 +50,12 @@ export function ShareListLink() {
           type="button"
           onClick={() => disable.mutate()}
           disabled={busy}
-          className="text-sm text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50"
+          className="act act-sm"
         >
           {disable.isPending ? 'Stopping…' : 'Stop sharing'}
         </button>
       </div>
-      <p className="mt-2 text-sm text-muted max-w-prose">
+      <p className="mt-3 text-sm text-body max-w-[520px]">
         Anyone with this link can see what you want to go to — no account needed. Things
         you&rsquo;ve marked seen stay private. Stop sharing to kill the link; sharing again
         creates a new one.
@@ -88,12 +88,12 @@ function CopyLinkButton({ url }: { url: string }) {
           const result = await shareLink({ title: 'Want to go', text: 'My “want to go” list', url });
           if (result !== 'cancelled') setOutcome(result);
         }}
-        className="text-sm text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+        className="act act-sm"
       >
         Copy
       </button>
       {flash ? (
-        <span role="status" aria-live="polite" className="text-xs text-muted">
+        <span role="status" aria-live="polite" className="text-[11px] text-faint">
           {flash}
         </span>
       ) : null}

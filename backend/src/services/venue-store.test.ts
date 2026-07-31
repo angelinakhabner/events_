@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { VenueStore } from './venue-store.js';
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 
 const sample: Venue[] = [
   { id: 'a', name: 'A', url: 'https://a', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },

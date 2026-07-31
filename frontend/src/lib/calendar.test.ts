@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 import { buildIcs, eventEndsAt, googleCalendarUrl, icsEscape, toBasicUtc } from './calendar';
 
 function event(overrides: Partial<Event> = {}): Event {
