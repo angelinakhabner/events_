@@ -1,4 +1,4 @@
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 import { DEFAULT_VENUES } from './default-venues.js';
 
 // Deterministic mock event set, derived from the seeded venues so the

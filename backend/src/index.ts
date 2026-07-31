@@ -7,7 +7,7 @@ import { startNewsletterScheduler } from './services/newsletter.js';
 const app = createApp();
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
-  console.log(`Goin backend listening on http://${info.address}:${info.port}`);
+  console.log(`AFISZ backend listening on http://${info.address}:${info.port}`);
 });
 
 // Scheduled scrape runs inside the server process (Railway cron isn't

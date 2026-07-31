@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
-import type { ScrapeRun } from '@goin/shared';
+import type { ScrapeRun } from '@afisz/shared';
 import { Gate, scrapeVenuesBatched } from './batch.js';
 import {
   AnthropicBatchExtractor,

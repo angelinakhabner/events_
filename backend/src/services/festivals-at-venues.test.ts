@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { Festival } from '@goin/shared';
-import { festivalVenueMatches, festivalsAtVenues } from '@goin/shared';
+import type { Festival } from '@afisz/shared';
+import { festivalVenueMatches, festivalsAtVenues } from '@afisz/shared';
 import { currentFestival } from './newsletter.js';
 
 // GOI-33: festivals scoped to the venues a reader actually chose. The curated

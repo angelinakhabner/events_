@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
 import { parseJsonArray, extractEvents, toolResponseToJson, EXTRACTOR_VERSION } from './extractor.js';
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 
 /** Minimal Anthropic.Message stub for the tool-response parser. */
 function message(content: unknown[], stopReason: Anthropic.Message['stop_reason'] = 'tool_use'): Anthropic.Message {

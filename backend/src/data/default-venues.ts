@@ -1,4 +1,4 @@
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 
 const PL: Pick<Venue, 'city' | 'country' | 'language' | 'timezone' | 'createdAt'> = {
   city: 'Warsaw',

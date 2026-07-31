@@ -40,7 +40,7 @@ describe('sendEmail', () => {
 
 describe('welcomeEmail', () => {
   it('puts the raw name in the subject', () => {
-    expect(welcomeEmail('Ada').subject).toBe('Welcome to Goin, Ada');
+    expect(welcomeEmail('Ada').subject).toBe('Welcome to AFISZ, Ada');
   });
 
   it('escapes HTML-special characters in the name (no injection in the body)', () => {
@@ -50,6 +50,6 @@ describe('welcomeEmail', () => {
   });
 
   it('produces a non-empty html body', () => {
-    expect(welcomeEmail('Ada').html).toContain('Goin is ready');
+    expect(welcomeEmail('Ada').html).toContain('AFISZ is ready');
   });
 });

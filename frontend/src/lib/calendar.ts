@@ -1,4 +1,4 @@
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 /** Two hours as a sensible default when an event has no end time or duration. */
 const DEFAULT_DURATION_MIN = 120;

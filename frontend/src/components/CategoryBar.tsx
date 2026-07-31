@@ -1,8 +1,11 @@
-import type { Category } from '@goin/shared';
+import type { Category } from '@afisz/shared';
+import { CategorySwatch } from './CategorySwatch';
 
 interface Props {
   selected: Category | null;
   onChange: (next: Category | null) => void;
+  /** Denser variant used inside /my, where the column is narrower. */
+  compact?: boolean;
 }
 
 interface Option {
@@ -21,11 +24,19 @@ const OPTIONS: Option[] = [
   { label: 'Museums', value: 'exhibition' },
 ];
 
-export function CategoryBar({ selected, onChange }: Props) {
+/**
+ * The category chips: butted together with no gaps, divided by ink rules and
+ * closed off by a heavier one — a strip of type rather than a row of buttons.
+ * The selected chip inverts to white-on-ink.
+ *
+ * Labels stay mixed-case in the markup and are uppercased in CSS, so the
+ * accessible name is still "Museums" rather than "MUSEUMS".
+ */
+export function CategoryBar({ selected, onChange, compact = false }: Props) {
   return (
     <nav
       aria-label="Filter by category"
-      className="flex flex-wrap gap-x-6 gap-y-3 py-4 border-y border-rule"
+      className="flex scroll-x md:flex-wrap border-b-3 border-ink"
     >
       {OPTIONS.map((opt) => {
         const active = (opt.value ?? null) === (selected ?? null);
@@ -35,11 +46,20 @@ export function CategoryBar({ selected, onChange }: Props) {
             type="button"
             aria-pressed={active}
             onClick={() => onChange(opt.value)}
-            className={`tag transition-colors ${
-              active ? 'text-accent' : 'text-muted hover:text-ink'
-            }`}
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap border-r-2 border-ink cursor-pointer ${
+              compact ? 'px-[18px] py-3.5' : 'px-4 py-3.5 md:px-6 md:py-[18px]'
+            } ${active ? 'bg-ink' : 'bg-transparent'}`}
           >
-            {opt.label}
+            {opt.value ? (
+              <CategorySwatch category={opt.value} size={compact ? 12 : 14} />
+            ) : null}
+            <span
+              className={`text-xs md:text-sm font-bold uppercase tracking-[1px] ${
+                active ? 'text-white' : 'text-ink'
+              }`}
+            >
+              {opt.label}
+            </span>
           </button>
         );
       })}

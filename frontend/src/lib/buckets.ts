@@ -1,6 +1,6 @@
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
-export type BucketKey = 'soon' | 'today' | 'tomorrow' | 'thisWeek';
+export type BucketKey = 'soon' | 'today' | 'tomorrow' | 'thisWeek' | 'later';
 
 export interface Bucket {
   key: BucketKey;
@@ -12,9 +12,22 @@ const TZ = 'Europe/Warsaw';
 const SOON_WINDOW_MS = 30 * 60 * 1000;
 const WEEK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Group events into the four time buckets used on the Home page. */
+/**
+ * Group events into the time buckets the listing shows.
+ *
+ * The four near buckets span a week. Anything further out used to fall through
+ * every branch and vanish — and because the callers only render their empty
+ * state when the *filtered* list is empty, a venue whose next event was more
+ * than a week away rendered nothing at all: no rows, no explanation. Warsaw
+ * theatres go dark across July and August, so in summer that was every theatre.
+ *
+ * So a fifth bucket carries the nearest day beyond the week, and it appears
+ * *only* when the near buckets are all empty — when there is something on this
+ * week, the page stays a "what's on now" listing rather than trailing months of
+ * autumn programme behind it.
+ */
 export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] {
-  const sorted = [...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const sorted = dedupeAllDay([...events].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
   const soonCutoff = now.getTime() + SOON_WINDOW_MS;
   const weekCutoff = now.getTime() + WEEK_WINDOW_MS;
   const todayDay = warsawDayKey(now);
@@ -25,13 +38,20 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
     today: [],
     tomorrow: [],
     thisWeek: [],
+    later: [],
   };
 
   for (const e of sorted) {
     const t = Date.parse(e.startsAt);
-    if (Number.isNaN(t) || t < now.getTime()) continue;
+    if (Number.isNaN(t)) continue;
     const day = warsawDayKey(new Date(t));
-    if (t <= soonCutoff) {
+    const allDay = isAllDay(e);
+    // A dated event is over once it has started; an all-day one is on until
+    // the day ends. Dropping it at `t < now` hid every museum from its own
+    // listing — its rows carry local midnight, so by breakfast "today" was
+    // already in the past and the soonest surviving row was tomorrow's.
+    if (allDay ? day < todayDay : t < now.getTime()) continue;
+    if (t <= soonCutoff && !allDay) {
       buckets.soon.push(e);
     } else if (day === todayDay) {
       buckets.today.push(e);
@@ -39,16 +59,87 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
       buckets.tomorrow.push(e);
     } else if (t <= weekCutoff) {
       buckets.thisWeek.push(e);
+    } else {
+      buckets.later.push(e);
     }
   }
 
-  const ordered: Bucket[] = [
+  const nearAll: Bucket[] = [
     { key: 'soon', label: 'Starting soon', items: buckets.soon },
     { key: 'today', label: 'Later today', items: buckets.today },
     { key: 'tomorrow', label: 'Tomorrow', items: buckets.tomorrow },
     { key: 'thisWeek', label: 'This week', items: buckets.thisWeek },
   ];
-  return ordered.filter((b) => b.items.length > 0);
+  const near = nearAll.filter((b) => b.items.length > 0);
+  if (near.length > 0 || buckets.later.length === 0) return near;
+
+  // Nothing this week, but something later: show that day and say when it is.
+  // Only the nearest day, not the whole tail — the question being answered is
+  // "when does this start again?", not "what is the autumn programme?".
+  const nearestDay = warsawDayKey(new Date(Date.parse(buckets.later[0]!.startsAt)));
+  const items = buckets.later.filter(
+    (e) => warsawDayKey(new Date(Date.parse(e.startsAt))) === nearestDay,
+  );
+  return [{ key: 'later', label: `Nearest screening on ${nearestDayLabel(items[0]!.startsAt)}`, items }];
+}
+
+const nearestDayFmt = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ,
+});
+
+/** "Fri 12 Sep" — the date named in the "Nearest screening on …" heading. */
+function nearestDayLabel(iso: string): string {
+  return nearestDayFmt.format(new Date(iso));
+}
+
+// ─── Museums (GOI-53) ────────────────────────────────────────────────────────
+
+/**
+ * Whether an event runs all day rather than starting at a time.
+ *
+ * Museums publish runs, not showtimes: the scrapers fall back to local
+ * midnight when a listing prints no hour, and the validator accepts that for
+ * the exhibition category. So "starts at Warsaw midnight, and is an
+ * exhibition" is exactly the "no hour was published" marker — and a museum's
+ * genuinely timed rows (an 11:00 guided tour) keep their hour, because they
+ * carry one.
+ */
+export function isAllDay(event: Pick<Event, 'category' | 'startsAt'>): boolean {
+  if (event.category !== 'exhibition') return false;
+  const t = Date.parse(event.startsAt);
+  return !Number.isNaN(t) && warsawHour(new Date(t)) === 0 && warsawMinute(new Date(t)) === 0;
+}
+
+/**
+ * Collapse an all-day run to a single row (GOI-53).
+ *
+ * An exhibition open for three months arrives as one row per day, all with the
+ * same title, which buried everything else in the listing under one museum.
+ * Keeping the earliest surviving row answers the question the listing is
+ * asking — what can I see today — without repeating it thirty times.
+ *
+ * Keyed on venue *and* title: two museums running shows that happen to share a
+ * name are two things you can go to, and collapsing them would hide a venue.
+ * Timed rows are left alone, so a museum's 11:00 and 15:00 tours of the same
+ * exhibition both survive.
+ *
+ * Expects `events` sorted by start, and preserves that order.
+ */
+export function dedupeAllDay(events: Event[]): Event[] {
+  const seen = new Set<string>();
+  return events.filter((e) => {
+    if (!isAllDay(e)) return true;
+    const key = `${e.venueId}|${normaliseTitle(e.title)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Titles differing only in case, spacing or a trailing full stop are the
+ *  same show — venues are not consistent about any of the three. */
+function normaliseTitle(title: string): string {
+  return title.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:]+$/, '').trim();
 }
 
 /** Keep only events that start on the given Europe/Warsaw day; null means any day. */
@@ -94,4 +185,12 @@ const hourFmt = new Intl.DateTimeFormat('en-GB', {
 export function warsawHour(d: Date): number {
   // en-GB h23 renders midnight as "24" in some ICU versions; normalise it.
   return Number(hourFmt.format(d)) % 24;
+}
+
+const minuteFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, minute: '2-digit' });
+
+/** Minute-of-hour in Europe/Warsaw — pairs with `warsawHour` to spot the
+ *  exact-midnight rows the scrapers use for "no hour published". */
+export function warsawMinute(d: Date): number {
+  return Number(minuteFmt.format(d));
 }

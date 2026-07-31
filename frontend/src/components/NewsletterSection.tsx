@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
   NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency, NewsletterSettings,
-} from '@goin/shared';
+} from '@afisz/shared';
 import { trpc } from '../lib/trpc';
+import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
 /** "No time filter" sentinel for the after-hour select. */
@@ -36,7 +37,7 @@ function ClockIcon() {
     <svg
       width="14" height="14" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-      aria-hidden focusable="false" className="shrink-0"
+      aria-hidden focusable="false" className="shrink-0 text-muted"
     >
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
@@ -61,7 +62,7 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
   if (settings.isLoading || venues.isLoading) {
     return (
       <section>
-        <h2 className="mb-6 font-serif text-2xl tracking-tight">Newsletter</h2>
+        <PanelHeading title="Newsletter" />
         <SkeletonList rows={2} />
       </section>
     );
@@ -69,7 +70,7 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
   if (settings.error || venues.error) {
     return (
       <section>
-        <h2 className="mb-6 font-serif text-2xl tracking-tight">Newsletter</h2>
+        <PanelHeading title="Newsletter" />
         <ErrorState
           message="Couldn't load your newsletter settings."
           onRetry={() => { void settings.refetch(); void venues.refetch(); }}
@@ -197,61 +198,62 @@ function NewsletterForm({
 
   return (
     <section>
-      <h2 className="mb-2 font-serif text-2xl tracking-tight">Newsletter</h2>
-      <p className="mb-6 text-sm text-muted max-w-prose">
-        Get what&rsquo;s on at your venues as an email brief — e.g. Kino Muranów and Kinoteka,
-        every day at 08:00, everything after 6&nbsp;pm.
-      </p>
+      <PanelHeading
+        title="Newsletter"
+        blurb="Get what's on at your venues as an email brief — e.g. Kino Muranów and Kinoteka, every day at 08:00, everything after 6 pm."
+        rule={false}
+      />
 
       <form
-        className="space-y-6 max-w-prose"
+        className="max-w-[640px] border-t-3 border-ink"
         onSubmit={(e) => {
           e.preventDefault();
           save.mutate(payload());
         }}
       >
-        <div className="flex flex-wrap gap-3">
-          <div className="flex-1 min-w-[14rem]">
-            <label className="block text-xs uppercase tracking-widest text-muted mb-1" htmlFor="newsletter-email">
-              Email address
-            </label>
-            <input
-              id="newsletter-email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full border border-rule bg-paper px-3 py-2 text-sm"
-            />
+        <FormSection step={1} label="Contact">
+          <div className="flex flex-wrap gap-5">
+            <div className="flex-1 min-w-[14rem]">
+              <label className="label-caps mb-1.5" htmlFor="newsletter-email">
+                Email address
+              </label>
+              <input
+                id="newsletter-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="field"
+              />
+            </div>
+            <div className="flex-1 min-w-[10rem]">
+              <label className="label-caps mb-1.5" htmlFor="newsletter-name">
+                Your name <span className="font-semibold text-faint">(optional)</span>
+              </label>
+              <input
+                id="newsletter-name"
+                type="text"
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+                placeholder="Ania"
+                className="field"
+              />
+              <p className="mt-1.5 text-xs text-faint">
+                The brief opens with &ldquo;Hi {recipientName.trim() || '\u2026'}&rdquo; — leave it empty to skip the name.
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-[10rem]">
-            <label className="block text-xs uppercase tracking-widest text-muted mb-1" htmlFor="newsletter-name">
-              Your name (optional)
-            </label>
-            <input
-              id="newsletter-name"
-              type="text"
-              value={recipientName}
-              onChange={(e) => setRecipientName(e.target.value)}
-              placeholder="Ania"
-              className="w-full border border-rule bg-paper px-3 py-2 text-sm"
-            />
-            <p className="mt-1 text-xs text-muted">
-              The brief opens with &ldquo;Hi {recipientName.trim() || '…'}&rdquo; — leave it empty to skip the name.
-            </p>
-          </div>
-        </div>
+        </FormSection>
 
-        <fieldset className="border-0 m-0 p-0">
-          <legend className="text-xs uppercase tracking-widest text-muted mb-2">When it goes out</legend>
-          <div className="flex flex-wrap items-center gap-3">
+        <FormSection step={2} label="When it goes out">
+          <div className="flex flex-wrap items-center gap-3.5">
             <label className="sr-only" htmlFor="newsletter-frequency">How often</label>
             <select
               id="newsletter-frequency"
               value={frequency}
               onChange={(e) => setFrequency(e.target.value as NewsletterFrequency)}
-              className="border border-rule bg-paper px-3 py-2 text-sm"
+              className="field-sm font-extrabold uppercase tracking-[0.5px] text-xs cursor-pointer"
             >
               <option value="daily">Every day</option>
               <option value="weekly">Weekly</option>
@@ -264,7 +266,7 @@ function NewsletterForm({
                   id="newsletter-weekday"
                   value={sendWeekday}
                   onChange={(e) => setSendWeekday(Number(e.target.value))}
-                  className="border border-rule bg-paper px-3 py-2 text-sm"
+                  className="field-sm font-extrabold uppercase tracking-[0.5px] text-xs cursor-pointer"
                 >
                   {WEEKDAYS.map((d) => (
                     <option key={d.value} value={d.value}>{d.label}</option>
@@ -273,54 +275,61 @@ function NewsletterForm({
               </>
             ) : null}
 
-            <span className="inline-flex items-center gap-2 border border-rule bg-paper px-3 py-2 text-muted">
+            <span className="inline-flex items-center gap-2 border-2 border-ink px-3 py-1.5">
               <ClockIcon />
-              <span className="text-sm">at</span>
               <label className="sr-only" htmlFor="newsletter-send-hour">Hour</label>
               <select
                 id="newsletter-send-hour"
                 value={sendHour}
                 onChange={(e) => setSendHour(Number(e.target.value))}
-                className="border-0 bg-transparent text-sm text-ink focus:outline-none"
+                className="border-0 bg-transparent p-0 text-sm font-bold text-ink cursor-pointer focus:outline-none"
               >
                 {HOURS.map((h) => (
                   <option key={h} value={h}>{pad(h)}</option>
                 ))}
               </select>
-              <span aria-hidden className="text-sm">:</span>
+              <span aria-hidden className="text-sm font-bold">:</span>
               <label className="sr-only" htmlFor="newsletter-send-minute">Minute</label>
               <select
                 id="newsletter-send-minute"
                 value={sendMinute}
                 onChange={(e) => setSendMinute(Number(e.target.value))}
-                className="border-0 bg-transparent text-sm text-ink focus:outline-none"
+                className="border-0 bg-transparent p-0 text-sm font-bold text-ink cursor-pointer focus:outline-none"
               >
                 {MINUTES.map((m) => (
                   <option key={m} value={m}>{pad(m)}</option>
                 ))}
               </select>
             </span>
+
+            {/* The same time again, at poster scale — the one number you check
+                before closing the page. */}
+            <span aria-hidden className="font-display text-xl md:text-[22px]">
+              AT {pad(sendHour)}:{pad(sendMinute)}
+            </span>
           </div>
-          <p className="mt-2 text-xs text-muted">
+          <p className="mt-2.5 text-xs text-faint">
             Warsaw time — next brief at {pad(sendHour)}:{pad(sendMinute)}
             {frequency === 'weekly' ? ` on ${WEEKDAYS.find((d) => d.value === sendWeekday)?.label}` : ', every day'}.
           </p>
-        </fieldset>
+        </FormSection>
 
-        <fieldset className="border-0 m-0 p-0">
-          <legend className="text-xs uppercase tracking-widest text-muted mb-2">
-            Venues from my venues {venueIds.length === 0 ? '(none picked — all of them)' : ''}
-          </legend>
+        <FormSection
+          step={3}
+          label="Venues from my venues"
+          note={venueIds.length === 0 ? 'None picked — the brief covers all of them.' : undefined}
+        >
           {byFolder.map((folder) => (
-            <div key={folder.id ?? 'unfiled'} className="mb-3">
-              <p className="mb-1 text-xs text-muted">{folder.name}</p>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
+            <div key={folder.id ?? 'unfiled'} className="mb-4 last:mb-0">
+              <p className="mb-2 tag">{folder.name}</p>
+              <div className="flex flex-wrap gap-x-5 gap-y-2.5">
                 {folder.venues.map((v) => (
-                  <label key={v.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <label key={v.id} className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer">
                     <input
                       type="checkbox"
                       checked={venueIds.includes(v.id)}
                       onChange={() => toggleVenue(v.id)}
+                      className="checkbox"
                     />
                     {v.name}
                   </label>
@@ -331,63 +340,70 @@ function NewsletterForm({
           {venues.length === 0 ? (
             <span className="text-sm text-muted">Add venues under &ldquo;My venues&rdquo; first.</span>
           ) : null}
-        </fieldset>
+        </FormSection>
 
-        <fieldset className="border-0 m-0 p-0">
-          <legend className="text-xs uppercase tracking-widest text-muted mb-2">
-            How often, per category
-          </legend>
-          <p className="mb-3 text-sm text-muted max-w-prose">
-            Give a category its own rhythm and depth — cinema every day in brief, museums
-            once a month with the full write-up. Categories are your venues&rsquo; own
-            categories and any tags you added to them. With none set, one brief covers
-            everything on the schedule above.
-          </p>
-
+        <FormSection
+          step={4}
+          label="How often, per category"
+          note="Give a category its own rhythm and depth — cinema every day in brief, museums once a month with the full write-up. Categories are your venues' own categories and any tags you added to them."
+        >
           {rules.length > 0 ? (
-            <ul className="mb-3 divide-y divide-rule border-y border-rule list-none m-0 p-0">
-              {rules.map((rule, i) => (
-                <li key={`${rule.category}-${i}`} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="min-w-[7rem] text-sm text-ink">{rule.category}</span>
-
-                  <label className="sr-only" htmlFor={`rule-freq-${i}`}>
-                    How often for {rule.category}
-                  </label>
-                  <select
-                    id={`rule-freq-${i}`}
-                    value={rule.frequency}
-                    onChange={(e) => patchRule(i, { frequency: e.target.value as NewsletterFrequency })}
-                    className="border border-rule bg-paper px-2 py-1 text-sm"
+            <>
+              {/* Column headings, desktop only: the rows stack below `md`, where
+                  a four-column header would label nothing. */}
+              <div className="hidden md:flex label-caps border-b-2 border-ink pb-2">
+                <span className="w-[120px]">Category</span>
+                <span className="w-[100px]">Frequency</span>
+                <span className="flex-1">Depth</span>
+                <span className="w-[60px]" />
+              </div>
+              <ul className="mb-3.5 list-none m-0 p-0">
+                {rules.map((rule, i) => (
+                  <li
+                    key={`${rule.category}-${i}`}
+                    className="flex flex-wrap items-center gap-3 py-2.5 rule-soft text-[13px]"
                   >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
+                    <span className="md:w-[120px] font-bold">{rule.category}</span>
 
-                  <label className="sr-only" htmlFor={`rule-detail-${i}`}>
-                    Description for {rule.category}
-                  </label>
-                  <select
-                    id={`rule-detail-${i}`}
-                    value={rule.detail}
-                    onChange={(e) => patchRule(i, { detail: e.target.value as NewsletterDetail })}
-                    className="border border-rule bg-paper px-2 py-1 text-sm"
-                  >
-                    <option value="short">Short description</option>
-                    <option value="full">Wide description</option>
-                  </select>
+                    <label className="sr-only" htmlFor={`rule-freq-${i}`}>
+                      How often for {rule.category}
+                    </label>
+                    <select
+                      id={`rule-freq-${i}`}
+                      value={rule.frequency}
+                      onChange={(e) => patchRule(i, { frequency: e.target.value as NewsletterFrequency })}
+                      className="field-sm md:w-[100px] cursor-pointer"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
 
-                  <button
-                    type="button"
-                    aria-label={`Remove ${rule.category}`}
-                    onClick={() => removeRule(i)}
-                    className="ml-auto text-sm text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <label className="sr-only" htmlFor={`rule-detail-${i}`}>
+                      Description for {rule.category}
+                    </label>
+                    <select
+                      id={`rule-detail-${i}`}
+                      value={rule.detail}
+                      onChange={(e) => patchRule(i, { detail: e.target.value as NewsletterDetail })}
+                      className="field-sm md:flex-1 cursor-pointer"
+                    >
+                      <option value="short">Short description</option>
+                      <option value="full">Wide description</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      aria-label={`Remove ${rule.category}`}
+                      onClick={() => removeRule(i)}
+                      className="act act-sm ml-auto md:w-[60px] md:text-left"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : null}
 
           {allCategories.length === 0 ? (
@@ -396,65 +412,72 @@ function NewsletterForm({
               under &ldquo;My venues&rdquo; first.
             </p>
           ) : unusedCategories.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <>
               <label className="sr-only" htmlFor="add-rule">Add a category</label>
               <select
                 id="add-rule"
                 value=""
                 onChange={(e) => { if (e.target.value) addRule(e.target.value); }}
-                className="border border-rule bg-paper px-2 py-1 text-sm"
+                className="bg-transparent border-0 p-0 text-xs font-bold uppercase tracking-[0.5px] text-accent cursor-pointer focus:outline-none"
               >
                 <option value="">+ Add a category…</option>
                 {unusedCategories.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-            </div>
+            </>
           ) : (
             <p className="text-sm text-muted">Every category has a rule.</p>
           )}
-        </fieldset>
+        </FormSection>
 
-        <div>
-          <label className="block text-xs uppercase tracking-widest text-muted mb-1" htmlFor="newsletter-after">
-            Only events after
-          </label>
-          <select
-            id="newsletter-after"
-            value={afterHour}
-            onChange={(e) => setAfterHour(e.target.value)}
-            className="border border-rule bg-paper px-3 py-2 text-sm"
-          >
-            <option value={ANY}>Any time</option>
-            {HOURS.map((h) => (
-              <option key={h} value={h}>After {hourLabel(h)}</option>
-            ))}
-          </select>
-        </div>
+        <FormSection step={5} label="Only events after">
+          <div className="flex items-center gap-3.5">
+            <select
+              id="newsletter-after"
+              aria-label="Only events after"
+              value={afterHour}
+              onChange={(e) => setAfterHour(e.target.value)}
+              className="field-sm font-extrabold uppercase tracking-[0.5px] text-xs cursor-pointer"
+            >
+              <option value={ANY}>Any time</option>
+              {HOURS.map((h) => (
+                <option key={h} value={h}>After {hourLabel(h)}</option>
+              ))}
+            </select>
+            <span aria-hidden className="font-display text-xl md:text-[22px]">
+              {afterHour === ANY ? 'ANY TIME' : hourLabel(Number(afterHour))}
+            </span>
+          </div>
+        </FormSection>
 
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-            Newsletter enabled
-          </label>
-          <button
-            type="submit"
-            disabled={save.isPending}
-            className="link-accent text-sm bg-transparent border border-rule px-4 py-2 cursor-pointer disabled:opacity-50"
-          >
-            {save.isPending ? 'Scheduling…' : 'Schedule newsletter'}
-          </button>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3.5 border-t-3 border-ink pt-5">
           <button
             type="button"
-            onClick={() => preview.mutate(payload())}
-            disabled={preview.isPending}
-            className="text-sm text-muted hover:text-ink bg-transparent border border-rule px-4 py-2 cursor-pointer disabled:opacity-50"
+            aria-pressed={enabled}
+            onClick={() => setEnabled((v) => !v)}
+            className={`bg-transparent border-0 p-0 cursor-pointer text-[13px] font-extrabold uppercase tracking-[1px] text-left ${
+              enabled ? 'text-accent' : 'text-muted hover:text-ink'
+            }`}
           >
-            {preview.isPending ? 'Generating…' : 'Generate now'}
+            {enabled ? '● Newsletter enabled' : 'Enable newsletter'}
           </button>
-          {justSaved ? <span className="text-sm text-muted">Saved.</span> : null}
-          {save.error ? <span className="text-sm text-muted">{save.error.message}</span> : null}
+          <div className="flex flex-col md:flex-row gap-3.5">
+            <button type="submit" disabled={save.isPending} className="btn-outline text-center">
+              {save.isPending ? 'Scheduling…' : 'Schedule newsletter'}
+            </button>
+            <button
+              type="button"
+              onClick={() => preview.mutate(payload())}
+              disabled={preview.isPending}
+              className="btn-fill text-center"
+            >
+              {preview.isPending ? 'Generating…' : 'Generate now'}
+            </button>
+          </div>
         </div>
+        {justSaved ? <p className="mt-3 text-sm font-bold text-accent">Saved.</p> : null}
+        {save.error ? <p className="mt-3 text-sm text-accent">{save.error.message}</p> : null}
       </form>
 
       <NewsletterPreview
@@ -463,6 +486,42 @@ function NewsletterForm({
         error={preview.error?.message ?? null}
       />
     </section>
+  );
+}
+
+/**
+ * One block of the form, in the two shapes the design pack asks for.
+ *
+ * Desktop is a plain flush-left label with a light rule above it, so the whole
+ * form reads as one continuous sheet. Below `md` the label becomes a numbered
+ * black bar ("2 · WHEN IT GOES OUT") — on a narrow screen the sections have to
+ * announce themselves, and the count tells you how much form is left.
+ *
+ * The wrapper is a `fieldset` so the label is a real `legend` for anyone
+ * navigating by landmark, not just a styled line of text.
+ */
+function FormSection({
+  step,
+  label,
+  note,
+  children,
+}: {
+  step: number;
+  label: string;
+  note?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset className="border-0 m-0 p-0 md:border-t-2 md:border-rule md:first:border-t-0">
+      <legend className="w-full p-0 md:mt-5">
+        <span className="block bg-ink px-5 py-2.5 text-[10px] font-extrabold uppercase tracking-[1px] text-white md:hidden">
+          {step} · {label}
+        </span>
+        <span className="hidden md:block label-caps">{label}</span>
+      </legend>
+      {note ? <p className="mt-1.5 mb-3 px-5 md:px-0 text-xs text-faint max-w-[520px]">{note}</p> : null}
+      <div className={`px-5 py-4 md:px-0 md:pb-5 ${note ? '' : 'md:pt-3'}`}>{children}</div>
+    </fieldset>
   );
 }
 
@@ -485,11 +544,11 @@ function NewsletterPreview({
   count: number | null;
   error: string | null;
 }) {
-  if (error) return <p className="mt-6 text-sm text-red-700">Couldn&rsquo;t generate a preview: {error}</p>;
+  if (error) return <p className="mt-6 text-sm text-accent">Couldn&rsquo;t generate a preview: {error}</p>;
   if (html === null) return null;
   return (
-    <div className="mt-8">
-      <h3 className="mb-2 text-xs uppercase tracking-widest text-muted">
+    <div className="mt-10">
+      <h3 className="label-caps mb-2.5">
         Preview{count !== null ? ` — ${count} event${count === 1 ? '' : 's'}` : ''}
       </h3>
       <iframe
@@ -497,7 +556,7 @@ function NewsletterPreview({
         title="Newsletter preview"
         srcDoc={html}
         sandbox=""
-        className="w-full max-w-[640px] h-[720px] border border-rule bg-white"
+        className="w-full max-w-[640px] h-[720px] border-3 border-ink bg-white"
       />
     </div>
   );

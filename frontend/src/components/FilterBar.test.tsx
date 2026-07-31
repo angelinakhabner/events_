@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import type { EventFilters } from '@goin/shared';
+import type { EventFilters } from '@afisz/shared';
 import { FilterBar } from './FilterBar';
 
 function Harness({ onChange }: { onChange: (f: EventFilters) => void }) {

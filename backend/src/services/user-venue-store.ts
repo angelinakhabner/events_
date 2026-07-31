@@ -1,5 +1,5 @@
 import { and, asc, eq, max, sql } from 'drizzle-orm';
-import type { Venue, Category } from '@goin/shared';
+import type { Venue, Category } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 

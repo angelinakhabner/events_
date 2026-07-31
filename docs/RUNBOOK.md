@@ -1,6 +1,6 @@
 # Runbook — when things break
 
-Operational playbook for Goin. Ordered roughly by how often each thing bites.
+Operational playbook for AFISZ. Ordered roughly by how often each thing bites.
 
 > **Scope note:** the scraper/AI pipeline is **scaffolded but not yet wired**
 > (no `scrape_runs` table, no scheduled scrape, events are mock data). Sections

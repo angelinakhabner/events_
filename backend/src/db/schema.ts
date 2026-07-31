@@ -152,6 +152,19 @@ export const wantToGo = pgTable(
   }),
 );
 
+// A read-only public link to a user's "want to go" list (GOI-47). One row per
+// user: sharing again after revoking mints a fresh token, so an old link stops
+// resolving instead of quietly coming back to life.
+export const wantToGoShares = pgTable('want_to_go_shares', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** Unguessable URL segment. The link *is* the credential — anyone holding
+   *  it can read the list, which is what sharing means here. */
+  token: text('token').notNull().unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const scrapeRuns = pgTable(
   'scrape_runs',
   {

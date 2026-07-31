@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
-import type { Event, EventVenue, Category } from '@goin/shared';
+import type { Event, EventVenue, Category } from '@afisz/shared';
 
 export interface EventListInput {
   city?: string;
