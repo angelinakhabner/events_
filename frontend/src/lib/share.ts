@@ -1,4 +1,6 @@
 import type { Event } from '@afisz/shared';
+import { formatEventTime, formatShortDate } from './format';
+import { isAllDay } from './buckets';
 
 export type ShareOutcome = 'shared' | 'copied' | 'cancelled' | 'failed';
 
@@ -7,12 +9,46 @@ interface ShareDeps {
   writeText?: (text: string) => Promise<void>;
 }
 
+/** Anything `inviteText` needs off an event. */
+type ShareableEvent = Pick<Event, 'title' | 'sourceUrl' | 'venue' | 'category' | 'startsAt'>;
+
+/**
+ * What lands in the other person's chat window (GOI-49).
+ *
+ * Sharing an event is an invitation, not a citation, so the message is
+ * written as one — "Darling, let's go to X at Y together" — rather than the
+ * bare "X @ Y" it used to paste. Whoever receives it should be able to answer
+ * yes without opening the link first, which is why the when is in the sentence
+ * and not only behind the URL.
+ *
+ * Museums get the day without an hour: they publish runs, not showtimes, and
+ * their undated rows carry a placeholder midnight (GOI-53) that would read as
+ * an invitation to meet at midnight.
+ */
+export function inviteText(event: ShareableEvent): string {
+  const where = event.venue?.name ? ` at ${event.venue.name}` : '';
+  const when = whenPhrase(event);
+  return `Darling, let's go to ${event.title}${where} together${when}`;
+}
+
+/** " — Sat 4 Jul, 20:00", or just the day for an all-day run. Empty when the
+ *  event carries no usable date at all (a tracked film, say). */
+function whenPhrase(event: ShareableEvent): string {
+  if (!event.startsAt || Number.isNaN(Date.parse(event.startsAt))) return '';
+  const day = `${weekdayFmt.format(new Date(event.startsAt))} ${formatShortDate(event.startsAt)}`;
+  return isAllDay(event) ? ` — ${day}` : ` — ${day}, ${formatEventTime(event)}`;
+}
+
+const weekdayFmt = new Intl.DateTimeFormat('en-GB', {
+  weekday: 'short',
+  timeZone: 'Europe/Warsaw',
+});
+
 /** Share the event using Web Share API when available, otherwise copy a
  *  text payload to the clipboard. Returns a tagged outcome so the UI can
  *  show "Copied!" / "Shared!" / nothing. */
-export async function shareEvent(event: Pick<Event, 'title' | 'sourceUrl' | 'venue'>, deps: ShareDeps = {}): Promise<ShareOutcome> {
-  const venuePart = event.venue?.name ? ` @ ${event.venue.name}` : '';
-  return shareLink({ title: event.title, text: `${event.title}${venuePart}`, url: event.sourceUrl }, deps);
+export async function shareEvent(event: ShareableEvent, deps: ShareDeps = {}): Promise<ShareOutcome> {
+  return shareLink({ title: event.title, text: inviteText(event), url: event.sourceUrl }, deps);
 }
 
 /** Hand a URL to the platform share sheet, falling back to the clipboard.
