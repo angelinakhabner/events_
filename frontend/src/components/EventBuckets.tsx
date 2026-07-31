@@ -93,26 +93,34 @@ function EventRow({
   const date = formatShortDate(event.startsAt);
 
   return (
-    <div className={`flex gap-5 md:gap-7 ${compact ? 'py-5' : 'py-5 md:py-[26px]'}`}>
-      <div className={`hidden md:block shrink-0 ${compact ? 'w-[70px]' : 'w-[90px]'}`}>
-        <div className={`text-[13px] md:text-sm font-bold whitespace-nowrap ${highlight ? 'text-accent' : 'text-muted'}`}>
-          {time}
-        </div>
-        {showDate ? <div className="text-[13px] md:text-sm font-bold text-muted">{date}</div> : null}
-      </div>
-      <div className="hidden md:block w-[18px] shrink-0 pt-1">
-        <CategorySwatch category={event.category} size={compact ? 14 : 16} />
+    <div className={`flex flex-wrap gap-x-5 gap-y-2 md:gap-x-7 ${compact ? 'py-5' : 'py-5 md:py-[26px]'}`}>
+      {/* One clock, two placements. `md:contents` dissolves this wrapper on
+          desktop so the swatch and time become columns of the row itself;
+          below `md` they stay grouped as a single meta line above the title.
+          Rendering them once rather than per-breakpoint keeps one copy of the
+          time and date in the DOM. */}
+      <div className="flex w-full items-center gap-2.5 md:contents">
+        <span className="shrink-0 pt-0.5 md:order-2 md:w-[18px] md:pt-1">
+          <CategorySwatch category={event.category} size={compact ? 14 : 16} />
+        </span>
+        <span
+          className={`text-xs md:text-[13px] lg:text-sm font-bold md:order-1 md:shrink-0 ${
+            compact ? 'md:w-[70px]' : 'md:w-[90px]'
+          } ${highlight ? 'text-accent' : 'text-muted'}`}
+        >
+          <span className="whitespace-nowrap">{time}</span>
+          {showDate ? (
+            <>
+              <span aria-hidden className="md:hidden"> · </span>
+              {/* Inline after the time on mobile, its own line in the gutter
+                  from `md` — same text node either way. */}
+              <span className="md:block text-muted whitespace-nowrap">{date}</span>
+            </>
+          ) : null}
+        </span>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="mb-2 flex items-center gap-2.5 md:hidden">
-          <CategorySwatch category={event.category} size={13} />
-          <span className={`text-xs font-bold ${highlight ? 'text-accent' : 'text-muted'}`}>
-            {time}
-            {showDate ? ` · ${date}` : null}
-          </span>
-        </div>
-
+      <div className="flex-1 min-w-0 md:order-3">
         <div className="flex items-baseline gap-3">
           <a href={event.sourceUrl} target="_blank" rel="noreferrer">
             <h3

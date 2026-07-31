@@ -15,20 +15,22 @@ interface Props {
 export function EventCard({ event, venue }: Props) {
   const v = event.venue ?? venue;
   return (
-    <article className="flex gap-5 md:gap-7 py-5 md:py-[26px]">
-      <div className="hidden md:block w-[70px] shrink-0 text-sm font-bold text-muted tabular-nums whitespace-nowrap">
-        {formatEventTime(event)}
-      </div>
-      <div className="hidden md:block w-[18px] shrink-0 pt-1">
-        <CategorySwatch category={event.category} size={14} />
+    <article className="flex flex-wrap gap-x-5 gap-y-2 md:gap-x-7 py-5 md:py-[26px]">
+      {/* One clock, two placements. `md:contents` dissolves this wrapper on
+          desktop so the swatch and time become columns of the row itself;
+          below `md` they stay grouped as a single meta line above the title.
+          Rendering them once rather than per-breakpoint keeps one copy of the
+          time in the DOM. */}
+      <div className="flex w-full items-center gap-2.5 md:contents">
+        <span className="shrink-0 pt-0.5 md:order-2 md:w-[18px] md:pt-1">
+          <CategorySwatch category={event.category} size={14} />
+        </span>
+        <span className="text-xs md:text-sm font-bold text-muted tabular-nums whitespace-nowrap md:order-1 md:w-[70px] md:shrink-0">
+          {formatEventTime(event)}
+        </span>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="mb-2 flex items-center gap-2.5 md:hidden">
-          <CategorySwatch category={event.category} size={13} />
-          <span className="text-xs font-bold text-muted">{formatEventTime(event)}</span>
-        </div>
-
+      <div className="flex-1 min-w-0 md:order-3">
         <h3 className="m-0 text-[19px] md:text-[21px] font-bold leading-[1.2]">
           <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="text-ink hover:text-accent">
             {event.title}
