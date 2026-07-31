@@ -1,6 +1,6 @@
 import type { Event, Venue } from '@goin/shared';
 import { bucketEvents, type Bucket, type BucketKey } from '../lib/buckets';
-import { categoryLabel, formatShortDate, formatTime } from '../lib/format';
+import { categoryLabel, formatEventTime, formatShortDate } from '../lib/format';
 import { EventActions } from './EventActions';
 import { ExpandableText } from './ExpandableText';
 
@@ -56,7 +56,7 @@ function EventRow({
     <div className="group block py-6">
       <div className="flex items-baseline gap-6">
         <div className="w-24 shrink-0 text-sm tabular-nums text-muted">
-          <div className={highlight ? 'text-accent font-semibold' : ''}>{formatTime(event.startsAt)}</div>
+          <div className={highlight ? 'text-accent font-semibold' : ''}>{formatEventTime(event)}</div>
           {showDate ? (
             <div className="text-xs text-muted/80">{formatShortDate(event.startsAt)}</div>
           ) : null}
