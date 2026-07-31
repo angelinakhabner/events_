@@ -1,4 +1,4 @@
-import type { Category, EventFilters } from '@goin/shared';
+import type { Category, EventFilters } from '@afisz/shared';
 
 const CATEGORIES: Category[] = ['cinema', 'theatre', 'exhibition', 'comedy'];
 
@@ -30,8 +30,8 @@ export function FilterBar({ filters, onChange }: Props) {
               type="button"
               aria-pressed={active}
               onClick={() => toggleCategory(c)}
-              className={`tag transition-colors ${
-                active ? 'text-accent' : 'text-muted hover:text-ink'
+              className={`border-2 border-ink px-3 py-1.5 text-xs font-extrabold uppercase tracking-[0.5px] cursor-pointer ${
+                active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent hover:border-accent'
               }`}
             >
               {c}
@@ -40,13 +40,13 @@ export function FilterBar({ filters, onChange }: Props) {
         })}
       </div>
 
-      <label className="text-sm text-muted flex items-center gap-2">
+      <label className="tag flex items-center gap-2">
         From
         <select
           aria-label="Start hour"
           value={filters.startHour ?? ''}
           onChange={(e) => setHour('startHour', e.target.value)}
-          className="bg-transparent border-b border-rule focus:border-accent outline-none py-1"
+          className="field-sm text-[11px] font-bold uppercase cursor-pointer"
         >
           <option value="">any</option>
           {Array.from({ length: 24 }, (_, h) => (
@@ -55,13 +55,13 @@ export function FilterBar({ filters, onChange }: Props) {
         </select>
       </label>
 
-      <label className="text-sm text-muted flex items-center gap-2">
+      <label className="tag flex items-center gap-2">
         Until
         <select
           aria-label="End hour"
           value={filters.endHour ?? ''}
           onChange={(e) => setHour('endHour', e.target.value)}
-          className="bg-transparent border-b border-rule focus:border-accent outline-none py-1"
+          className="field-sm text-[11px] font-bold uppercase cursor-pointer"
         >
           <option value="">any</option>
           {Array.from({ length: 24 }, (_, h) => (

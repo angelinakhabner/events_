@@ -1,7 +1,7 @@
 import { sql, and, eq, gte, lte, lt } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import type { ValidatedEvent } from './validator.js';
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 
 export interface PersistResult {
   inserted: number;

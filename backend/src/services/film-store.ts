@@ -1,5 +1,5 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
-import type { Film, FilmStatus } from '@goin/shared';
+import type { Film, FilmStatus } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
 
 // Personal film lists (GOI-5): titles a user wants to watch, and titles

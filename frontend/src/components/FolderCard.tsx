@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Folder, Venue } from '@goin/shared';
+import type { Folder, Venue } from '@afisz/shared';
 import { filterSummary } from '../lib/format';
 
 interface Props {
@@ -25,7 +25,7 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
   };
 
   return (
-    <article className="py-6 border-b border-rule">
+    <article className="py-6 rule-soft">
       <div className="flex items-baseline justify-between gap-4">
         <div className="min-w-0">
           {editing ? (
@@ -39,24 +39,24 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
                 if (e.key === 'Enter') submit();
                 if (e.key === 'Escape') { setDraft(folder.name); setEditing(false); }
               }}
-              className="font-serif text-2xl bg-transparent border-b border-accent outline-none w-full"
+              className="text-2xl font-bold bg-transparent border-b-2 border-accent outline-none w-full"
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="font-serif text-2xl text-ink bg-transparent border-0 p-0 cursor-text text-left"
+              className="text-2xl font-bold text-ink bg-transparent border-0 p-0 cursor-text text-left"
               aria-label={`Rename folder ${folder.name}`}
             >
               {folder.name}
             </button>
           )}
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1.5 tag">
             {filterSummary(folder.filters, venuesInFolder.length)}
           </p>
         </div>
-        <div className="flex items-center gap-4 text-sm">
-          <button type="button" onClick={onToggle} className="link-accent bg-transparent border-0 cursor-pointer">
+        <div className="flex items-center gap-4">
+          <button type="button" onClick={onToggle} className="act act-on">
             {expanded ? 'Hide events' : 'Show events'}
           </button>
           {confirmingDelete ? (
@@ -64,14 +64,14 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
               <button
                 type="button"
                 onClick={() => { setConfirmingDelete(false); onDelete(); }}
-                className="text-accent bg-transparent border-0 cursor-pointer"
+                className="act act-on"
               >
                 Confirm delete
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(false)}
-                className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+                className="act"
               >
                 Cancel
               </button>
@@ -80,7 +80,7 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
             <button
               type="button"
               onClick={() => setConfirmingDelete(true)}
-              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+              className="act"
               aria-label={`Delete folder ${folder.name}`}
             >
               Delete

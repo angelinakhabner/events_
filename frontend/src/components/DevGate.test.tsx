@@ -32,7 +32,7 @@ describe('DevGate', () => {
     await user.click(screen.getByRole('button', { name: 'Enter' }));
 
     expect(await screen.findByText('app content')).toBeInTheDocument();
-    expect(localStorage.getItem('goin-dev-gate')).toBe(SECRET_HASH);
+    expect(localStorage.getItem('afisz-dev-gate')).toBe(SECRET_HASH);
   });
 
   it('shows an error on a wrong password and stays locked', async () => {
@@ -49,7 +49,7 @@ describe('DevGate', () => {
 
   it('skips the form when the unlock is already stored', () => {
     vi.stubEnv('VITE_DEV_GATE_HASH', SECRET_HASH);
-    localStorage.setItem('goin-dev-gate', SECRET_HASH);
+    localStorage.setItem('afisz-dev-gate', SECRET_HASH);
     render(<DevGate>app content</DevGate>);
     expect(screen.getByText('app content')).toBeInTheDocument();
   });

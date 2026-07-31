@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { Category } from '@goin/shared';
+import type { Category } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { filterEventsByDay } from '../lib/buckets';
 import { EventBuckets } from './EventBuckets';
 import { CategoryBar } from './CategoryBar';
 import { DayBar } from './DayBar';
+import { PanelHeading } from './PanelHeading';
 import { EmptyState, ErrorState, SkeletonList } from './states';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
@@ -38,17 +39,16 @@ export function MyEventsSection() {
 
   return (
     <section>
-      <div className="mb-6">
-        <h2 className="font-serif text-2xl tracking-tight">Events</h2>
-        <p className="mt-1 text-sm text-muted max-w-prose">
-          What&rsquo;s coming up at the venues in your active folder.
-        </p>
-      </div>
+      <PanelHeading
+        title="Events"
+        blurb="What's coming up at the venues in your active folder."
+        rule={false}
+      />
 
-      <CategoryBar selected={category} onChange={setCategory} />
+      <CategoryBar selected={category} onChange={setCategory} compact />
       <DayBar selected={day} onChange={setDay} />
 
-      <div className="mt-6">
+      <div className="mt-2">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
         {eventsQuery.error ? (
           <ErrorState message="Couldn't load your events." onRetry={() => eventsQuery.refetch()} />
@@ -70,7 +70,7 @@ export function MyEventsSection() {
             }
           />
         ) : null}
-        {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
+        {events.length > 0 ? <EventBuckets events={events} venues={venueMap} compact /> : null}
       </div>
     </section>
   );

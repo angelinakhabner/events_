@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Event, Festival } from '@goin/shared';
+import type { Event, Festival } from '@afisz/shared';
 import { groupPicks, listSentence, renderBriefHtml, type BriefSection } from './newsletter-render.js';
 
 // A Wednesday noon in Warsaw (CEST = UTC+2).
@@ -67,14 +67,14 @@ describe('renderBriefHtml — content', () => {
       festival: FESTIVAL,
     });
 
-    expect(html).toContain('GOIN · DAILY');
+    expect(html).toContain('AFISZ · DAILY');
     expect(html).toContain('Today in<br>Warsaw');
     expect(html).toContain('Hi Ania — 2 picks from Cinema &amp; Comedy');
     expect(html).toContain('Chungking Express');
     expect(html).toContain('https://x.pl/a');
     expect(html).toContain('KINOTEKA');
     expect(html).toContain('Kino Letnie nad Wisłą');
-    expect(html).toContain('See all events in Goin →');
+    expect(html).toContain('See all events in AFISZ →');
     expect(html).toContain('Manage preferences');
   });
 
@@ -86,7 +86,7 @@ describe('renderBriefHtml — content', () => {
 
   it('switches the masthead and subject wording for weekly briefs', () => {
     const html = render({ sections: [section({ frequency: 'weekly' })] });
-    expect(html).toContain('GOIN · WEEKLY');
+    expect(html).toContain('AFISZ · WEEKLY');
     expect(html).toContain('This week in<br>Warsaw');
   });
 

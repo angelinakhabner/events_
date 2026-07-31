@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   bucketEvents,
+  dedupeAllDay,
+  isAllDay,
   filterEventsByDay,
   filterEventsFromHour,
   warsawDayKey,
   warsawHour,
 } from './buckets';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 function evt(startsAt: string, id = startsAt): Event {
   return {
@@ -135,5 +137,155 @@ describe('filterEventsFromHour', () => {
 
   it('drops events with unparseable start times', () => {
     expect(filterEventsFromHour([evt('not-a-date', 'bad')], 8)).toEqual([]);
+  });
+});
+
+// Regression: events beyond the week used to fall through every branch and
+// vanish. Because the pages only render their empty state when the *filtered*
+// list is empty, a venue whose next event was further out rendered nothing at
+// all — no rows, no explanation. Every Warsaw theatre looked broken in summer.
+describe('bucketEvents — nothing this week', () => {
+  const now = new Date('2026-07-29T10:00:00.000Z');
+
+  it('names the nearest day instead of rendering nothing', () => {
+    const autumn = evt('2026-09-12T18:00:00+02:00', 'sep');
+    const buckets = bucketEvents([autumn], now);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.key).toBe('later');
+    // Matched loosely on purpose: the exact rendering is the runtime's ICU
+    // ("Sat 12 Sept" under Node, "Sat, 12 Sept" in Chromium), and pinning it
+    // makes the test assert the environment rather than the behaviour.
+    expect(buckets[0]!.label).toMatch(/^Nearest screening on \w{3},? 12 Sept/);
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['sep']);
+  });
+
+  it('shows every event on that nearest day, but not the days after it', () => {
+    // "When does this start again?" — not "what is the autumn programme?".
+    const buckets = bucketEvents(
+      [
+        evt('2026-09-12T18:00:00+02:00', 'a'),
+        evt('2026-09-12T20:30:00+02:00', 'b'),
+        evt('2026-09-13T18:00:00+02:00', 'next-day'),
+        evt('2026-10-01T18:00:00+02:00', 'october'),
+      ],
+      now,
+    );
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['a', 'b']);
+  });
+
+  it('picks the nearest day in Warsaw terms', () => {
+    // 22:30Z on the 11th is already 00:30 on the 12th in Warsaw, so both of
+    // these belong to the same nearest day.
+    const buckets = bucketEvents(
+      [evt('2026-09-11T22:30:00.000Z', 'past-midnight'), evt('2026-09-12T16:00:00.000Z', 'evening')],
+      now,
+    );
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['past-midnight', 'evening']);
+    expect(buckets[0]!.label).toMatch(/^Nearest screening on \w{3},? 12 Sept/);
+  });
+
+  it('stays out of the way when the week has something', () => {
+    // The listing is "what's on now"; a single show this week must not drag
+    // the whole autumn programme in behind it.
+    const buckets = bucketEvents(
+      [evt('2026-07-31T18:00:00+02:00', 'this-week'), evt('2026-09-12T18:00:00+02:00', 'autumn')],
+      now,
+    );
+    expect(buckets.map((b) => b.key)).toEqual(['thisWeek']);
+    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['this-week']);
+  });
+
+  it('returns nothing at all when there is genuinely nothing upcoming', () => {
+    expect(bucketEvents([], now)).toEqual([]);
+    expect(bucketEvents([evt('2026-07-01T18:00:00+02:00', 'past')], now)).toEqual([]);
+  });
+});
+
+// GOI-53: museums publish runs, not showtimes. Their undated rows carry local
+// midnight as a "no hour published" marker.
+describe('all-day museum rows', () => {
+  function exhibition(startsAt: string, opts: { id?: string; title?: string; venueId?: string } = {}): Event {
+    return {
+      ...evt(startsAt, opts.id ?? startsAt),
+      category: 'exhibition',
+      title: opts.title ?? 'Wystawa stała',
+      venueId: opts.venueId ?? 'mnw',
+    };
+  }
+
+  // Warsaw is UTC+2 in June, so local midnight on the 9th is 22:00Z on the 8th.
+  const midnight9 = '2026-06-08T22:00:00.000Z';
+  const midnight10 = '2026-06-09T22:00:00.000Z';
+  const midnight11 = '2026-06-10T22:00:00.000Z';
+  const now = new Date('2026-06-09T10:00:00.000Z'); // Tue 12:00 Warsaw
+
+  it('recognises exactly-midnight exhibition rows, and only those', () => {
+    expect(isAllDay(exhibition(midnight9))).toBe(true);
+    // A genuinely timed museum row — an 11:00 guided tour — keeps its hour.
+    expect(isAllDay(exhibition('2026-06-09T09:00:00.000Z'))).toBe(false);
+    // Midnight alone isn't enough: a late-night gig is not an all-day run.
+    expect(isAllDay(evt(midnight9))).toBe(false);
+  });
+
+  it('keeps a run visible for the whole day instead of expiring it at 00:00', () => {
+    // The row for *today* is already hours in the past by lunchtime. Before
+    // GOI-53 it was dropped and the museum surfaced under "Tomorrow".
+    const buckets = bucketEvents([exhibition(midnight9), exhibition(midnight10)], now);
+    expect(buckets.find((b) => b.key === 'today')?.items.map((e) => e.id)).toEqual([midnight9]);
+  });
+
+  it('drops a run that ended yesterday', () => {
+    const yesterday = '2026-06-07T22:00:00.000Z'; // local midnight on the 8th
+    expect(bucketEvents([exhibition(yesterday)], now)).toEqual([]);
+  });
+
+  it('never files an all-day run under "Starting soon"', () => {
+    // 12:30 Warsaw is inside the 30-minute window, but nothing "starts" then.
+    const buckets = bucketEvents([exhibition('2026-06-09T10:20:00.000Z', { id: 'timed' })], now);
+    expect(buckets.find((b) => b.key === 'soon')?.items.map((e) => e.id)).toEqual(['timed']);
+
+    const allDay = bucketEvents([exhibition(midnight9)], now);
+    expect(allDay.find((b) => b.key === 'soon')).toBeUndefined();
+    expect(allDay.find((b) => b.key === 'today')?.items).toHaveLength(1);
+  });
+
+  it('shows a three-month run once, not once per day', () => {
+    const run = [
+      exhibition(midnight9, { id: 'd1' }),
+      exhibition(midnight10, { id: 'd2' }),
+      exhibition(midnight11, { id: 'd3' }),
+    ];
+    const ids = bucketEvents(run, now).flatMap((b) => b.items.map((e) => e.id));
+    expect(ids).toEqual(['d1']);
+  });
+
+  it('collapses titles that differ only in case, spacing or trailing punctuation', () => {
+    const run = [
+      exhibition(midnight9, { id: 'd1', title: 'Wystawa stała' }),
+      exhibition(midnight10, { id: 'd2', title: 'WYSTAWA  STAŁA.' }),
+    ];
+    expect(dedupeAllDay(run).map((e) => e.id)).toEqual(['d1']);
+  });
+
+  it('keeps the same title at two museums — they are two things to go to', () => {
+    const run = [
+      exhibition(midnight9, { id: 'mnw', venueId: 'mnw' }),
+      exhibition(midnight9, { id: 'polin', venueId: 'polin' }),
+    ];
+    expect(dedupeAllDay(run).map((e) => e.id)).toEqual(['mnw', 'polin']);
+  });
+
+  it('leaves a museum\'s timed tours alone, even repeated on one day', () => {
+    const tours = [
+      exhibition('2026-06-09T09:00:00.000Z', { id: 't11', title: 'Oprowadzanie' }),
+      exhibition('2026-06-09T13:00:00.000Z', { id: 't15', title: 'Oprowadzanie' }),
+    ];
+    expect(dedupeAllDay(tours).map((e) => e.id)).toEqual(['t11', 't15']);
+  });
+
+  it('leaves films alone — repeat showings are the point', () => {
+    const showings = [evt('2026-06-09T16:00:00.000Z', 'a'), evt('2026-06-09T19:00:00.000Z', 'b')];
+    expect(dedupeAllDay(showings).map((e) => e.id)).toEqual(['a', 'b']);
   });
 });

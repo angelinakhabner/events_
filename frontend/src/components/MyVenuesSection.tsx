@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { Category } from '@goin/shared';
+import type { Category } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import type { VenueSchedule } from '@goin/shared';
+import { categoryLabel } from '../lib/format';
+import type { VenueSchedule } from '@afisz/shared';
 import { AddVenueForm, CATEGORIES } from './AddVenueForm';
+import { CategorySwatch } from './CategorySwatch';
+import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 import { VenueScheduleNote } from './VenueScheduleNote';
 
@@ -66,22 +69,16 @@ export function MyVenuesSection() {
 
   return (
     <section>
-      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-4">
-        <div>
-          <h2 className="font-serif text-2xl tracking-tight">My venues</h2>
-          <p className="mt-1 text-sm text-muted max-w-prose">
-            Every venue you follow, filed into folders. Rename a venue, change its category
-            or add your own tags — those changes are only visible to you.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setAdding((v) => !v)}
-          className="link-accent text-sm bg-transparent border-0 cursor-pointer"
-        >
-          {adding ? 'Cancel' : 'Add venue'}
-        </button>
-      </div>
+      <PanelHeading
+        title="My venues"
+        blurb="Every venue you follow, filed into folders. Rename a venue, change its category or add your own tags — those changes are only visible to you."
+        rule={false}
+        action={
+          <button type="button" onClick={() => setAdding((v) => !v)} className="act act-on">
+            {adding ? 'Cancel' : 'Add venue'}
+          </button>
+        }
+      />
 
       <FoldersBar />
 
@@ -105,17 +102,17 @@ export function MyVenuesSection() {
 
       {grouped.map((folder) => (
         <div key={folder.id ?? 'unfiled'} className="mb-10">
-          <h3 className="mb-2 flex items-baseline gap-3 text-xs uppercase tracking-widest text-muted">
+          <h3 className="mb-0 flex items-baseline gap-3 tag pb-2">
             {folder.name}
-            {folder.active ? <span className="text-accent normal-case tracking-normal">active</span> : null}
-            <span className="normal-case tracking-normal">
+            {folder.active ? <span className="text-accent">active</span> : null}
+            <span>
               {folder.venues.length} venue{folder.venues.length === 1 ? '' : 's'}
             </span>
           </h3>
           {folder.venues.length === 0 ? (
-            <p className="text-sm text-muted">Nothing filed here yet.</p>
+            <p className="text-sm text-muted border-t-3 border-ink pt-4">Nothing filed here yet.</p>
           ) : (
-            <ul className="divide-y divide-rule border-y border-rule list-none m-0 p-0">
+            <ul className="border-t-3 border-ink list-none m-0 p-0">
               {folder.venues.map((v) => (
                 <VenueRow
                   key={v.id}
@@ -177,11 +174,11 @@ function FoldersBar() {
             aria-pressed={l.active}
             onClick={() => { if (!l.active) setActive.mutate({ listId: l.id }); }}
             disabled={setActive.isPending}
-            className={
+            className={`border-2 border-ink px-3.5 py-2 text-xs font-extrabold uppercase tracking-[0.5px] ${
               l.active
-                ? 'border border-ink bg-ink text-paper px-3 py-1 text-sm cursor-default'
-                : 'border border-rule bg-transparent text-muted hover:text-ink px-3 py-1 text-sm cursor-pointer disabled:opacity-50'
-            }
+                ? 'bg-ink text-white cursor-default'
+                : 'bg-transparent text-ink hover:text-accent hover:border-accent cursor-pointer disabled:opacity-50'
+            }`}
           >
             {l.name} <span className="opacity-70">({l.venueCount})</span>
           </button>
@@ -201,28 +198,28 @@ function FoldersBar() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="e.g. Poznan"
-              className="border border-rule bg-paper px-2 py-1 text-sm"
+              className="field-sm"
             />
-            <button type="submit" disabled={create.isPending} className="link-accent text-sm bg-transparent border-0 cursor-pointer disabled:opacity-50">
+            <button type="submit" disabled={create.isPending} className="act act-on">
               Create
             </button>
             <button
               type="button"
               onClick={() => { setCreating(false); setNewName(''); }}
-              className="text-sm text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+              className="act"
             >
               Cancel
             </button>
           </form>
         ) : (
-          <button type="button" onClick={() => setCreating(true)} className="link-accent text-sm bg-transparent border-0 cursor-pointer">
+          <button type="button" onClick={() => setCreating(true)} className="act act-on">
             + New folder
           </button>
         )}
       </div>
 
       {active ? (
-        <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-muted">
+        <div className="mt-3 flex flex-wrap items-center gap-5">
           {renaming ? (
             <form
               className="flex items-center gap-2"
@@ -237,12 +234,12 @@ function FoldersBar() {
                 autoFocus
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
-                className="border border-rule bg-paper px-2 py-1 text-sm"
+                className="field-sm"
               />
-              <button type="submit" disabled={rename.isPending} className="link-accent bg-transparent border-0 cursor-pointer disabled:opacity-50">
+              <button type="submit" disabled={rename.isPending} className="act act-sm act-on">
                 Save
               </button>
-              <button type="button" onClick={() => setRenaming(false)} className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer">
+              <button type="button" onClick={() => setRenaming(false)} className="act act-sm">
                 Cancel
               </button>
             </form>
@@ -250,7 +247,7 @@ function FoldersBar() {
             <button
               type="button"
               onClick={() => { setRenameValue(active.name); setRenaming(true); }}
-              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+              className="act act-sm"
             >
               Rename folder
             </button>
@@ -262,15 +259,15 @@ function FoldersBar() {
                 remove.mutate({ listId: active.id });
               }
             }}
-            className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+            className="act act-sm"
           >
             Delete folder
           </button>
         </div>
       ) : null}
 
-      {mutationError ? <p className="mt-2 text-sm text-red-700">{mutationError}</p> : null}
-      <p className="mt-3 text-xs text-muted max-w-prose">
+      {mutationError ? <p className="mt-2 text-sm text-accent">{mutationError}</p> : null}
+      <p className="mt-3.5 text-xs text-muted max-w-[520px]">
         Only the active folder is kept fresh — venues in your other folders aren&rsquo;t
         scraped until you make their folder active.
       </p>
@@ -329,78 +326,91 @@ function VenueRow({
 
   if (!editing) {
     return (
-      <li className="py-3">
-        <div className="flex items-baseline justify-between gap-4">
-          <div className="min-w-0">
-            <span className="text-ink">{venue.name}</span>
-            {venue.customized ? <span className="ml-2 text-xs text-muted">(edited)</span> : null}
-            <span className="ml-3 text-xs text-muted">
-              {venue.windowDays ? `${venue.windowDays}d window` : 'default window'}
-            </span>
-            <VenueScheduleNote schedule={schedule} />
+      <li className="flex items-start gap-4 md:gap-5 py-5 md:py-6 rule-soft">
+        <CategorySwatch category={venue.category} size={20} className="mt-1.5" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+            <div className="min-w-0">
+              <h4 className="m-0 text-lg md:text-[22px] font-bold text-ink">
+                {venue.name}
+                {venue.customized ? (
+                  <span className="ml-2 text-[11px] font-medium text-faint">(edited)</span>
+                ) : null}
+              </h4>
+              {/* The design's "{TAG} · {N} UPCOMING" line — the category the
+                  venue is filed under, and how much it actually has on. */}
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 tag text-[12px]">
+                <span>{categoryLabel(venue.category)}</span>
+                <span aria-hidden>·</span>
+                <span>{schedule?.upcomingCount ?? 0} upcoming</span>
+                <span aria-hidden>·</span>
+                <span>{venue.windowDays ? `${venue.windowDays}d window` : 'default window'}</span>
+                <VenueScheduleNote schedule={schedule} />
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-4">
+              {folders.length > 1 ? (
+                <>
+                  <label className="sr-only" htmlFor={`folder-${venue.id}`}>Folder for {venue.name}</label>
+                  <select
+                    id={`folder-${venue.id}`}
+                    value={venue.listId ?? ''}
+                    onChange={(e) => update.mutate({ venueId: venue.id, listId: e.target.value })}
+                    disabled={update.isPending}
+                    className="border-2 border-ink bg-transparent px-2 py-1 text-[11px] font-bold uppercase tracking-[0.5px] cursor-pointer"
+                  >
+                    {venue.listId === null ? <option value="">Unfiled</option> : null}
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+              <button type="button" onClick={() => setEditing(true)} className="act act-sm">
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => remove.mutate({ venueId: venue.id })}
+                className="act act-sm"
+              >
+                Remove
+              </button>
+            </div>
           </div>
-          <div className="flex shrink-0 items-baseline gap-4 text-sm">
-            {folders.length > 1 ? (
-              <>
-                <label className="sr-only" htmlFor={`folder-${venue.id}`}>Folder for {venue.name}</label>
-                <select
-                  id={`folder-${venue.id}`}
-                  value={venue.listId ?? ''}
-                  onChange={(e) => update.mutate({ venueId: venue.id, listId: e.target.value })}
-                  disabled={update.isPending}
-                  className="border border-rule bg-paper px-2 py-1 text-xs"
-                >
-                  {venue.listId === null ? <option value="">Unfiled</option> : null}
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </>
-            ) : null}
-            <button type="button" onClick={() => setEditing(true)} className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer">
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => remove.mutate({ venueId: venue.id })}
-              className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
-            >
-              Remove
-            </button>
-          </div>
+          <VenueTags
+            venue={venue}
+            onSave={(tags) => update.mutate({ venueId: venue.id, tags })}
+            saving={update.isPending}
+          />
+          {update.error ? <p className="mt-1.5 text-sm text-accent">{update.error.message}</p> : null}
         </div>
-        <VenueTags
-          venue={venue}
-          onSave={(tags) => update.mutate({ venueId: venue.id, tags })}
-          saving={update.isPending}
-        />
-        {update.error ? <p className="mt-1 text-sm text-red-700">{update.error.message}</p> : null}
       </li>
     );
   }
 
   return (
-    <li className="py-3">
+    <li className="py-5 rule-soft">
       <div className="flex flex-wrap items-center gap-3">
         <label className="sr-only" htmlFor={`name-${venue.id}`}>Name</label>
         <input
           id={`name-${venue.id}`}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="flex-1 min-w-[12rem] border border-rule bg-paper px-2 py-1 text-sm"
+          className="field-sm flex-1 min-w-[12rem]"
         />
         <label className="sr-only" htmlFor={`category-${venue.id}`}>Category</label>
         <select
           id={`category-${venue.id}`}
           value={category}
           onChange={(e) => setCategory(e.target.value as Category)}
-          className="border border-rule bg-paper px-2 py-1 text-sm"
+          className="field-sm"
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <label className="text-xs text-muted" htmlFor={`window-${venue.id}`}>
+        <label className="tag" htmlFor={`window-${venue.id}`}>
           window (days)
         </label>
         <input
@@ -411,15 +421,15 @@ function VenueRow({
           value={windowDays}
           onChange={(e) => setWindowDays(e.target.value)}
           placeholder="default"
-          className="w-20 border border-rule bg-paper px-2 py-1 text-sm"
+          className="field-sm w-20"
         />
-        <button type="button" onClick={save} className="link-accent text-sm bg-transparent border-0 cursor-pointer">
+        <button type="button" onClick={save} className="act act-on">
           Save
         </button>
         <button
           type="button"
           onClick={() => { setEditing(false); setName(venue.name); setCategory(venue.category); }}
-          className="text-sm text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+          className="act"
         >
           Cancel
         </button>
@@ -455,14 +465,14 @@ function VenueTags({
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       {venue.tags.map((tag) => (
-        <span key={tag} className="inline-flex items-center gap-1 border border-rule px-2 py-0.5 text-xs text-muted">
+        <span key={tag} className="inline-flex items-center gap-1.5 border-2 border-ink px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.5px] text-ink">
           {tag}
           <button
             type="button"
             aria-label={`Remove tag ${tag} from ${venue.name}`}
             onClick={() => onSave(venue.tags.filter((t) => t !== tag))}
             disabled={saving}
-            className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0 leading-none disabled:opacity-50"
+            className="act act-sm leading-none"
           >
             ×
           </button>
@@ -480,15 +490,15 @@ function VenueTags({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="e.g. date night"
-            className="border border-rule bg-paper px-2 py-0.5 text-xs"
+            className="field-sm py-0.5 text-[11px]"
           />
-          <button type="submit" disabled={saving} className="link-accent text-xs bg-transparent border-0 cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={saving} className="act act-sm act-on">
             Add
           </button>
           <button
             type="button"
             onClick={() => { setAdding(false); setValue(''); }}
-            className="text-xs text-muted hover:text-ink bg-transparent border-0 cursor-pointer"
+            className="act act-sm"
           >
             Cancel
           </button>
@@ -498,7 +508,7 @@ function VenueTags({
           type="button"
           aria-label={`Add tag to ${venue.name}`}
           onClick={() => setAdding(true)}
-          className="link-accent text-xs bg-transparent border-0 cursor-pointer"
+          className="act act-sm act-on"
         >
           + Add tag
         </button>

@@ -3,6 +3,7 @@ import { trpc } from '../lib/trpc';
 import { FolderCard } from '../components/FolderCard';
 import { NewFolderModal, type NewFolderPayload } from '../components/NewFolderModal';
 import { EventList } from '../components/EventList';
+import { PanelHeading } from '../components/PanelHeading';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 
 export function MyFoldersPage() {
@@ -30,21 +31,15 @@ export function MyFoldersPage() {
 
   return (
     <section>
-      <div className="mb-10 flex items-baseline justify-between">
-        <div>
-          <h2 className="font-serif text-2xl tracking-tight">My folders</h2>
-          <p className="mt-2 text-muted max-w-prose">
-            Curated subsets of venues with persistent filters.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="link-accent text-sm bg-transparent border-0 cursor-pointer"
-        >
-          New folder
-        </button>
-      </div>
+      <PanelHeading
+        title="My folders"
+        blurb="Curated subsets of venues with persistent filters."
+        action={
+          <button type="button" onClick={() => setModalOpen(true)} className="act act-on">
+            New folder
+          </button>
+        }
+      />
 
       {foldersQuery.isLoading ? <SkeletonList rows={3} /> : null}
       {foldersQuery.error ? (
@@ -86,7 +81,7 @@ export function MyFoldersPage() {
   );
 }
 
-function FolderEvents({ folderId, venueMap }: { folderId: string; venueMap: Map<string, import('@goin/shared').Venue> }) {
+function FolderEvents({ folderId, venueMap }: { folderId: string; venueMap: Map<string, import('@afisz/shared').Venue> }) {
   const q = trpc.folders.getEvents.useQuery({ folderId });
   if (q.isLoading) return <SkeletonList rows={2} />;
   if (q.error) return <p className="text-sm text-muted">Couldn&rsquo;t load events.</p>;

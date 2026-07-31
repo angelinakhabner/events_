@@ -113,6 +113,18 @@ export interface WantToGoEntry {
   savedAt: string;
 }
 
+/**
+ * Someone else's "want to go" list, opened through a share link (GOI-47).
+ *
+ * Read-only and unattributed: it carries what the owner wants to go to and
+ * nothing about who they are. Entries already marked seen are left out — a
+ * shared list is an invitation, not a diary.
+ */
+export interface SharedWantToGoList {
+  entries: WantToGoEntry[];
+  films: Film[];
+}
+
 // ─── Newsletter ──────────────────────────────────────────────────────────────
 
 export type NewsletterFrequency = 'daily' | 'weekly' | 'monthly';

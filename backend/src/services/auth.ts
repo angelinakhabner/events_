@@ -64,9 +64,9 @@ export async function requestMagicLink(
     const send = opts.send ?? sendEmail;
     await send({
       to: email,
-      subject: 'Your Goin login link',
+      subject: 'Your AFISZ login link',
       html:
-        `<p>Click to log in to Goin:</p>` +
+        `<p>Click to log in to AFISZ:</p>` +
         `<p><a href="${link}">${link}</a></p>` +
         `<p>The link is valid for 15 minutes and can be used once. If you didn't request it, ignore this email.</p>`,
     });

@@ -9,7 +9,7 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
-import { venueSchedule } from '@goin/shared';
+import { venueSchedule, type SharedWantToGoList } from '@afisz/shared';
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
@@ -419,6 +419,19 @@ const my = router({
       .mutation(async ({ ctx, input }) => ({
         success: await ctx.wantToGo.remove(ctx.user.id, input.eventId),
       })),
+
+    /** GOI-47: a read-only public link to this list. */
+    share: router({
+      get: userProcedure.query(async ({ ctx }) => ({
+        token: await ctx.wantToGo.shareToken(ctx.user.id),
+      })),
+      enable: userProcedure.mutation(async ({ ctx }) => ({
+        token: await ctx.wantToGo.share(ctx.user.id),
+      })),
+      disable: userProcedure.mutation(async ({ ctx }) => ({
+        success: await ctx.wantToGo.unshare(ctx.user.id),
+      })),
+    }),
   }),
 
   /** GOI-27: what's on at the venues the user follows. */
@@ -524,12 +537,40 @@ const festivals = router({
   list: publicProcedure.query(() => listFestivals()),
 });
 
+/**
+ * Reading someone else's "want to go" list through a share link (GOI-47).
+ *
+ * Public on purpose: the point is that you can send the link to someone
+ * without an account. The token is the whole credential, so a revoked or
+ * made-up one is a flat NOT_FOUND — the response never distinguishes "no such
+ * link" from "that user shares nothing", and never names the owner.
+ */
+const sharedList = router({
+  get: publicProcedure
+    .input(z.object({ token: z.string().min(1).max(200) }))
+    .query(async ({ ctx, input }): Promise<SharedWantToGoList> => {
+      const ownerId = await ctx.wantToGo.ownerOfShareToken(input.token);
+      if (!ownerId) throw new TRPCError({ code: 'NOT_FOUND', message: 'This list is not shared.' });
+      const [entries, films] = await Promise.all([
+        ctx.wantToGo.listEntries(ownerId),
+        ctx.films.list(ownerId),
+      ]);
+      // A shared list is an invitation, not a diary: only what the owner
+      // still wants to go to.
+      return {
+        entries: entries.filter((e) => e.seenAt === null),
+        films: films.filter((f) => f.status !== 'seen'),
+      };
+    }),
+});
+
 export const appRouter = router({
   health: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),
   venues,
   events,
   folders,
   festivals,
+  sharedList,
   admin,
   auth,
   my,
