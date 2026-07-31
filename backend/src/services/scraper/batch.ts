@@ -48,6 +48,8 @@ export class Gate {
 interface Parked {
   system: string;
   user: string;
+  /** Per-venue model (GOI-16), carried through so one batch can mix models. */
+  model?: string;
   resolve: (json: string) => void;
   reject: (err: Error) => void;
 }
@@ -83,7 +85,7 @@ export class BatchExtractionCoordinator {
   /** An `ExtractorClient` that parks the prompt instead of sending it. */
   clientFor(customId: string, gate?: Gate): ExtractorClient {
     return {
-      extract: async ({ system, user }) => {
+      extract: async ({ system, user, model }) => {
         gate?.release();
         try {
           return await new Promise<string>((resolve, reject) => {
@@ -91,7 +93,7 @@ export class BatchExtractionCoordinator {
               reject(new Error(`extract() called twice for ${customId}`));
               return;
             }
-            this.parked.set(customId, { system, user, resolve, reject });
+            this.parked.set(customId, { system, user, model, resolve, reject });
             this.armTimeout();
             void this.maybeFlush();
           });
@@ -142,7 +144,7 @@ export class BatchExtractionCoordinator {
 
     try {
       const results = await this.client.run(
-        batch.map(([customId, p]) => ({ customId, system: p.system, user: p.user })),
+        batch.map(([customId, p]) => ({ customId, system: p.system, user: p.user, model: p.model })),
       );
       for (const [customId, p] of batch) {
         const result = results.get(customId);
