@@ -7,6 +7,7 @@ import { CategoryBar } from './CategoryBar';
 import { DayBar } from './DayBar';
 import { PanelHeading } from './PanelHeading';
 import { EmptyState, ErrorState, SkeletonList } from './states';
+import { MyFestivalsSection } from './MyFestivalsSection';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -72,6 +73,10 @@ export function MyEventsSection() {
         ) : null}
         {events.length > 0 ? <EventBuckets events={events} venues={venueMap} compact /> : null}
       </div>
+
+      {/* Festivals often replace the normal repertoire rather than appearing in
+          it, so they belong here even when the listing above is empty (GOI-33). */}
+      <MyFestivalsSection />
     </section>
   );
 }
