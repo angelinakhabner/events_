@@ -154,6 +154,61 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(preview.srcdoc).toContain('Nothing on in this window.');
   });
 
+  // GOI-45: generating also drops the brief on disk, ready to send by hand.
+  it('saves the generated brief as a dated .html file', async () => {
+    const user = userEvent.setup();
+    // jsdom has no blob URLs; stand one up so the helper gets as far as the
+    // anchor, and record what it would have saved.
+    const saved: { name: string; type: string }[] = [];
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    const origClick = HTMLAnchorElement.prototype.click;
+    let lastType = '';
+    URL.createObjectURL = ((blob: Blob) => { lastType = blob.type; return 'blob:stub'; }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      if (this.download) saved.push({ name: this.download, type: lastType });
+    };
+
+    try {
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+      await user.click(within(section).getByRole('button', { name: /generate now/i }));
+      await screen.findByTestId('newsletter-preview');
+
+      expect(saved).toHaveLength(1);
+      expect(saved[0]!.name).toMatch(/^afisz-brief-\d{4}-\d{2}-\d{2}\.html$/);
+      expect(saved[0]!.type).toBe('text/html;charset=utf-8');
+
+      // And it can be saved again without regenerating.
+      await user.click(screen.getByRole('button', { name: /download again/i }));
+      expect(saved).toHaveLength(2);
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+      HTMLAnchorElement.prototype.click = origClick;
+    }
+  });
+
+  // The download is a side benefit; the preview is the point. A browser that
+  // refuses the blob URL must still render the brief.
+  it('still shows the preview when the file can\'t be saved', async () => {
+    const user = userEvent.setup();
+    const orig = URL.createObjectURL;
+    // @ts-expect-error — modelling an environment without blob URLs.
+    URL.createObjectURL = undefined;
+    try {
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+      await user.click(within(section).getByRole('button', { name: /generate now/i }));
+      expect(await screen.findByTestId('newsletter-preview')).toBeInTheDocument();
+    } finally {
+      URL.createObjectURL = orig;
+    }
+  });
+
   // Per-category rules: each category gets its own cadence and depth.
   it('gives a category its own cadence and description width', async () => {
     const user = userEvent.setup();

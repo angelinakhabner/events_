@@ -3,6 +3,7 @@ import type {
   NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency, NewsletterSettings,
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
+import { downloadText } from '../lib/download';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -173,7 +174,11 @@ function NewsletterForm({
       await utils.my.newsletter.get.invalidate();
     },
   });
-  const preview = trpc.my.newsletter.preview.useMutation();
+  // GOI-45: generating also drops the brief on disk, ready to paste or
+  // attach into whatever the user actually sends mail from.
+  const preview = trpc.my.newsletter.preview.useMutation({
+    onSuccess: (data) => downloadBrief(data.html),
+  });
 
   const payload = () => ({
     email: email.trim(),
@@ -548,9 +553,16 @@ function NewsletterPreview({
   if (html === null) return null;
   return (
     <div className="mt-10">
-      <h3 className="label-caps mb-2.5">
-        Preview{count !== null ? ` — ${count} event${count === 1 ? '' : 's'}` : ''}
-      </h3>
+      <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-3.5">
+        <h3 className="label-caps">
+          Preview{count !== null ? ` — ${count} event${count === 1 ? '' : 's'}` : ''}
+        </h3>
+        {/* Generating already saved a copy; this is for when it got lost in
+            the downloads folder, or the same brief is wanted twice. */}
+        <button type="button" onClick={() => downloadBrief(html)} className="act act-sm">
+          Download again
+        </button>
+      </div>
       <iframe
         data-testid="newsletter-preview"
         title="Newsletter preview"
@@ -560,4 +572,19 @@ function NewsletterPreview({
       />
     </div>
   );
+}
+
+/**
+ * Save the rendered brief as a standalone .html file.
+ *
+ * The renderer already returns a complete email document, so what lands on
+ * disk opens in a browser exactly as the recipient would see it — ready to
+ * attach, or to open and paste into a mail client. Dated so a week of drafts
+ * doesn't collapse onto one filename.
+ */
+function downloadBrief(html: string): void {
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  downloadText(`afisz-brief-${day}.html`, html, 'text/html');
 }
