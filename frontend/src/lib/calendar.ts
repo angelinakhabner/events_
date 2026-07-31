@@ -1,4 +1,5 @@
 import type { Event } from '@afisz/shared';
+import { downloadText, slugifyForFilename } from './download';
 
 /** Two hours as a sensible default when an event has no end time or duration. */
 const DEFAULT_DURATION_MIN = 120;
@@ -75,27 +76,5 @@ export function buildIcs(
 export function downloadIcs(
   event: Pick<Event, 'id' | 'title' | 'description' | 'sourceUrl' | 'startsAt' | 'endsAt' | 'durationMinutes' | 'venue'>,
 ): void {
-  const blob = new Blob([buildIcs(event)], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${slugifyForFilename(event.title)}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } finally {
-    // Free the blob next tick so the click handler can use it first.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-}
-
-function slugifyForFilename(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-zA-Z0-9-]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .toLowerCase()
-    .slice(0, 60) || 'event';
+  downloadText(`${slugifyForFilename(event.title, 'event')}.ics`, buildIcs(event), 'text/calendar');
 }
