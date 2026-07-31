@@ -3,6 +3,7 @@ import type { Event } from '@goin/shared';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
 import { formatDayKey, formatShortDate, formatTime } from '../lib/format';
+import { AddToCalendar } from './AddToCalendar';
 
 /** Days shown before "See more" — today and tomorrow, as in the mock. */
 const DAYS_SHOWN = 2;
@@ -183,15 +184,20 @@ function ScreeningsPanel({ event, includeSelf }: { event: Event; includeSelf: bo
                   <div key={v.key} className="flex items-baseline gap-2">
                     <span className="text-xs uppercase tracking-wide text-muted">{v.venueName}</span>
                     {v.showings.map((s) => (
-                      <a
-                        key={s.id}
-                        href={s.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="tabular-nums text-sm text-ink hover:text-accent no-underline"
-                      >
-                        {formatTime(s.startsAt)}
-                      </a>
+                      // The time links to the showing's own page (where you buy
+                      // the ticket); the glyph beside it books that exact
+                      // venue-and-time in a calendar (GOI-48).
+                      <span key={s.id} className="inline-flex items-baseline gap-1">
+                        <a
+                          href={s.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="tabular-nums text-sm text-ink hover:text-accent no-underline"
+                        >
+                          {formatTime(s.startsAt)}
+                        </a>
+                        <AddToCalendar event={s} variant="icon" />
+                      </span>
                     ))}
                   </div>
                 ))}

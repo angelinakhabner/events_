@@ -149,6 +149,74 @@ describe('auth + /my flow (in-process)', () => {
     expect(unmarked[0]!.seenAt).toBeNull();
   });
 
+  // GOI-47: a read-only public link to a want-to-go list.
+  describe('sharing', () => {
+    type Share = { token: string | null };
+    type Shared = { entries: Array<{ event: { id: string } }>; films: Array<{ id: string }> };
+
+    const sharedList = (token: string) =>
+      trpcCall('sharedList.get', { query: JSON.stringify({ token }) });
+
+    it('is off until asked for, and the same link comes back on re-share', async () => {
+      const gina = await login(`gina-${RUN}@example.com`);
+      expect(((await trpcCall('my.wantToGo.share.get', { token: gina })).data as Share).token).toBeNull();
+
+      const first = (await trpcCall('my.wantToGo.share.enable', { body: {}, token: gina }))
+        .data as Share;
+      expect(first.token).toBeTruthy();
+
+      // Pressing "share" twice must not break a URL a friend already has.
+      const again = (await trpcCall('my.wantToGo.share.enable', { body: {}, token: gina }))
+        .data as Share;
+      expect(again.token).toBe(first.token);
+      expect(((await trpcCall('my.wantToGo.share.get', { token: gina })).data as Share).token)
+        .toBe(first.token);
+    });
+
+    it.skipIf(!HAS_DB)('serves the owner\'s unseen list to anyone holding the link', async () => {
+      const hana = await login(`hana-${RUN}@example.com`);
+      const wanted = await usableEventId();
+      const been = await usableEventId();
+      await trpcCall('my.wantToGo.add', { body: { eventId: wanted }, token: hana });
+      await trpcCall('my.wantToGo.add', { body: { eventId: been }, token: hana });
+      await trpcCall('my.wantToGo.setSeen', { body: { eventId: been, seen: true }, token: hana });
+      await trpcCall('my.films.add', { body: { title: `Vertigo ${RUN}` }, token: hana });
+
+      const { token } = (await trpcCall('my.wantToGo.share.enable', { body: {}, token: hana }))
+        .data as Share;
+
+      // No Authorization header: this is the whole point of the feature.
+      const shared = (await sharedList(token!)).data as Shared;
+      expect(shared.entries.map((e) => e.event.id)).toEqual([wanted]);
+      expect(shared.films).toHaveLength(1);
+    });
+
+    it('revoking kills the link, and re-sharing mints a different one', async () => {
+      const ivan = await login(`ivan-${RUN}@example.com`);
+      const { token } = (await trpcCall('my.wantToGo.share.enable', { body: {}, token: ivan }))
+        .data as Share;
+      expect((await sharedList(token!)).error).toBeUndefined();
+
+      await trpcCall('my.wantToGo.share.disable', { body: {}, token: ivan });
+      expect((await sharedList(token!)).error).toMatch(/not shared/i);
+
+      const reshared = (await trpcCall('my.wantToGo.share.enable', { body: {}, token: ivan }))
+        .data as Share;
+      expect(reshared.token).not.toBe(token);
+      // The link that was handed out and revoked stays dead.
+      expect((await sharedList(token!)).error).toMatch(/not shared/i);
+    });
+
+    it('rejects a made-up token the same way as a revoked one', async () => {
+      expect((await sharedList('not-a-real-token')).error).toMatch(/not shared/i);
+    });
+
+    it('needs a session to manage sharing', async () => {
+      expect((await trpcCall('my.wantToGo.share.get')).error).toBeTruthy();
+      expect((await trpcCall('my.wantToGo.share.enable', { body: {} })).error).toBeTruthy();
+    });
+  });
+
   // GOI-25: the "My venues" tab needs every venue at once, each tagged and
   // labelled with the folder it sits in.
   it('venues.listAll spans folders and carries per-user tags', async () => {
