@@ -1,6 +1,6 @@
 import type {
   Event, Festival, NewsletterDetail, NewsletterFrequency,
-} from '@goin/shared';
+} from '@afisz/shared';
 import { env } from '../config.js';
 
 /**
@@ -303,9 +303,9 @@ function mastheadRow(opts: {
   date: string;
 }): string {
   const eyebrow =
-    opts.frequency === 'daily' ? 'GOIN · DAILY'
-    : opts.frequency === 'weekly' ? 'GOIN · WEEKLY'
-    : 'GOIN · MONTHLY';
+    opts.frequency === 'daily' ? 'AFISZ · DAILY'
+    : opts.frequency === 'weekly' ? 'AFISZ · WEEKLY'
+    : 'AFISZ · MONTHLY';
   const headline =
     opts.frequency === 'daily' ? 'Today in<br>Warsaw'
     : opts.frequency === 'weekly' ? 'This week in<br>Warsaw'
@@ -360,7 +360,7 @@ function ctaRow(): string {
         `style="border-collapse:collapse">` +
         `<tr><td bgcolor="${C.ink}" style="background-color:${C.ink};padding:10px 14px">` +
           `<a href="${escapeHtml(href)}" style="font-family:${FONT};font-weight:800;font-size:14px;` +
-            `line-height:1.4;color:${C.bg};text-decoration:none;display:block">See all events in Goin →</a>` +
+            `line-height:1.4;color:${C.bg};text-decoration:none;display:block">See all events in AFISZ →</a>` +
         `</td></tr>` +
       `</table>` +
     `</td></tr>`
@@ -370,8 +370,8 @@ function ctaRow(): string {
 function footerRow(categories: string[]): string {
   const manage = `${env.APP_URL}/my?tab=newsletter`;
   const reason = categories.length
-    ? `Sent because you saved ${escapeHtml(listSentence(categories.map(titleCase)))} on Goin.`
-    : 'Sent because you turned this brief on in Goin.';
+    ? `Sent because you saved ${escapeHtml(listSentence(categories.map(titleCase)))} on AFISZ.`
+    : 'Sent because you turned this brief on in AFISZ.';
   const link = `color:${C.footer};text-decoration:underline`;
   return (
     `<tr><td style="border-top:2px solid ${C.divider};padding:20px 40px 32px;text-align:center;` +
@@ -446,7 +446,7 @@ export function renderBriefHtml(content: BriefContent): string {
       `<meta name="viewport" content="width=device-width, initial-scale=1" />` +
       `<meta name="color-scheme" content="light dark" />` +
       `<meta name="supported-color-schemes" content="light dark" />` +
-      `<title>Goin</title>` +
+      `<title>AFISZ</title>` +
     `</head>` +
     `<body style="margin:0;padding:0;background-color:${C.page};-webkit-text-size-adjust:100%">` +
       preheader(`${pickCount} pick${pickCount === 1 ? '' : 's'} in Warsaw · ${date}`) +

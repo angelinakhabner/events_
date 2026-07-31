@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EventCard } from './EventCard';
-import type { Event, Venue } from '@goin/shared';
+import type { Event, Venue } from '@afisz/shared';
 
 const venue: Venue = {
   id: 'v', name: 'Kino X', url: 'https://x', city: 'Warsaw', country: 'Poland',
@@ -81,5 +81,30 @@ describe('EventCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /share/i }));
     expect(writeText).toHaveBeenCalled();
     expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
+  });
+  // GOI-53: museums show what's on today, not a fabricated 00:00.
+  it('shows "All day" instead of midnight for an undated museum row', () => {
+    const museum: Venue = { ...venue, id: 'mnw', name: 'Muzeum Narodowe', category: 'exhibition' };
+    const run: Event = {
+      ...event,
+      title: 'Wystawa stała',
+      category: 'exhibition',
+      startsAt: '2026-06-08T22:00:00.000Z', // 00:00 Warsaw on the 9th
+    };
+
+    render(<EventCard event={run} venue={museum} />);
+    expect(screen.getByText('All day')).toBeInTheDocument();
+    expect(screen.queryByText('00:00')).not.toBeInTheDocument();
+  });
+
+  it('keeps the hour on a museum row that published one', () => {
+    const museum: Venue = { ...venue, id: 'mnw', name: 'Muzeum Narodowe', category: 'exhibition' };
+    const tour: Event = {
+      ...event, title: 'Oprowadzanie', category: 'exhibition',
+      startsAt: '2026-06-09T09:00:00.000Z', // 11:00 Warsaw
+    };
+
+    render(<EventCard event={tour} venue={museum} />);
+    expect(screen.getByText('11:00')).toBeInTheDocument();
   });
 });

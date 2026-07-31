@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { venueSchedule, VENUE_QUIET_AFTER_DAYS } from '@goin/shared';
+import { venueSchedule, VENUE_QUIET_AFTER_DAYS } from '@afisz/shared';
 
 // GOI-13: "when a theatre is dark until 19 Sep, show that near the venue".
 // The state is derived from the calendar rather than a field someone has to

@@ -1,5 +1,5 @@
 {
-  "name": "@goin/frontend",
+  "name": "@afisz/frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@goin/shared": "*",
+    "@afisz/shared": "*",
     "@tanstack/react-query": "^5.62.0",
     "@trpc/client": "^11.0.0-rc.660",
     "@trpc/react-query": "^11.0.0-rc.660",

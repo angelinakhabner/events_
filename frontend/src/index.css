@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Archivo:ital,wght@0,400;0,500;0,600;0,700;0,900;1,500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -8,20 +8,97 @@
   html, body, #root { height: 100%; }
   body {
     @apply bg-paper text-ink antialiased font-sans;
-    font-feature-settings: 'ss01', 'cv11';
   }
-  a { @apply text-ink underline-offset-4; }
+  a { @apply text-ink no-underline; }
+  a:hover { @apply text-accent; }
   button { @apply font-sans; }
+  /* Square corners everywhere — the poster system draws with rules, never
+     shadows or rounded chrome. Form controls opt out of the UA defaults. */
+  input, select, textarea, button { border-radius: 0; }
+  ::selection { @apply bg-accent text-white; }
 }
 
 @layer components {
+  /* ── Type ───────────────────────────────────────────────────────────── */
+
+  /** Small uppercase meta: venue tags, counts, day labels. */
   .tag {
-    @apply text-[10px] tracking-[0.14em] uppercase text-muted;
+    @apply text-[11px] font-bold uppercase tracking-[1px] text-muted;
   }
-  .rule {
-    @apply border-t border-rule;
+  /** Form-section label, the heaviest of the small caps. */
+  .label-caps {
+    @apply block text-[11px] font-extrabold uppercase tracking-[1px] text-ink;
   }
-  .link-accent {
-    @apply text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent;
+
+  /* ── Rules ──────────────────────────────────────────────────────────── */
+
+  /** Section rule — opens a listing. */
+  .rule-ink { @apply border-t-3 border-ink; }
+  /** Row divider inside a listing. */
+  .rule-soft { @apply border-b-2 border-rule; }
+
+  /* ── Actions ────────────────────────────────────────────────────────── */
+
+  /**
+   * A text action ("WANT TO GO", "SHARE", "REMOVE"). Muted until hovered;
+   * `.act-on` marks the selected state in accent red.
+   */
+  .act {
+    @apply bg-transparent border-0 p-0 cursor-pointer text-[13px] font-bold
+           uppercase tracking-[0.5px] text-muted hover:text-ink
+           disabled:opacity-50 disabled:cursor-default;
   }
+  .act-on { @apply text-accent hover:text-accent; }
+  .act-sm { @apply text-[11px]; }
+
+  /* ── Buttons ────────────────────────────────────────────────────────── */
+
+  .btn {
+    @apply inline-block cursor-pointer px-[18px] py-2.5 text-xs font-extrabold
+           uppercase tracking-[0.5px] disabled:opacity-50 disabled:cursor-default;
+  }
+  /** Primary: filled ink. */
+  .btn-fill {
+    @apply btn border-2 border-ink bg-ink text-white hover:bg-accent hover:border-accent;
+  }
+  /** The one loud button — used for the single main action on a screen. */
+  .btn-accent {
+    @apply btn border-2 border-accent bg-accent text-white hover:bg-ink hover:border-ink;
+  }
+  /** Secondary: outlined. */
+  .btn-outline {
+    @apply btn border-2 border-ink bg-transparent text-ink hover:text-accent hover:border-accent;
+  }
+
+  /* ── Fields ─────────────────────────────────────────────────────────── */
+
+  .field {
+    @apply w-full border-2 border-ink bg-white px-3 py-2.5 text-sm text-ink
+           placeholder:text-faint focus:outline-none focus:border-accent;
+  }
+  /** Compact variant for inline row edits and selects. */
+  .field-sm {
+    @apply border-2 border-ink bg-white px-2 py-1.5 text-[13px] text-ink
+           placeholder:text-faint focus:outline-none focus:border-accent;
+  }
+  /** A checkbox drawn as a square that fills accent when ticked. */
+  .checkbox {
+    @apply h-3.5 w-3.5 shrink-0 appearance-none border-2 border-ink bg-transparent
+           cursor-pointer checked:bg-accent checked:border-accent;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────────────────── */
+
+  /** Page side padding: 20px on mobile, 56px from md up. */
+  .page-x { @apply px-5 md:px-14; }
+
+  /** Filter rows scroll sideways on mobile and wrap on desktop. */
+  .scroll-x {
+    @apply overflow-x-auto md:overflow-visible;
+    scrollbar-width: none;
+  }
+  .scroll-x::-webkit-scrollbar { display: none; }
+
+  /* Kept for callers that still want a plain accent link. */
+  .link-accent { @apply text-accent hover:text-ink; }
 }

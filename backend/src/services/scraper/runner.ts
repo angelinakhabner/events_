@@ -11,7 +11,7 @@ import { defaultUserVenueStore } from '../user-venue-store.js';
 import { validateEvents } from './validator.js';
 import { enrichDescriptions } from './enricher.js';
 import { saveEvents, pruneStaleEvents } from './persister.js';
-import type { Venue, ScrapeRun } from '@goin/shared';
+import type { Venue, ScrapeRun } from '@afisz/shared';
 
 export interface ScrapeOptions {
   force?: boolean;

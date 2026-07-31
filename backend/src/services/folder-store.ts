@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import type { Folder, EventFilters } from '@goin/shared';
+import type { Folder, EventFilters } from '@afisz/shared';
 import { folders as foldersTable } from '../db/schema.js';
 import { getDb } from '../db/index.js';
 

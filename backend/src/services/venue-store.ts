@@ -1,4 +1,4 @@
-import type { Venue, VenueListInput, Category } from '@goin/shared';
+import type { Venue, VenueListInput, Category } from '@afisz/shared';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 import { getDb, schema } from '../db/index.js';
 import { and, eq } from 'drizzle-orm';

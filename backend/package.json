@@ -1,5 +1,5 @@
 {
-  "name": "@goin/backend",
+  "name": "@afisz/backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
-    "@goin/shared": "*",
+    "@afisz/shared": "*",
     "@hono/node-server": "^1.13.7",
     "@hono/trpc-server": "^0.3.4",
     "@trpc/server": "^11.0.0-rc.660",

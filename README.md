@@ -1,4 +1,4 @@
-# Goin
+# AFISZ
 
 A customisable cultural events aggregator. Add any venue URL from any city,
 group venues into folders with persistent filters (category, time, price,

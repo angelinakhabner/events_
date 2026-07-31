@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { jsonrepair } from 'jsonrepair';
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 import { env } from '../../config.js';
 
 // Model choice: claude-sonnet-4-6 (latest Sonnet) — best price/accuracy balance
