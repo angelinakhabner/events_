@@ -1,5 +1,5 @@
 import type { Event, Venue } from '@afisz/shared';
-import { categoryLabel, formatTime } from '../lib/format';
+import { categoryLabel, formatEventTime } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 import { EventActions } from './EventActions';
 import { ExpandableText } from './ExpandableText';
@@ -16,8 +16,8 @@ export function EventCard({ event, venue }: Props) {
   const v = event.venue ?? venue;
   return (
     <article className="flex gap-5 md:gap-7 py-5 md:py-[26px]">
-      <div className="hidden md:block w-[70px] shrink-0 text-sm font-bold text-muted tabular-nums">
-        {formatTime(event.startsAt)}
+      <div className="hidden md:block w-[70px] shrink-0 text-sm font-bold text-muted tabular-nums whitespace-nowrap">
+        {formatEventTime(event)}
       </div>
       <div className="hidden md:block w-[18px] shrink-0 pt-1">
         <CategorySwatch category={event.category} size={14} />
@@ -26,7 +26,7 @@ export function EventCard({ event, venue }: Props) {
       <div className="flex-1 min-w-0">
         <div className="mb-2 flex items-center gap-2.5 md:hidden">
           <CategorySwatch category={event.category} size={13} />
-          <span className="text-xs font-bold text-muted">{formatTime(event.startsAt)}</span>
+          <span className="text-xs font-bold text-muted">{formatEventTime(event)}</span>
         </div>
 
         <h3 className="m-0 text-[19px] md:text-[21px] font-bold leading-[1.2]">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Event } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { formatDayKey, formatShortDate, formatTime } from '../lib/format';
+import { AddToCalendar } from './AddToCalendar';
 
 /** Ticket blocks shown before the strip caps itself with a "+N". */
 const BLOCKS = 3;
@@ -101,16 +102,21 @@ function Ticket({ screening, inverted }: { screening: Event; inverted: boolean }
       >
         {dayLabel(screening.startsAt)}
       </div>
-      <a
-        href={screening.sourceUrl}
-        target="_blank"
-        rel="noreferrer"
-        className={`my-0.5 block font-display text-base md:text-lg ${
-          inverted ? 'text-white hover:text-[#c9c4bc]' : 'text-ink hover:text-accent'
-        }`}
-      >
-        {formatTime(screening.startsAt)}
-      </a>
+      {/* The time links to the showing's own page (where you buy the ticket);
+          the glyph beside it books that exact venue-and-time (GOI-48). */}
+      <div className="my-0.5 flex items-baseline gap-1.5">
+        <a
+          href={screening.sourceUrl}
+          target="_blank"
+          rel="noreferrer"
+          className={`font-display text-base md:text-lg ${
+            inverted ? 'text-white hover:text-[#c9c4bc]' : 'text-ink hover:text-accent'
+          }`}
+        >
+          {formatTime(screening.startsAt)}
+        </a>
+        <AddToCalendar event={screening} variant="icon" />
+      </div>
       <div className="text-[10px] md:text-[11px] font-bold">
         {screening.venue?.name ?? 'Unknown venue'}
       </div>

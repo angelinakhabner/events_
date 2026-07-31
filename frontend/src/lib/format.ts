@@ -1,4 +1,5 @@
-import type { Category, EventFilters } from '@afisz/shared';
+import type { Category, Event, EventFilters } from '@afisz/shared';
+import { isAllDay } from './buckets';
 
 const TZ = 'Europe/Warsaw';
 const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ });
@@ -20,6 +21,18 @@ export function formatTime(iso: string): string {
 
 export function formatShortDate(iso: string): string {
   return shortDateFmt.format(new Date(iso));
+}
+
+/**
+ * What goes in a listing row's time column (GOI-53).
+ *
+ * Museums don't have showtimes, they have opening days. Their undated rows
+ * carry local midnight as a placeholder, and printing that as "00:00" said
+ * something false — the exhibition isn't on at midnight, it's on all day. So
+ * an all-day row says so instead of naming an hour.
+ */
+export function formatEventTime(event: Pick<Event, 'category' | 'startsAt'>): string {
+  return isAllDay(event) ? 'All day' : formatTime(event.startsAt);
 }
 
 export function categoryLabel(c: Category): string {

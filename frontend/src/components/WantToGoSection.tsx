@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import type { Event, Film, WantToGoEntry } from '@afisz/shared';
+import type { Film, WantToGoEntry } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { formatShortDate } from '../lib/format';
-import { CategorySwatch } from './CategorySwatch';
+import { SavedTitleRow, filmAsEvent } from './SavedTitleRow';
+import { ShareListLink } from './ShareListLink';
 import { PanelHeading } from './PanelHeading';
-import { ScreeningsStrip } from './ScreeningsStrip';
 import { ErrorState, SkeletonList } from './states';
 
 /**
@@ -39,6 +39,8 @@ export function WantToGoSection() {
         blurb={'Everything you saved, in one list. Add events with "Want to go" on any event, and films with "Track film" in the nearest-screenings panel.'}
         rule={false}
       />
+
+      <ShareListLink />
 
       <div className="mb-5 flex" role="tablist" aria-label="Want to go lists">
         <TabButton active={tab === 'want'} onClick={() => setTab('want')}>
@@ -131,12 +133,6 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
-/** The word stamped in front of a saved title. Films read as "FILM" rather
- *  than "CINEMA", which names the venue and not the thing you saved. */
-function kindLabel(category: string): string {
-  return category === 'cinema' ? 'film' : category;
-}
-
 /**
  * A saved event, shown without a date or time (GOI-46). You save a *title*,
  * not the 18:00 showing you happened to be looking at, so the row carries the
@@ -156,62 +152,35 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
   const seen = entry.seenAt !== null;
 
   return (
-    <li className="flex items-start gap-4 py-5 rule-soft">
-      <CategorySwatch category={event.category} size={16} className="mt-1.5" />
-      <div className="min-w-0 flex-1">
-        <h4 className="m-0 text-lg md:text-[21px] font-bold leading-[1.2]">
-          <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="text-ink hover:text-accent">
-            {event.title}
-          </a>
-        </h4>
-        <div className="mt-1.5 tag">{kindLabel(event.category)}</div>
-        <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2">
-          {seen ? null : <ScreeningsStrip event={event} />}
-          <button
-            type="button"
-            aria-pressed={seen}
-            onClick={() => setSeen.mutate({ eventId: event.id, seen: !seen })}
-            disabled={setSeen.isPending}
-            className="act act-sm md:text-xs"
-          >
-            {seen ? 'Not seen' : 'Seen it'}
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove ${event.title}`}
-            onClick={() => remove.mutate({ eventId: event.id })}
-            disabled={remove.isPending}
-            className="act act-sm md:text-xs"
-          >
-            Remove
-          </button>
-        </div>
-      </div>
+    <li className="py-5 rule-soft">
+      <SavedTitleRow
+        event={event}
+        showScreenings={!seen}
+        actions={
+          <>
+            <button
+              type="button"
+              aria-pressed={seen}
+              onClick={() => setSeen.mutate({ eventId: event.id, seen: !seen })}
+              disabled={setSeen.isPending}
+              className="act act-sm md:text-xs"
+            >
+              {seen ? 'Not seen' : 'Seen it'}
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove ${event.title}`}
+              onClick={() => remove.mutate({ eventId: event.id })}
+              disabled={remove.isPending}
+              className="act act-sm md:text-xs"
+            >
+              Remove
+            </button>
+          </>
+        }
+      />
     </li>
   );
-}
-
-/** The screenings panel expects an Event; a film is only a title, so build the
- *  minimal stand-in it needs (title drives the query, category the wording). */
-function filmAsEvent(film: Film): Event {
-  return {
-    id: `film-${film.id}`,
-    venueId: '',
-    title: film.title,
-    description: null,
-    startsAt: '',
-    endsAt: null,
-    category: 'cinema',
-    language: null,
-    director: null,
-    cast: [],
-    durationMinutes: null,
-    priceMin: null,
-    priceMax: null,
-    sourceUrl: '',
-    sourceId: null,
-    scrapedAt: '',
-  };
 }
 
 function FilmRow({ film }: { film: Film }) {
@@ -223,53 +192,53 @@ function FilmRow({ film }: { film: Film }) {
   const seen = film.status === 'seen';
 
   return (
-    <li className="flex items-start gap-4 py-5 rule-soft">
-      <CategorySwatch category="cinema" size={16} className="mt-1.5" />
-      <div className="min-w-0 flex-1">
-        <h4 className="m-0 text-lg md:text-[21px] font-bold leading-[1.2] text-ink">{film.title}</h4>
-        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 tag">
-          <span>film</span>
-          {seen ? (
-            <span className="normal-case tracking-normal font-medium text-faint">
+    <li className="py-5 rule-soft">
+      <SavedTitleRow
+        event={filmAsEvent(film)}
+        showScreenings={!seen}
+        meta={
+          seen ? (
+            <>
               {film.watchedVenue ? `at ${film.watchedVenue}` : null}
               {film.watchedVenue && film.watchedAt ? ' · ' : null}
               {film.watchedAt ? formatShortDate(film.watchedAt) : null}
-            </span>
-          ) : null}
-        </div>
-        {film.comment ? <p className="mt-2 text-sm text-body">{film.comment}</p> : null}
-        <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2">
-          {seen ? null : <ScreeningsStrip event={filmAsEvent(film)} />}
-          {seen ? (
+            </>
+          ) : null
+        }
+        actions={
+          <>
+            {seen ? (
+              <button
+                type="button"
+                onClick={() => moveToWant.mutate({ filmId: film.id })}
+                disabled={moveToWant.isPending}
+                className="act act-sm md:text-xs"
+              >
+                Not seen
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setMarking((v) => !v)}
+                className="act act-sm md:text-xs"
+              >
+                Seen it
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => moveToWant.mutate({ filmId: film.id })}
-              disabled={moveToWant.isPending}
+              aria-label={`Remove ${film.title}`}
+              onClick={() => remove.mutate({ filmId: film.id })}
+              disabled={remove.isPending}
               className="act act-sm md:text-xs"
             >
-              Not seen
+              Remove
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setMarking((v) => !v)}
-              className="act act-sm md:text-xs"
-            >
-              Seen it
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label={`Remove ${film.title}`}
-            onClick={() => remove.mutate({ filmId: film.id })}
-            disabled={remove.isPending}
-            className="act act-sm md:text-xs"
-          >
-            Remove
-          </button>
-        </div>
-        {marking ? <MarkSeenForm film={film} onDone={() => setMarking(false)} /> : null}
-      </div>
+          </>
+        }
+      />
+      {film.comment ? <p className="mt-2.5 text-sm text-body">{film.comment}</p> : null}
+      {marking ? <MarkSeenForm film={film} onDone={() => setMarking(false)} /> : null}
     </li>
   );
 }

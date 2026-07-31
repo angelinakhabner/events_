@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import type { Event, WantToGoEntry } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
@@ -20,6 +21,24 @@ export interface WantToGoStore {
   /** Mark an entry seen (`seen: false` puts it back on the want list). */
   setSeen(userId: string, eventId: string, seen: boolean): Promise<boolean>;
   remove(userId: string, eventId: string): Promise<boolean>;
+
+  // ─── Sharing (GOI-47) ──────────────────────────────────────────────────────
+
+  /** The user's current share token, or null when the list isn't shared. */
+  shareToken(userId: string): Promise<string | null>;
+  /** Start sharing, or return the token already in use. */
+  share(userId: string): Promise<string>;
+  /** Stop sharing. The token is discarded, so the link it was in stops
+   *  resolving for good — sharing again mints a new one. */
+  unshare(userId: string): Promise<boolean>;
+  /** Whose list a shared link points at, or null if it was revoked. */
+  ownerOfShareToken(token: string): Promise<string | null>;
+}
+
+/** Share tokens live in URLs people paste into chats, so: unguessable, and
+ *  base64url so nothing needs escaping. 32 bytes matches session tokens. */
+function newShareToken(): string {
+  return randomBytes(32).toString('base64url');
 }
 
 export class DbWantToGoStore implements WantToGoStore {
@@ -87,6 +106,51 @@ export class DbWantToGoStore implements WantToGoStore {
       .returning({ eventId: schema.wantToGo.eventId });
     return rows.length > 0;
   }
+
+  async shareToken(userId: string): Promise<string | null> {
+    const [row] = await getDb()
+      .select({ token: schema.wantToGoShares.token })
+      .from(schema.wantToGoShares)
+      .where(eq(schema.wantToGoShares.userId, userId));
+    return row?.token ?? null;
+  }
+
+  async share(userId: string): Promise<string> {
+    // Sharing an already-shared list hands back the same link rather than
+    // rotating it, so pressing the button twice doesn't break the URL a
+    // friend already has.
+    const [row] = await getDb()
+      .insert(schema.wantToGoShares)
+      .values({ userId, token: newShareToken() })
+      .onConflictDoNothing()
+      .returning({ token: schema.wantToGoShares.token });
+    if (row) return row.token;
+    const existing = await this.shareToken(userId);
+    if (existing) return existing;
+    // Lost the insert race and the winner vanished before we looked: retry
+    // once rather than returning a token that resolves to nothing.
+    const [retry] = await getDb()
+      .insert(schema.wantToGoShares)
+      .values({ userId, token: newShareToken() })
+      .returning({ token: schema.wantToGoShares.token });
+    return retry!.token;
+  }
+
+  async unshare(userId: string): Promise<boolean> {
+    const rows = await getDb()
+      .delete(schema.wantToGoShares)
+      .where(eq(schema.wantToGoShares.userId, userId))
+      .returning({ userId: schema.wantToGoShares.userId });
+    return rows.length > 0;
+  }
+
+  async ownerOfShareToken(token: string): Promise<string | null> {
+    const [row] = await getDb()
+      .select({ userId: schema.wantToGoShares.userId })
+      .from(schema.wantToGoShares)
+      .where(eq(schema.wantToGoShares.token, token));
+    return row?.userId ?? null;
+  }
 }
 
 // In-memory variant for tests / no DATABASE_URL. Stores ids + seen state only;
@@ -127,6 +191,29 @@ export class InMemoryWantToGoStore implements WantToGoStore {
 
   async remove(userId: string, eventId: string): Promise<boolean> {
     return this.mapFor(userId).delete(eventId);
+  }
+
+  private shares = new Map<string, string>();
+
+  async shareToken(userId: string): Promise<string | null> {
+    return this.shares.get(userId) ?? null;
+  }
+
+  async share(userId: string): Promise<string> {
+    const existing = this.shares.get(userId);
+    if (existing) return existing;
+    const token = newShareToken();
+    this.shares.set(userId, token);
+    return token;
+  }
+
+  async unshare(userId: string): Promise<boolean> {
+    return this.shares.delete(userId);
+  }
+
+  async ownerOfShareToken(token: string): Promise<string | null> {
+    for (const [userId, t] of this.shares) if (t === token) return userId;
+    return null;
   }
 }
 

@@ -6,6 +6,7 @@ import type { Event, Film, WantToGoEntry } from '@afisz/shared';
 const entriesMock = vi.fn();
 const filmsMock = vi.fn();
 const screeningsMock = vi.fn();
+const shareMock = vi.fn();
 
 /** Every mutation the section can fire, stubbed to a no-op that records input. */
 function stubMutation() {
@@ -30,6 +31,7 @@ vi.mock('../lib/trpc', () => {
             entries: { invalidate },
             ids: { invalidate },
             list: { invalidate },
+            share: { get: { invalidate } },
           },
           films: { list: { invalidate } },
         },
@@ -40,6 +42,11 @@ vi.mock('../lib/trpc', () => {
           entries: { useQuery: () => entriesMock() },
           setSeen: stubMutation(),
           remove: stubMutation(),
+          share: {
+            get: { useQuery: () => shareMock() },
+            enable: stubMutation(),
+            disable: stubMutation(),
+          },
         },
         films: {
           list: { useQuery: () => filmsMock() },
@@ -82,6 +89,7 @@ beforeEach(() => {
   entriesMock.mockReset().mockReturnValue({ data: [], isLoading: false, error: null });
   filmsMock.mockReset().mockReturnValue({ data: [], isLoading: false, error: null });
   screeningsMock.mockReset().mockReturnValue({ data: [], isLoading: false, isError: false });
+  shareMock.mockReset().mockReturnValue({ data: { token: null }, isLoading: false, error: null });
 });
 
 // GOI-46: a saved event stands for the *title*. The row shows no date or time

@@ -12,13 +12,21 @@ interface ShareDeps {
  *  show "Copied!" / "Shared!" / nothing. */
 export async function shareEvent(event: Pick<Event, 'title' | 'sourceUrl' | 'venue'>, deps: ShareDeps = {}): Promise<ShareOutcome> {
   const venuePart = event.venue?.name ? ` @ ${event.venue.name}` : '';
-  const text = `${event.title}${venuePart}`;
-  const url = event.sourceUrl;
+  return shareLink({ title: event.title, text: `${event.title}${venuePart}`, url: event.sourceUrl }, deps);
+}
+
+/** Hand a URL to the platform share sheet, falling back to the clipboard.
+ *  Used for events and, since GOI-47, for a "want to go" list's share link. */
+export async function shareLink(
+  payload: { title: string; text: string; url: string },
+  deps: ShareDeps = {},
+): Promise<ShareOutcome> {
+  const { title, text, url } = payload;
 
   const share = deps.share ?? (typeof navigator !== 'undefined' && navigator.share ? navigator.share.bind(navigator) : undefined);
   if (share) {
     try {
-      await share({ title: event.title, text, url });
+      await share({ title, text, url });
       return 'shared';
     } catch (e) {
       // User aborted the share sheet → AbortError. Don't fall through to
@@ -45,4 +53,12 @@ export async function shareEvent(event: Pick<Event, 'title' | 'sourceUrl' | 'ven
   } catch {
     return 'failed';
   }
+}
+
+/** The absolute URL a shared "want to go" list lives at. Built off Vite's
+ *  BASE_URL because the site is served from a subpath on Pages (`/events_/`,
+ *  and `/events_/dev/` for the preview build). */
+export function sharedListUrl(token: string): string {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  return new URL(`${base}/list/${token}`, window.location.origin).toString();
 }

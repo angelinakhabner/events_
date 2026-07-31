@@ -1,6 +1,6 @@
 import type { Event, Venue } from '@afisz/shared';
 import { bucketEvents, type Bucket, type BucketKey } from '../lib/buckets';
-import { categoryLabel, formatShortDate, formatTime } from '../lib/format';
+import { categoryLabel, formatEventTime, formatShortDate } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 import { EventActions } from './EventActions';
 import { ExpandableText } from './ExpandableText';
@@ -89,13 +89,13 @@ function EventRow({
   const defaultLang = venue?.language ?? null;
   const lang = event.language;
   const showLang = lang && (!defaultLang || lang.toLowerCase() !== defaultLang.toLowerCase());
-  const time = formatTime(event.startsAt);
+  const time = formatEventTime(event);
   const date = formatShortDate(event.startsAt);
 
   return (
     <div className={`flex gap-5 md:gap-7 ${compact ? 'py-5' : 'py-5 md:py-[26px]'}`}>
       <div className={`hidden md:block shrink-0 ${compact ? 'w-[70px]' : 'w-[90px]'}`}>
-        <div className={`text-[13px] md:text-sm font-bold ${highlight ? 'text-accent' : 'text-muted'}`}>
+        <div className={`text-[13px] md:text-sm font-bold whitespace-nowrap ${highlight ? 'text-accent' : 'text-muted'}`}>
           {time}
         </div>
         {showDate ? <div className="text-[13px] md:text-sm font-bold text-muted">{date}</div> : null}

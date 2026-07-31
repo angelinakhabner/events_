@@ -172,6 +172,55 @@ describe('ClosestScreenings', () => {
     expect(within(secondDay).getAllByRole('link').map((t) => t.textContent)).toEqual(['14:00']);
   });
 
+  // GOI-48: the calendar button belongs to one time at one venue, not to the
+  // title — so there is one per time, each naming the showing it books.
+  it('puts an add-to-calendar button beside every time', () => {
+    const event = makeEvent();
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: [
+        makeEvent({
+          id: 'k1', venueId: 'v2', startsAt: '2026-07-04T12:00:00.000Z',
+          venue: { id: 'v2', name: 'Kinoteka', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        }),
+        makeEvent({
+          id: 'k2', venueId: 'v2', startsAt: '2026-07-04T16:00:00.000Z',
+          venue: { id: 'v2', name: 'Kinoteka', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        }),
+      ],
+    });
+
+    render(<ClosestScreenings event={event} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+
+    expect(
+      screen.getByRole('button', { name: 'Add Ojczyzna at Kinoteka, 4 Jul 14:00, to calendar' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add Ojczyzna at Kinoteka, 4 Jul 18:00, to calendar' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the panel open while the calendar menu is used', () => {
+    const event = makeEvent();
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: [makeEvent({ id: 'k1', startsAt: '2026-07-04T12:00:00.000Z' })],
+    });
+
+    render(<ClosestScreenings event={event} />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    // The menu lives inside the panel, so the panel's own outside-click
+    // handler must not treat opening it as a click elsewhere.
+    fireEvent.mouseDown(screen.getByRole('button', { name: /to calendar$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /to calendar$/ }));
+
+    expect(screen.getByRole('menuitem', { name: /google calendar/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '14:00' })).toBeInTheDocument();
+  });
+
   it('offers later showings at the same venue you clicked from', () => {
     const event = makeEvent(); // 20:00 Warsaw at Kino Muranów
     useQueryMock.mockReturnValue({

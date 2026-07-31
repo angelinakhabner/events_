@@ -3,6 +3,7 @@ import type { Event } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
 import { formatDayKey, formatShortDate, formatTime } from '../lib/format';
+import { AddToCalendar } from './AddToCalendar';
 
 /** Days shown before "See more" — today and tomorrow, as in the mock. */
 const DAYS_SHOWN = 2;
@@ -187,15 +188,20 @@ function ScreeningsPanel({ event, includeSelf }: { event: Event; includeSelf: bo
                       {v.venueName}
                     </span>
                     {v.showings.map((s) => (
-                      <a
-                        key={s.id}
-                        href={s.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-display text-base tabular-nums text-ink hover:text-accent"
-                      >
-                        {formatTime(s.startsAt)}
-                      </a>
+                      // The time links to the showing's own page (where you buy
+                      // the ticket); the glyph beside it books that exact
+                      // venue-and-time in a calendar (GOI-48).
+                      <span key={s.id} className="inline-flex items-baseline gap-1">
+                        <a
+                          href={s.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-display text-base tabular-nums text-ink hover:text-accent"
+                        >
+                          {formatTime(s.startsAt)}
+                        </a>
+                        <AddToCalendar event={s} variant="icon" />
+                      </span>
                     ))}
                   </div>
                 ))}
