@@ -82,4 +82,29 @@ describe('EventCard', () => {
     expect(writeText).toHaveBeenCalled();
     expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
   });
+  // GOI-53: museums show what's on today, not a fabricated 00:00.
+  it('shows "All day" instead of midnight for an undated museum row', () => {
+    const museum: Venue = { ...venue, id: 'mnw', name: 'Muzeum Narodowe', category: 'exhibition' };
+    const run: Event = {
+      ...event,
+      title: 'Wystawa stała',
+      category: 'exhibition',
+      startsAt: '2026-06-08T22:00:00.000Z', // 00:00 Warsaw on the 9th
+    };
+
+    render(<EventCard event={run} venue={museum} />);
+    expect(screen.getByText('All day')).toBeInTheDocument();
+    expect(screen.queryByText('00:00')).not.toBeInTheDocument();
+  });
+
+  it('keeps the hour on a museum row that published one', () => {
+    const museum: Venue = { ...venue, id: 'mnw', name: 'Muzeum Narodowe', category: 'exhibition' };
+    const tour: Event = {
+      ...event, title: 'Oprowadzanie', category: 'exhibition',
+      startsAt: '2026-06-09T09:00:00.000Z', // 11:00 Warsaw
+    };
+
+    render(<EventCard event={tour} venue={museum} />);
+    expect(screen.getByText('11:00')).toBeInTheDocument();
+  });
 });

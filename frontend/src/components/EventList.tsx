@@ -1,6 +1,7 @@
 import type { Event, Venue } from '@goin/shared';
 import { EventCard } from './EventCard';
 import { formatDayKey, formatDayLabel } from '../lib/format';
+import { dedupeAllDay } from '../lib/buckets';
 
 interface Props {
   events: Event[];
@@ -42,6 +43,8 @@ function groupByDay(events: Event[]): { key: string; label: string; items: Event
   return [...map.entries()].map(([key, items]) => ({
     key,
     label: formatDayLabel(items[0]!.startsAt),
-    items,
+    // Per day, not across the listing: this view is grouped by day, so an
+    // exhibition belongs in each day it is open — just once in each (GOI-53).
+    items: dedupeAllDay(items),
   }));
 }
