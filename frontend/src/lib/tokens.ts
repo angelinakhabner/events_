@@ -13,3 +13,5 @@ export const ACCENT = '#c62828';
 export const MUTED = '#6b6660';
 export const FAINT = '#8a8378';
 export const RULE = '#cfc9bf';
+/** Only used to draw *on* ink or accent — the palette itself has no white. */
+export const WHITE = '#ffffff';

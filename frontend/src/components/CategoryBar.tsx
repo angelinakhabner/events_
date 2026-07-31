@@ -27,7 +27,11 @@ const OPTIONS: Option[] = [
 /**
  * The category chips: butted together with no gaps, divided by ink rules and
  * closed off by a heavier one — a strip of type rather than a row of buttons.
- * The selected chip inverts to white-on-ink.
+ * The selected chip fills with accent red.
+ *
+ * Accent, not ink, because red is what "selected" means everywhere else in the
+ * app — `.act-on`, and the day and time bars above (GOI-50). Filling the chip
+ * with ink made the top menu say it two different ways.
  *
  * Labels stay mixed-case in the markup and are uppercased in CSS, so the
  * accessible name is still "Museums" rather than "MUSEUMS".
@@ -48,10 +52,12 @@ export function CategoryBar({ selected, onChange, compact = false }: Props) {
             onClick={() => onChange(opt.value)}
             className={`flex shrink-0 items-center gap-2 whitespace-nowrap border-r-2 border-ink cursor-pointer ${
               compact ? 'px-[18px] py-3.5' : 'px-4 py-3.5 md:px-6 md:py-[18px]'
-            } ${active ? 'bg-ink' : 'bg-transparent'}`}
+            } ${active ? 'bg-accent' : 'bg-transparent hover:bg-panel'}`}
           >
             {opt.value ? (
-              <CategorySwatch category={opt.value} size={compact ? 12 : 14} />
+              // The palette is two colours, so an accent trapezoid on an accent
+              // chip is invisible — as an ink diamond on ink was before it.
+              <CategorySwatch category={opt.value} size={compact ? 12 : 14} inverted={active} />
             ) : null}
             <span
               className={`text-xs md:text-sm font-bold uppercase tracking-[1px] ${
