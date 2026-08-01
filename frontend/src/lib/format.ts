@@ -1,4 +1,4 @@
-import type { Category, Event, EventFilters } from '@goin/shared';
+import type { Category, Event, EventFilters } from '@afisz/shared';
 import { isAllDay } from './buckets';
 
 const TZ = 'Europe/Warsaw';

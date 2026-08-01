@@ -1,5 +1,5 @@
 {
-  "name": "@goin/backend",
+  "name": "@afisz/backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,11 +17,12 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "scrape:all": "node dist/backend/src/scripts/scrape-all.js",
     "scrape:all:dev": "tsx src/scripts/scrape-all.ts",
-    "scrape:one": "tsx src/scripts/scrape-one.ts"
+    "scrape:one": "tsx src/scripts/scrape-one.ts",
+    "compare:models": "tsx src/scripts/compare-extractor-models.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
-    "@goin/shared": "*",
+    "@afisz/shared": "*",
     "@hono/node-server": "^1.13.7",
     "@hono/trpc-server": "^0.3.4",
     "@trpc/server": "^11.0.0-rc.660",

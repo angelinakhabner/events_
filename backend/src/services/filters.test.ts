@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { filterEvents, matchesEvent } from './filters.js';
-import type { Event, Venue } from '@goin/shared';
+import type { Event, Venue } from '@afisz/shared';
 
 const venue: Venue = {
   id: 'v1', name: 'V', url: 'https://v', city: 'Warsaw', country: 'Poland',

@@ -186,6 +186,60 @@ export interface Festival {
   status: 'ongoing' | 'upcoming';
 }
 
+// ─── Festivals at a user's venues (GOI-33) ───────────────────────────────────
+
+/** A festival plus the reader's own venues that are hosting it. */
+export interface FestivalAtVenues extends Festival {
+  /** The user's venue names that host this festival, as the user names them. */
+  yourVenues: string[];
+}
+
+/**
+ * Fold case and strip diacritics for venue-name matching.
+ *
+ * The festival list is curated by hand and the venue list is scraped or typed
+ * by users, so "Kino Muranów", "kino muranow" and "Muranów" all turn up for
+ * the same cinema. Without folding, a festival silently matches nothing.
+ */
+function foldVenueName(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // Polish ł has no combining form, so NFD leaves it alone.
+    .replace(/ł/gi, 'l')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Which of `venueNames` host `festival`.
+ *
+ * Matching is containment either way, because the two sources disagree on how
+ * much of the name to include — a venue called "Muranów" and a festival
+ * listing "Kino Muranów" are the same cinema. Containment on a folded string
+ * is deliberately loose; the alternative (exact match) misses most real pairs.
+ */
+export function festivalVenueMatches(festival: Festival, venueNames: string[]): string[] {
+  const hosts = festival.cinemas.map(foldVenueName).filter(Boolean);
+  if (hosts.length === 0) return [];
+  return venueNames.filter((name) => {
+    const folded = foldVenueName(name);
+    if (!folded) return false;
+    return hosts.some((h) => h === folded || h.includes(folded) || folded.includes(h));
+  });
+}
+
+/**
+ * Festivals happening at venues the reader actually follows (GOI-33), each
+ * annotated with which of their venues host it. Order is preserved.
+ */
+export function festivalsAtVenues(festivals: Festival[], venueNames: string[]): FestivalAtVenues[] {
+  return festivals
+    .map((f) => ({ ...f, yourVenues: festivalVenueMatches(f, venueNames) }))
+    .filter((f) => f.yourVenues.length > 0);
+}
+
 // ─── Venue break / "dark until" notice (GOI-13) ──────────────────────────────
 
 /**

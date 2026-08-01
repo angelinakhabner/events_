@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { NewsletterCategoryRule, NewsletterFrequency, NewsletterSettings } from '@goin/shared';
+import type { NewsletterCategoryRule, NewsletterFrequency, NewsletterSettings } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
 
 // Newsletter subscriptions (GOI-8): one per user. The user picks an email,

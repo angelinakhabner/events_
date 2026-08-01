@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AddToCalendar, addToCalendarLabel } from './AddToCalendar';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 const downloadIcsMock = vi.fn();
 vi.mock('../lib/calendar', async (importOriginal) => {

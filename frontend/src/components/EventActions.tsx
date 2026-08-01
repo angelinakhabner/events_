@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 import { shareEvent, type ShareOutcome } from '../lib/share';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
@@ -17,7 +17,7 @@ import { ClosestScreenings } from './ClosestScreenings';
  */
 export function EventActions({ event }: { event: Event }) {
   return (
-    <div className="mt-3 flex items-center gap-5 text-sm">
+    <div className="mt-3.5 flex flex-wrap items-center gap-4 md:gap-[22px]">
       {isLoggedIn() ? <WantToGoButton event={event} /> : null}
       <ClosestScreenings event={event} />
       <AddToCalendar event={event} />
@@ -45,11 +45,9 @@ function WantToGoButton({ event }: { event: Event }) {
       aria-pressed={saved}
       disabled={busy}
       onClick={() => (saved ? remove.mutate({ eventId: event.id }) : add.mutate({ eventId: event.id }))}
-      className={`bg-transparent border-0 cursor-pointer p-0 disabled:opacity-50 ${
-        saved ? 'text-accent' : 'text-muted hover:text-ink'
-      }`}
+      className={`act act-sm md:text-[13px] ${saved ? 'act-on' : ''}`}
     >
-      {saved ? '♥ Want to go' : '♡ Want to go'}
+      {saved ? '♥ Going' : '♡ Want to go'}
     </button>
   );
 }
@@ -80,12 +78,12 @@ function ShareButton({ event }: { event: Event }) {
       <button
         type="button"
         onClick={onClick}
-        className="text-muted hover:text-ink bg-transparent border-0 cursor-pointer p-0"
+        className="act act-sm md:text-[13px]"
       >
         Share
       </button>
       {flash ? (
-        <span role="status" aria-live="polite" className="text-xs text-muted">
+        <span role="status" aria-live="polite" className="text-[11px] text-faint">
           {flash}
         </span>
       ) : null}

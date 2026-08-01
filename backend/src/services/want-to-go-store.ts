@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
-import type { Event, WantToGoEntry } from '@goin/shared';
+import type { Event, WantToGoEntry } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
 import { defaultEventStore } from './event-store.js';
 

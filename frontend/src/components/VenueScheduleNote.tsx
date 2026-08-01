@@ -1,4 +1,4 @@
-import type { VenueSchedule } from '@goin/shared';
+import type { VenueSchedule } from '@afisz/shared';
 
 const dayFmt = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'short', timeZone: 'Europe/Warsaw',
@@ -21,7 +21,7 @@ export function VenueScheduleNote({ schedule }: { schedule: VenueSchedule | unde
   if (schedule.state === 'dark') {
     return (
       <span
-        className="ml-3 text-xs text-muted"
+        className="text-muted"
         title="No upcoming events found. The venue may be closed, or its programme may not be published yet."
       >
         nothing listed
@@ -32,7 +32,7 @@ export function VenueScheduleNote({ schedule }: { schedule: VenueSchedule | unde
   const until = schedule.nextStartsAt ? dayFmt.format(new Date(schedule.nextStartsAt)) : null;
   return (
     <span
-      className="ml-3 text-xs text-accent"
+      className="text-accent"
       title={`Nothing on for ${schedule.daysUntilNext} more days — the next event here is on ${until}.`}
     >
       dark until {until}

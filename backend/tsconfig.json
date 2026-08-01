@@ -4,7 +4,7 @@
     "outDir": "dist",
     "types": ["node", "vitest/globals"],
     "paths": {
-      "@goin/shared": ["../shared/src/index.ts"]
+      "@afisz/shared": ["../shared/src/index.ts"]
     },
     "baseUrl": "."
   },

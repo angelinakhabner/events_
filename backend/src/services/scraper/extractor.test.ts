@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
-import { parseJsonArray, extractEvents, toolResponseToJson, EXTRACTOR_VERSION } from './extractor.js';
-import type { Venue } from '@goin/shared';
+import {
+  parseJsonArray, extractEvents, toolResponseToJson, EXTRACTOR_VERSION,
+  MODEL, STRUCTURED_MODEL, modelFor,
+} from './extractor.js';
+import type { Venue } from '@afisz/shared';
 
 /** Minimal Anthropic.Message stub for the tool-response parser. */
 function message(content: unknown[], stopReason: Anthropic.Message['stop_reason'] = 'tool_use'): Anthropic.Message {
@@ -227,5 +230,60 @@ describe('extractEvents prompt shape', () => {
   it('exports an EXTRACTOR_VERSION that the runner can use to bust the hash cache', () => {
     expect(EXTRACTOR_VERSION).toBeTypeOf('number');
     expect(EXTRACTOR_VERSION).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// GOI-16: the seam that lets a cheaper model be trialled on the structured-data
+// path alone. The default must be a no-op — nothing changes until someone sets
+// EXTRACTOR_MODEL_STRUCTURED after actually measuring.
+describe('modelFor (GOI-16)', () => {
+  it('uses the production model for HTML pages', () => {
+    expect(modelFor(false)).toBe(MODEL);
+  });
+
+  it('uses the production model for structured pages too, until one is configured', () => {
+    // STRUCTURED_MODEL is unset in test env, which is the shipped default.
+    expect(STRUCTURED_MODEL).toBeUndefined();
+    expect(modelFor(true)).toBe(MODEL);
+  });
+
+  it('never routes an HTML page to the structured model', () => {
+    // The whole safety argument is that messy markup stays on Sonnet; only the
+    // transcription path is eligible.
+    expect(modelFor(false)).toBe(MODEL);
+  });
+});
+
+describe('per-request model plumbing (GOI-16)', () => {
+  const venue = {
+    name: 'V', city: 'Warsaw', timezone: 'Europe/Warsaw',
+    category: 'cinema' as const, url: 'https://v.example',
+  };
+  const empty = JSON.stringify([]);
+
+  it('forwards the model to an injected client, so the batched path honours it', async () => {
+    // The batch coordinator injects its own client; without this the setting
+    // would silently do nothing on the default (batched) path.
+    const seen: (string | undefined)[] = [];
+    const client = {
+      extract: async ({ model }: { system: string; user: string; model?: string }) => {
+        seen.push(model);
+        return empty;
+      },
+    };
+    await extractEvents('<html></html>', venue, new Date(), { client, model: 'claude-haiku-4-5-20251001' });
+    expect(seen).toEqual(['claude-haiku-4-5-20251001']);
+  });
+
+  it('leaves the model undefined when the caller does not pick one', async () => {
+    const seen: (string | undefined)[] = [];
+    const client = {
+      extract: async ({ model }: { system: string; user: string; model?: string }) => {
+        seen.push(model);
+        return empty;
+      },
+    };
+    await extractEvents('<html></html>', venue, new Date(), { client });
+    expect(seen).toEqual([undefined]);
   });
 });

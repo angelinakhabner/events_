@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { SharedListPage } from './SharedList';
-import type { Event, Film, WantToGoEntry } from '@goin/shared';
+import type { Event, Film, WantToGoEntry } from '@afisz/shared';
 
 const listMock = vi.fn();
 const screeningsMock = vi.fn();

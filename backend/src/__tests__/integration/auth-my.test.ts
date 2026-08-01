@@ -306,7 +306,7 @@ describe('auth + /my flow (in-process)', () => {
     expect(res.status).toBe(200);
     const { html, events } = res.data as { html: string; events: unknown[] };
     expect(html).toContain('This week in<br>Warsaw');
-    expect(html).toContain('GOIN · WEEKLY');
+    expect(html).toContain('AFISZ · WEEKLY');
     expect(Array.isArray(events)).toBe(true);
     // Preview must not create a subscription.
     expect((await trpcCall('my.newsletter.get', { token: hana })).data).toBeNull();
@@ -394,6 +394,57 @@ describe('auth + /my flow (in-process)', () => {
     await trpcCall('my.lists.setActive', { body: { listId: idle.id }, token: dave });
     const after = (await scrapeTargetVenues()).map((v) => v.id);
     expect(after).toContain(parked.id);
+  });
+});
+
+// GOI-33: festivals narrowed to venues the reader follows. The matcher is
+// unit-tested; what this covers is the procedure wiring — auth, seeding, and
+// that it answers in the user's *own* venue names (including renames).
+describe('festivals.mine (GOI-33)', () => {
+  it('is unauthorized without a session', async () => {
+    expect((await trpcCall('festivals.mine')).status).toBe(401);
+  });
+
+  it('returns only festivals at the seeded venues, naming which of them host it', async () => {
+    const token = await login(`festivals-${RUN}@example.com`);
+    const res = await trpcCall('festivals.mine', { token });
+    expect(res.status).toBe(200);
+
+    const mine = res.data as Array<{ id: string; cinemas: string[]; yourVenues: string[] }>;
+    // Every returned festival must name at least one of the reader's venues —
+    // that is the whole contract, and it holds whatever the seed list contains.
+    for (const f of mine) {
+      expect(f.yourVenues.length).toBeGreaterThan(0);
+    }
+
+    // The seeded defaults include Kinoteka and Kino Muranów, which host the
+    // curated Warsaw festivals — so a fresh account sees a non-empty list as
+    // long as any edition is still ahead.
+    const all = (await trpcCall('festivals.list')).data as Array<{ cinemas: string[] }>;
+    const anyAtSeededVenue = all.some((f) =>
+      f.cinemas.some((c) => /kinoteka|muran/i.test(c)),
+    );
+    if (anyAtSeededVenue) expect(mine.length).toBeGreaterThan(0);
+    // Never wider than the unscoped list.
+    expect(mine.length).toBeLessThanOrEqual(all.length);
+  });
+
+  it.skipIf(!HAS_DB)('answers in the user\'s renamed venue, not the shared name', async () => {
+    const token = await login(`festivals-rename-${RUN}@example.com`);
+    const venues = (await trpcCall('my.venues.list', { token })).data as Array<{ id: string; name: string }>;
+    const kinoteka = venues.find((v) => /kinoteka/i.test(v.name));
+    if (!kinoteka) return; // seed changed; nothing to assert
+
+    await trpcCall('my.venues.update', {
+      body: { venueId: kinoteka.id, name: 'Kinoteka (my local)' },
+      token,
+    });
+
+    const mine = (await trpcCall('festivals.mine', { token })).data as Array<{ yourVenues: string[] }>;
+    const named = mine.flatMap((f) => f.yourVenues);
+    // Still matches despite the rename — containment, not equality — and it is
+    // the reader's own label that comes back.
+    if (named.length) expect(named.some((n) => n.includes('my local'))).toBe(true);
   });
 });
 

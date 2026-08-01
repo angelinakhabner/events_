@@ -1,6 +1,7 @@
 import type {
   Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
-} from '@goin/shared';
+} from '@afisz/shared';
+import { festivalsAtVenues } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
 import { defaultEventStore, type EventStore } from './event-store.js';
@@ -63,8 +64,13 @@ export function selectBriefEvents(
 }
 
 /** The ongoing festival the brief's "Also on" line calls out, if any. */
-export function currentFestival(): Festival | null {
-  return listFestivals().find((f) => f.status === 'ongoing') ?? null;
+export function currentFestival(venueNames?: string[]): Festival | null {
+  const ongoing = listFestivals().filter((f) => f.status === 'ongoing');
+  // GOI-33: a festival at cinemas the reader doesn't follow isn't their news.
+  // With no venue list — the settings preview, which has no subscriber — keep
+  // the unscoped behaviour rather than showing nothing.
+  if (!venueNames) return ongoing[0] ?? null;
+  return festivalsAtVenues(ongoing, venueNames)[0] ?? null;
 }
 
 /** The widest cadence a subscription can produce — what an *empty* brief
@@ -87,9 +93,9 @@ export function briefSubject(sections: BriefSection[]): string {
     (acc, s) => Math.max(acc, briefWindowDays(s.frequency)),
     0,
   );
-  if (widest > 7) return 'Goin — your month in Warsaw';
-  if (widest > 1) return 'Goin — your week in Warsaw';
-  return 'Goin — today in Warsaw';
+  if (widest > 7) return 'AFISZ — your month in Warsaw';
+  if (widest > 1) return 'AFISZ — your week in Warsaw';
+  return 'AFISZ — today in Warsaw';
 }
 
 /**
@@ -382,7 +388,8 @@ export async function sendNewsletterBriefs(
           sections,
           fallbackFrequency: plannedFrequency(sub),
           recipientName: sub.recipientName,
-          festival: currentFestival(),
+          // Scoped to this subscriber's venues (GOI-33).
+          festival: currentFestival(venues.map((v) => v.name)),
           now,
         }),
       });

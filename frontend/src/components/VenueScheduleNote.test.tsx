@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { VenueSchedule } from '@goin/shared';
+import type { VenueSchedule } from '@afisz/shared';
 import { VenueScheduleNote } from './VenueScheduleNote';
 
 const quiet: VenueSchedule = {

@@ -9,7 +9,7 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
-import { venueSchedule, type SharedWantToGoList } from '@goin/shared';
+import { festivalsAtVenues, venueSchedule, type SharedWantToGoList } from '@afisz/shared';
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
@@ -525,6 +525,19 @@ function mapStoreError(e: unknown): TRPCError {
 const festivals = router({
   /** Ongoing and upcoming film festivals at covered cinemas, soonest first. */
   list: publicProcedure.query(() => listFestivals()),
+
+  /**
+   * The same list narrowed to festivals hosted at venues the user actually
+   * follows (GOI-33), each annotated with which of *their* venues host it.
+   *
+   * Matching uses the user's own venue names — including personal renames —
+   * so the answer is phrased in the names they see on their own list.
+   */
+  mine: userProcedure.query(async ({ ctx }) => {
+    await ctx.userVenues.ensureSeeded(ctx.user.id);
+    const venues = await ctx.userVenues.listAll(ctx.user.id);
+    return festivalsAtVenues(listFestivals(), venues.map((v) => v.name));
+  }),
 });
 
 /**

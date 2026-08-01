@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { ClosestScreenings, groupByDay } from './ClosestScreenings';
-import type { Event } from '@goin/shared';
+import type { Event } from '@afisz/shared';
 
 const useQueryMock = vi.fn();
 const filmsListMock = vi.fn();

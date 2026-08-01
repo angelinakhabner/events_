@@ -36,7 +36,7 @@ export function ExpandableText({ text, clampLines = 2, className }: Props) {
     <div className={className}>
       <p
         ref={ref}
-        className={`text-sm text-ink/70 max-w-prose ${expanded ? '' : CLAMP_CLASS[clampLines]}`}
+        className={`text-sm md:text-base text-body max-w-[640px] ${expanded ? '' : CLAMP_CLASS[clampLines]}`}
       >
         {text}
       </p>
@@ -45,7 +45,7 @@ export function ExpandableText({ text, clampLines = 2, className }: Props) {
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((v) => !v)}
-          className="mt-1 text-xs font-medium text-accent hover:underline"
+          className="mt-1.5 act act-sm act-on"
         >
           {expanded ? 'Show less' : 'Read more'}
         </button>

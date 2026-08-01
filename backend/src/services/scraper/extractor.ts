@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { jsonrepair } from 'jsonrepair';
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 import { env } from '../../config.js';
 
 // Model choice: claude-sonnet-4-6 (latest Sonnet) — best price/accuracy balance
@@ -8,7 +8,34 @@ import { env } from '../../config.js';
 // reliability on messy real-world venue HTML with Polish content and ambiguous
 // date formats. Sonnet 4.6 handles structured extraction with high fidelity
 // at a fraction of Opus cost.
-export const MODEL = 'claude-sonnet-4-6';
+//
+// Overridable via EXTRACTOR_MODEL so a candidate can be trialled against the
+// fixtures (`npm run compare:models`) without a code change; the default is
+// still the Sonnet above.
+export const MODEL = env.EXTRACTOR_MODEL;
+
+/**
+ * Model for pages whose input is *structured data* rather than messy HTML
+ * (GOI-16).
+ *
+ * The reasoning above is about parsing real-world venue markup. It does not
+ * apply when the preprocessor has already replaced the body with a JSON-LD or
+ * `__NEXT_DATA__ ` payload — there the job is transcribing well-formed JSON
+ * into well-formed JSON, with no date guessing and no layout to interpret.
+ * Those pages plausibly need far less model than Sonnet.
+ *
+ * Unset by default, so behaviour is identical until somebody has actually
+ * measured it — see `npm run compare:models`. Set EXTRACTOR_MODEL_STRUCTURED
+ * to try e.g. claude-haiku-4-5-20251001 on that path alone, leaving every
+ * HTML-parsing venue on Sonnet.
+ */
+export const STRUCTURED_MODEL = env.EXTRACTOR_MODEL_STRUCTURED;
+
+/** Which model an extraction should use, given whether its input is structured. */
+export function modelFor(structuredInput: boolean): string {
+  return structuredInput && STRUCTURED_MODEL ? STRUCTURED_MODEL : MODEL;
+}
+
 // Sonnet 4.6 supports 64k output tokens. Even with the 7-day window, the
 // biggest venue (Kino Muranów) overflowed 16k — a real sweep showed
 // `input 121452t, output 16000t` (truncated). 48k gives ample headroom; you
@@ -102,24 +129,28 @@ const EVENT_TOOL: Anthropic.Tool = {
 };
 
 export interface ExtractorClient {
-  extract(args: { system: string; user: string }): Promise<string>;
+  /** `model` lets a caller pick per-request (GOI-16). Implementations that
+   *  carry their own model may ignore it; the batch coordinator forwards it. */
+  extract(args: { system: string; user: string; model?: string }): Promise<string>;
 }
 
 class AnthropicExtractor implements ExtractorClient {
   private client: Anthropic;
-  constructor(apiKey: string) {
+  private model: string;
+  constructor(apiKey: string, model: string = MODEL) {
+    this.model = model;
     // maxRetries: 6 lets the SDK honour Anthropic's `retry-after` header for
     // 429 / 5xx (default is 2, which loses scrapes when a same-minute burst
     // pushes us past the 30k input-tokens/minute org cap). With backoff the
     // worst case adds a few minutes to the daily sweep — acceptable for cron.
     this.client = new Anthropic({ apiKey, maxRetries: 6 });
   }
-  async extract({ system, user }: { system: string; user: string }): Promise<string> {
+  async extract({ system, user, model }: { system: string; user: string; model?: string }): Promise<string> {
     // Stream and assemble the final message: at MAX_TOKENS this large a
     // non-streaming request risks an SDK HTTP timeout before the body lands.
     const resp = await this.client.messages
       .stream({
-        model: MODEL,
+        model: model ?? this.model,
         max_tokens: MAX_TOKENS,
         system,
         tools: [EVENT_TOOL],
@@ -138,6 +169,9 @@ export interface BatchExtractRequest {
   customId: string;
   system: string;
   user: string;
+  /** Per-request model, so one batch can mix Sonnet (HTML venues) with a
+   *  cheaper model on the structured-data path (GOI-16). Defaults to MODEL. */
+  model?: string;
 }
 
 /** Per-request outcome. Failures are per-venue: one bad page must not sink the sweep. */
@@ -193,7 +227,7 @@ export class AnthropicBatchExtractor implements BatchExtractorClient {
       requests: requests.map((r) => ({
         custom_id: r.customId,
         params: {
-          model: MODEL,
+          model: r.model ?? MODEL,
           max_tokens: MAX_TOKENS,
           system: r.system,
           tools: [EVENT_TOOL],
@@ -292,13 +326,17 @@ export function toolResponseToJson(resp: Anthropic.Message): string {
   );
 }
 
-let _defaultClient: ExtractorClient | null = null;
-function defaultClient(): ExtractorClient {
-  if (!_defaultClient) {
+// Cached per model, so a sweep mixing Sonnet (HTML venues) and a cheaper
+// model (structured venues) doesn't rebuild an SDK client per request.
+const _defaultClients = new Map<string, ExtractorClient>();
+function defaultClient(model: string = MODEL): ExtractorClient {
+  let client = _defaultClients.get(model);
+  if (!client) {
     if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set');
-    _defaultClient = new AnthropicExtractor(env.ANTHROPIC_API_KEY);
+    client = new AnthropicExtractor(env.ANTHROPIC_API_KEY, model);
+    _defaultClients.set(model, client);
   }
-  return _defaultClient;
+  return client;
 }
 
 /**
@@ -327,6 +365,9 @@ export interface ExtractOptions {
   hint?: string | null;
   /** Override the category-derived horizon (days from `today`). */
   windowDays?: number;
+  /** Override the extraction model for this call (GOI-16). Forwarded to an
+   *  injected `client` too, so the batched path honours it. */
+  model?: string;
 }
 
 /**
@@ -417,9 +458,9 @@ export async function extractEvents(
   today: Date,
   opts: ExtractOptions = {},
 ): Promise<unknown[]> {
-  const client = opts.client ?? defaultClient();
+  const client = opts.client ?? defaultClient(opts.model);
   const { system, user } = buildExtractionPrompt(cleanedHtml, venue, today, opts);
-  const text = await client.extract({ system, user });
+  const text = await client.extract({ system, user, model: opts.model });
   return parseJsonArray(text);
 }
 

@@ -1,6 +1,6 @@
-import type { Festival } from '@goin/shared';
+import type { Festival } from '@afisz/shared';
 
-// Curated film-festival calendar for the cinemas Goin covers (GOI-6). Edit
+// Curated film-festival calendar for the cinemas AFISZ covers (GOI-6). Edit
 // this file to add or correct entries — dates are inclusive ISO days. The API
 // (festivals.list) filters out past editions and computes ongoing/upcoming
 // server-side, so the frontend never needs date logic.

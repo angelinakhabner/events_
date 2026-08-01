@@ -31,11 +31,13 @@ function buildOptions(now: Date): Option[] {
   return options;
 }
 
+/** The date strip under the category chips: bare uppercase labels, the
+ *  selected one in accent red, closed by a light rule. */
 export function DayBar({ selected, onChange, now = new Date() }: Props) {
   return (
     <nav
       aria-label="Filter by day"
-      className="flex flex-wrap gap-x-6 gap-y-3 py-4 border-b border-rule"
+      className="flex scroll-x md:flex-wrap gap-5 md:gap-7 py-3.5 md:py-[18px] rule-soft"
     >
       {buildOptions(now).map((opt) => {
         const active = (opt.value ?? null) === (selected ?? null);
@@ -45,7 +47,7 @@ export function DayBar({ selected, onChange, now = new Date() }: Props) {
             type="button"
             aria-pressed={active}
             onClick={() => onChange(opt.value)}
-            className={`tag transition-colors ${
+            className={`shrink-0 whitespace-nowrap bg-transparent border-0 p-0 cursor-pointer text-xs md:text-[13px] font-bold uppercase tracking-[1px] ${
               active ? 'text-accent' : 'text-muted hover:text-ink'
             }`}
           >

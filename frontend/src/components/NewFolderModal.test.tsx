@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NewFolderModal } from './NewFolderModal';
-import type { Venue } from '@goin/shared';
+import type { Venue } from '@afisz/shared';
 
 const venues: Venue[] = [
   { id: 'v1', name: 'Kino Muranów', url: 'https://m', city: 'Warsaw', country: 'Poland', category: 'cinema', language: 'pl', timezone: 'Europe/Warsaw', createdAt: '' },
