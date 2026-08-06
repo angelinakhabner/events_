@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Event } from '@afisz/shared';
 import { inviteText, shareEvent } from './share';
+import { DEFAULT_SHARE_TEMPLATE } from '@afisz/shared';
 
 const event = {
   title: 'Perfect Days',
@@ -116,5 +117,44 @@ describe('inviteText', () => {
     expect(inviteText({ ...event, startsAt: '' })).toBe(
       "Darling, let's go to Perfect Days at Kino Muranów together",
     );
+  });
+});
+
+// GOI-49 follow-up: the wording belongs to the reader — it gets pasted into
+// someone else's chat under their name, so the default is only a default.
+describe('inviteText — custom template', () => {
+  it('uses a saved template in place of the default', () => {
+    expect(inviteText(event, 'Fancy {title}{venue}?{when}')).toMatch(
+      /^Fancy Perfect Days at Kino Muranów\? — Sat 4 Jul/,
+    );
+  });
+
+  it('drops the venue and the when cleanly when the event has neither', () => {
+    // The placeholders carry their own " at " and " — ", so nothing is left
+    // dangling — the whole point of substituting phrases rather than values.
+    const bare = { ...event, venue: undefined, startsAt: '' };
+    expect(inviteText(bare, DEFAULT_SHARE_TEMPLATE)).toBe(
+      "Darling, let's go to Perfect Days together",
+    );
+    expect(inviteText(bare, 'Fancy {title}{venue}?{when}')).toBe('Fancy Perfect Days?');
+  });
+
+  it('leaves an unknown placeholder visible rather than swallowing it', () => {
+    // A typo should show up in the settings preview as itself.
+    expect(inviteText(event, 'Go to {titel}')).toBe('Go to {titel}');
+  });
+
+  it('repeats a placeholder used more than once', () => {
+    expect(inviteText(event, '{title} — {title}')).toBe('Perfect Days — Perfect Days');
+  });
+
+  it('falls back to the default when no template is given', () => {
+    expect(inviteText(event)).toBe(inviteText(event, DEFAULT_SHARE_TEMPLATE));
+  });
+
+  it('passes the template through shareEvent', async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    await shareEvent(event, { share }, 'Come to {title}');
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ text: 'Come to Perfect Days' }));
   });
 });

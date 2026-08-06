@@ -149,6 +149,50 @@ describe('auth + /my flow (in-process)', () => {
     expect(unmarked[0]!.seenAt).toBeNull();
   });
 
+  // GOI-49 follow-up: the share wording is the user's own.
+  describe('settings', () => {
+    type Settings = { shareText: string };
+    const DEFAULT = "Darling, let's go to {title}{venue} together{when}";
+
+    it('defaults without a stored row, and round-trips a custom template', async () => {
+      const jo = await login(`jo-${RUN}@example.com`);
+      expect(((await trpcCall('my.settings.get', { token: jo })).data as Settings).shareText)
+        .toBe(DEFAULT);
+
+      const saved = (await trpcCall('my.settings.save', {
+        body: { shareText: '  Fancy {title}{venue}?  ' },
+        token: jo,
+      })).data as Settings;
+      // Trimmed on the way in.
+      expect(saved.shareText).toBe('Fancy {title}{venue}?');
+      expect(((await trpcCall('my.settings.get', { token: jo })).data as Settings).shareText)
+        .toBe('Fancy {title}{venue}?');
+    });
+
+    it('treats blank and "same as default" alike as no override', async () => {
+      // Storing a copy of today's wording would pin the user to it forever,
+      // even after the default changes.
+      const kim = await login(`kim-${RUN}@example.com`);
+      await trpcCall('my.settings.save', { body: { shareText: 'Custom {title}' }, token: kim });
+
+      for (const shareText of ['   ', DEFAULT]) {
+        const back = (await trpcCall('my.settings.save', { body: { shareText }, token: kim }))
+          .data as Settings;
+        expect(back.shareText).toBe(DEFAULT);
+      }
+    });
+
+    it('is per-user, and needs a session', async () => {
+      const lena = await login(`lena-${RUN}@example.com`);
+      const mo = await login(`mo-${RUN}@example.com`);
+      await trpcCall('my.settings.save', { body: { shareText: 'Lena {title}' }, token: lena });
+
+      expect(((await trpcCall('my.settings.get', { token: mo })).data as Settings).shareText)
+        .toBe(DEFAULT);
+      expect((await trpcCall('my.settings.get')).error).toBeTruthy();
+    });
+  });
+
   // GOI-47: a read-only public link to a want-to-go list.
   describe('sharing', () => {
     type Share = { token: string | null };

@@ -1,4 +1,5 @@
 import type { Event } from '@afisz/shared';
+import { DEFAULT_SHARE_TEMPLATE, renderShareTemplate } from '@afisz/shared';
 import { formatEventTime, formatShortDate } from './format';
 import { isAllDay } from './buckets';
 
@@ -9,26 +10,37 @@ interface ShareDeps {
   writeText?: (text: string) => Promise<void>;
 }
 
-/** Anything `inviteText` needs off an event. */
-type ShareableEvent = Pick<Event, 'title' | 'sourceUrl' | 'venue' | 'category' | 'startsAt'>;
+/** Anything `inviteText` needs off an event. Only the venue's *name* is used,
+ *  so the settings preview can pass a stand-in without inventing an id. */
+type ShareableEvent = Pick<Event, 'title' | 'sourceUrl' | 'category' | 'startsAt'> & {
+  venue?: { name: string } | null;
+};
 
 /**
  * What lands in the other person's chat window (GOI-49).
  *
- * Sharing an event is an invitation, not a citation, so the message is
- * written as one — "Darling, let's go to X at Y together" — rather than the
- * bare "X @ Y" it used to paste. Whoever receives it should be able to answer
- * yes without opening the link first, which is why the when is in the sentence
- * and not only behind the URL.
+ * Sharing an event is an invitation, not a citation, so the message is written
+ * as one rather than the bare "X @ Y" it used to paste. Whoever receives it
+ * should be able to answer yes without opening the link first, which is why
+ * the when is in the sentence and not only behind the URL.
+ *
+ * The wording is the user's: logged-in readers can rewrite the template under
+ * /my → Settings, and `template` carries whatever they saved. `{venue}` and
+ * `{when}` substitute *with* their own leading wording and vanish entirely
+ * when the event has neither — which is what lets one template cover a film
+ * with a showtime, a museum run with only a day, and a tracked film with
+ * neither, without leaving a dangling "at" behind.
  *
  * Museums get the day without an hour: they publish runs, not showtimes, and
  * their undated rows carry a placeholder midnight (GOI-53) that would read as
  * an invitation to meet at midnight.
  */
-export function inviteText(event: ShareableEvent): string {
-  const where = event.venue?.name ? ` at ${event.venue.name}` : '';
-  const when = whenPhrase(event);
-  return `Darling, let's go to ${event.title}${where} together${when}`;
+export function inviteText(event: ShareableEvent, template = DEFAULT_SHARE_TEMPLATE): string {
+  return renderShareTemplate(template, {
+    title: event.title,
+    venue: event.venue?.name ? ` at ${event.venue.name}` : '',
+    when: whenPhrase(event),
+  });
 }
 
 /** " — Sat 4 Jul, 20:00", or just the day for an all-day run. Empty when the
@@ -47,8 +59,12 @@ const weekdayFmt = new Intl.DateTimeFormat('en-GB', {
 /** Share the event using Web Share API when available, otherwise copy a
  *  text payload to the clipboard. Returns a tagged outcome so the UI can
  *  show "Copied!" / "Shared!" / nothing. */
-export async function shareEvent(event: ShareableEvent, deps: ShareDeps = {}): Promise<ShareOutcome> {
-  return shareLink({ title: event.title, text: inviteText(event), url: event.sourceUrl }, deps);
+export async function shareEvent(
+  event: ShareableEvent,
+  deps: ShareDeps = {},
+  template?: string,
+): Promise<ShareOutcome> {
+  return shareLink({ title: event.title, text: inviteText(event, template), url: event.sourceUrl }, deps);
 }
 
 /** Hand a URL to the platform share sheet, falling back to the clipboard.

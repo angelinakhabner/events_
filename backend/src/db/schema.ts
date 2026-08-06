@@ -165,6 +165,17 @@ export const wantToGoShares = pgTable('want_to_go_shares', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// A logged-in user's own preferences (GOI-49). One row per user, created on
+// first save — absence means "all defaults", so nothing has to be backfilled.
+export const userSettings = pgTable('user_settings', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** Template for the share button's message; null = the built-in wording. */
+  shareText: text('share_text'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const scrapeRuns = pgTable(
   'scrape_runs',
   {

@@ -21,7 +21,7 @@ export function EventActions({ event }: { event: Event }) {
       {isLoggedIn() ? <WantToGoButton event={event} /> : null}
       <ClosestScreenings event={event} />
       <AddToCalendar event={event} />
-      <ShareButton event={event} />
+      {isLoggedIn() ? <ShareButtonWithOwnWording event={event} /> : <ShareButton event={event} />}
     </div>
   );
 }
@@ -52,7 +52,20 @@ function WantToGoButton({ event }: { event: Event }) {
   );
 }
 
-function ShareButton({ event }: { event: Event }) {
+/**
+ * Share with the reader's own wording (GOI-49).
+ *
+ * Split out rather than querying inside ShareButton because the settings
+ * lookup needs a tRPC provider, and the logged-out action row must not — it
+ * renders on the public home and in unit tests that mount a card on its own.
+ * Gating the *component* keeps that true; `enabled: false` would not.
+ */
+function ShareButtonWithOwnWording({ event }: { event: Event }) {
+  const settings = trpc.my.settings.get.useQuery();
+  return <ShareButton event={event} template={settings.data?.shareText} />;
+}
+
+function ShareButton({ event, template }: { event: Event; template?: string }) {
   const [outcome, setOutcome] = useState<ShareOutcome | null>(null);
 
   // Auto-clear the small toast after a beat so it doesn't pile up.
@@ -63,7 +76,7 @@ function ShareButton({ event }: { event: Event }) {
   }, [outcome]);
 
   const onClick = async () => {
-    const result = await shareEvent(event);
+    const result = await shareEvent(event, {}, template);
     if (result !== 'cancelled') setOutcome(result);
   };
 

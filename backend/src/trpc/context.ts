@@ -6,6 +6,7 @@ import { defaultUserVenueStore, type UserVenueStore } from '../services/user-ven
 import { defaultWantToGoStore, type WantToGoStore } from '../services/want-to-go-store.js';
 import { defaultFilmStore, type FilmStore } from '../services/film-store.js';
 import { defaultNewsletterStore, type NewsletterStore } from '../services/newsletter-store.js';
+import { defaultSettingsStore, type SettingsStore } from '../services/settings-store.js';
 
 export interface AppContext {
   venues: IVenueStore;
@@ -15,6 +16,7 @@ export interface AppContext {
   wantToGo: WantToGoStore;
   films: FilmStore;
   newsletter: NewsletterStore;
+  settings: SettingsStore;
   deviceId: string | null;
   /** Logged-in user resolved from the Authorization bearer, when valid. */
   user: AuthUser | null;
@@ -35,6 +37,7 @@ export async function createContext(opts: FetchCreateContextFnOptions): Promise<
     wantToGo: defaultWantToGoStore,
     films: defaultFilmStore,
     newsletter: defaultNewsletterStore,
+    settings: defaultSettingsStore,
     deviceId: deviceId && deviceId.length > 0 ? deviceId : null,
     user,
     sessionToken,

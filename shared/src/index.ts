@@ -125,6 +125,45 @@ export interface SharedWantToGoList {
   films: Film[];
 }
 
+// ─── Settings ────────────────────────────────────────────────────────────────
+
+/**
+ * The message the share button sends, as a template (GOI-49).
+ *
+ * `{venue}` and `{when}` substitute with their own leading wording — " at Kino
+ * Muranów", " — Sat 4 Jul, 20:00" — and to nothing at all when the event has
+ * no venue or no usable date. That is what lets one template cover a film with
+ * a showtime, a museum run with only a day, and a tracked film with neither,
+ * without leaving a dangling "at" or a trailing dash behind.
+ */
+export const DEFAULT_SHARE_TEMPLATE = "Darling, let's go to {title}{venue} together{when}";
+
+/** Placeholders `renderShareTemplate` understands. */
+export const SHARE_TEMPLATE_TOKENS = ['{title}', '{venue}', '{when}'] as const;
+
+export interface ShareTemplateParts {
+  title: string;
+  /** Already carries its " at " — empty when the event has no venue. */
+  venue: string;
+  /** Already carries its " — " — empty when there is no usable date. */
+  when: string;
+}
+
+/** Fill a share template. Unknown placeholders are left alone, so a typo shows
+ *  up in the preview as itself rather than silently vanishing. */
+export function renderShareTemplate(template: string, parts: ShareTemplateParts): string {
+  return template
+    .replaceAll('{title}', parts.title)
+    .replaceAll('{venue}', parts.venue)
+    .replaceAll('{when}', parts.when)
+    .trim();
+}
+
+/** A logged-in user's own preferences. */
+export interface UserSettings {
+  shareText: string;
+}
+
 // ─── Newsletter ──────────────────────────────────────────────────────────────
 
 export type NewsletterFrequency = 'daily' | 'weekly' | 'monthly';

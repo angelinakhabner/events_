@@ -9,7 +9,10 @@ import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { listFestivals } from '../data/festivals.js';
-import { festivalsAtVenues, venueSchedule, type SharedWantToGoList } from '@afisz/shared';
+import {
+  festivalsAtVenues, venueSchedule, DEFAULT_SHARE_TEMPLATE,
+  type SharedWantToGoList,
+} from '@afisz/shared';
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
@@ -386,6 +389,19 @@ const my = router({
           }),
         };
       }),
+  }),
+
+  /** GOI-49: the user's own preferences. */
+  settings: router({
+    get: userProcedure.query(({ ctx }) => ctx.settings.get(ctx.user.id)),
+    save: userProcedure
+      .input(
+        z.object({
+          // Long enough for a sentence or two with placeholders; not a bio.
+          shareText: z.string().max(400).default(DEFAULT_SHARE_TEMPLATE),
+        }),
+      )
+      .mutation(({ ctx, input }) => ctx.settings.save(ctx.user.id, input)),
   }),
 
   wantToGo: router({

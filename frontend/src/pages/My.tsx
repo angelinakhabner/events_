@@ -6,6 +6,7 @@ import { MyEventsSection } from '../components/MyEventsSection';
 import { MyVenuesSection } from '../components/MyVenuesSection';
 import { WantToGoSection } from '../components/WantToGoSection';
 import { NewsletterSection } from '../components/NewsletterSection';
+import { SettingsSection } from '../components/SettingsSection';
 
 /** The left-hand menu (GOI-24). `key` doubles as the ?tab= value. */
 const SECTIONS = [
@@ -13,6 +14,7 @@ const SECTIONS = [
   { key: 'venues', label: 'My venues' },
   { key: 'want-to-go', label: 'Want to go' },
   { key: 'newsletter', label: 'Newsletter' },
+  { key: 'settings', label: 'Settings' },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]['key'];
@@ -91,6 +93,7 @@ export function MyPage() {
         {section === 'venues' ? <MyVenuesSection /> : null}
         {section === 'want-to-go' ? <WantToGoSection /> : null}
         {section === 'newsletter' ? <NewsletterSection defaultEmail={me.data?.email ?? ''} /> : null}
+        {section === 'settings' ? <SettingsSection /> : null}
       </div>
     </div>
   );
