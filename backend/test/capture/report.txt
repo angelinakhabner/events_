@@ -1,7 +1,4 @@
-200  42573  https://www.postermuseum.pl/
-200  33854  https://www.postermuseum.pl/wydarzenia/
-200  27742  https://www.postermuseum.pl/wystawy/
-200  32228  https://www.postermuseum.pl/en/
-200  33846  https://postermuseum.pl/wydarzenia/
-200  27742  https://postermuseum.pl/wystawy/
+200  27770  https://www.postermuseum.pl/wystawy/obecne.html
+200  27423  https://www.postermuseum.pl/wystawy/planowane.html
+200  33893  https://www.postermuseum.pl/wydarzenia/kalendarz-wydarzen/09-2026,lista,miesiac.html
 --- done ---
