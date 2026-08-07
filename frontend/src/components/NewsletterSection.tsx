@@ -4,6 +4,8 @@ import type {
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { downloadText } from '../lib/download';
+import { categoryOrTagLabel, pad } from '../lib/format';
+import { briefSummary } from '../lib/newsletter';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -26,10 +28,6 @@ const WEEKDAYS = [
 
 function hourLabel(h: number): string {
   return `${String(h).padStart(2, '0')}:00`;
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
 }
 
 /** Small inline clock, so the send time reads as a time at a glance. */
@@ -193,6 +191,16 @@ function NewsletterForm({
     enabled,
   });
 
+  /** The heading's one-line description of the brief, from live form state. */
+  const summary = briefSummary({
+    venueNames: venues.filter((v) => venueIds.includes(v.id)).map((v) => v.name),
+    frequency,
+    sendHour,
+    sendMinute,
+    sendWeekday,
+    afterHour: afterHour === ANY ? null : Number(afterHour),
+  });
+
   const toggleVenue = (id: string) =>
     setVenueIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   const addRule = (category: string) =>
@@ -203,11 +211,11 @@ function NewsletterForm({
 
   return (
     <section>
-      <PanelHeading
-        title="Newsletter"
-        blurb="Get what's on at your venues as an email brief — e.g. Kino Muranów and Kinoteka, every day at 08:00, everything after 6 pm."
-        rule={false}
-      />
+      {/* Describes the brief you have actually set up, and follows every edit.
+          It used to be a fixed example printed directly above controls that
+          said something else — "every day at 08:00" over a form set to 15:00
+          (GOI-30). */}
+      <PanelHeading title="Newsletter" blurb={summary} rule={false} />
 
       <form
         className="max-w-[640px] border-t-3 border-ink"
@@ -368,10 +376,10 @@ function NewsletterForm({
                     key={`${rule.category}-${i}`}
                     className="flex flex-wrap items-center gap-3 py-2.5 rule-soft text-[13px]"
                   >
-                    <span className="md:w-[120px] font-bold">{rule.category}</span>
+                    <span className="md:w-[120px] font-bold">{categoryOrTagLabel(rule.category)}</span>
 
                     <label className="sr-only" htmlFor={`rule-freq-${i}`}>
-                      How often for {rule.category}
+                      How often for {categoryOrTagLabel(rule.category)}
                     </label>
                     <select
                       id={`rule-freq-${i}`}
@@ -385,7 +393,7 @@ function NewsletterForm({
                     </select>
 
                     <label className="sr-only" htmlFor={`rule-detail-${i}`}>
-                      Description for {rule.category}
+                      Description for {categoryOrTagLabel(rule.category)}
                     </label>
                     <select
                       id={`rule-detail-${i}`}
@@ -399,7 +407,7 @@ function NewsletterForm({
 
                     <button
                       type="button"
-                      aria-label={`Remove ${rule.category}`}
+                      aria-label={`Remove ${categoryOrTagLabel(rule.category)}`}
                       onClick={() => removeRule(i)}
                       className="act act-sm ml-auto md:w-[60px] md:text-left"
                     >
@@ -427,7 +435,7 @@ function NewsletterForm({
               >
                 <option value="">+ Add a category…</option>
                 {unusedCategories.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>{categoryOrTagLabel(c)}</option>
                 ))}
               </select>
             </>
