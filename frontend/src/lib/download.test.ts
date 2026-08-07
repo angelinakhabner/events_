@@ -70,6 +70,17 @@ describe('downloadText', () => {
     }
   });
 
+  // The revoke fires a second later, by which time the caller has returned and
+  // the environment may have taken the API away with it — nothing is left to
+  // catch a throw, so it becomes an unhandled error.
+  it('survives revokeObjectURL disappearing before the timer fires', () => {
+    vi.useFakeTimers();
+    downloadText('x.html', 'x', 'text/html');
+    // @ts-expect-error — modelling an environment that dropped the API.
+    URL.revokeObjectURL = undefined;
+    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+  });
+
   it('reports failure instead of throwing when the click blows up', () => {
     const orig = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = () => { throw new Error('blocked'); };
