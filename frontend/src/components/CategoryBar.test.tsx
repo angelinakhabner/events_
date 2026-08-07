@@ -46,10 +46,10 @@ describe('CategoryBar', () => {
   // vanish into it: the museum trapezoid is accent, and so is the live chip.
   it('inverts the selected chip\'s swatch so it stays visible on the fill', () => {
     const { container } = render(<CategoryBar selected="exhibition" onChange={() => {}} />);
-    const swatch = (c: string) => container.querySelector<HTMLElement>(`[data-category="${c}"]`)!;
+    const swatch = (c: string) => container.querySelector(`[data-category="${c}"]`)!;
 
-    expect(swatch('exhibition').style.background).toBe('rgb(255, 255, 255)');
+    expect(swatch('exhibition').getAttribute('fill')).toBe('#ffffff');
     // An unselected chip keeps the palette colours.
-    expect(swatch('theatre').style.background).toBe('rgb(198, 40, 40)');
+    expect(swatch('theatre').getAttribute('fill')).toBe('#c62828');
   });
 });
