@@ -1,26 +1,4 @@
-403  5781  https://teatrdramatyczny.pl/repertuar/
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-403  5784  https://teatrdramatyczny.pl/sitemap.xml
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-403  5883  https://teatrdramatyczny.pl/wp-json/tribe/events/v1/events
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-403  5829  https://teatrdramatyczny.pl/wp-json/wp/v2/pages
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-403  5766  https://teatrdramatyczny.pl/feed/
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-500  847999  https://artmuseum.pl/sitemap.xml
-    body: <!DOCTYPE html><html id="__next_error__"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/webpack-2f961fe4f529b963.js"/><script src="/_next/static/chunks/fd9d1056-d9914935b
-200  1186259  https://artmuseum.pl/pl/wydarzenia
-200  747246  https://artmuseum.pl/en/program-1
-404  411655  https://artmuseum.pl/pl/kalendarz
-    body: <!DOCTYPE html><html id="__next_error__"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" as="script" fetchPriority="low" href="/_next/static/chunks/webpack-2f961fe4f529b963.js"/><script src="/_next/static/chunks/fd9d1056-d9914935b
-403  5816  https://polin.pl/sitemap.xml
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-403  5843  https://polin.pl/pl/wydarzenia
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-403  5814  https://www.polin.pl/pl
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-403  5903  https://polin.pl/pl/kalendarium?page=1
-    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
-200  18018  https://bilety.polin.pl
+200  27770  https://www.postermuseum.pl/wystawy/obecne.html
+200  27423  https://www.postermuseum.pl/wystawy/planowane.html
+200  33893  https://www.postermuseum.pl/wydarzenia/kalendarz-wydarzen/09-2026,lista,miesiac.html
 --- done ---

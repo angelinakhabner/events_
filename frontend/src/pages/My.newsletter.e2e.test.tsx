@@ -102,6 +102,13 @@ describe('MyPage — newsletter end-to-end', () => {
     await user.selectOptions(sendHour, '3');
     await user.selectOptions(sendMinute, '45');
     await user.selectOptions(within(section).getByLabelText(/only events after/i), '22');
+
+    // GOI-30: the line under the heading describes the brief you have set up,
+    // so it has to follow the controls rather than state a fixed example.
+    expect(within(section).getByText(/as an email brief/i)).toHaveTextContent(
+      'every day at 03:45, everything after 22:00.',
+    );
+
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 

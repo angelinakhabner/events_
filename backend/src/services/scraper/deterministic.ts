@@ -4,6 +4,7 @@ import { parseKomediowyListing, scrapeKomediowy } from './venues/komediowy.js';
 import { parseFilharmoniaListing, scrapeFilharmonia } from './venues/filharmonia.js';
 import { parseJassmineListing, scrapeJassmine } from './venues/jassmine.js';
 import { parseEditoListing, scrapeEdito } from './venues/edito.js';
+import { parsePosterMuseum, scrapePosterMuseum } from './venues/postermuseum.js';
 import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js';
 import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
 import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
@@ -81,6 +82,13 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     parse: (html, timezone) =>
       parseEditoListing(html, 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/', timezone),
     scrape: (args) => scrapeEdito(args),
+  },
+  'poster-museum': {
+    // Same edito calendar as its parent museum, plus /wystawy/ — whose runs
+    // are prose, not rows. `parsePosterMuseum` picks by page shape, so an
+    // htmlOverride of either page does the right thing (GOI-57).
+    parse: (html, timezone) => parsePosterMuseum(html, timezone),
+    scrape: (args) => scrapePosterMuseum(args),
   },
   'tr-warszawa': {
     parse: (html, timezone) => parseTrWarszawaListing(html, timezone),

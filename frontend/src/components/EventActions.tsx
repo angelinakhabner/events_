@@ -4,7 +4,7 @@ import { shareEvent, type ShareOutcome } from '../lib/share';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
 import { AddToCalendar } from './AddToCalendar';
-import { ClosestScreenings } from './ClosestScreenings';
+import { ScreeningsStrip } from './ScreeningsStrip';
 
 /**
  * Per-event "nearest screenings" + "add to calendar" + "share" actions (+
@@ -12,14 +12,20 @@ import { ClosestScreenings } from './ClosestScreenings';
  * (EventBuckets) and the saved-folders view (EventCard) so the per-event
  * action UI stays in one place.
  *
- * The screenings panel is where films get onto your want-to-go list (GOI-26),
+ * The screenings strip is where films get onto your want-to-go list (GOI-26),
  * so it has to be reachable from a real event — it is the only entry point.
+ *
+ * It is the same strip /my uses (GOI-55) and opens inline beneath the row —
+ * hence `items-start`, so the other buttons keep their line while it expands
+ * instead of centring themselves against it.
  */
 export function EventActions({ event }: { event: Event }) {
   return (
-    <div className="mt-3.5 flex flex-wrap items-center gap-4 md:gap-[22px]">
+    <div className="mt-3.5 flex flex-wrap items-start gap-4 md:gap-[22px]">
       {isLoggedIn() ? <WantToGoButton event={event} /> : null}
-      <ClosestScreenings event={event} />
+      {/* The showing you are reading sits right above this, so the strip
+          offers the *other* ones. */}
+      <ScreeningsStrip event={event} includeSelf={false} canTrack />
       <AddToCalendar event={event} />
       <ShareButton event={event} />
     </div>

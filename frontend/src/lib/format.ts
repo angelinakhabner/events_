@@ -35,8 +35,34 @@ export function formatEventTime(event: Pick<Event, 'category' | 'startsAt'>): st
   return isAllDay(event) ? 'All day' : formatTime(event.startsAt);
 }
 
+/**
+ * What each category is *called* on screen. One map, because the app used to
+ * hold two: the category bar said "Museums" while everything reading through
+ * `categoryLabel` said "Exhibition" for the same thing (GOI-30).
+ *
+ * "Museums" rather than "Exhibition" reads better to a casual visitor; the
+ * underlying enum value stays `exhibition` so data and filters are unaffected.
+ */
+const CATEGORY_LABELS: Record<string, string> = {
+  cinema: 'Cinema',
+  theatre: 'Theatre',
+  comedy: 'Comedy',
+  music: 'Music',
+  exhibition: 'Museums',
+};
+
 export function categoryLabel(c: Category): string {
-  return c.charAt(0).toUpperCase() + c.slice(1);
+  return CATEGORY_LABELS[c] ?? c.charAt(0).toUpperCase() + c.slice(1);
+}
+
+/**
+ * A name that is either a category or one of the reader's own venue tags —
+ * the newsletter's per-category rules accept both. A known category gets the
+ * app's word for it; a tag is shown exactly as it was typed, because it is
+ * the reader's own wording and not ours to restyle.
+ */
+export function categoryOrTagLabel(name: string): string {
+  return CATEGORY_LABELS[name.toLowerCase()] ?? name;
 }
 
 export function filterSummary(filters: EventFilters, venueCount: number): string {
@@ -48,6 +74,7 @@ export function filterSummary(filters: EventFilters, venueCount: number): string
   return parts.join(' · ');
 }
 
-function pad(n: number): string {
+/** Two-digit clock component: 8 → "08". */
+export function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
