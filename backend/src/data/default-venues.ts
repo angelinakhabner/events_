@@ -136,6 +136,17 @@ export const DEFAULT_VENUES: Venue[] = [
     category: 'exhibition',
     ...PL,
   },
+  {
+    id: 'poster-museum',
+    name: 'Muzeum Plakatu w Wilanowie',
+    // A third MNW branch on the same edito CMS, so the calendar needs no new
+    // parser. Its scraper adds /wystawy/, where the exhibition runs live as
+    // Polish prose ("20 czerwca - 13 września 2026") rather than dated rows
+    // (GOI-57).
+    url: 'https://www.postermuseum.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html',
+    category: 'exhibition',
+    ...PL,
+  },
 
   // ─── Comedy ───────────────────────────────────────────────────────────────
   {

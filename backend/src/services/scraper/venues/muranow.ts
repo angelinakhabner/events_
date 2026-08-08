@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { fetchVenueHTML } from '../fetcher.js';
-import { toStartsAt, ymdInTz } from './datetime.js';
+import { POLISH_MONTHS, toStartsAt, ymdInTz } from './datetime.js';
 
 // Kino Muranów's /repertuar is a Drupal month calendar, fully server-rendered.
 // One page carries the whole month, laid out as day cells:
@@ -36,26 +36,6 @@ const ORIGIN = 'https://kinomuranow.pl';
 /** Safety rail on the AJAX month walk — a cinema window never spans this many. */
 const MAX_MONTH_HOPS = 6;
 
-/**
- * Polish month names as they appear on the page, in both the grammatical cases
- * Drupal renders: nominative in the header label ("Czerwiec 2026") and genitive
- * in each day cell ("7 czerwca").
- */
-const MONTH_NUMBERS: Record<string, number> = {
-  styczeń: 1, stycznia: 1,
-  luty: 2, lutego: 2,
-  marzec: 3, marca: 3,
-  kwiecień: 4, kwietnia: 4,
-  maj: 5, maja: 5,
-  czerwiec: 6, czerwca: 6,
-  lipiec: 7, lipca: 7,
-  sierpień: 8, sierpnia: 8,
-  wrzesień: 9, września: 9,
-  październik: 10, października: 10,
-  listopad: 11, listopada: 11,
-  grudzień: 12, grudnia: 12,
-};
-
 export interface MuranowRawEvent {
   title: string;
   starts_at: string;
@@ -87,7 +67,7 @@ function monthLabelToYm(label: string): string | null {
   // "Czerwiec 2026" → "2026-06"
   const m = label.match(/^(\p{L}+)\s+(\d{4})$/u);
   if (!m) return null;
-  const month = MONTH_NUMBERS[m[1]!.toLowerCase()];
+  const month = POLISH_MONTHS[m[1]!.toLowerCase()];
   return month ? `${m[2]}-${String(month).padStart(2, '0')}` : null;
 }
 
@@ -120,8 +100,8 @@ export function parseMuranowCalendar(
     // Trust the cell's own month name over the header: the grid's leading and
     // trailing cells belong to the adjacent month, and stamping them with the
     // header month would move those screenings by weeks.
-    const cellMonth = MONTH_NUMBERS[clean($cell.find('.cell-date-header__day-month-short').first().text()).toLowerCase()]
-      ?? MONTH_NUMBERS[clean($cell.find('.cell-date-header__day-month').first().text()).toLowerCase()]
+    const cellMonth = POLISH_MONTHS[clean($cell.find('.cell-date-header__day-month-short').first().text()).toLowerCase()]
+      ?? POLISH_MONTHS[clean($cell.find('.cell-date-header__day-month').first().text()).toLowerCase()]
       ?? headerMonth;
     // A December header showing a "stycznia" cell has rolled into next year
     // (and vice versa for a January header showing "grudnia").
