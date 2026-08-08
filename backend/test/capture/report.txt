@@ -1,4 +1,4 @@
-200  27770  https://www.postermuseum.pl/wystawy/obecne.html
-200  27423  https://www.postermuseum.pl/wystawy/planowane.html
-200  33893  https://www.postermuseum.pl/wydarzenia/kalendarz-wydarzen/09-2026,lista,miesiac.html
+200  30193  https://krolikarnia.mnw.art.pl/wystawy/
+200  30213  https://krolikarnia.mnw.art.pl/wystawy/obecne.html
+200  29496  https://krolikarnia.mnw.art.pl/wystawy/planowane.html
 --- done ---
