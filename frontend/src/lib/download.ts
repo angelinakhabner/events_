@@ -31,8 +31,20 @@ export function downloadText(filename: string, content: string, mime: string): b
     // anchor in the document and the blob held for the life of the page.
     anchor?.remove();
     const created = url;
-    // Free the blob next tick so the click handler can use it first.
-    if (created) setTimeout(() => URL.revokeObjectURL(created), 1000);
+    // Free the blob next tick so the click handler can use it first. This runs
+    // long after the call returned, when nobody is left to catch a throw, and
+    // the API may well be gone by then — an environment that minted the URL is
+    // not obliged to still offer revoke. A blob held to the end of the page is
+    // the worst case, so swallow it rather than surface an unhandled error.
+    if (created) {
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL?.(created);
+        } catch {
+          /* the blob outlives the page; nothing else to do */
+        }
+      }, 1000);
+    }
   }
 }
 
