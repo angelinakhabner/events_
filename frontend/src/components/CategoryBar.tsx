@@ -1,4 +1,5 @@
 import type { Category } from '@afisz/shared';
+import { categoryLabel } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 
 interface Props {
@@ -13,15 +14,15 @@ interface Option {
   value: Category | null;
 }
 
-// "Museum" rather than "Exhibition" reads better to a casual visitor; the
-// underlying enum value stays the same so existing data and filters work.
+// Labels come from `categoryLabel` so the bar and everything else name a
+// category the same way — this row used to be the app's second, competing set
+// of names ("Museums" here, "Exhibition" everywhere else). GOI-30.
 const OPTIONS: Option[] = [
   { label: 'All', value: null },
-  { label: 'Cinema', value: 'cinema' },
-  { label: 'Theatre', value: 'theatre' },
-  { label: 'Comedy', value: 'comedy' },
-  { label: 'Music', value: 'music' },
-  { label: 'Museums', value: 'exhibition' },
+  ...(['cinema', 'theatre', 'comedy', 'music', 'exhibition'] as const).map((value) => ({
+    label: categoryLabel(value),
+    value,
+  })),
 ];
 
 /**

@@ -1,9 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { filterSummary, categoryLabel, formatDayKey, formatEventTime } from './format';
+import {
+  filterSummary, categoryLabel, categoryOrTagLabel, formatDayKey, formatEventTime,
+} from './format';
 
 describe('format helpers', () => {
   it('categoryLabel capitalises', () => {
     expect(categoryLabel('cinema')).toBe('Cinema');
+  });
+
+  // GOI-30: the category bar said "Museums" while everything reading through
+  // categoryLabel said "Exhibition" — two names for one thing.
+  it('categoryLabel calls an exhibition what the category bar calls it', () => {
+    expect(categoryLabel('exhibition')).toBe('Museums');
+  });
+
+  // The newsletter's rules name either a category or one of the reader's own
+  // venue tags. A tag is their wording, not ours to restyle.
+  it('categoryOrTagLabel maps categories and leaves tags alone', () => {
+    expect(categoryOrTagLabel('exhibition')).toBe('Museums');
+    expect(categoryOrTagLabel('Cinema')).toBe('Cinema');
+    expect(categoryOrTagLabel('date night')).toBe('date night');
   });
 
   it('filterSummary composes parts in order', () => {
