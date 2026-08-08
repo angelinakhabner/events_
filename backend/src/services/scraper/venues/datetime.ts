@@ -43,6 +43,27 @@ export function hourInTz(date: Date, timeZone: string): number {
   return Number(h) % 24;
 }
 
+/**
+ * Polish month names in both grammatical cases venue pages render: nominative
+ * for a standalone label ("Czerwiec 2026") and genitive after a day number
+ * ("7 czerwca"). Shared — Muranów's calendar headers and the Poster Museum's
+ * exhibition runs both read from it.
+ */
+export const POLISH_MONTHS: Record<string, number> = {
+  styczeń: 1, stycznia: 1,
+  luty: 2, lutego: 2,
+  marzec: 3, marca: 3,
+  kwiecień: 4, kwietnia: 4,
+  maj: 5, maja: 5,
+  czerwiec: 6, czerwca: 6,
+  lipiec: 7, lipca: 7,
+  sierpień: 8, sierpnia: 8,
+  wrzesień: 9, września: 9,
+  październik: 10, października: 10,
+  listopad: 11, listopada: 11,
+  grudzień: 12, grudnia: 12,
+};
+
 const WEEKDAY_NUM: Record<string, number> = {
   Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
 };
