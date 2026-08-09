@@ -1,4 +1,7 @@
-200  30193  https://krolikarnia.mnw.art.pl/wystawy/
-200  30213  https://krolikarnia.mnw.art.pl/wystawy/obecne.html
-200  29496  https://krolikarnia.mnw.art.pl/wystawy/planowane.html
+200  63546  https://www.teatr-zydowski.art.pl/
+200  88119  https://www.teatr-zydowski.art.pl/repertuar
+200  88119  https://www.teatr-zydowski.art.pl/repertuar/
+404  35512  https://www.teatr-zydowski.art.pl/pl/repertuar
+    body: <!DOCTYPE html> <html  lang="pl" dir="ltr" prefix="content: http://purl.org/rss/1.0/modules/content/ dc: http://purl.org/dc/terms/ foaf: http://xmlns.com/foaf/0.1/ rdfs: http://www.w3.org/2000/01/rdf-schema# sioc: http://rdfs.org/sioc/ns# sioct: http://rdfs.org/sioc/types# skos: http://www.w3.org/20
+200  88119  https://teatr-zydowski.art.pl/repertuar
 --- done ---
