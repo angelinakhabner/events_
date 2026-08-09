@@ -21,6 +21,10 @@ on:
         description: Comma-separated venue slugs to run page content analysis on
         default: ''
         required: false
+      schedule:
+        description: Comma-separated venue slugs to report the production dark/quiet banner state for
+        default: ''
+        required: false
       probe:
         description: Comma-separated raw URLs to probe for scrapability + content density
         default: ''
@@ -68,6 +72,7 @@ jobs:
           DIAG_TRIGGER: ${{ github.event.inputs.trigger }}
           DIAG_DISCOVER: ${{ github.event.inputs.discover }}
           DIAG_ANALYZE: ${{ github.event.inputs.analyze }}
+          DIAG_SCHEDULE: ${{ github.event.inputs.schedule }}
           DIAG_PROBE: ${{ github.event.inputs.probe }}
         run: npx tsx src/scripts/diagnose-venues.ts
 

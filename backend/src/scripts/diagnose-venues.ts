@@ -18,6 +18,9 @@
  *    report clock-time / month-name counts in the cleaned text — distinguishes
  *    "listing is genuinely empty (summer break)" from "extraction is failing".
  *
+ * 4. SCHEDULE: for each venue in DIAG_SCHEDULE, rebuild in production exactly
+ *    what the "dark / quiet" banner is fed and report the verdict (GOI-13).
+ *
  * Prints a JSON report between DIAG_JSON markers.
  */
 import * as cheerio from 'cheerio';
@@ -26,11 +29,13 @@ import { fetchVenueHTML } from '../services/scraper/fetcher.js';
 import { preprocessForVenue } from '../services/scraper/preprocessor.js';
 import { probeVenueUrl } from '../services/scraper/probe.js';
 import { resolveVenueUrl } from '../services/scraper/runner.js';
+import { venueSchedule } from '@afisz/shared';
 
 const API = (process.env.DIAG_API_URL ?? '').replace(/\/+$/, '');
 const TRIGGER = csv(process.env.DIAG_TRIGGER);
 const DISCOVER = csv(process.env.DIAG_DISCOVER);
 const ANALYZE = csv(process.env.DIAG_ANALYZE);
+const SCHEDULE = csv(process.env.DIAG_SCHEDULE);
 // Pipe-separated, not comma: probed URLs may themselves contain commas
 // (e.g. MNW's "07-2026,miesiac.html" calendar paths).
 const PROBE = (process.env.DIAG_PROBE ?? '').split('|').map((s) => s.trim()).filter(Boolean);
@@ -227,6 +232,59 @@ async function probeRawUrl(url: string): Promise<unknown> {
   return { url: resolved, probe, ...density };
 }
 
+/**
+ * What the venue banner actually sees in production (GOI-13).
+ *
+ * The banner is `venueSchedule(venueActivity(...))`, and `my.venues.activity`
+ * needs a session, so this rebuilds the same inputs from the public
+ * `events.listByVenue` route: the soonest upcoming start and how many upcoming
+ * rows exist. Same function, same numbers, no auth.
+ *
+ * The point is to separate two failures that look identical from the outside —
+ * "the banner is broken" and "the scraper returned nothing, so there is no gap
+ * to report". `upcomingCount: 0` means the second, and the fix belongs in the
+ * venue's scraper rather than here.
+ */
+async function schedule(slug: string): Promise<unknown> {
+  const { id, listError } = await apiVenueId(slug);
+  if (!id) return { slug, error: listError ?? 'venue not found in production venues.list' };
+
+  const input = encodeURIComponent(JSON.stringify({ venueId: id }));
+  let rows: Array<{ startsAt: string; title: string }>;
+  try {
+    const res = await fetch(`${API}/trpc/events.listByVenue?input=${input}`);
+    const body = (await res.json().catch(() => null)) as
+      | { result?: { data?: Array<{ startsAt: string; title: string }> } }
+      | null;
+    if (!res.ok) return { slug, venueId: id, error: `events.listByVenue HTTP ${res.status}` };
+    rows = body?.result?.data ?? [];
+  } catch (e) {
+    return { slug, venueId: id, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  const now = new Date();
+  // listUpcoming already returns soonest-first, but don't rely on it here —
+  // this probe exists precisely because assumptions about production were wrong.
+  const starts = rows
+    .map((r) => r.startsAt)
+    .filter((s) => !Number.isNaN(Date.parse(s)))
+    .sort();
+  const activity = { nextStartsAt: starts[0] ?? null, upcomingCount: starts.length };
+
+  return {
+    slug,
+    venueId: id,
+    ...activity,
+    verdict: venueSchedule(activity, now),
+    // Named so a zero count reads as a finding rather than an empty field.
+    diagnosis:
+      activity.upcomingCount === 0
+        ? 'no upcoming events in production — the scraper is yielding nothing, so there is no schedule to report'
+        : 'production has events; the banner state above is what the venue should be showing',
+    firstFew: rows.slice(0, 5).map((r) => ({ startsAt: r.startsAt, title: r.title })),
+  };
+}
+
 async function main(): Promise<void> {
   const report: Record<string, unknown> = { generatedAt: new Date().toISOString(), apiUrl: API || null };
 
@@ -253,6 +311,14 @@ async function main(): Promise<void> {
       out.push(await analyze(slug));
     }
     report.analyze = out;
+  }
+  if (SCHEDULE.length) {
+    const out: unknown[] = [];
+    for (const slug of SCHEDULE) {
+      console.error(`[diag] schedule ${slug} …`);
+      out.push(await schedule(slug));
+    }
+    report.schedule = out;
   }
   if (PROBE.length) {
     const out: unknown[] = [];
