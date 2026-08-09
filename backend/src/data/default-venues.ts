@@ -75,6 +75,17 @@ export const DEFAULT_VENUES: Venue[] = [
     ...PL,
   },
   {
+    id: 'teatr-zydowski',
+    name: 'Teatr Żydowski',
+    // Drupal 7 with RDFa — the repertoire table carries a full ISO instant per
+    // row, so the deterministic parser reads the attribute rather than the
+    // printed date (GOI-59). The theatre plays across several stages,
+    // including other people's buildings; the stage lands in the description.
+    url: 'https://www.teatr-zydowski.art.pl/repertuar',
+    category: 'theatre',
+    ...PL,
+  },
+  {
     id: 'teatr-dramatyczny',
     name: 'Teatr Dramatyczny',
     url: 'https://teatrdramatyczny.pl/repertuar/',

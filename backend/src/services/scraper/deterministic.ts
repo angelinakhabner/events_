@@ -6,6 +6,7 @@ import { parseJassmineListing, scrapeJassmine } from './venues/jassmine.js';
 import { parseEditoListing, scrapeEdito } from './venues/edito.js';
 import { parsePosterMuseum, scrapePosterMuseum } from './venues/postermuseum.js';
 import { parseKrolikarnia, scrapeKrolikarnia } from './venues/krolikarnia.js';
+import { parseTeatrZydowskiRepertoire, scrapeTeatrZydowski } from './venues/teatrzydowski.js';
 import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js';
 import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
 import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
@@ -92,6 +93,12 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     // htmlOverride of either page does the right thing (GOI-57).
     parse: (html, timezone) => parsePosterMuseum(html, timezone),
     scrape: (args) => scrapePosterMuseum(args),
+  },
+  'teatr-zydowski': {
+    // Drupal RDFa: every row carries a full ISO instant with the real offset,
+    // so nothing is inferred from the printed date (GOI-59).
+    parse: (html, timezone) => parseTeatrZydowskiRepertoire(html, undefined, timezone),
+    scrape: (args) => scrapeTeatrZydowski(args),
   },
   'tr-warszawa': {
     parse: (html, timezone) => parseTrWarszawaListing(html, timezone),
