@@ -53,7 +53,7 @@ export function AddToCalendar({
         aria-label={icon ? addToCalendarLabel(event) : undefined}
         title={icon ? addToCalendarLabel(event) : undefined}
         onClick={() => setOpen((v) => !v)}
-        className={icon ? 'act act-sm leading-none' : 'act act-sm md:text-[13px]'}
+        className={icon ? 'act act-sm leading-none' : 'act act-inherit'}
       >
         {icon ? <CalendarPlusIcon /> : 'Add to calendar'}
       </button>

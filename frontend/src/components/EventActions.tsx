@@ -15,13 +15,17 @@ import { ScreeningsStrip } from './ScreeningsStrip';
  * The screenings strip is where films get onto your want-to-go list (GOI-26),
  * so it has to be reachable from a real event — it is the only entry point.
  *
- * It is the same strip /my uses (GOI-55) and opens inline beneath the row —
- * hence `items-start`, so the other buttons keep their line while it expands
- * instead of centring themselves against it.
+ * It is the same strip /my uses (GOI-55) and opens inline beneath the row, so
+ * the row aligns on the baseline of its first line: the other buttons keep
+ * their line while the strip expands beneath them, instead of centring
+ * themselves against it.
+ *
+ * `act-row` carries the type size for every button in the row (GOI-63) — they
+ * each used to set their own, and had drifted a pixel apart.
  */
 export function EventActions({ event }: { event: Event }) {
   return (
-    <div className="mt-3.5 flex flex-wrap items-start gap-4 md:gap-[22px]">
+    <div className="act-row mt-3.5 gap-x-4 md:gap-x-[22px]">
       {isLoggedIn() ? <WantToGoButton event={event} /> : null}
       {/* The showing you are reading sits right above this, so the strip
           offers the *other* ones. An exhibition has none: it runs continuously,
@@ -53,7 +57,7 @@ function WantToGoButton({ event }: { event: Event }) {
       aria-pressed={saved}
       disabled={busy}
       onClick={() => (saved ? remove.mutate({ eventId: event.id }) : add.mutate({ eventId: event.id }))}
-      className={`act act-sm md:text-[13px] ${saved ? 'act-on' : ''}`}
+      className={`act act-inherit ${saved ? 'act-on' : ''}`}
     >
       {saved ? '♥ Going' : '♡ Want to go'}
     </button>
@@ -86,7 +90,7 @@ function ShareButton({ event }: { event: Event }) {
       <button
         type="button"
         onClick={onClick}
-        className="act act-sm md:text-[13px]"
+        className="act act-inherit"
       >
         Share
       </button>

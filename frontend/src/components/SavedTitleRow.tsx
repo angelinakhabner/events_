@@ -4,9 +4,13 @@ import { CategorySwatch } from './CategorySwatch';
 import { ScreeningsStrip } from './ScreeningsStrip';
 
 /**
- * One line of a "want to go" list: what it is, what it's called, and the
- * dates behind "Nearest screenings" (GOI-46). Deliberately carries no date of
- * its own — you save a title, not a showing.
+ * One line of a "want to go" list: what it is, what it's called, and where and
+ * when you can go (GOI-46). Deliberately carries no date of its own — you save
+ * a title, not a showing — so the screenings strip is where its dates live.
+ *
+ * On the owner's own list that strip starts open (GOI-66): a saved film is a
+ * question about where it is playing, and answering it took a click on every
+ * row.
  *
  * Shared by the owner's list on /my and the read-only shared view (GOI-47),
  * so a link you send someone renders exactly what you're looking at. The two
@@ -20,12 +24,15 @@ export function SavedTitleRow({
   event,
   meta,
   showScreenings = true,
+  screeningsOpen = false,
   actions,
 }: {
   event: Event;
   /** Small print after the title — e.g. where and when a film was watched. */
   meta?: ReactNode;
   showScreenings?: boolean;
+  /** Show the times without asking (GOI-66) — see the strip's `defaultOpen`. */
+  screeningsOpen?: boolean;
   actions?: ReactNode;
 }) {
   return (
@@ -48,8 +55,8 @@ export function SavedTitleRow({
             <span className="normal-case tracking-normal font-medium text-faint">{meta}</span>
           ) : null}
         </div>
-        <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2">
-          {showScreenings ? <ScreeningsStrip event={event} /> : null}
+        <div className="act-row-sm mt-3">
+          {showScreenings ? <ScreeningsStrip event={event} defaultOpen={screeningsOpen} /> : null}
           {actions}
         </div>
       </div>
