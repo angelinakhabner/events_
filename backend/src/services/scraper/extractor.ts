@@ -68,7 +68,11 @@ const MAX_TOKENS = 48_000;
 // redundant HTML body and sends only the structured payload, cutting input
 // tokens sharply. Both change what we hash, so bumping re-baselines every venue
 // once on deploy.
-export const EXTRACTOR_VERSION = 8;
+// v9: rows now carry `kind` ('timed' | 'exhibition') and `ends_at` (GOI-67).
+// Museums were being given a fabricated start hour because the schema had no
+// way to say "runs 12 Jun – 14 Sep, no showtime". Every venue re-extracts once
+// so exhibitions arrive with a real range instead of a midnight placeholder.
+export const EXTRACTOR_VERSION = 9;
 
 const SYSTEM_PROMPT =
   'You are a precise data extractor for cultural event listings. ' +
@@ -90,9 +94,21 @@ const EVENT_TOOL: Anthropic.Tool = {
           type: 'object',
           properties: {
             title: { type: 'string' },
+            kind: {
+              type: 'string',
+              enum: ['timed', 'exhibition'],
+              description:
+                '"exhibition" for a run over a date range with no clock time; "timed" for a screening/performance/workshop at a specific hour',
+            },
             starts_at: {
               type: 'string',
-              description: 'ISO 8601 with timezone offset, e.g. "2026-06-08T18:00:00+02:00"',
+              description:
+                'ISO 8601 with timezone offset, e.g. "2026-06-08T18:00:00+02:00". For an exhibition, its opening date at 00:00 local time.',
+            },
+            ends_at: {
+              type: ['string', 'null'],
+              description:
+                'Required for kind="exhibition": its closing date at 00:00 local time, ISO 8601 with offset. Null for kind="timed".',
             },
             duration_minutes: { type: ['integer', 'null'] },
             language: { type: ['string', 'null'] },
@@ -110,7 +126,9 @@ const EVENT_TOOL: Anthropic.Tool = {
           // emit each one (value or null), matching that contract.
           required: [
             'title',
+            'kind',
             'starts_at',
+            'ends_at',
             'duration_minutes',
             'language',
             'director',
@@ -408,7 +426,9 @@ If a film plays 3 times today and 2 times tomorrow, return 5 event objects.
 SCHEMA (one object per event, passed in the record_events tool's events array):
 {
   "title": string,
+  "kind": "timed" | "exhibition" (see KIND below),
   "starts_at": string (ISO 8601 WITH timezone offset, e.g. "2026-06-08T18:00:00+02:00"),
+  "ends_at": string | null (ISO 8601 with offset; required for "exhibition", null for "timed"),
   "duration_minutes": number | null,
   "language": string | null,
   "director": string | null,
@@ -427,6 +447,13 @@ SOURCE_URL — read this carefully:
 - If the page only links to an external ticket system for this seance, prefer the venue's own film/event page; only use the ticket URL if no per-event page exists.
 - If you genuinely cannot find a per-event link in the HTML, return the venue URL but expect the row to be flagged.
 
+KIND — a museum page lists two different things; label each row:
+- "exhibition": the source shows a DATE RANGE and no clock time (e.g. "12.06 – 14.09", "do 14 września", "od 12 czerwca do 14 września"). Set starts_at to the opening date at 00:00 local time and ends_at to the closing date at 00:00 local time. NEVER invent a start_time for one.
+- "timed": the source shows a specific hour for that item (a screening, a performance, a 17:30 workshop, an 11:00 guided tour). Set ends_at to null.
+- If an item's time is ambiguous or missing and it is not obviously a single dated occurrence, emit "exhibition" rather than guessing an hour.
+- An exhibition with no printed closing date cannot be recorded — omit it rather than inventing one.
+- Everything at a cinema, theatre, comedy club or concert hall is "timed". Only galleries and museums list exhibitions.
+
 RULES:
 - ONLY events occurring from today (${dateStr}) through ${windowEnd}, inclusive, in venue timezone.
   Skip anything dated after ${windowEnd}. EXCEPTION: an exhibition currently on
@@ -441,7 +468,10 @@ RULES:
   down (frequently next to a "Kup bilet" / buy-ticket button). COMBINE them into
   starts_at. Never emit 00:00 when an HH:MM appears anywhere on that event's card.
   If you cannot find a specific time, OMIT the event entirely — do NOT emit
-  00:00 / midnight as a placeholder. (Exception: all-day exhibitions may use 00:00.)
+  00:00 / midnight as a placeholder. (Exception: kind="exhibition", whose
+  starts_at/ends_at are dates at 00:00 by construction.)
+- An exhibition currently on display counts even though it opened before today:
+  emit it with its real opening date in starts_at, not today's date.
 - Year defaults to ${year} unless stated.
 - Polish dates are common (e.g. "8 czerwca", "dziś", "jutro") — resolve them relative to today's date.
 - Call the record_events tool exactly once with every event in its events array. Do not write any prose.

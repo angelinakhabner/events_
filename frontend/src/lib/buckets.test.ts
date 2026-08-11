@@ -5,6 +5,8 @@ import {
   isAllDay,
   filterEventsByDay,
   filterEventsFromHour,
+  splitExhibitions,
+  exhibitionCoversDay,
   warsawDayKey,
   warsawHour,
 } from './buckets';
@@ -287,5 +289,86 @@ describe('all-day museum rows', () => {
   it('leaves films alone — repeat showings are the point', () => {
     const showings = [evt('2026-06-09T16:00:00.000Z', 'a'), evt('2026-06-09T19:00:00.000Z', 'b')];
     expect(dedupeAllDay(showings).map((e) => e.id)).toEqual(['a', 'b']);
+  });
+});
+
+// ─── Exhibitions (GOI-67) ────────────────────────────────────────────────────
+
+function exhibition(startsAt: string, endsAt: string | null, id = `x-${startsAt}`): Event {
+  return { ...evt(startsAt, id), kind: 'exhibition', category: 'exhibition', endsAt };
+}
+
+describe('splitExhibitions', () => {
+  it('separates runs from timed rows and sorts runs by closing date', () => {
+    const late = exhibition('2026-06-01T00:00:00+02:00', '2026-11-30T00:00:00+01:00', 'late');
+    const soon = exhibition('2026-06-01T00:00:00+02:00', '2026-09-14T00:00:00+02:00', 'soon');
+    const film = evt('2026-06-08T18:00:00+02:00', 'film');
+
+    const { timed, exhibitions } = splitExhibitions([late, film, soon]);
+    expect(timed.map((e) => e.id)).toEqual(['film']);
+    expect(exhibitions.map((e) => e.id)).toEqual(['soon', 'late']);
+  });
+
+  it('leaves a legacy all-day museum row in the buckets', () => {
+    // No `kind`, no closing date: there is no range to print, so moving it to
+    // a section headed by ranges would show it worse than it shows now.
+    const legacy: Event = { ...evt('2026-06-08T00:00:00+02:00', 'legacy'), category: 'exhibition' };
+    const { timed, exhibitions } = splitExhibitions([legacy]);
+    expect(timed.map((e) => e.id)).toEqual(['legacy']);
+    expect(exhibitions).toEqual([]);
+  });
+});
+
+describe('exhibitionCoversDay', () => {
+  const run = { startsAt: '2026-06-12T00:00:00+02:00', endsAt: '2026-09-14T00:00:00+02:00' };
+
+  it('covers a day inside the run', () => {
+    expect(exhibitionCoversDay(run, '2026-08-11')).toBe(true);
+  });
+
+  it('is inclusive at both ends', () => {
+    expect(exhibitionCoversDay(run, '2026-06-12')).toBe(true);
+    expect(exhibitionCoversDay(run, '2026-09-14')).toBe(true);
+  });
+
+  it('excludes the days either side', () => {
+    expect(exhibitionCoversDay(run, '2026-06-11')).toBe(false);
+    expect(exhibitionCoversDay(run, '2026-09-15')).toBe(false);
+  });
+
+  it('runs on indefinitely when no closing date was published', () => {
+    expect(exhibitionCoversDay({ startsAt: run.startsAt, endsAt: null }, '2027-01-01')).toBe(true);
+  });
+});
+
+describe('filterEventsByDay — exhibitions', () => {
+  const run = exhibition('2026-06-12T00:00:00+02:00', '2026-09-14T00:00:00+02:00', 'run');
+
+  it('keeps a run on any day it covers, not just its opening day', () => {
+    expect(filterEventsByDay([run], '2026-08-11').map((e) => e.id)).toEqual(['run']);
+  });
+
+  it('drops it outside the run', () => {
+    expect(filterEventsByDay([run], '2026-09-20')).toEqual([]);
+  });
+});
+
+describe('filterEventsFromHour — exhibitions', () => {
+  it('removes runs entirely: a time filter is a question about scheduling', () => {
+    const run = exhibition('2026-06-12T00:00:00+02:00', '2026-09-14T00:00:00+02:00', 'run');
+    const evening = evt('2026-06-12T19:00:00+02:00', 'evening');
+    expect(filterEventsFromHour([run, evening], 18).map((e) => e.id)).toEqual(['evening']);
+    // No filter, no removal.
+    expect(filterEventsFromHour([run, evening], null).map((e) => e.id)).toEqual(['run', 'evening']);
+  });
+});
+
+describe('bucketEvents — exhibitions', () => {
+  it('never puts a run in a time bucket', () => {
+    const now = new Date('2026-06-08T14:00:00.000Z');
+    const run = exhibition('2026-06-01T00:00:00+02:00', '2026-09-14T00:00:00+02:00', 'run');
+    const film = evt('2026-06-08T14:25:00.000Z', 'in25');
+    const buckets = bucketEvents([run, film], now);
+    expect(buckets.flatMap((b) => b.items.map((e) => e.id))).toEqual(['in25']);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Event } from '@afisz/shared';
+import { isExhibition, type Event } from '@afisz/shared';
 import { shareEvent, type ShareOutcome } from '../lib/share';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
@@ -24,8 +24,10 @@ export function EventActions({ event }: { event: Event }) {
     <div className="mt-3.5 flex flex-wrap items-start gap-4 md:gap-[22px]">
       {isLoggedIn() ? <WantToGoButton event={event} /> : null}
       {/* The showing you are reading sits right above this, so the strip
-          offers the *other* ones. */}
-      <ScreeningsStrip event={event} includeSelf={false} canTrack />
+          offers the *other* ones. An exhibition has none: it runs continuously,
+          so "nearest dates" would offer the same answer as the row itself
+          (GOI-67). */}
+      {isExhibition(event) ? null : <ScreeningsStrip event={event} includeSelf={false} canTrack />}
       <AddToCalendar event={event} />
       <ShareButton event={event} />
     </div>

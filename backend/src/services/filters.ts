@@ -1,4 +1,4 @@
-import type { Event, EventFilters, Venue } from '@afisz/shared';
+import { isExhibition, type Event, type EventFilters, type Venue } from '@afisz/shared';
 import { hourInTz, weekdayInTz } from './scraper/venues/datetime.js';
 
 // Every seeded venue is Warsaw; used only when a caller passes no venue (e.g.
@@ -34,10 +34,20 @@ export function matchesEvent(
   // must be asked in the venue's zone — not the server's, which is UTC.
   const start = new Date(event.startsAt);
   const tz = venue?.timezone ?? DEFAULT_TZ;
-  if (f.daysOfWeek?.length && !f.daysOfWeek.includes(weekdayInTz(start, tz))) return false;
+  const hasTimeFilter = typeof f.startHour === 'number' || typeof f.endHour === 'number';
 
-  if (typeof f.startHour === 'number' && hourInTz(start, tz) < f.startHour) return false;
-  if (typeof f.endHour === 'number' && hourInTz(start, tz) > f.endHour) return false;
+  // An exhibition has no schedule to test against (GOI-67): it is on all day,
+  // every day of its run. A weekday or hour filter is a question about
+  // scheduling, so a run can't answer it — and its `startsAt` is a midnight
+  // placeholder, which would make every such filter answer "no" by accident
+  // and "before 10:00" answer "yes" by accident.
+  if (isExhibition(event)) {
+    if (f.daysOfWeek?.length || hasTimeFilter) return false;
+  } else {
+    if (f.daysOfWeek?.length && !f.daysOfWeek.includes(weekdayInTz(start, tz))) return false;
+    if (typeof f.startHour === 'number' && hourInTz(start, tz) < f.startHour) return false;
+    if (typeof f.endHour === 'number' && hourInTz(start, tz) > f.endHour) return false;
+  }
 
   if (typeof f.priceMax === 'number') {
     const price = event.priceMin ?? event.priceMax;
