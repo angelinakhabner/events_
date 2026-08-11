@@ -36,8 +36,16 @@ export const events = pgTable(
     venueId: uuid('venue_id').notNull().references(() => venues.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     description: text('description'),
+    /** For an exhibition this is the opening date at local midnight — the
+     *  range's left edge, not a showtime. See `kind`. */
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    /** Closing date for an exhibition (required for that kind, see the
+     *  events_exhibition_has_range check in 0019); optional end time for a
+     *  timed event. */
     endsAt: timestamp('ends_at', { withTimezone: true }),
+    /** 'timed' | 'exhibition' (GOI-67). An exhibition runs over a date range
+     *  and has no clock time; everything else starts at an hour. */
+    kind: text('kind').notNull().default('timed'),
     category: text('category').notNull(),
     language: text('language'),
     director: text('director'),

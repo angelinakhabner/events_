@@ -1,5 +1,5 @@
-import type { Event, Venue } from '@afisz/shared';
-import { categoryLabel, formatEventTime } from '../lib/format';
+import { isExhibition, type Event, type Venue } from '@afisz/shared';
+import { categoryLabel, formatEventTime, formatExhibitionRange } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 import { EventActions } from './EventActions';
 import { ExpandableText } from './ExpandableText';
@@ -25,8 +25,10 @@ export function EventCard({ event, venue }: Props) {
         <span className="shrink-0 pt-0.5 md:order-2 md:w-[18px] md:pt-1">
           <CategorySwatch category={event.category} size={14} />
         </span>
-        <span className="text-xs md:text-sm font-bold text-muted tabular-nums whitespace-nowrap md:order-1 md:w-[70px] md:shrink-0">
-          {formatEventTime(event)}
+        {/* A run carries its dates here instead of a clock, same as in the
+            bucketed listing (GOI-67). */}
+        <span className="text-xs md:text-sm font-bold text-muted tabular-nums md:order-1 md:w-[70px] md:shrink-0">
+          {isExhibition(event) ? formatExhibitionRange(event) : formatEventTime(event)}
         </span>
       </div>
 

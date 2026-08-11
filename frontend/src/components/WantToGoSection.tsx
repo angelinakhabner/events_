@@ -156,6 +156,7 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
       <SavedTitleRow
         event={event}
         showScreenings={!seen}
+        screeningsOpen={!seen}
         actions={
           <>
             <button
@@ -163,7 +164,7 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
               aria-pressed={seen}
               onClick={() => setSeen.mutate({ eventId: event.id, seen: !seen })}
               disabled={setSeen.isPending}
-              className="act act-sm md:text-xs"
+              className="act act-inherit"
             >
               {seen ? 'Not seen' : 'Seen it'}
             </button>
@@ -172,7 +173,7 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
               aria-label={`Remove ${event.title}`}
               onClick={() => remove.mutate({ eventId: event.id })}
               disabled={remove.isPending}
-              className="act act-sm md:text-xs"
+              className="act act-inherit"
             >
               Remove
             </button>
@@ -196,6 +197,7 @@ function FilmRow({ film }: { film: Film }) {
       <SavedTitleRow
         event={filmAsEvent(film)}
         showScreenings={!seen}
+        screeningsOpen={!seen}
         meta={
           seen ? (
             <>
@@ -212,7 +214,7 @@ function FilmRow({ film }: { film: Film }) {
                 type="button"
                 onClick={() => moveToWant.mutate({ filmId: film.id })}
                 disabled={moveToWant.isPending}
-                className="act act-sm md:text-xs"
+                className="act act-inherit"
               >
                 Not seen
               </button>
@@ -220,7 +222,7 @@ function FilmRow({ film }: { film: Film }) {
               <button
                 type="button"
                 onClick={() => setMarking((v) => !v)}
-                className="act act-sm md:text-xs"
+                className="act act-inherit"
               >
                 Seen it
               </button>
@@ -230,7 +232,7 @@ function FilmRow({ film }: { film: Film }) {
               aria-label={`Remove ${film.title}`}
               onClick={() => remove.mutate({ filmId: film.id })}
               disabled={remove.isPending}
-              className="act act-sm md:text-xs"
+              className="act act-inherit"
             >
               Remove
             </button>

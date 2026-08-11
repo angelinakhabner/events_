@@ -105,3 +105,42 @@ describe('buildIcs', () => {
     expect(out.replace(/\r\n/g, '').includes('\n')).toBe(false);
   });
 });
+
+// GOI-67: an exhibition is on all day, every day of its run — not for two
+// hours at midnight on its opening date.
+describe('exhibitions in the calendar', () => {
+  const run = event({
+    id: 'exh-1',
+    title: 'Trzy przestrzenie podziemne',
+    kind: 'exhibition',
+    category: 'exhibition',
+    startsAt: '2026-06-11T22:00:00.000Z', // 12 Jun 00:00 Warsaw
+    endsAt: '2026-09-13T22:00:00.000Z',   // 14 Sep 00:00 Warsaw
+    durationMinutes: null,
+  });
+
+  it('the Google URL carries a date range, not timestamps', () => {
+    const url = new URL(googleCalendarUrl(run));
+    // End is exclusive, so a run closing on the 14th ends on the 15th.
+    expect(url.searchParams.get('dates')).toBe('20260612/20260915');
+  });
+
+  it('the .ics uses DATE-valued DTSTART/DTEND so clients file it as all-day', () => {
+    const ics = buildIcs(run, { now: new Date('2026-08-11T00:00:00.000Z') });
+    expect(ics).toContain('DTSTART;VALUE=DATE:20260612');
+    expect(ics).toContain('DTEND;VALUE=DATE:20260915');
+    expect(ics).not.toContain('DTSTART:2026');
+  });
+
+  it('a run with no closing date becomes a single all-day entry', () => {
+    const ics = buildIcs({ ...run, endsAt: null }, { now: new Date('2026-08-11T00:00:00.000Z') });
+    expect(ics).toContain('DTSTART;VALUE=DATE:20260612');
+    expect(ics).toContain('DTEND;VALUE=DATE:20260613');
+  });
+
+  it('leaves timed events on the clock', () => {
+    const ics = buildIcs(event(), { now: new Date('2026-06-14T00:00:00.000Z') });
+    expect(ics).toContain('DTSTART:20260615T163000Z');
+    expect(ics).not.toContain('VALUE=DATE');
+  });
+});

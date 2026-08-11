@@ -117,3 +117,40 @@ describe('matchesEvent', () => {
     expect(matchesEvent(evt(), undefined, { countries: ['Germany'] })).toBe(true);
   });
 });
+
+describe('matchesEvent — exhibitions (GOI-67)', () => {
+  const exhibition = (): Event =>
+    evt({
+      kind: 'exhibition',
+      category: 'exhibition',
+      startsAt: '2026-06-12T00:00:00+02:00',
+      endsAt: '2026-09-14T00:00:00+02:00',
+    });
+
+  it('passes an unfiltered listing', () => {
+    expect(matchesEvent(exhibition(), undefined, {})).toBe(true);
+  });
+
+  it('is excluded by a startHour filter — a run has no schedule to satisfy', () => {
+    expect(matchesEvent(exhibition(), venue, { startHour: 18 })).toBe(false);
+    // …and not merely because midnight is early: a "before 10:00" filter must
+    // not sweep it in either.
+    expect(matchesEvent(exhibition(), venue, { endHour: 10 })).toBe(false);
+  });
+
+  it('is excluded by a day-of-week filter for the same reason', () => {
+    expect(matchesEvent(exhibition(), venue, { daysOfWeek: [5] })).toBe(false);
+  });
+
+  it('still answers category and price filters', () => {
+    expect(matchesEvent(exhibition(), undefined, { categories: ['exhibition'] })).toBe(true);
+    expect(matchesEvent(exhibition(), undefined, { categories: ['cinema'] })).toBe(false);
+    expect(matchesEvent({ ...exhibition(), priceMin: 80 }, undefined, { priceMax: 50 })).toBe(false);
+  });
+
+  it('leaves timed rows at a museum alone', () => {
+    const workshop = evt({ category: 'exhibition', startsAt: '2026-06-20T17:30:00+02:00' });
+    expect(matchesEvent(workshop, venue, { startHour: 16 })).toBe(true);
+    expect(matchesEvent(workshop, venue, { startHour: 18 })).toBe(false);
+  });
+});

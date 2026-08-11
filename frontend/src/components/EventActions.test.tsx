@@ -47,3 +47,29 @@ describe('EventActions', () => {
     expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * GOI-63. Each button used to carry its own responsive size, and they had
+ * drifted: "Nearest screenings" was 12px from `md` up while the three beside
+ * it were 13px, so one button per row sat off its neighbours' line. The size
+ * now lives on the row, and this pins that down — a button that sets its own
+ * size is exactly how the rows came apart the first time.
+ */
+describe('EventActions — one row, one size', () => {
+  it('puts the type size on the row, not on the buttons', () => {
+    const { container } = render(<EventActions event={event} />);
+    const row = container.querySelector('.act-row');
+    expect(row).toBeTruthy();
+
+    const buttons = Array.from(row!.querySelectorAll('button'));
+    // Want to go is logged-in only; the other three are always present.
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
+
+    for (const b of buttons) {
+      expect(b.className).toContain('act-inherit');
+      // No `text-…` / `md:text-…` size utility of its own.
+      expect(b.className).not.toMatch(/(?:^|\s|:)text-\[?\d/);
+      expect(b.className).not.toMatch(/(?:^|\s|:)text-(?:xs|sm|base|lg)\b/);
+    }
+  });
+});

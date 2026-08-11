@@ -43,19 +43,27 @@ export function ScreeningsStrip({
   event,
   includeSelf = true,
   canTrack = false,
+  defaultOpen = false,
 }: {
   event: Event;
   includeSelf?: boolean;
   canTrack?: boolean;
+  /** Start expanded. The want-to-go list does (GOI-66): a saved row carries no
+   *  date of its own, so with the strip shut it says only the title — and the
+   *  question you have about a film you saved is *where and when*, which was
+   *  one click away on every row instead of simply on screen. */
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`act act-sm md:text-xs ${open ? 'act-on' : ''}`}
+        // Size comes from the action row, so this button and the ones beside
+        // it share a line box (GOI-63).
+        className={`act act-inherit ${open ? 'act-on' : ''}`}
       >
         {label(event, open)}
       </button>

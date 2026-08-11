@@ -130,8 +130,10 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'krolikarnia',
     name: 'Królikarnia',
-    // Same as MNW: /wystawy/ is undated; the event calendar's list view has
-    // real dates and matches the shared edito scraper.
+    // The calendar's list view feeds the shared edito scraper; /wystawy/ is
+    // scraped too (GOI-43). Its rows looked undated, but the dates are there
+    // as prose ("14 maja – 25 października 2026") rather than as fields — and
+    // the exhibitions are most of what this branch museum actually has on.
     url: 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/{{MM-YYYY}},lista,miesiac.html',
     category: 'exhibition',
     ...PL,

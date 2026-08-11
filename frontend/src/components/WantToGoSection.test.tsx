@@ -93,8 +93,8 @@ beforeEach(() => {
 });
 
 // GOI-46: a saved event stands for the *title*. The row shows no date or time
-// — every date lives behind "Nearest screenings", which stays useful after the
-// showing you clicked from has passed.
+// of its own — its dates come from the screenings strip, which stays useful
+// after the showing you clicked from has passed.
 describe('WantToGoSection — saved events carry no date', () => {
   it('shows the title with its kind, and no date or time', () => {
     entriesMock.mockReturnValue({ data: [makeEntry()], isLoading: false, error: null });
@@ -122,7 +122,7 @@ describe('WantToGoSection — saved events carry no date', () => {
     expect(screen.getByText('theatre')).toBeInTheDocument();
   });
 
-  it('offers the screenings panel, showing the saved showing itself', () => {
+  it('shows the screenings without being asked, and can be collapsed (GOI-66)', () => {
     entriesMock.mockReturnValue({ data: [makeEntry()], isLoading: false, error: null });
     screeningsMock.mockReturnValue({
       // Only the saved showing exists; an event card would hide it as "the one
@@ -133,10 +133,15 @@ describe('WantToGoSection — saved events carry no date', () => {
     });
 
     render(<WantToGoSection />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
 
+    // The row carries no date of its own, so the times have to be on screen —
+    // a saved film is a question about where and when it is playing.
     expect(screen.getByText('Kino Muranów')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '20:00' })).toBeInTheDocument();
+
+    // Still collapsible, for a long list.
+    fireEvent.click(screen.getByRole('button', { name: /hide screenings/i }));
+    expect(screen.queryByRole('link', { name: '20:00' })).not.toBeInTheDocument();
   });
 
   it('drops the screenings panel once an entry is marked seen', () => {
@@ -175,5 +180,45 @@ describe('mergeRows', () => {
       [makeFilm({ status: 'seen' })],
     );
     expect(rows.every((r) => r.seen)).toBe(true);
+  });
+});
+
+/**
+ * GOI-66. "Want to go" is about a *film*, not the cinema you happened to be
+ * looking at when you saved it — so the row has to answer "where can I see
+ * this", across every cinema showing it, without a click.
+ */
+describe('WantToGoSection — a saved title shows where it is playing', () => {
+  it('lists screenings at every cinema, on screen, for a tracked film', () => {
+    entriesMock.mockReturnValue({ data: [], isLoading: false, error: null });
+    filmsMock.mockReturnValue({
+      data: [{
+        id: 'f1', title: 'Ojczyzna', status: 'want' as const,
+        watchedVenue: null, comment: null, watchedAt: null,
+        createdAt: '2026-07-01T10:00:00.000Z',
+      }],
+      isLoading: false,
+      error: null,
+    });
+    screeningsMock.mockReturnValue({
+      data: [
+        makeEvent({ id: 's1', startsAt: '2026-07-04T18:00:00.000Z' }),
+        makeEvent({
+          id: 's2',
+          startsAt: '2026-07-05T20:00:00.000Z',
+          venue: { id: 'v2', name: 'Kinoteka', category: 'cinema', city: 'Warsaw', country: 'PL' },
+        }),
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<WantToGoSection />);
+
+    // Both cinemas, not just the one the title was saved from.
+    expect(screen.getByText('Kino Muranów')).toBeInTheDocument();
+    expect(screen.getByText('Kinoteka')).toBeInTheDocument();
+    // The row names the thing you saved as a film, not as its venue's category.
+    expect(screen.getByText('film')).toBeInTheDocument();
   });
 });

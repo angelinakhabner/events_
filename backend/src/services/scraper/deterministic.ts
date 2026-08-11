@@ -5,6 +5,7 @@ import { parseFilharmoniaListing, scrapeFilharmonia } from './venues/filharmonia
 import { parseJassmineListing, scrapeJassmine } from './venues/jassmine.js';
 import { parseEditoListing, scrapeEdito } from './venues/edito.js';
 import { parsePosterMuseum, scrapePosterMuseum } from './venues/postermuseum.js';
+import { parseKrolikarnia, scrapeKrolikarnia } from './venues/krolikarnia.js';
 import { parseTrWarszawaListing, scrapeTrWarszawa } from './venues/trwarszawa.js';
 import { parseUjazdowskiDay, scrapeUjazdowski } from './venues/ujazdowski.js';
 import { parseNowyTeatrMonth, scrapeNowyTeatr } from './venues/nowyteatr.js';
@@ -79,9 +80,11 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     scrape: (args) => scrapeEdito(args),
   },
   krolikarnia: {
-    parse: (html, timezone) =>
-      parseEditoListing(html, 'https://krolikarnia.mnw.art.pl/wydarzenia/kalendarz-wydarzen/', timezone),
-    scrape: (args) => scrapeEdito(args),
+    // Calendar *and* /wystawy/ (GOI-43). The calendar alone was why the venue
+    // showed nothing: a branch museum's events are sparse, and what it has on
+    // is the exhibitions, whose dates live as prose on a separate page.
+    parse: (html, timezone) => parseKrolikarnia(html, timezone),
+    scrape: (args) => scrapeKrolikarnia(args),
   },
   'poster-museum': {
     // Same edito calendar as its parent museum, plus /wystawy/ — whose runs
