@@ -201,8 +201,12 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       timezone: venue.timezone,
     });
     if (invalid.length) {
+      // Log the row, not just the complaint (GOI-67). "an exhibition must
+      // carry ends_at" on its own says nothing about *which* listing lost its
+      // closing date, so a venue quietly shedding rows was undiagnosable
+      // without re-running the scrape by hand.
       console.warn(`[scraper] ${venue.name}: ${invalid.length} invalid entries skipped`,
-        invalid.slice(0, 3).map((i) => i.error));
+        invalid.slice(0, 3).map((i) => ({ error: i.error, entry: describeEntry(i.entry) })));
     }
     // Observability: count rows where Claude fell back to the venue's own
     // calendar URL instead of finding a per-event page. We still save them
@@ -299,6 +303,21 @@ export function resolveVenueUrl(url: string, today: Date, timezone = 'Europe/War
     .replace(/\{\{MM-YYYY\}\}/g, `${m}-${y}`)
     .replace(/\{\{YYYY\}\}/g, y)
     .replace(/\{\{MM\}\}/g, m);
+}
+
+/**
+ * A rejected extractor row, trimmed to what identifies it in a log line
+ * (GOI-67). The whole entry can carry a multi-paragraph description, which
+ * would bury the sweep's output; title plus dates is enough to find the
+ * listing on the venue's page.
+ */
+export function describeEntry(entry: unknown): unknown {
+  if (!entry || typeof entry !== 'object') return entry;
+  const e = entry as Record<string, unknown>;
+  const keep = ['title', 'kind', 'starts_at', 'ends_at', 'source_url'] as const;
+  const out: Record<string, unknown> = {};
+  for (const k of keep) if (k in e) out[k] = e[k];
+  return Object.keys(out).length > 0 ? out : entry;
 }
 
 /**

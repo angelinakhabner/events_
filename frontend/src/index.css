@@ -50,6 +50,24 @@
   }
   .act-on { @apply text-accent hover:text-accent; }
   .act-sm { @apply text-[11px]; }
+  /**
+   * Take the size from the surrounding action row rather than setting one
+   * (GOI-63).
+   *
+   * Each button used to carry its own `md:` size, and they had drifted apart —
+   * an event's row mixed 12px and 13px, so one button in every row sat a pixel
+   * off its neighbours and none of the baselines lined up. A row is one line of
+   * type; the size belongs to the row (`.act-row`), not to each button in it.
+   */
+  .act-inherit { font-size: inherit; }
+  /** A row of inline actions: one baseline, wrapping on narrow screens. Sized
+   *  by `.act-row` / `.act-row-sm` rather than here, so a row states its size
+   *  exactly once. Baseline rather than top alignment because the screenings
+   *  strip expands *under* its button — the rest of the row keeps its line. */
+  .act-row-base { @apply flex flex-wrap items-baseline gap-x-4 gap-y-2; }
+  .act-row { @apply act-row-base text-[11px] md:text-[13px]; }
+  /** The denser row used in the narrower /my column. */
+  .act-row-sm { @apply act-row-base text-[11px] md:text-xs; }
 
   /* ── Buttons ────────────────────────────────────────────────────────── */
 

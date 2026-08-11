@@ -1,6 +1,6 @@
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
-import type { Event, EventVenue, Category } from '@afisz/shared';
+import type { Event, EventKind, EventVenue, Category } from '@afisz/shared';
 
 export interface EventListInput {
   city?: string;
@@ -33,7 +33,17 @@ export class EventStore {
     const now = input.now ?? new Date();
     const limit = Math.min(Math.max(input.limit ?? 100, 1), 500);
 
-    const conditions = [gte(schema.events.startsAt, now)];
+    // "Upcoming" means something different for a run than for a showtime
+    // (GOI-67): an exhibition that opened in June and closes in September is
+    // on *today*, so it is selected by its closing date. Comparing its
+    // `starts_at` to now — the only rule this query used to have — hid every
+    // exhibition the morning after it opened.
+    const conditions = [
+      or(
+        gte(schema.events.startsAt, now),
+        and(eq(schema.events.kind, 'exhibition'), gte(schema.events.endsAt, now)),
+      )!,
+    ];
     if (input.until) conditions.push(lte(schema.events.startsAt, input.until));
     if (input.venueId) conditions.push(eq(schema.events.venueId, input.venueId));
     // An explicitly empty list means "no venues", not "all of them" — matching
@@ -97,7 +107,17 @@ export class EventStore {
         upcomingCount: sql<number>`count(*)::int`,
       })
       .from(schema.events)
-      .where(and(inArray(schema.events.venueId, venueIds), gte(schema.events.startsAt, now)))
+      .where(
+        and(
+          inArray(schema.events.venueId, venueIds),
+          // Same reasoning as listUpcoming: a museum running a three-month
+          // show is not dark, even though nothing *starts* in the future.
+          or(
+            gte(schema.events.startsAt, now),
+            and(eq(schema.events.kind, 'exhibition'), gte(schema.events.endsAt, now)),
+          ),
+        ),
+      )
       .groupBy(schema.events.venueId);
 
     const found = new Map(
@@ -162,6 +182,7 @@ function rowToEvent(
     description: row.description,
     startsAt: row.startsAt.toISOString(),
     endsAt: row.endsAt ? row.endsAt.toISOString() : null,
+    kind: row.kind === 'exhibition' ? 'exhibition' : ('timed' as EventKind),
     category: row.category as Category,
     language: row.language ?? ctx.venueLanguage ?? null,
     director: row.director,

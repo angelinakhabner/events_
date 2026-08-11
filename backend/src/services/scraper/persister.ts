@@ -32,7 +32,11 @@ export async function saveEvents(
       title: e.title,
       description: e.description,
       startsAt: new Date(e.starts_at),
-      endsAt: null,
+      // Only an exhibition's closing date is stored (GOI-67). The validator
+      // rejects a multi-day span on a timed row, so anything left here would
+      // be same-day noise the listing has no use for.
+      endsAt: e.kind === 'exhibition' && e.ends_at ? new Date(e.ends_at) : null,
+      kind: e.kind,
       category: venue.category,
       language: e.language ?? venue.language ?? null,
       director: e.director,
@@ -51,6 +55,7 @@ export async function saveEvents(
       description: values.description,
       startsAt: values.startsAt,
       endsAt: values.endsAt,
+      kind: values.kind,
       language: values.language,
       director: values.director,
       cast: values.cast,

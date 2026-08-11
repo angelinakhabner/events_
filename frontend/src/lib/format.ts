@@ -31,8 +31,50 @@ export function formatShortDate(iso: string): string {
  * something false — the exhibition isn't on at midnight, it's on all day. So
  * an all-day row says so instead of naming an hour.
  */
-export function formatEventTime(event: Pick<Event, 'category' | 'startsAt'>): string {
+export function formatEventTime(event: Pick<Event, 'category' | 'startsAt' | 'kind'>): string {
   return isAllDay(event) ? 'All day' : formatTime(event.startsAt);
+}
+
+/**
+ * What goes in an exhibition row's gutter instead of a clock (GOI-67).
+ *
+ * A run answers "how long have I got", not "what time". Once it has opened
+ * the opening date is history, so the gutter names only the deadline; before
+ * it opens both ends matter, because the first one is when you can go.
+ *
+ *   opened already   → "UNTIL 14 SEP"
+ *   opens later      → "12 JUN – 14 SEP"
+ *   one day only     → "12 JUN"
+ *   no closing date  → "ONGOING" / "FROM 12 JUN"
+ */
+export function formatExhibitionRange(
+  event: Pick<Event, 'startsAt' | 'endsAt'>,
+  now: Date = new Date(),
+): string {
+  const start = Date.parse(event.startsAt);
+  const end = event.endsAt ? Date.parse(event.endsAt) : NaN;
+  const hasStart = !Number.isNaN(start);
+  const hasEnd = !Number.isNaN(end);
+
+  const startDay = hasStart ? formatDayKey(event.startsAt) : null;
+  const endDay = hasEnd ? formatDayKey(event.endsAt!) : null;
+  const today = dayKeyFmt.format(now);
+  // Compared as Warsaw day keys, not instants: a show opening today has
+  // already opened as far as a reader looking at the listing is concerned.
+  const opened = startDay !== null && startDay <= today;
+
+  if (!hasEnd) {
+    if (!hasStart) return '';
+    return opened ? 'ONGOING' : `FROM ${short(event.startsAt)}`;
+  }
+  if (!hasStart || startDay === endDay) return short(event.endsAt!);
+  if (opened) return `UNTIL ${short(event.endsAt!)}`;
+  return `${short(event.startsAt)} – ${short(event.endsAt!)}`;
+}
+
+/** "14 SEP" — the gutter's own casing, matching the uppercase meta rows. */
+function short(iso: string): string {
+  return formatShortDate(iso).toUpperCase();
 }
 
 /**

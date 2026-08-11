@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   filterSummary, categoryLabel, categoryOrTagLabel, formatDayKey, formatEventTime,
+  formatExhibitionRange,
 } from './format';
 
 describe('format helpers', () => {
@@ -56,5 +57,62 @@ describe('formatEventTime', () => {
     expect(formatEventTime({ category: 'cinema', startsAt: midnight })).toBe('00:00');
     expect(formatEventTime({ category: 'theatre', startsAt: '2026-06-09T17:00:00.000Z' }))
       .toBe('19:00');
+  });
+});
+
+// GOI-67: an exhibition's gutter carries the run's dates, not a clock.
+describe('formatExhibitionRange', () => {
+  const now = new Date('2026-08-11T10:00:00+02:00');
+
+  it('names only the deadline once the run has opened', () => {
+    expect(
+      formatExhibitionRange(
+        { startsAt: '2026-06-12T00:00:00+02:00', endsAt: '2026-09-14T00:00:00+02:00' },
+        now,
+      ),
+    ).toBe('UNTIL 14 SEPT');
+  });
+
+  it('names both ends while the run is still to open', () => {
+    expect(
+      formatExhibitionRange(
+        { startsAt: '2026-09-01T00:00:00+02:00', endsAt: '2026-11-30T00:00:00+01:00' },
+        now,
+      ),
+    ).toBe('1 SEPT – 30 NOV');
+  });
+
+  it('treats a run opening today as open', () => {
+    expect(
+      formatExhibitionRange(
+        { startsAt: '2026-08-11T00:00:00+02:00', endsAt: '2026-08-30T00:00:00+02:00' },
+        now,
+      ),
+    ).toBe('UNTIL 30 AUG');
+  });
+
+  it('says "until" right through the closing day', () => {
+    expect(
+      formatExhibitionRange(
+        { startsAt: '2026-06-12T00:00:00+02:00', endsAt: '2026-08-11T00:00:00+02:00' },
+        now,
+      ),
+    ).toBe('UNTIL 11 AUG');
+  });
+
+  it('prints a single-day run once, not as a range', () => {
+    expect(
+      formatExhibitionRange(
+        { startsAt: '2026-09-05T00:00:00+02:00', endsAt: '2026-09-05T00:00:00+02:00' },
+        now,
+      ),
+    ).toBe('5 SEPT');
+  });
+
+  it('falls back sensibly when no closing date was published', () => {
+    expect(formatExhibitionRange({ startsAt: '2026-06-12T00:00:00+02:00', endsAt: null }, now))
+      .toBe('ONGOING');
+    expect(formatExhibitionRange({ startsAt: '2026-09-01T00:00:00+02:00', endsAt: null }, now))
+      .toBe('FROM 1 SEPT');
   });
 });

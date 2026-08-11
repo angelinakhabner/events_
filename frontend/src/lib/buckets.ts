@@ -1,4 +1,4 @@
-import type { Event } from '@afisz/shared';
+import { isExhibition, type Event } from '@afisz/shared';
 
 export type BucketKey = 'soon' | 'today' | 'tomorrow' | 'thisWeek' | 'later';
 
@@ -42,6 +42,11 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
   };
 
   for (const e of sorted) {
+    // Exhibitions have their own section (GOI-67) — they run all week, so
+    // every bucket would claim them and none would be telling the truth.
+    // Callers normally split first; this keeps a caller that doesn't from
+    // filling "Starting soon" with three-month runs.
+    if (isExhibition(e)) continue;
     const t = Date.parse(e.startsAt);
     if (Number.isNaN(t)) continue;
     const day = warsawDayKey(new Date(t));
@@ -104,10 +109,58 @@ function nearestDayLabel(iso: string): string {
  * genuinely timed rows (an 11:00 guided tour) keep their hour, because they
  * carry one.
  */
-export function isAllDay(event: Pick<Event, 'category' | 'startsAt'>): boolean {
+export function isAllDay(event: Pick<Event, 'category' | 'startsAt' | 'kind'>): boolean {
+  // A row that says what it is doesn't need to be guessed at (GOI-67). The
+  // midnight heuristic below stays for rows written before `kind` existed —
+  // they keep rendering as they did until the next sweep re-extracts them.
+  if (isExhibition(event)) return true;
   if (event.category !== 'exhibition') return false;
   const t = Date.parse(event.startsAt);
   return !Number.isNaN(t) && warsawHour(new Date(t)) === 0 && warsawMinute(new Date(t)) === 0;
+}
+
+// ─── Exhibitions vs timed events (GOI-67) ────────────────────────────────────
+
+/**
+ * Split a listing into the rows that belong in time buckets and the runs that
+ * don't.
+ *
+ * Only rows carrying `kind: 'exhibition'` are pulled out. A legacy all-day
+ * museum row (midnight placeholder, no closing date) stays in the buckets
+ * where it has always been: there is no range to print in the gutter, so
+ * moving it to a section headed by date ranges would show it worse, not
+ * better.
+ *
+ * Exhibitions come back sorted by closing date, soonest first — the one thing
+ * about a run that is actually urgent.
+ */
+export function splitExhibitions(events: Event[]): { timed: Event[]; exhibitions: Event[] } {
+  const timed: Event[] = [];
+  const exhibitions: Event[] = [];
+  for (const e of events) (isExhibition(e) ? exhibitions : timed).push(e);
+  exhibitions.sort(
+    (a, b) => (a.endsAt ?? '').localeCompare(b.endsAt ?? '') || a.title.localeCompare(b.title),
+  );
+  return { timed, exhibitions };
+}
+
+/**
+ * Whether an exhibition is on during a given Europe/Warsaw day — range
+ * overlap, inclusive at both ends, rather than the equality a showtime gets.
+ * An exhibition with no closing date can't be bounded, so it counts from its
+ * opening day onward.
+ */
+export function exhibitionCoversDay(
+  event: Pick<Event, 'startsAt' | 'endsAt'>,
+  dayKey: string,
+): boolean {
+  const start = Date.parse(event.startsAt);
+  if (Number.isNaN(start)) return false;
+  if (warsawDayKey(new Date(start)) > dayKey) return false;
+  if (!event.endsAt) return true;
+  const end = Date.parse(event.endsAt);
+  if (Number.isNaN(end)) return true;
+  return warsawDayKey(new Date(end)) >= dayKey;
 }
 
 /**
@@ -142,10 +195,18 @@ function normaliseTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:]+$/, '').trim();
 }
 
-/** Keep only events that start on the given Europe/Warsaw day; null means any day. */
+/**
+ * Keep only events on the given Europe/Warsaw day; null means any day.
+ *
+ * A timed event matches the day it starts. An exhibition matches any day its
+ * run covers (GOI-67) — asking "what's on Saturday" about a show that runs
+ * June to September has one obvious answer, and start-date equality gives the
+ * opposite one.
+ */
 export function filterEventsByDay(events: Event[], dayKey: string | null): Event[] {
   if (!dayKey) return events;
   return events.filter((e) => {
+    if (isExhibition(e)) return exhibitionCoversDay(e, dayKey);
     const t = Date.parse(e.startsAt);
     return !Number.isNaN(t) && warsawDayKey(new Date(t)) === dayKey;
   });
@@ -160,6 +221,10 @@ export function filterEventsByDay(events: Event[], dayKey: string | null): Event
 export function filterEventsFromHour(events: Event[], fromHour: number | null): Event[] {
   if (fromHour === null) return events;
   return events.filter((e) => {
+    // A time filter is a statement about scheduling, and an exhibition has no
+    // schedule to satisfy (GOI-67). Keeping it would answer "what's on after
+    // 18:00" with something that is equally on at 11:00.
+    if (isExhibition(e)) return false;
     const t = Date.parse(e.startsAt);
     return !Number.isNaN(t) && warsawHour(new Date(t)) >= fromHour;
   });

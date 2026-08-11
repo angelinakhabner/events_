@@ -18,6 +18,21 @@ export interface Venue {
   createdAt: string;
 }
 
+/**
+ * What sort of thing a row is (GOI-67).
+ *
+ * - `timed`      — a single occurrence at a clock time: a screening, a
+ *                  performance, a 17:30 workshop.
+ * - `exhibition` — a run over a date range with no meaningful start hour.
+ *                  `startsAt` is its opening day at local midnight and
+ *                  `endsAt` its closing day; neither is a showtime.
+ *
+ * Before this existed, an exhibition was stored as a timed event whose hour
+ * happened to be midnight, and the listing printed that hour as if it meant
+ * something.
+ */
+export type EventKind = 'timed' | 'exhibition';
+
 export interface Event {
   id: string;
   venueId: string;
@@ -29,6 +44,10 @@ export interface Event {
   description: string | null;
   startsAt: string;
   endsAt: string | null;
+  /** See EventKind. Optional on the wire so older clients and the many test
+   *  fixtures predating GOI-67 still typecheck; absent means `timed`, which is
+   *  what the column defaults to. Read it through `eventKind`. */
+  kind?: EventKind;
   category: Category;
   language: string | null;
   director: string | null;
@@ -40,6 +59,16 @@ export interface Event {
   sourceUrl: string;
   sourceId: string | null;
   scrapedAt: string;
+}
+
+/** An event's kind, defaulting rows that predate GOI-67 to `timed`. */
+export function eventKind(event: Pick<Event, 'kind'>): EventKind {
+  return event.kind === 'exhibition' ? 'exhibition' : 'timed';
+}
+
+/** True for a run over a date range rather than a single timed occurrence. */
+export function isExhibition(event: Pick<Event, 'kind'>): boolean {
+  return eventKind(event) === 'exhibition';
 }
 
 /** Subset of Venue carried inline on Event responses. */
