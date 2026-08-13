@@ -446,9 +446,14 @@ const my = router({
         if (venues.length === 0) return [];
         // Ask for this user's venues in SQL rather than filtering the globally
         // earliest 500 rows — otherwise following a quiet venue shows nothing
-        // as soon as busier ones fill the limit.
+        // as soon as busier ones fill the limit. The selected category is
+        // narrowed in SQL for exactly the same reason (GOI-71): a theatre back
+        // from summer break sits behind two months of cinema, so filtering
+        // after the limit reported "nothing at your venues" for a venue My
+        // Venues was simultaneously showing 20 upcoming events for.
         const scoped = await defaultEventStore.listUpcoming({
           venueIds: venues.map((v) => v.id),
+          categories: input?.filters?.categories,
           limit: 500,
         });
         // The user's own name/category overrides are what they expect to

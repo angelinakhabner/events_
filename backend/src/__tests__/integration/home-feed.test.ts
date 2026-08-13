@@ -27,13 +27,23 @@ const DAY = 86_400_000;
 const CINEMA_URL = 'https://goi70-kino.test/repertuar';
 const MUSIC_URL = 'https://goi70-jazz.test/koncerty';
 
-/** Screenings per day at the cinema, and days of them: comfortably past the
- *  100-row limit, which is what makes the bug reproducible at all. */
+/**
+ * Screenings per day at the cinema, and days of them. Sized past *both* row
+ * limits in play — the home feed's 100 and /my's 500 — because each bug only
+ * appears once one category outnumbers the limit.
+ */
 const SCREENINGS_PER_DAY = 8;
-const CINEMA_DAYS = 14;
+const CINEMA_DAYS = 70;
 /** Days from now that the jazz club's concerts fall on — sparse and spread,
  *  so every one of them sits behind a wall of cinema rows. */
 const CONCERT_DAYS = [3, 9, 16, 24, 31];
+/**
+ * When the theatre comes back from summer break (GOI-71). Far enough out that
+ * 500 rows of cinema are exhausted before reaching it — which is why THEATRE
+ * on /my rendered "nothing matches" while My Venues reported 20 upcoming.
+ */
+const THEATRE_DAYS = [62, 64, 66];
+const THEATRE_URL = 'https://goi70-teatr.test/repertuar';
 
 interface TrpcEnvelope<T> { result: { data: T } }
 
@@ -49,6 +59,7 @@ async function listDefault(filters?: unknown): Promise<Event[]> {
 describeIfDb('home feed vs /my — category narrowing (GOI-70)', () => {
   let cinemaId = '';
   let musicId = '';
+  let theatreId = '';
 
   beforeAll(async () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
@@ -62,26 +73,51 @@ describeIfDb('home feed vs /my — category narrowing (GOI-70)', () => {
         INSERT INTO venues (name, url, city, country, category, language, timezone)
         VALUES ('GOI70 Jazz', ${MUSIC_URL}, 'Warsaw', 'PL', 'music', 'pl', 'Europe/Warsaw')
         ON CONFLICT (url) DO UPDATE SET name = EXCLUDED.name RETURNING id`;
+      const [theatre] = await sql`
+        INSERT INTO venues (name, url, city, country, category, language, timezone)
+        VALUES ('GOI71 Teatr', ${THEATRE_URL}, 'Warsaw', 'PL', 'theatre', 'pl', 'Europe/Warsaw')
+        ON CONFLICT (url) DO UPDATE SET name = EXCLUDED.name RETURNING id`;
       cinemaId = (cinema as { id: string }).id;
       musicId = (music as { id: string }).id;
+      theatreId = (theatre as { id: string }).id;
 
       const now = Date.now();
+      // One multi-row insert: 560 sequential round-trips is the difference
+      // between a fast suite and a slow one.
+      const rows: { venue_id: string; title: string; starts_at: Date; category: string; source_url: string; kind: string }[] = [];
       for (let d = 0; d < CINEMA_DAYS; d++) {
         for (let s = 0; s < SCREENINGS_PER_DAY; s++) {
-          const startsAt = new Date(now + d * DAY + (10 + s) * 3_600_000);
-          await sql`
-            INSERT INTO events (venue_id, title, starts_at, category, source_url, kind)
-            VALUES (${cinemaId}, ${`Film ${d}-${s}`}, ${startsAt}, 'cinema',
-                    ${`https://goi70-kino.test/f/${d}-${s}`}, 'timed')`;
+          rows.push({
+            venue_id: cinemaId,
+            title: `Film ${d}-${s}`,
+            starts_at: new Date(now + d * DAY + (10 + s) * 3_600_000),
+            category: 'cinema',
+            source_url: `https://goi70-kino.test/f/${d}-${s}`,
+            kind: 'timed',
+          });
         }
       }
       for (const d of CONCERT_DAYS) {
-        const startsAt = new Date(now + d * DAY + 20 * 3_600_000);
-        await sql`
-          INSERT INTO events (venue_id, title, starts_at, category, source_url, kind)
-          VALUES (${musicId}, ${`Concert +${d}d`}, ${startsAt}, 'music',
-                  ${`https://goi70-jazz.test/c/${d}`}, 'timed')`;
+        rows.push({
+          venue_id: musicId,
+          title: `Concert +${d}d`,
+          starts_at: new Date(now + d * DAY + 20 * 3_600_000),
+          category: 'music',
+          source_url: `https://goi70-jazz.test/c/${d}`,
+          kind: 'timed',
+        });
       }
+      for (const d of THEATRE_DAYS) {
+        rows.push({
+          venue_id: theatreId,
+          title: `Spektakl +${d}d`,
+          starts_at: new Date(now + d * DAY + 19 * 3_600_000),
+          category: 'theatre',
+          source_url: `https://goi70-teatr.test/s/${d}`,
+          kind: 'timed',
+        });
+      }
+      await sql`INSERT INTO events ${sql(rows, 'venue_id', 'title', 'starts_at', 'category', 'source_url', 'kind')}`;
     } finally {
       await sql.end();
     }
@@ -91,7 +127,7 @@ describeIfDb('home feed vs /my — category narrowing (GOI-70)', () => {
     const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
     try {
       await sql`TRUNCATE events, scrape_runs RESTART IDENTITY CASCADE`;
-      await sql`DELETE FROM venues WHERE url IN (${CINEMA_URL}, ${MUSIC_URL})`;
+      await sql`DELETE FROM venues WHERE url IN (${CINEMA_URL}, ${MUSIC_URL}, ${THEATRE_URL})`;
     } finally {
       await sql.end();
     }
@@ -138,6 +174,44 @@ describeIfDb('home feed vs /my — category narrowing (GOI-70)', () => {
   it('leaves the unfiltered feed alone', async () => {
     const all = await listDefault();
     expect(all).toHaveLength(100);
+  });
+
+  /**
+   * GOI-71 asked whether the empty THEATRE list on /my was (a) a correct query
+   * over too narrow a window, or (b) a broken query. It is (b), and the same
+   * bug as above: /my narrows by venue in SQL but applies the *category* after
+   * its 500-row limit, so a theatre returning from summer break sits behind
+   * two months of cinema and never arrives.
+   *
+   * The contradiction the ticket points at falls straight out of this: the
+   * events list says nothing is on while My Venues says 3 upcoming, because My
+   * Venues reads `venueActivity`, an aggregate with no row limit at all.
+   */
+  it('reproduces GOI-71: /my drops the theatre programme the venue list still counts', async () => {
+    const scoped = await defaultEventStore.listUpcoming({
+      venueIds: [cinemaId, musicId, theatreId],
+      limit: 500,
+    });
+    const theatre = filterEvents(scoped, new Map(), { categories: ['theatre'] });
+
+    expect(scoped).toHaveLength(500);
+    expect(theatre).toHaveLength(0);
+
+    // Same data, same venue, no limit: the app plainly knows these exist.
+    const [activity] = await defaultEventStore.venueActivity([theatreId]);
+    expect(activity!.upcomingCount).toBe(THEATRE_DAYS.length);
+    expect(activity!.nextStartsAt).not.toBeNull();
+  });
+
+  it('narrowing by category gives /my the theatre programme back', async () => {
+    const rows = await defaultEventStore.listUpcoming({
+      venueIds: [cinemaId, musicId, theatreId],
+      categories: ['theatre'],
+      limit: 500,
+    });
+    expect(rows.map((e) => e.title).sort()).toEqual(
+      THEATRE_DAYS.map((d) => `Spektakl +${d}d`).sort(),
+    );
   });
 
   it('treats an explicitly empty category list as "nothing", not "everything"', async () => {
