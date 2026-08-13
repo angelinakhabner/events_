@@ -9,6 +9,17 @@ export interface EventListInput {
    *  Narrowing in SQL matters: `limit` cuts the *globally* earliest rows, so
    *  filtering by venue afterwards can leave a caller with nothing. */
   venueIds?: string[];
+  /**
+   * Restrict to these event categories (GOI-70).
+   *
+   * Same reasoning as `venueIds`, and the same bug when it's missing: `limit`
+   * cuts the globally earliest rows, so a caller that fetches "the next 100
+   * events" and *then* keeps the music ones gets whatever music happened to
+   * survive a list dominated by cinema — which is none of it, because a
+   * cinema publishes eight screenings a day and a concert hall publishes one
+   * a week.
+   */
+  categories?: Category[];
   /** Exact title, matched case-insensitively — same film at every cinema. */
   title?: string;
   /** Upper bound on start time — the caller's window, e.g. a week ahead. */
@@ -50,6 +61,9 @@ export class EventStore {
     // it to nothing is what keeps a subscriber with no venues from being
     // briefed on the whole database.
     if (input.venueIds) conditions.push(inArray(schema.events.venueId, input.venueIds));
+    // Empty means "no categories" for the same reason an empty venueIds means
+    // "no venues": an explicit empty selection is not "everything".
+    if (input.categories) conditions.push(inArray(schema.events.category, input.categories));
     if (input.city) conditions.push(eq(schema.venues.city, input.city));
     if (input.title) {
       conditions.push(sql`lower(${schema.events.title}) = lower(${input.title})`);

@@ -69,10 +69,21 @@ const events = router({
       // Reads only from DB. NEVER triggers scraping — that happens via cron
       // (scrape:all) or the admin.triggerScrape procedure.
       if (!env.DATABASE_URL) return [];
-      const rows = await defaultEventStore.listUpcoming({ city: 'Warsaw', limit: 100 });
       const filters = input?.filters ?? {};
-      // Re-use the existing filter logic. Venues map left empty so per-venue
-      // filters (city/country) don't strip rows we already scoped by city.
+      // Narrow by category in SQL, before the limit (GOI-70). Fetching the 100
+      // globally-earliest Warsaw events and *then* keeping the music ones is
+      // how the home page came to show less music than /my did for the same
+      // venues: a cinema publishes eight screenings a day, so those 100 rows
+      // were spent long before the week's concerts appeared in them. /my never
+      // had the bug because it narrows by venue in SQL.
+      const rows = await defaultEventStore.listUpcoming({
+        city: 'Warsaw',
+        categories: filters.categories,
+        limit: 100,
+      });
+      // Re-use the existing filter logic for the dimensions SQL didn't cover
+      // (day, hour, price). Venues map left empty so per-venue filters
+      // (city/country) don't strip rows we already scoped by city.
       return filterEvents(rows, new Map(), filters);
     }),
 
@@ -435,9 +446,14 @@ const my = router({
         if (venues.length === 0) return [];
         // Ask for this user's venues in SQL rather than filtering the globally
         // earliest 500 rows — otherwise following a quiet venue shows nothing
-        // as soon as busier ones fill the limit.
+        // as soon as busier ones fill the limit. The selected category is
+        // narrowed in SQL for exactly the same reason (GOI-71): a theatre back
+        // from summer break sits behind two months of cinema, so filtering
+        // after the limit reported "nothing at your venues" for a venue My
+        // Venues was simultaneously showing 20 upcoming events for.
         const scoped = await defaultEventStore.listUpcoming({
           venueIds: venues.map((v) => v.id),
+          categories: input?.filters?.categories,
           limit: 500,
         });
         // The user's own name/category overrides are what they expect to
