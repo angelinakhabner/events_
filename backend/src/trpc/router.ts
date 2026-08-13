@@ -69,10 +69,21 @@ const events = router({
       // Reads only from DB. NEVER triggers scraping — that happens via cron
       // (scrape:all) or the admin.triggerScrape procedure.
       if (!env.DATABASE_URL) return [];
-      const rows = await defaultEventStore.listUpcoming({ city: 'Warsaw', limit: 100 });
       const filters = input?.filters ?? {};
-      // Re-use the existing filter logic. Venues map left empty so per-venue
-      // filters (city/country) don't strip rows we already scoped by city.
+      // Narrow by category in SQL, before the limit (GOI-70). Fetching the 100
+      // globally-earliest Warsaw events and *then* keeping the music ones is
+      // how the home page came to show less music than /my did for the same
+      // venues: a cinema publishes eight screenings a day, so those 100 rows
+      // were spent long before the week's concerts appeared in them. /my never
+      // had the bug because it narrows by venue in SQL.
+      const rows = await defaultEventStore.listUpcoming({
+        city: 'Warsaw',
+        categories: filters.categories,
+        limit: 100,
+      });
+      // Re-use the existing filter logic for the dimensions SQL didn't cover
+      // (day, hour, price). Venues map left empty so per-venue filters
+      // (city/country) don't strip rows we already scoped by city.
       return filterEvents(rows, new Map(), filters);
     }),
 
