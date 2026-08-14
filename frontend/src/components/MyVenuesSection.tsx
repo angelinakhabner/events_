@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import type { Category } from '@afisz/shared';
+import type { Category, ScrapeRun } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import { categoryLabel } from '../lib/format';
+import { categoryLabel, formatEventTime, formatShortDate } from '../lib/format';
 import type { VenueSchedule } from '@afisz/shared';
 import { AddVenueForm, CATEGORIES } from './AddVenueForm';
 import { CategorySwatch } from './CategorySwatch';
@@ -74,8 +74,18 @@ export function MyVenuesSection() {
         blurb="Every venue you follow, filed into folders. Rename a venue, change its category or add your own tags — those changes are only visible to you."
         rule={false}
         action={
-          <button type="button" onClick={() => setAdding((v) => !v)} className="act act-on">
-            {adding ? 'Cancel' : 'Add venue'}
+          /* GOI-73: this is the one thing the tab exists to let you do, and as
+             a text action it was indistinguishable from "+ New folder" sitting
+             directly beneath it — same size, same weight, same accent red. The
+             design system already has a name for the single main action on a
+             screen, so it takes it. Once the form is open the loud state is
+             wrong: "Cancel" isn't the main action, it's the way back. */
+          <button
+            type="button"
+            onClick={() => setAdding((v) => !v)}
+            className={adding ? 'btn-outline' : 'btn-accent'}
+          >
+            {adding ? 'Cancel' : '+ Add venue'}
           </button>
         }
       />
@@ -94,10 +104,18 @@ export function MyVenuesSection() {
       {venuesQuery.error ? (
         <ErrorState message="Couldn't load your venues." onRetry={() => venuesQuery.refetch()} />
       ) : null}
-      {venueRows && venueRows.length === 0 ? (
-        <p className="text-sm text-muted">
-          No venues yet — use &ldquo;Add venue&rdquo; to add one by URL.
-        </p>
+      {venueRows && venueRows.length === 0 && !adding ? (
+        /* An empty tab shouldn't answer "what now?" by naming a control and
+           leaving you to find it (GOI-73) — the way out of the empty state is
+           the button itself. */
+        <div className="border-3 border-ink px-5 py-8 text-center">
+          <p className="mt-0 mb-4 text-sm text-muted">
+            No venues yet. Add one by URL and it starts getting scraped.
+          </p>
+          <button type="button" onClick={() => setAdding(true)} className="btn-accent">
+            + Add venue
+          </button>
+        </div>
       ) : null}
 
       {grouped.map((folder) => (
@@ -305,12 +323,24 @@ function VenueRow({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [showUpcoming, setShowUpcoming] = useState(false);
   const [name, setName] = useState(venue.name);
   const [category, setCategory] = useState<Category>(venue.category);
   const [windowDays, setWindowDays] = useState<string>(venue.windowDays?.toString() ?? '');
 
+  const utils = trpc.useUtils();
   const update = trpc.my.venues.update.useMutation({ onSuccess: onChanged });
   const remove = trpc.my.venues.remove.useMutation({ onSuccess: onChanged });
+  const refresh = trpc.my.venues.refresh.useMutation({
+    onSuccess: () => {
+      // Both the "N upcoming" line and the panel below it are now stale.
+      utils.my.venues.activity.invalidate();
+      utils.events.listByVenue.invalidate({ venueId: venue.id });
+      // A refresh that found something is only worth reading if you can see
+      // what it found, so open the panel rather than making it a second click.
+      setShowUpcoming(true);
+    },
+  });
 
   const save = () => {
     const patch: { name?: string; category?: Category; windowDays?: number | null } = {};
@@ -366,6 +396,24 @@ function VenueRow({
                   </select>
                 </>
               ) : null}
+              {/* GOI-75: after adding a venue you need to know whether it
+                  actually scrapes, without waiting for the nightly sweep. */}
+              <button
+                type="button"
+                onClick={() => refresh.mutate({ venueId: venue.id })}
+                disabled={refresh.isPending}
+                className="act act-sm"
+              >
+                {refresh.isPending ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button
+                type="button"
+                aria-expanded={showUpcoming}
+                onClick={() => setShowUpcoming((v) => !v)}
+                className={`act act-sm ${showUpcoming ? 'act-on' : ''}`}
+              >
+                {showUpcoming ? 'Hide upcoming' : 'Show upcoming'}
+              </button>
               <button type="button" onClick={() => setEditing(true)} className="act act-sm">
                 Edit
               </button>
@@ -384,6 +432,16 @@ function VenueRow({
             saving={update.isPending}
           />
           {update.error ? <p className="mt-1.5 text-sm text-accent">{update.error.message}</p> : null}
+          {refresh.isPending ? (
+            <p className="mt-2 text-sm text-muted">Scraping {venue.name}…</p>
+          ) : null}
+          {refresh.error ? (
+            <p className="mt-2 text-sm text-accent">{refresh.error.message}</p>
+          ) : null}
+          {refresh.data && !refresh.isPending ? (
+            <p className="mt-2 text-sm text-muted">{scrapeRunSummary(refresh.data)}</p>
+          ) : null}
+          {showUpcoming ? <UpcomingList venueId={venue.id} /> : null}
         </div>
       </li>
     );
@@ -436,6 +494,82 @@ function VenueRow({
       </div>
     </li>
   );
+}
+
+// ─── Refresh / upcoming (GOI-75) ─────────────────────────────────────────────
+
+/** Rows shown before the upcoming panel caps itself with a "+N more". */
+const UPCOMING_SHOWN = 8;
+
+/**
+ * A finished scrape in one sentence. The run's own vocabulary
+ * (`success_empty`, `skipped_unchanged`) is the interesting part — those two
+ * are exactly the cases where the venue still shows nothing and you need to
+ * know *why*, so neither is allowed to read as a plain failure.
+ */
+export function scrapeRunSummary(run: ScrapeRun): string {
+  switch (run.status) {
+    case 'success':
+      return `Found ${run.eventsFound ?? 0} event${run.eventsFound === 1 ? '' : 's'}.`;
+    case 'success_empty':
+      return 'Scraped fine, but no events could be read off the page.';
+    case 'skipped_unchanged':
+      return 'The page hasn’t changed since the last scrape — nothing new to read.';
+    case 'failed':
+      return `Scrape failed: ${run.errorMessage ?? 'unknown error'}`;
+    default:
+      return 'Scrape still running…';
+  }
+}
+
+/**
+ * What this venue actually has on, inline under its row (GOI-75). The "N
+ * upcoming" count on the row says how much there is; this says what it is,
+ * which is the only way to tell a scraper reading the page correctly from one
+ * returning plausible-looking junk.
+ */
+function UpcomingList({ venueId }: { venueId: string }) {
+  // Fail fast, like the screenings strip: react-query's default 3 retries
+  // leave a dead endpoint stuck on "Loading…" for ~10s.
+  const events = trpc.events.listByVenue.useQuery({ venueId }, { retry: 1 });
+
+  if (events.isLoading) return <Note>Loading upcoming events…</Note>;
+  if (events.isError) return <Note>Couldn’t load this venue’s events.</Note>;
+
+  const all = events.data ?? [];
+  if (all.length === 0) {
+    return <Note>Nothing upcoming — try Refresh to scrape this venue now.</Note>;
+  }
+
+  const shown = all.slice(0, UPCOMING_SHOWN);
+  return (
+    <div className="mt-3 border-l-3 border-ink pl-4">
+      <ul className="list-none m-0 p-0">
+        {shown.map((e) => (
+          <li key={e.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-1">
+            <span className="tag text-[11px] shrink-0">
+              {formatShortDate(e.startsAt)} · {formatEventTime(e)}
+            </span>
+            <a
+              href={e.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-ink hover:text-accent"
+            >
+              {e.title}
+            </a>
+          </li>
+        ))}
+      </ul>
+      {all.length > shown.length ? (
+        <p className="mt-1 text-xs text-muted">+{all.length - shown.length} more</p>
+      ) : null}
+    </div>
+  );
+}
+
+function Note({ children }: { children: React.ReactNode }) {
+  return <p className="mt-2 text-sm text-muted">{children}</p>;
 }
 
 /** Tag chips plus an inline "add tag" field. The mutation replaces the whole

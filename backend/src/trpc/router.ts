@@ -299,6 +299,31 @@ const my = router({
       .input(z.object({ url: z.string().url() }))
       .mutation(({ input }) => probeVenueUrl(input.url)),
 
+    /**
+     * Scrape one of your venues right now (GOI-75). The nightly sweep is the
+     * only thing that normally fills a venue, so a venue you just added shows
+     * nothing until it runs and there is no way to tell "the scraper hasn't
+     * got to it yet" from "the scraper can't read this page". This runs the
+     * real pipeline and hands back the run, so the answer is on screen.
+     *
+     * Deliberately not `admin.triggerScrape`: that one takes any venue id from
+     * anyone. This is scoped to venues the caller actually follows, and never
+     * forces — an unchanged page reports `skipped_unchanged` instead of paying
+     * for another extraction on every click.
+     */
+    refresh: userProcedure
+      .input(z.object({ venueId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!env.DATABASE_URL) {
+          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'DATABASE_URL not configured' });
+        }
+        const venues = await ctx.userVenues.listAll(ctx.user.id);
+        if (!venues.some((v) => v.id === input.venueId)) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'That venue is not in your list.' });
+        }
+        return scrapeVenue(input.venueId);
+      }),
+
     update: userProcedure.input(myVenueUpdateInput).mutation(async ({ ctx, input }) => {
       const { venueId, ...patch } = input;
       try {
