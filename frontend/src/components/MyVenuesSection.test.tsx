@@ -46,6 +46,7 @@ vi.mock('../lib/trpc', () => {
           listAll: { useQuery: () => venuesMock() },
           activity: { useQuery: () => activityMock() },
           add: stubMutation(),
+          checkUrl: stubMutation(),
           update: stubMutation(),
           remove: stubMutation(),
           refresh: { useMutation: (...a: unknown[]) => refreshMock(...a) },
@@ -179,6 +180,37 @@ describe('MyVenuesSection — refresh / show upcoming (GOI-75)', () => {
     render(<MyVenuesSection />);
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled();
     expect(screen.getByText(/scraping teatr studio/i)).toBeInTheDocument();
+  });
+});
+
+describe('MyVenuesSection — "Add venue" prominence (GOI-73)', () => {
+  it('draws "Add venue" as the screen’s one loud button, not as another text action', () => {
+    render(<MyVenuesSection />);
+    const add = screen.getByRole('button', { name: '+ Add venue' });
+    expect(add).toHaveClass('btn-accent');
+    // The control it used to be indistinguishable from.
+    expect(screen.getByRole('button', { name: '+ New folder' })).toHaveClass('act');
+  });
+
+  it('steps the button down to outline once the form it opens is on screen', () => {
+    render(<MyVenuesSection />);
+    fireEvent.click(screen.getByRole('button', { name: '+ Add venue' }));
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(cancel).toHaveClass('btn-outline');
+    expect(cancel).not.toHaveClass('btn-accent');
+  });
+
+  it('gives an empty tab its own button rather than naming one to go find', () => {
+    venuesMock.mockReturnValue({ data: [], isLoading: false, error: null });
+    render(<MyVenuesSection />);
+    expect(screen.getByText(/no venues yet/i)).toBeInTheDocument();
+
+    // Two now: the heading's and the empty state's. Clicking the empty
+    // state's opens the form and retires it.
+    const buttons = screen.getAllByRole('button', { name: '+ Add venue' });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[1]!);
+    expect(screen.queryByText(/no venues yet/i)).not.toBeInTheDocument();
   });
 });
 

@@ -74,8 +74,18 @@ export function MyVenuesSection() {
         blurb="Every venue you follow, filed into folders. Rename a venue, change its category or add your own tags — those changes are only visible to you."
         rule={false}
         action={
-          <button type="button" onClick={() => setAdding((v) => !v)} className="act act-on">
-            {adding ? 'Cancel' : 'Add venue'}
+          /* GOI-73: this is the one thing the tab exists to let you do, and as
+             a text action it was indistinguishable from "+ New folder" sitting
+             directly beneath it — same size, same weight, same accent red. The
+             design system already has a name for the single main action on a
+             screen, so it takes it. Once the form is open the loud state is
+             wrong: "Cancel" isn't the main action, it's the way back. */
+          <button
+            type="button"
+            onClick={() => setAdding((v) => !v)}
+            className={adding ? 'btn-outline' : 'btn-accent'}
+          >
+            {adding ? 'Cancel' : '+ Add venue'}
           </button>
         }
       />
@@ -94,10 +104,18 @@ export function MyVenuesSection() {
       {venuesQuery.error ? (
         <ErrorState message="Couldn't load your venues." onRetry={() => venuesQuery.refetch()} />
       ) : null}
-      {venueRows && venueRows.length === 0 ? (
-        <p className="text-sm text-muted">
-          No venues yet — use &ldquo;Add venue&rdquo; to add one by URL.
-        </p>
+      {venueRows && venueRows.length === 0 && !adding ? (
+        /* An empty tab shouldn't answer "what now?" by naming a control and
+           leaving you to find it (GOI-73) — the way out of the empty state is
+           the button itself. */
+        <div className="border-3 border-ink px-5 py-8 text-center">
+          <p className="mt-0 mb-4 text-sm text-muted">
+            No venues yet. Add one by URL and it starts getting scraped.
+          </p>
+          <button type="button" onClick={() => setAdding(true)} className="btn-accent">
+            + Add venue
+          </button>
+        </div>
       ) : null}
 
       {grouped.map((folder) => (
