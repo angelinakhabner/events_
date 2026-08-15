@@ -1,0 +1,18 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//The Events Calendar//EN
+BEGIN:VEVENT
+UID:1@tribe
+SUMMARY:Koncert w Piwnicy
+DTSTART:20261115T190000Z
+DTEND:20261115T210000Z
+LOCATION:Warszawa
+URL:https://venue.example/koncert
+END:VEVENT
+BEGIN:VEVENT
+UID:2@tribe
+SUMMARY:Spektakl z bardzo długim tytułem który zawi
+ ja się na drugą linię
+DTSTART:20261116T183000Z
+END:VEVENT
+END:VCALENDAR

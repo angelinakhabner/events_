@@ -24,7 +24,7 @@ import * as cheerio from 'cheerio';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 import { fetchVenueHTML } from '../services/scraper/fetcher.js';
 import { preprocessForVenue } from '../services/scraper/preprocessor.js';
-import { probeVenueUrl } from '../services/scraper/probe.js';
+import { probeVenueUrl } from '../services/probe/index.js';
 import { resolveVenueUrl } from '../services/scraper/runner.js';
 
 const API = (process.env.DIAG_API_URL ?? '').replace(/\/+$/, '');

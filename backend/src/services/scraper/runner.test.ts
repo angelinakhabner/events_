@@ -12,6 +12,10 @@ interface ScrapeRunRow {
   eventsFound: number | null;
   errorMessage: string | null;
   rawHash: string | null;
+  /** Written by finalize once enrichment has run (GOI-79). */
+  detailFetches?: number;
+  detailInputTokens?: number;
+  detailOutputTokens?: number;
 }
 
 interface VenueRow {
@@ -98,16 +102,30 @@ const fakeDb = {
             finished_at: r.finishedAt, status: r.status,
             events_found: r.eventsFound, error_message: r.errorMessage,
             raw_hash: r.rawHash,
+            detail_fetches: r.detailFetches ?? 0,
+            detail_input_tokens: r.detailInputTokens ?? 0,
+            detail_output_tokens: r.detailOutputTokens ?? 0,
           }],
         };
       }
       return { rows: [] };
     }
-    if (params.length === 6) {
-      const [status, eventsFound, errorMessage, rawHash, finishedAt, id] = params;
+    // finalize's UPDATE, in its bind order (GOI-79 added the three detail
+    // columns). Matched on the trailing id rather than on a param count, so
+    // the next column added here doesn't silently stop the branch matching
+    // and leave every run stuck on 'running'.
+    if (params.length === 9) {
+      const [
+        status, eventsFound, errorMessage, rawHash,
+        detailFetches, detailInputTokens, detailOutputTokens,
+        finishedAt, id,
+      ] = params;
       const r = state.runs.find((x) => x.id === id);
       if (r) {
-        Object.assign(r, { status, eventsFound, errorMessage, rawHash, finishedAt });
+        Object.assign(r, {
+          status, eventsFound, errorMessage, rawHash,
+          detailFetches, detailInputTokens, detailOutputTokens, finishedAt,
+        });
       }
       return { rows: [] };
     }
@@ -137,6 +155,7 @@ vi.mock('drizzle-orm', async () => {
     or: (..._a: any[]) => ({}),
     gte: (..._a: any[]) => ({}),
     asc: (..._a: any[]) => ({}),
+    isNotNull: (..._a: any[]) => ({}),
   };
 });
 
@@ -194,18 +213,19 @@ describe('scrapeVenue runner', () => {
     await scrapeVenue('venue-1', {
       htmlOverride: html,
       extractor: { extract: async () => '[]' },
+      enrichDelayMs: 0,
     });
     extractor.extract.mockClear();
 
     // Second scrape with identical HTML.
-    const run = await scrapeVenue('venue-1', { htmlOverride: html, extractor });
+    const run = await scrapeVenue('venue-1', { htmlOverride: html, extractor, enrichDelayMs: 0 });
     expect(run.status).toBe('skipped_unchanged');
     expect(extractor.extract).not.toHaveBeenCalled();
   });
 
   it('runs full pipeline when hash changes', async () => {
     const extractor = { extract: vi.fn(async () => EVENT_JSON) };
-    const run = await scrapeVenue('venue-1', { htmlOverride: HTML_SAMPLE, extractor });
+    const run = await scrapeVenue('venue-1', { htmlOverride: HTML_SAMPLE, extractor, enrichDelayMs: 0 });
     expect(run.status).toBe('success');
     expect(run.eventsFound).toBe(1);
     expect(extractor.extract).toHaveBeenCalledTimes(1);
@@ -213,7 +233,7 @@ describe('scrapeVenue runner', () => {
 
   it('records status=success_empty when the extractor returns no usable events', async () => {
     const extractor = { extract: vi.fn(async () => '[]') };
-    const run = await scrapeVenue('venue-1', { htmlOverride: HTML_SAMPLE, extractor });
+    const run = await scrapeVenue('venue-1', { htmlOverride: HTML_SAMPLE, extractor, enrichDelayMs: 0 });
     expect(run.status).toBe('success_empty');
     expect(run.eventsFound).toBe(0);
   });
@@ -223,7 +243,7 @@ describe('scrapeVenue runner', () => {
       { ...EVENT_FIELDS, starts_at: '2026-06-17T00:00:00+02:00' },
     ]);
     const extractor = { extract: vi.fn(async () => midnight) };
-    const run = await scrapeVenue('venue-1', { htmlOverride: HTML_SAMPLE, extractor });
+    const run = await scrapeVenue('venue-1', { htmlOverride: HTML_SAMPLE, extractor, enrichDelayMs: 0 });
     expect(run.status).toBe('success_empty');
     expect(run.eventsFound).toBe(0);
   });
@@ -251,7 +271,7 @@ describe('scrapeVenue runner', () => {
       ]</script>
       </head><body>shell</body></html>`;
     const extractor = { extract: vi.fn(async () => '[]') };
-    const run = await scrapeVenue('venue-1', { htmlOverride: ldPage, extractor });
+    const run = await scrapeVenue('venue-1', { htmlOverride: ldPage, extractor, enrichDelayMs: 0 });
     expect(run.status).toBe('success');
     expect(run.eventsFound).toBe(2);
     expect(extractor.extract).not.toHaveBeenCalled();
@@ -265,7 +285,7 @@ describe('scrapeVenue runner', () => {
       ]</script>
       </head><body>shell</body></html>`;
     const extractor = { extract: vi.fn(async () => EVENT_JSON) };
-    const run = await scrapeVenue('venue-1', { htmlOverride: ldPage, extractor });
+    const run = await scrapeVenue('venue-1', { htmlOverride: ldPage, extractor, enrichDelayMs: 0 });
     expect(run.status).toBe('success');
     expect(extractor.extract).toHaveBeenCalledTimes(1);
   });
@@ -298,6 +318,7 @@ describe('scrapeVenue runner', () => {
       htmlOverride: komediowyHtml,
       extractor,
       fetcher: fetcher as unknown as typeof fetch,
+      enrichDelayMs: 0,
     });
     expect(run.status).toBe('success');
     expect(run.eventsFound).toBe(1);
@@ -327,7 +348,7 @@ describe('scrapeVenue runner', () => {
     // Return a real event so success is genuine — this test is about the hash
     // version forcing a re-run, not about empty-result handling.
     const extractor = { extract: vi.fn(async () => EVENT_JSON) };
-    const run = await scrapeVenue('venue-1', { htmlOverride: html, extractor });
+    const run = await scrapeVenue('venue-1', { htmlOverride: html, extractor, enrichDelayMs: 0 });
     expect(run.status).toBe('success');
     expect(extractor.extract).toHaveBeenCalledTimes(1);
   });

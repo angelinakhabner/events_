@@ -114,6 +114,11 @@ export interface ScrapeRun {
   eventsFound: number | null;
   errorMessage: string | null;
   rawHash: string | null;
+  /** Detail pages fetched for descriptions, and what extracting them cost
+   *  (GOI-79). Zero on every run that enriched nothing. */
+  detailFetches?: number;
+  detailInputTokens?: number;
+  detailOutputTokens?: number;
 }
 
 // ─── Films (want to watch / seen) ────────────────────────────────────────────
@@ -321,3 +326,151 @@ export function venueSchedule(
     daysUntilNext,
   };
 }
+
+// ─── Venue URL probe (GOI-72) ────────────────────────────────────────────────
+
+/**
+ * How a venue's events are read. The first three are free to refetch — the
+ * daily cron can re-run them without a hash check or an LLM call — which is
+ * why the method is stored rather than re-derived each sweep.
+ */
+export type SourceMethod =
+  | 'jsonld'
+  | 'ical'
+  | 'wp_rest'
+  | 'wp_rest_posts'
+  | 'rss'
+  | 'llm_extract'
+  | 'firecrawl'
+  | 'manual';
+
+/** Free to refetch: no hash check, no model call, no vendor bill. */
+export const FREE_SOURCE_METHODS: SourceMethod[] = ['jsonld', 'ical', 'wp_rest'];
+
+export function isFreeSourceMethod(method: SourceMethod): boolean {
+  return FREE_SOURCE_METHODS.includes(method);
+}
+
+/** How much the probe trusts what it found. Drives nothing automatically —
+ *  it's what an operator reads when a venue starts producing nonsense. */
+export type SourceConfidence = 'high' | 'medium' | 'low';
+
+export type ProbeErrorCode =
+  | 'INVALID_URL'
+  | 'SOCIAL_ONLY'
+  | 'UNREACHABLE'
+  | 'BLOCKED'
+  | 'NOT_HTML'
+  | 'NO_LISTING_PAGE_FOUND'
+  | 'NO_EVENTS_FOUND'
+  | 'PAST_EVENTS_ONLY'
+  | 'JS_RENDERED_NEEDS_PAID'
+  | 'PAID_QUOTA_EXCEEDED'
+  | 'PAID_FETCH_FAILED'
+  | 'RATE_LIMITED'
+  | 'PROBE_TIMEOUT';
+
+/**
+ * `fatal` — this URL will never work, stop.
+ * `retryable` — nothing is wrong with the URL, the attempt failed.
+ * `needs_decision` — we need something from *you*: a deeper link, or consent
+ *   to spend a paid fetch. These must not render as breakage (GOI-72 §5).
+ */
+export type ProbeSeverity = 'fatal' | 'retryable' | 'needs_decision';
+
+export const PROBE_ERROR_SEVERITY: Record<ProbeErrorCode, ProbeSeverity> = {
+  INVALID_URL: 'fatal',
+  SOCIAL_ONLY: 'fatal',
+  UNREACHABLE: 'retryable',
+  BLOCKED: 'retryable',
+  NOT_HTML: 'fatal',
+  NO_LISTING_PAGE_FOUND: 'needs_decision',
+  NO_EVENTS_FOUND: 'needs_decision',
+  PAST_EVENTS_ONLY: 'needs_decision',
+  JS_RENDERED_NEEDS_PAID: 'needs_decision',
+  PAID_QUOTA_EXCEEDED: 'fatal',
+  PAID_FETCH_FAILED: 'retryable',
+  RATE_LIMITED: 'retryable',
+  PROBE_TIMEOUT: 'retryable',
+};
+
+export type ProbeLocale = 'pl' | 'en';
+
+/**
+ * User-facing text per code. No stack trace, HTTP status or Zod complaint ever
+ * reaches the UI — every failure is one of these sentences.
+ */
+export const PROBE_MESSAGES: Record<ProbeLocale, Record<ProbeErrorCode, string>> = {
+  en: {
+    INVALID_URL: 'That doesn’t look like a web address. Try something like teatr-zydowski.art.pl.',
+    SOCIAL_ONLY: 'This is a Facebook or Instagram page. We can only read venue websites.',
+    UNREACHABLE: 'We couldn’t reach this site. It may be down — try again later.',
+    BLOCKED: 'This site is blocking automated access.',
+    NOT_HTML: 'This link points to a file, not a web page.',
+    NO_LISTING_PAGE_FOUND: 'We found the site but no events page. Paste the direct link to their programme.',
+    NO_EVENTS_FOUND: 'We read the page but found no events on it.',
+    PAST_EVENTS_ONLY: 'We only found past events here.',
+    JS_RENDERED_NEEDS_PAID: 'This site needs a full browser to read. We can try a paid fetch.',
+    PAID_QUOTA_EXCEEDED: 'You’ve used your paid checks for today.',
+    PAID_FETCH_FAILED: 'The paid fetch didn’t work on this site.',
+    RATE_LIMITED: 'Too many checks. Wait a minute and try again.',
+    PROBE_TIMEOUT: 'This took too long. The site may be slow.',
+  },
+  pl: {
+    INVALID_URL: 'To nie wygląda na adres strony. Spróbuj np. teatr-zydowski.art.pl.',
+    SOCIAL_ONLY: 'To strona na Facebooku lub Instagramie. Czytamy tylko strony internetowe miejsc.',
+    UNREACHABLE: 'Nie udało się połączyć z tą stroną. Może być niedostępna — spróbuj później.',
+    BLOCKED: 'Ta strona blokuje automatyczny dostęp.',
+    NOT_HTML: 'Ten link prowadzi do pliku, a nie do strony internetowej.',
+    NO_LISTING_PAGE_FOUND: 'Znaleźliśmy stronę, ale nie jej repertuar. Wklej bezpośredni link do programu.',
+    NO_EVENTS_FOUND: 'Odczytaliśmy stronę, ale nie znaleźliśmy na niej wydarzeń.',
+    PAST_EVENTS_ONLY: 'Znaleźliśmy tu tylko minione wydarzenia.',
+    JS_RENDERED_NEEDS_PAID: 'Ta strona wymaga pełnej przeglądarki. Możemy spróbować płatnego pobrania.',
+    PAID_QUOTA_EXCEEDED: 'Wykorzystałeś dzisiejszy limit płatnych sprawdzeń.',
+    PAID_FETCH_FAILED: 'Płatne pobranie nie zadziałało na tej stronie.',
+    RATE_LIMITED: 'Za dużo sprawdzeń. Odczekaj minutę i spróbuj ponownie.',
+    PROBE_TIMEOUT: 'To trwało zbyt długo. Strona może działać wolno.',
+  },
+};
+
+export function probeMessage(code: ProbeErrorCode, locale: ProbeLocale = 'en'): string {
+  return PROBE_MESSAGES[locale][code];
+}
+
+/** A single event shown back to the user so they can confirm we found the
+ *  right thing before committing. Title + date only, by design. */
+export interface ProbeSampleEvent {
+  title: string;
+  /** ISO start, or null for an undated/all-day entry (the exhibition case). */
+  startsAt: string | null;
+}
+
+export interface ProbeSuccess {
+  status: 'success';
+  /** Normalized pasted URL — the venue dedup key. */
+  normalizedUrl: string;
+  /** The candidate that actually yielded events; often deeper than the paste. */
+  sourceUrl: string;
+  method: SourceMethod;
+  confidence: SourceConfidence;
+  suggestedName: string | null;
+  /** Page language from <html lang>, bare code. */
+  language: string | null;
+  sampleEvents: ProbeSampleEvent[];
+  /** This URL is already a venue — returned from storage without refetching. */
+  shared: boolean;
+}
+
+export interface ProbeProblem {
+  status: 'needs_decision' | 'failure';
+  normalizedUrl: string | null;
+  code: ProbeErrorCode;
+  severity: ProbeSeverity;
+  message: string;
+}
+
+export type ProbeOutcome = ProbeSuccess | ProbeProblem;
+
+/** How many free/paid probes a user gets, and over what window (GOI-72 §7). */
+export const PROBE_FREE_PER_HOUR = 10;
+export const PROBE_PAID_PER_DAY = 3;
