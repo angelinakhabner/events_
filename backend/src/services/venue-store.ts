@@ -1,7 +1,22 @@
 import type { Venue, VenueListInput, Category } from '@afisz/shared';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 import { getDb, schema } from '../db/index.js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
+import { normalizedHref } from './probe/normalize.js';
+
+/**
+ * What a probe already worked out about a venue (GOI-72 §6). Returned when a
+ * URL is already known, so a second user adding the same venue gets the stored
+ * answer instead of a second round of fetches.
+ */
+export interface VenueProbeState {
+  id: string;
+  name: string;
+  language: string;
+  sourceUrl: string | null;
+  sourceMethod: string | null;
+  sourceConfidence: string | null;
+}
 
 export interface IVenueStore {
   list(filter?: VenueListInput): Venue[] | Promise<Venue[]>;
@@ -9,6 +24,10 @@ export interface IVenueStore {
   add?(input: Omit<Venue, 'id' | 'createdAt'>): Venue;
   cities(): string[] | Promise<string[]>;
   categories(): Category[] | Promise<Category[]>;
+  /** Look a venue up by its canonical URL — the dedup key. */
+  findByNormalizedUrl?(
+    normalizedUrl: string,
+  ): VenueProbeState | null | Promise<VenueProbeState | null>;
 }
 
 // In-memory venue store. Used for tests and as a fallback when DATABASE_URL is unset.
@@ -58,6 +77,24 @@ export class VenueStore implements IVenueStore {
   categories(): Category[] {
     return [...new Set([...this.venues.values()].map((v) => v.category))].sort() as Category[];
   }
+
+  /** The seeded venues predate the probe, so they carry no stored method —
+   *  matching on the raw URL is the best this store can do, and a null method
+   *  simply means the caller probes for real. */
+  findByNormalizedUrl(normalizedUrl: string): VenueProbeState | null {
+    const match = [...this.venues.values()].find(
+      (v) => normalizedHref(v.url) === normalizedUrl,
+    );
+    if (!match) return null;
+    return {
+      id: match.id,
+      name: match.name,
+      language: match.language,
+      sourceUrl: match.url,
+      sourceMethod: null,
+      sourceConfidence: null,
+    };
+  }
 }
 
 export class DbVenueStore implements IVenueStore {
@@ -89,6 +126,32 @@ export class DbVenueStore implements IVenueStore {
     const db = getDb();
     const rows = await db.selectDistinct({ category: schema.venues.category }).from(schema.venues);
     return rows.map((r) => r.category).sort() as Category[];
+  }
+
+  /**
+   * Match on `normalized_url` first — that's the dedup key — then fall back to
+   * the raw `url`, because every venue added before GOI-72 has a null
+   * normalized column until its next probe.
+   */
+  async findByNormalizedUrl(normalizedUrl: string): Promise<VenueProbeState | null> {
+    const db = getDb();
+    const rows = await db
+      .select()
+      .from(schema.venues)
+      .where(
+        or(eq(schema.venues.normalizedUrl, normalizedUrl), eq(schema.venues.url, normalizedUrl)),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      language: row.language,
+      sourceUrl: row.sourceUrl ?? row.url,
+      sourceMethod: row.sourceMethod,
+      sourceConfidence: row.sourceConfidence,
+    };
   }
 }
 

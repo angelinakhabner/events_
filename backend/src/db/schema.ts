@@ -11,6 +11,31 @@ export const venues = pgTable('venues', {
   language: text('language').notNull().default('en'),
   timezone: text('timezone').notNull().default('Europe/Warsaw'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+
+  // ── Probe state (GOI-72 §6) ────────────────────────────────────────────────
+  // One venue has exactly one source method, so these are columns rather than
+  // a `venue_sources` table.
+  /** Canonical form of `url` — the real dedup key. `url` keeps whatever the
+   *  first user pasted, which is why two spellings of one venue could both be
+   *  added before this existed. Nullable until the backfill probes each row. */
+  normalizedUrl: text('normalized_url').unique(),
+  /** The candidate that actually yielded events, which is often deeper than
+   *  the pasted homepage. This is what the scraper should fetch. */
+  sourceUrl: text('source_url'),
+  /** jsonld | ical | wp_rest | wp_rest_posts | rss | llm_extract | firecrawl | manual.
+   *  The first three are free to refetch: the daily cron can skip the hash
+   *  check and the model call entirely for them. */
+  sourceMethod: text('source_method'),
+  sourceConfidence: text('source_confidence'),
+  /** This venue only renders in a browser — every sweep of it costs money, so
+   *  it has to be visible rather than inferred from the bill. */
+  requiresPaidFetch: boolean('requires_paid_fetch').notNull().default(false),
+  lastProbedAt: timestamp('last_probed_at', { withTimezone: true }),
+  /** Null when healthy. Feeds the venue status model: a venue whose last probe
+   *  said NO_EVENTS_FOUND is empty, not broken. */
+  probeErrorCode: text('probe_error_code'),
+  /** The whole ProbeOutcome, for debugging a venue that went quiet. */
+  probeResult: jsonb('probe_result').$type<Record<string, unknown>>(),
 });
 
 export const folders = pgTable(
@@ -184,6 +209,9 @@ export const scrapeRuns = pgTable(
     eventsFound: integer('events_found'),
     errorMessage: text('error_message'),
     rawHash: text('raw_hash'),
+    /** Vendor credits this run spent rendering the page (GOI-72 §4). Zero for
+     *  every free-tier run, which is nearly all of them. */
+    firecrawlCredits: integer('firecrawl_credits').notNull().default(0),
   },
   (t) => ({
     venueIdx: index('scrape_runs_venue_id_idx').on(t.venueId),
