@@ -9,7 +9,9 @@ import { extractEvents, EXTRACTOR_VERSION, modelFor, windowDaysForCategory, type
 import { getDeterministicScraper } from './deterministic.js';
 import { defaultUserVenueStore } from '../user-venue-store.js';
 import { validateEvents } from './validator.js';
-import { enrichDescriptions } from './enricher.js';
+import { enrichDescriptions, type DescriptionClient } from './enricher.js';
+import { defaultDescriber } from './describer.js';
+import { defaultEventStore } from '../event-store.js';
 import { saveEvents, pruneStaleEvents } from './persister.js';
 import type { Venue, ScrapeRun } from '@afisz/shared';
 
@@ -23,6 +25,13 @@ export interface ScrapeOptions {
   fetcher?: typeof fetch;
   /** Reference "now" for relative date math. Defaults to new Date(). */
   now?: Date;
+  /** Description extractor for detail-page enrichment (GOI-79). Injected in
+   *  tests; defaults to the Anthropic one when a key is configured. */
+  describer?: DescriptionClient;
+  /** Override the per-run detail-fetch cap. */
+  maxDetailFetches?: number;
+  /** Override the pause between detail fetches (tests use 0). */
+  enrichDelayMs?: number;
 }
 
 export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Promise<ScrapeRun> {
@@ -39,6 +48,14 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     .values({ venueId, status: 'running', startedAt })
     .returning();
   if (!run) throw new Error('Failed to create scrape_runs row');
+
+  // Enrichment cost for this run (GOI-79). Declared out here so `finalize`
+  // records whatever was spent even on a path that later throws — the money
+  // is gone either way, and a run that fails after enriching is exactly when
+  // you want the number.
+  let detailFetches = 0;
+  let detailInputTokens = 0;
+  let detailOutputTokens = 0;
 
   const finalize = async (patch: Partial<typeof schema.scrapeRuns.$inferInsert>): Promise<ScrapeRun> => {
     // The UPDATE … RETURNING path was observed to flake in CI: the RETURNING
@@ -61,11 +78,15 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         events_found = ${eventsFound},
         error_message = ${errorMessage},
         raw_hash = ${rawHash},
+        detail_fetches = ${detailFetches},
+        detail_input_tokens = ${detailInputTokens},
+        detail_output_tokens = ${detailOutputTokens},
         finished_at = ${finishedAt}::timestamptz
       WHERE id = ${run.id}::uuid
     `);
     const selectResult = await db.execute(sql`
-      SELECT id, venue_id, started_at, finished_at, status, events_found, error_message, raw_hash
+      SELECT id, venue_id, started_at, finished_at, status, events_found, error_message, raw_hash,
+             detail_fetches, detail_input_tokens, detail_output_tokens
       FROM scrape_runs WHERE id = ${run.id}::uuid LIMIT 1
     `);
     const rows = unwrapRows<RawScrapeRunRow>(selectResult);
@@ -226,10 +247,20 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       const enrich = await enrichDescriptions(valid, {
         venueUrl: fetchUrl,
         fetcher: opts.fetcher,
+        delayMs: opts.enrichDelayMs,
+        maxFetches: opts.maxDetailFetches ?? env.MAX_DETAIL_FETCHES,
+        client: opts.describer ?? defaultDescriber() ?? undefined,
+        // Only new events get fetched (GOI-79). Scoped to this venue.
+        alreadyDescribed: (urls) => defaultEventStore.describedSourceUrls(venue.id, urls),
       });
-      if (enrich.enriched > 0 || enrich.failed > 0) {
+      detailFetches = enrich.fetched;
+      detailInputTokens = enrich.inputTokens;
+      detailOutputTokens = enrich.outputTokens;
+      if (enrich.enriched > 0 || enrich.failed > 0 || enrich.capped > 0) {
         console.log(
-          `[scraper] ${venue.name}: enriched ${enrich.enriched} description(s) (${enrich.failed} failed, ${enrich.skipped} skipped)`,
+          `[scraper] ${venue.name}: enriched ${enrich.enriched} description(s) from ` +
+          `${enrich.fetched} detail page(s) (${enrich.failed} failed, ${enrich.skipped} skipped, ` +
+          `${enrich.capped} over cap; ${enrich.inputTokens}+${enrich.outputTokens} tokens)`,
         );
       }
     }
@@ -347,6 +378,9 @@ interface RawScrapeRunRow {
   events_found: number | null;
   error_message: string | null;
   raw_hash: string | null;
+  detail_fetches: number | string | null;
+  detail_input_tokens: number | string | null;
+  detail_output_tokens: number | string | null;
 }
 
 function rawToScrapeRun(row: RawScrapeRunRow): ScrapeRun {
@@ -359,7 +393,20 @@ function rawToScrapeRun(row: RawScrapeRunRow): ScrapeRun {
     eventsFound: row.events_found,
     errorMessage: row.error_message,
     rawHash: row.raw_hash,
+    detailFetches: toInt(row.detail_fetches),
+    detailInputTokens: toInt(row.detail_input_tokens),
+    detailOutputTokens: toInt(row.detail_output_tokens),
   };
+}
+
+/** postgres-js returns integers as strings on some paths. */
+function toInt(v: number | string | null): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
 }
 
 function toDate(v: Date | string): Date {

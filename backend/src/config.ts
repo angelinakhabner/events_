@@ -16,6 +16,9 @@ const Env = z.object({
   // (JS execution + anti-bot) instead of a plain fetch, falling back to native
   // fetch on any Firecrawl error. Absent → native fetch only (today's behaviour).
   // Enrichment (per-event detail pages) always stays on native fetch — cost.
+  /** Per-run ceiling on detail-page fetches during description enrichment
+   *  (GOI-79). Each one is an HTTP request plus a model call. */
+  MAX_DETAIL_FETCHES: z.coerce.number().int().min(0).default(50),
   FIRECRAWL_API_KEY: z.string().optional(),
   FIRECRAWL_API_URL: z.string().default('https://api.firecrawl.dev'),
   // Milliseconds Firecrawl waits for client-side JS to finish rendering before
