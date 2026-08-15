@@ -114,6 +114,11 @@ export interface ScrapeRun {
   eventsFound: number | null;
   errorMessage: string | null;
   rawHash: string | null;
+  /** Detail pages fetched for descriptions, and what extracting them cost
+   *  (GOI-79). Zero on every run that enriched nothing. */
+  detailFetches?: number;
+  detailInputTokens?: number;
+  detailOutputTokens?: number;
 }
 
 // ─── Films (want to watch / seen) ────────────────────────────────────────────

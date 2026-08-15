@@ -80,6 +80,7 @@ describeIfDb('scraper integration', () => {
 
   it('end-to-end: fixture → mocked Claude → DB rows', async () => {
     const run = await scrapeVenue(venueId, {
+      enrichDelayMs: 0,
       htmlOverride: muranowHtml,
       extractor: makeExtractor(expectedJson),
       now: new Date('2026-06-07T08:00:00.000Z'),
@@ -112,6 +113,12 @@ describeIfDb('scraper integration', () => {
       // Deliberately no extractor: reaching the LLM here would throw.
       fetcher,
       now: new Date('2026-06-07T08:00:00.000Z'),
+      // This fixture carries 82 unique film pages — above the production
+      // default cap of 50 — and the assertions below name a specific film.
+      // Enrichment's pacing and cap have their own tests; this one is about
+      // the deterministic parse, so it opts out of both.
+      enrichDelayMs: 0,
+      maxDetailFetches: 200,
     });
 
     expect(run.status).toBe('success');
@@ -133,6 +140,7 @@ describeIfDb('scraper integration', () => {
   it('second run with identical HTML records status=skipped_unchanged', async () => {
     const ext = makeExtractor(expectedJson);
     const first = await scrapeVenue(venueId, {
+      enrichDelayMs: 0,
       htmlOverride: muranowHtml,
       extractor: ext,
       now: new Date('2026-06-07T08:00:00.000Z'),
@@ -141,6 +149,7 @@ describeIfDb('scraper integration', () => {
 
     const calls = { count: 0 };
     const second = await scrapeVenue(venueId, {
+      enrichDelayMs: 0,
       htmlOverride: muranowHtml,
       extractor: { extract: async () => { calls.count++; return expectedJson; } },
       now: new Date('2026-06-07T08:00:00.000Z'),
@@ -155,6 +164,7 @@ describeIfDb('scraper integration', () => {
 
   it('upserts: re-running with same source_id updates instead of duplicating', async () => {
     await scrapeVenue(venueId, {
+      enrichDelayMs: 0,
       htmlOverride: muranowHtml,
       extractor: makeExtractor(expectedJson),
       now: new Date('2026-06-07T08:00:00.000Z'),
@@ -167,6 +177,7 @@ describeIfDb('scraper integration', () => {
 
     // Force=true bypasses hash check.
     const run = await scrapeVenue(venueId, {
+      enrichDelayMs: 0,
       htmlOverride: muranowHtml + '<!-- bumped -->',
       extractor: makeExtractor(mutatedJson),
       force: true,
@@ -197,6 +208,7 @@ describeIfDb('scraper integration', () => {
     }
 
     const run = await scrapeVenue(venueId, {
+      enrichDelayMs: 0,
       htmlOverride: muranowHtml,
       extractor: makeExtractor(expectedJson),
       now,
@@ -319,6 +331,7 @@ describeIfDb('scraper integration', () => {
       // 22:00Z on the 18th is already the 19th in Warsaw — but still June, so
       // the month substitution is unambiguous.
       const run = await scrapeVenue(vid, {
+      enrichDelayMs: 0,
         fetcher: fakeFetch,
         extractor: makeExtractor('[]'),
         now: new Date('2026-06-18T22:00:00.000Z'),

@@ -212,6 +212,11 @@ export const scrapeRuns = pgTable(
     /** Vendor credits this run spent rendering the page (GOI-72 §4). Zero for
      *  every free-tier run, which is nearly all of them. */
     firecrawlCredits: integer('firecrawl_credits').notNull().default(0),
+    /** Detail pages fetched during description enrichment (GOI-79). The
+     *  number to watch: it is one HTTP request and one model call each. */
+    detailFetches: integer('detail_fetches').notNull().default(0),
+    detailInputTokens: integer('detail_input_tokens').notNull().default(0),
+    detailOutputTokens: integer('detail_output_tokens').notNull().default(0),
   },
   (t) => ({
     venueIdx: index('scrape_runs_venue_id_idx').on(t.venueId),

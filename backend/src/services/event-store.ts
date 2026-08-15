@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
 import type { Event, EventKind, EventVenue, Category } from '@afisz/shared';
 
@@ -179,6 +179,31 @@ export class EventStore {
         venueLanguage: r.venueLanguage,
       }),
     );
+  }
+
+  /**
+   * Which of these detail URLs already have a stored description (GOI-79).
+   *
+   * This is what makes a re-scrape cheap. A monthly theatre programme
+   * re-parsed every night would otherwise re-fetch and re-extract every show
+   * on it, every night, for a description that hasn't changed since the first
+   * time. Scoped to the venue so one venue's rows can't answer for another's.
+   */
+  async describedSourceUrls(venueId: string, urls: string[]): Promise<Set<string>> {
+    if (urls.length === 0) return new Set();
+    const rows = await getDb()
+      .select({ sourceUrl: schema.events.sourceUrl })
+      .from(schema.events)
+      .where(
+        and(
+          eq(schema.events.venueId, venueId),
+          inArray(schema.events.sourceUrl, urls),
+          isNotNull(schema.events.description),
+          // A row saved with an empty-string description is not described.
+          sql`length(trim(${schema.events.description})) > 0`,
+        ),
+      );
+    return new Set(rows.map((r) => r.sourceUrl));
   }
 }
 
