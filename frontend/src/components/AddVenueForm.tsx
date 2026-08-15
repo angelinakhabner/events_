@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Category } from '@afisz/shared';
 import { categoryLabel } from '../lib/format';
 import { trpc } from '../lib/trpc';
+import { ProbeResultNote } from './ProbeResult';
 
 export const CATEGORIES: Category[] = ['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other'];
 
@@ -54,18 +55,39 @@ export function AddVenueForm({
   const [name, setName] = useState('');
   const [checkedUrl, setCheckedUrl] = useState<string | null>(null);
 
+  // Tracks which run is in flight so "Checking…" and "Trying paid fetch…"
+  // don't both claim the same pending flag.
+  const [paidPending, setPaidPending] = useState(false);
+
   const check = trpc.my.venues.checkUrl.useMutation({
     onSuccess: (r) => {
+      setPaidPending(false);
       // Fill the name from the page unless the user already typed one.
-      if (r.ok && r.title) setName((prev) => (prev.trim() ? prev : r.title!));
+      if (r.status === 'success' && r.suggestedName) {
+        setName((prev) => (prev.trim() ? prev : r.suggestedName!));
+      }
+      // The page told us what language it's in; trust it over the default.
+      if (r.status === 'success' && r.language) setLanguage(r.language);
     },
+    onError: () => setPaidPending(false),
   });
+
+  const probeLocale: 'pl' | 'en' = language === 'en' ? 'en' : 'pl';
 
   const runCheck = () => {
     const target = url.trim();
     if (!target || target === checkedUrl || check.isPending) return;
     setCheckedUrl(target);
-    check.mutate({ url: target });
+    check.mutate({ url: target, locale: probeLocale, allowPaid: false });
+  };
+
+  /** The opt-in from §4: same URL, same endpoint, consent attached. Only ever
+   *  reachable from a JS_RENDERED_NEEDS_PAID result. */
+  const runPaidCheck = () => {
+    const target = url.trim();
+    if (!target || check.isPending) return;
+    setPaidPending(true);
+    check.mutate({ url: target, locale: probeLocale, allowPaid: true });
   };
 
   const stepLabel = 'label-caps mb-1.5';
@@ -126,22 +148,25 @@ export function AddVenueForm({
           </button>
         </div>
         {check.isPending ? (
-          <p role="status" className="mt-2 text-sm text-muted">Checking whether the page can be scraped…</p>
+          <p role="status" className="mt-2 text-sm text-muted">
+            {paidPending
+              ? 'Rendering the page in a real browser…'
+              : 'Checking whether the page can be scraped…'}
+          </p>
         ) : null}
-        {check.data ? (
-          check.data.ok ? (
-            <p role="status" className="mt-2 text-sm font-bold text-ink">
-              ✓ Scrapable
-              {check.data.method === 'structured-data'
-                ? ` — found ${check.data.eventCount} upcoming event${check.data.eventCount === 1 ? '' : 's'} in the page's structured data`
-                : ' — the page has readable content the AI extractor can parse'}
-            </p>
-          ) : (
-            <p role="status" className="mt-2 text-sm font-bold text-accent">✗ {check.data.reason}</p>
-          )
+        {check.data && !check.isPending ? (
+          <ProbeResultNote
+            result={check.data}
+            onTryPaid={runPaidCheck}
+            paidPending={paidPending}
+          />
         ) : null}
+        {/* A thrown error is a transport problem, not a probe verdict — every
+            verdict, including every failure, arrives as data. */}
         {check.error ? (
-          <p role="status" className="mt-2 text-sm font-bold text-accent">✗ Check failed: {check.error.message}</p>
+          <p role="status" className="mt-2 text-sm font-bold text-accent">
+            ✗ The check couldn&rsquo;t run. Try again in a moment.
+          </p>
         ) : null}
       </div>
 

@@ -7,9 +7,16 @@ import { generateDefaultEvents } from '../data/default-events.js';
 import { filterEvents } from '../services/filters.js';
 import { defaultEventStore } from '../services/event-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
-import { probeVenueUrl } from '../services/scraper/probe.js';
+import { probeVenueUrl, problem as probeProblem } from '../services/probe/index.js';
+import { normalizeVenueUrl } from '../services/probe/normalize.js';
+import { defaultProbeExtractor } from '../services/probe/extract.js';
+import { defaultPaidFetcher } from '../services/probe/paid.js';
+import { cacheProbe, cachedProbe, consumeQuota } from '../services/probe/limits.js';
 import { listFestivals } from '../data/festivals.js';
-import { festivalsAtVenues, venueSchedule, type SharedWantToGoList } from '@afisz/shared';
+import {
+  festivalsAtVenues, venueSchedule,
+  type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
+} from '@afisz/shared';
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
@@ -292,12 +299,77 @@ const my = router({
         }
       }),
 
-    /** Dry-run scrapability check for the add-venue form: fetches the URL the
-     *  way a real scrape would and reports whether/how events could be
-     *  extracted. Never calls the LLM, never writes anything. */
+    /**
+     * "Whether and how can this venue be scraped" (GOI-72).
+     *
+     * Note the input is `z.string()`, not `z.string().url()`. That validator is
+     * the reported bug: it rejects the bare host people actually paste
+     * ("www.teatr-zydowski.art.pl") and its complaint reached the UI verbatim.
+     * Normalization happens inside the probe and every failure comes back as a
+     * coded, translated sentence instead.
+     *
+     * Authenticated because it fetches an arbitrary URL on request, rate
+     * limited because it fetches several, and cached because pressing ADD
+     * straight after CHECK must not probe the site twice.
+     */
     checkUrl: userProcedure
-      .input(z.object({ url: z.string().url() }))
-      .mutation(({ input }) => probeVenueUrl(input.url)),
+      .input(
+        z.object({
+          url: z.string().min(1).max(2048),
+          locale: z.enum(['pl', 'en']).default('pl'),
+          /** Consent to spend a paid render; honoured only after the free
+           *  ladder has already returned JS_RENDERED_NEEDS_PAID. */
+          allowPaid: z.boolean().default(false),
+        }),
+      )
+      .mutation(async ({ ctx, input }): Promise<ProbeOutcome> => {
+        const { locale } = input;
+
+        // Normalize before anything else so the cache key, the quota and the
+        // shared-venue lookup all agree on what "the same URL" means.
+        const normalized = normalizeVenueUrl(input.url);
+        if (!normalized.ok) return probeProblem(normalized.code, locale, null);
+        const key = normalized.url.toString();
+
+        // Already a venue? Hand back what we know without touching the network
+        // — this is the "you'll share it" promise the form already makes.
+        const existing = await ctx.venues.findByNormalizedUrl?.(key);
+        if (existing?.sourceMethod) {
+          return {
+            status: 'success',
+            normalizedUrl: key,
+            sourceUrl: existing.sourceUrl ?? key,
+            method: existing.sourceMethod as SourceMethod,
+            confidence: (existing.sourceConfidence ?? 'medium') as SourceConfidence,
+            suggestedName: existing.name,
+            language: existing.language,
+            sampleEvents: [],
+            shared: true,
+          };
+        }
+
+        if (!input.allowPaid) {
+          const cached = cachedProbe(key);
+          if (cached) return cached;
+        }
+
+        if (!consumeQuota(ctx.user.id, input.allowPaid ? 'paid' : 'free')) {
+          return probeProblem(
+            input.allowPaid ? 'PAID_QUOTA_EXCEEDED' : 'RATE_LIMITED',
+            locale,
+            key,
+          );
+        }
+
+        const outcome = await probeVenueUrl(input.url, {
+          locale,
+          allowPaid: input.allowPaid,
+          paidFetcher: defaultPaidFetcher(),
+          extract: defaultProbeExtractor(),
+        });
+        cacheProbe(key, outcome);
+        return outcome;
+      }),
 
     /**
      * Scrape one of your venues right now (GOI-75). The nightly sweep is the
