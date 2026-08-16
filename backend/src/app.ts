@@ -17,11 +17,49 @@ import {
   makeState,
   verifyState,
 } from './services/google-auth.js';
+import {
+  NOINDEX,
+  ROBOTS_TXT,
+  exchangeInvite,
+  gateStatus,
+  inviteGate,
+} from './services/invite-gate.js';
 
 export function createApp() {
   const app = new Hono();
 
-  app.use('*', cors({ origin: '*' }));
+  // Credentialed CORS: the invite cookie only travels cross-site if the
+  // response names an explicit origin, so `origin: '*'` is no longer an
+  // option (browsers reject the wildcard together with credentials). The
+  // allowlist is the configured app plus the local dev servers.
+  const allowedOrigins = [
+    env.APP_URL.replace(/\/$/, ''),
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ];
+  app.use(
+    '*',
+    cors({
+      origin: (origin) => (allowedOrigins.includes(origin) ? origin : allowedOrigins[0]!),
+      credentials: true,
+    }),
+  );
+
+  // Off search engines entirely, on every route (GOI-83). A header rather than
+  // a meta tag so it also covers the JSON endpoints and the gate page.
+  app.use('*', async (c, next) => {
+    await next();
+    c.header('X-Robots-Tag', NOINDEX);
+  });
+  app.get('/robots.txt', (c) => c.text(ROBOTS_TXT));
+
+  // ─── Invite gate (GOI-83) ─────────────────────────────────────────────────
+  // Deny by default, at the router root, before every route below — including
+  // /trpc/*. Temporary: removing the gate is deleting invite-gate.ts, these
+  // few lines, and the migration.
+  app.get('/i/:token', exchangeInvite);
+  app.get('/gate', gateStatus);
+  app.use('*', inviteGate());
 
   app.get('/health', (c) => c.json({ ok: true }));
 

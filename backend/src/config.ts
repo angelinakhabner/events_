@@ -19,6 +19,20 @@ const Env = z.object({
   /** Per-run ceiling on detail-page fetches during description enrichment
    *  (GOI-79). Each one is an HTTP request plus a model call. */
   MAX_DETAIL_FETCHES: z.coerce.number().int().min(0).default(50),
+  /**
+   * The pre-auth invite gate (GOI-83). Default TRUE: the site is closed unless
+   * a deployment says otherwise, so forgetting to set it fails closed. Set to
+   * false for local dev, and again — one flag — when the site opens up.
+   */
+  INVITE_GATE_ENABLED: z
+    .preprocess((v) => {
+      if (v === undefined || v === '') return true;
+      if (typeof v === 'boolean') return v;
+      const raw = String(v).trim().toLowerCase();
+      // Fail closed: only an explicit "off" opens the site.
+      return !(raw === 'false' || raw === '0' || raw === 'no' || raw === 'off');
+    }, z.boolean())
+    .default(true),
   FIRECRAWL_API_KEY: z.string().optional(),
   FIRECRAWL_API_URL: z.string().default('https://api.firecrawl.dev'),
   // Milliseconds Firecrawl waits for client-side JS to finish rendering before
