@@ -2,9 +2,12 @@ name: Deploy frontend
 
 # The repo's default branch is claude/epic-goldberg-qj4EC (there is no `main`);
 # it acts as production. The `dev` branch is the staging line: every push to it
-# redeploys a password-gated preview at /<repo>/dev/, while the default branch
-# keeps serving the root of the Pages site. Both builds ship in one Pages
-# artifact because a repo only gets a single Pages deployment.
+# redeploys a password-gated preview at /dev/, while the default branch keeps
+# serving the root of the Pages site. Both builds ship in one Pages artifact
+# because a repo only gets a single Pages deployment.
+#
+# The site is served from the custom domain below, so both builds are rooted at
+# the domain apex rather than the /<repo>/ subpath Pages uses by default.
 on:
   push:
     branches: [claude/epic-goldberg-qj4EC, dev]
@@ -18,6 +21,11 @@ env:
   # SHA-256 of the dev-preview password (the password itself is not in the
   # repo). Baked only into the /dev/ build; production builds skip the gate.
   DEV_GATE_HASH: 87274af01876341455b32d805946f272871bb42effa6604dccf28bb027afa82b
+  # Custom domain for the Pages site. Must match the value in the repo's
+  # Settings → Pages → Custom domain, and is republished on every deploy (see
+  # the CNAME handling below). Changing it here without changing it there — or
+  # vice versa — takes the site down.
+  CUSTOM_DOMAIN: afisz.cc
 
 jobs:
   deploy:
@@ -52,7 +60,10 @@ jobs:
         working-directory: prod
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          # Root of the custom domain, not /<repo>/ — the asset URLs, the
+          # BrowserRouter basename (frontend/src/main.tsx) and share links
+          # (frontend/src/lib/share.ts) all derive from this.
+          VITE_BASE_PATH: /
         run: |
           npm ci
           npm --workspace frontend run build
@@ -62,7 +73,7 @@ jobs:
         working-directory: dev
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/dev/
+          VITE_BASE_PATH: /dev/
           VITE_DEV_GATE_HASH: ${{ env.DEV_GATE_HASH }}
         run: |
           npm ci
@@ -77,8 +88,8 @@ jobs:
             cp -r dev/frontend/dist/. site/dev/
           fi
           # SPA fallback. The app uses BrowserRouter, so deep links like
-          # /<repo>/auth?token=… (the magic-link login landing) have no file on
-          # disk and Pages would answer with its own 404 page. Serving the built
+          # /auth?token=… (the magic-link login landing) have no file on disk
+          # and Pages would answer with its own 404 page. Serving the built
           # index.html as 404.html hands those URLs to the router instead; the
           # browser keeps the path and query string, and the bundle's asset URLs
           # are absolute, so it boots correctly from any depth.
@@ -86,6 +97,13 @@ jobs:
           if [ -f site/dev/index.html ]; then
             cp site/dev/index.html site/dev/404.html
           fi
+          # Custom domain. Pages reads the domain from a CNAME file in the
+          # published site, so it has to be re-created on every deploy — the
+          # gh-pages publish below runs with force_orphan, which wipes anything
+          # not in this directory. Without this the custom domain silently
+          # unsets itself on the next deploy and the site falls back to
+          # <owner>.github.io/<repo>/, where the base path above is now wrong.
+          echo "$CUSTOM_DOMAIN" > site/CNAME
 
       # The repo's Pages source setting is not visible from the workflow, so
       # publish through both supported mechanisms; the one matching the
@@ -98,6 +116,9 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
           force_orphan: true
+          # Belt and braces with the CNAME file written above: that one covers
+          # the Actions-based Pages deploy, this covers the gh-pages branch.
+          cname: ${{ env.CUSTOM_DOMAIN }}
       # 2. Actions-based Pages deploy. Fails harmlessly when the Pages source
       #    is set to "deploy from a branch", hence continue-on-error.
       - name: Setup Pages
