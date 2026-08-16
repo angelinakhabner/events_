@@ -1,6 +1,9 @@
 import { isExhibition, type Event } from '@afisz/shared';
 
-export type BucketKey = 'soon' | 'today' | 'tomorrow' | 'thisWeek' | 'later';
+export type BucketKey =
+  | 'soon' | 'today' | 'tomorrow' | 'thisWeek'
+  // Fallback periods, used only when nothing is on in the coming week (GOI-82).
+  | 'nextWeek' | 'thisMonth' | 'nextMonth' | 'later';
 
 export interface Bucket {
   key: BucketKey;
@@ -33,7 +36,9 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
   const todayDay = warsawDayKey(now);
   const tomorrowDay = warsawDayKey(new Date(now.getTime() + 24 * 60 * 60 * 1000));
 
-  const buckets: Record<BucketKey, Event[]> = {
+  // Only the near buckets plus the catch-all are filled here; the period keys
+  // are assigned later, by fallbackBuckets, from whatever lands in `later`.
+  const buckets: Record<'soon' | 'today' | 'tomorrow' | 'thisWeek' | 'later', Event[]> = {
     soon: [],
     today: [],
     tomorrow: [],
@@ -78,23 +83,131 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
   const near = nearAll.filter((b) => b.items.length > 0);
   if (near.length > 0 || buckets.later.length === 0) return near;
 
-  // Nothing this week, but something later: show that day and say when it is.
-  // Only the nearest day, not the whole tail — the question being answered is
-  // "when does this start again?", not "what is the autumn programme?".
-  const nearestDay = warsawDayKey(new Date(Date.parse(buckets.later[0]!.startsAt)));
-  const items = buckets.later.filter(
-    (e) => warsawDayKey(new Date(Date.parse(e.startsAt))) === nearestDay,
-  );
-  return [{ key: 'later', label: `Nearest screening on ${nearestDayLabel(items[0]!.startsAt)}`, items }];
+  // Nothing this week, but something later.
+  return fallbackBuckets(buckets.later, now);
 }
 
-const nearestDayFmt = new Intl.DateTimeFormat('en-GB', {
-  weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ,
-});
+/** Enough rows for the fallback to be worth reading rather than a stub. */
+export const FALLBACK_MIN_EVENTS = 5;
+/** …and a ceiling, so an empty week doesn't unroll the whole autumn. */
+export const FALLBACK_MAX_EVENTS = 12;
 
-/** "Fri 12 Sep" — the date named in the "Nearest screening on …" heading. */
-function nearestDayLabel(iso: string): string {
-  return nearestDayFmt.format(new Date(iso));
+/**
+ * What to show when the coming week is empty (GOI-82).
+ *
+ * The old rule was "the nearest day, and nothing after it" — which answered
+ * "when does this start again?" precisely, and then stopped. In a Warsaw
+ * summer that regularly meant a single row on a page, which reads as breakage
+ * rather than as a quiet season.
+ *
+ * So: start from the nearest day, and if that leaves fewer than
+ * {@link FALLBACK_MIN_EVENTS} rows, keep taking whole days until there are
+ * enough — never past {@link FALLBACK_MAX_EVENTS}. Whole days, because
+ * stopping mid-evening would silently hide the 20:30 showing of something
+ * whose 18:00 made the cut.
+ *
+ * The headings become periods rather than one date. "Next week" and "Next
+ * month" say how far off the programme resumes at a glance, which a single
+ * "Nearest screening on Sat 12 Sept" only says if you do the arithmetic.
+ */
+export function fallbackBuckets(later: Event[], now: Date): Bucket[] {
+  if (later.length === 0) return [];
+
+  const byDay = groupConsecutiveDays(later);
+  const taken: Event[] = [];
+  for (const day of byDay) {
+    // Stop once there is enough to read — but always finish the day started,
+    // and never exceed the ceiling.
+    if (taken.length >= FALLBACK_MIN_EVENTS) break;
+    if (taken.length + day.length > FALLBACK_MAX_EVENTS) break;
+    taken.push(...day);
+  }
+  // A single day bigger than the ceiling still has to render something.
+  if (taken.length === 0) taken.push(...later.slice(0, FALLBACK_MAX_EVENTS));
+
+  const order: BucketKey[] = ['thisWeek', 'nextWeek', 'thisMonth', 'nextMonth', 'later'];
+  const groups = new Map<BucketKey, Event[]>();
+  for (const e of taken) {
+    const key = periodKey(e.startsAt, now);
+    const list = groups.get(key) ?? [];
+    list.push(e);
+    groups.set(key, list);
+  }
+
+  return order
+    .filter((key) => groups.get(key)?.length)
+    .map((key) => ({ key, label: PERIOD_LABEL[key], items: groups.get(key)! }));
+}
+
+const PERIOD_LABEL: Record<BucketKey, string> = {
+  soon: 'Starting soon',
+  today: 'Later today',
+  tomorrow: 'Tomorrow',
+  thisWeek: 'This week',
+  nextWeek: 'Next week',
+  thisMonth: 'This month',
+  nextMonth: 'Next month',
+  later: 'Later',
+};
+
+/** Events split into runs of the same Warsaw day, in order. */
+function groupConsecutiveDays(events: Event[]): Event[][] {
+  const out: Event[][] = [];
+  let currentDay = '';
+  for (const e of events) {
+    const day = warsawDayKey(new Date(Date.parse(e.startsAt)));
+    if (day !== currentDay) {
+      out.push([]);
+      currentDay = day;
+    }
+    out[out.length - 1]!.push(e);
+  }
+  return out;
+}
+
+/**
+ * Which period an event falls in, relative to now (GOI-82).
+ *
+ * Weeks are checked before months because they are the finer answer: an event
+ * eight days out is better described as "next week" than as "this month",
+ * even though both are true.
+ */
+export function periodKey(iso: string, now: Date): BucketKey {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 'later';
+  const day = warsawDayKey(new Date(t));
+
+  const weekStart = warsawWeekStart(now);
+  const thisWeekEnd = warsawDayKey(addDays(weekStart, 7));
+  const nextWeekEnd = warsawDayKey(addDays(weekStart, 14));
+  if (day < thisWeekEnd) return 'thisWeek';
+  if (day < nextWeekEnd) return 'nextWeek';
+
+  const month = day.slice(0, 7);
+  const nowMonth = warsawDayKey(now).slice(0, 7);
+  if (month === nowMonth) return 'thisMonth';
+  if (month === nextMonthKey(nowMonth)) return 'nextMonth';
+  return 'later';
+}
+
+/** Monday 00:00 of the Warsaw week containing `now`. */
+function warsawWeekStart(now: Date): Date {
+  const day = warsawDayKey(now);
+  const [y, m, d] = day.split('-').map(Number);
+  const utcMidnight = new Date(Date.UTC(y!, m! - 1, d!));
+  // getUTCDay: 0 = Sunday. Monday-based weeks match how a Polish calendar reads.
+  const offset = (utcMidnight.getUTCDay() + 6) % 7;
+  return addDays(utcMidnight, -offset);
+}
+
+function addDays(d: Date, days: number): Date {
+  return new Date(d.getTime() + days * 86_400_000);
+}
+
+function nextMonthKey(yyyymm: string): string {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const next = new Date(Date.UTC(y!, m!, 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 // ─── Museums (GOI-53) ────────────────────────────────────────────────────────
