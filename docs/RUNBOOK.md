@@ -201,9 +201,31 @@ GitHub Pages is showing repo content, not the built SPA. Debug:
    after `CI` succeeds on `main`, or via manual `workflow_dispatch`. If CI is
    red, the deploy never fires and Pages keeps the last (or default) content.
 3. **Blank page / 404 on assets** instead of README usually means a wrong
-   `base` path — confirm the workflow passed `VITE_BASE_PATH=/<repo>/` and that
-   `VITE_API_URL` (Actions repo variable) points at the Railway backend.
+   `base` path — confirm the workflow passed `VITE_BASE_PATH=/` (the site is
+   served from the `afisz.cc` apex, not the `/<repo>/` subpath) and that
+   `VITE_API_URL` (Actions repo variable) points at `https://api.afisz.cc`.
 4. Re-run from **Actions → Deploy frontend → Run workflow** after fixing.
+
+## Site loads but no events appear
+
+The page renders, the header is there, the feed is empty. The frontend is
+fine; something between it and `https://api.afisz.cc/trpc` is not. Check the
+API host before touching anything in the app:
+
+```bash
+getent hosts api.afisz.cc     # NXDOMAIN ⇒ the DNS record is missing
+curl https://api.afisz.cc/health
+```
+
+`ERR_NAME_NOT_RESOLVED` on the `/trpc` request in DevTools means the `api`
+subdomain was never created at the DNS host, or was created in the wrong zone
+— registering the custom domain in Railway does *not* create it. Full
+walkthrough, including the Railway and Google-console settings that move with
+the domain, in [`DOMAINS.md`](DOMAINS.md).
+
+If `/health` answers `{"ok":true}` and the feed is still empty, the domain is
+not the problem — check `DATABASE_URL` and whether a scrape has ever
+succeeded (`events.listDefault` returns `[]` when `DATABASE_URL` is unset).
 
 ## Quick reference
 
