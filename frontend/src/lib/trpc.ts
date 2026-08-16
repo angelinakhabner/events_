@@ -21,6 +21,10 @@ export function makeTrpcClient() {
     links: [
       httpBatchLink({
         url: `${base}/trpc`,
+        // The invite cookie (GOI-83) lives on the API's origin, which is not
+        // this one — without `include` the browser withholds it and every
+        // procedure comes back denied.
+        fetch: (url, options) => fetch(url, { ...options, credentials: 'include' }),
         headers() {
           const token = getSessionToken();
           return {
