@@ -289,6 +289,10 @@ const my = router({
           language: z.string().trim().toLowerCase().regex(/^[a-z]{2,3}$/).optional(),
           windowDays: z.number().int().min(1).max(90).nullable().optional(),
           listId: z.string().optional(),
+          /** Personal tags typed in the add form (GOI-74). Same shape and
+           *  limits as the update path, so a tag can't arrive by one route
+           *  that the other would reject. */
+          tags: z.array(z.string().trim().max(40)).max(20).optional(),
         }),
       )
       .mutation(async ({ ctx, input }) => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { AddVenueForm } from '../components/AddVenueForm';
+import { AddVenueForm, withDraft } from '../components/AddVenueForm';
 import type { ProbeOutcome } from '@afisz/shared';
 
 /** Result the mocked checkUrl mutation resolves with; set per test. */
@@ -62,21 +62,21 @@ beforeEach(() => {
 });
 
 describe('AddVenueForm — guided flow', () => {
-  it('walks language → free-text URL → tag, with no pre-defined venue list', () => {
+  it('walks language → free-text URL → category, with no pre-defined venue list', () => {
     render(<AddVenueForm onSubmit={vi.fn()} submitting={false} error={null} />);
 
     const language = screen.getByLabelText(/1 · language/i);
     const url = screen.getByLabelText(/2 · venue page url/i);
     expect(language).toBeInTheDocument();
     expect(url).toHaveValue(''); // free text, nothing pre-filled
-    expect(screen.getByRole('group', { name: /3 · tag/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /3 · category/i })).toBeInTheDocument();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     const cinemaTag = screen.getByRole('button', { name: /^cinema$/i });
     expect(language.compareDocumentPosition(url) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(url.compareDocumentPosition(cinemaTag) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('submits language + url + tag (name falls back to the hostname) and requires a tag', () => {
+  it('submits language + url + category (name falls back to the hostname) and requires a category', () => {
     const onSubmit = vi.fn();
     render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
 
@@ -97,6 +97,7 @@ describe('AddVenueForm — guided flow', () => {
       url: 'https://www.palacowe.example/repertuar',
       category: 'cinema',
       language: 'en',
+      tags: [],
     });
   });
 });
@@ -221,5 +222,97 @@ describe('AddVenueForm — failures render by severity, never raw', () => {
 
     await screen.findByRole('status');
     expect(screen.queryByRole('button', { name: /paid fetch/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('AddVenueForm — your own tags (GOI-74)', () => {
+  function fill() {
+    fireEvent.change(screen.getByLabelText(/venue page url/i), {
+      target: { value: 'https://palacowe.example/repertuar' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^cinema$/i }));
+  }
+
+  it('lets the user type tags of their own and submits them', () => {
+    const onSubmit = vi.fn();
+    render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
+    fill();
+
+    const field = screen.getByLabelText(/your tags/i);
+    fireEvent.change(field, { target: { value: 'date night' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.change(field, { target: { value: 'walking distance' } });
+    fireEvent.keyDown(field, { key: ',' });
+
+    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ['date night', 'walking distance'] }),
+    );
+  });
+
+  it('does not submit the form when Enter commits a tag', () => {
+    const onSubmit = vi.fn();
+    render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
+    fill();
+
+    const field = screen.getByLabelText(/your tags/i);
+    fireEvent.change(field, { target: { value: 'jazz' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+
+    // You are mid-thought, not finished.
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('jazz')).toBeInTheDocument();
+  });
+
+  // Nobody expects a tag they typed to vanish because they pressed the form's
+  // submit rather than the tag's.
+  it('keeps a half-typed tag when the form is submitted', () => {
+    const onSubmit = vi.fn();
+    render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
+    fill();
+
+    fireEvent.change(screen.getByLabelText(/your tags/i), { target: { value: 'unfinished' } });
+    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: ['unfinished'] }));
+  });
+
+  it('removes a tag again', () => {
+    const onSubmit = vi.fn();
+    render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
+    fill();
+
+    const field = screen.getByLabelText(/your tags/i);
+    fireEvent.change(field, { target: { value: 'jazz' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: /remove tag jazz/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }));
+  });
+
+  it('still submits with no tags at all — they are optional', () => {
+    const onSubmit = vi.fn();
+    render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
+    fill();
+    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }));
+  });
+});
+
+describe('withDraft', () => {
+  it('trims, and ignores an empty draft', () => {
+    expect(withDraft([], '  jazz  ')).toEqual(['jazz']);
+    expect(withDraft(['a'], '   ')).toEqual(['a']);
+  });
+
+  it('de-duplicates case-insensitively', () => {
+    expect(withDraft(['Jazz'], 'jazz')).toEqual(['Jazz']);
+  });
+
+  it('caps a tag at 40 chars and the list at 20, like the server does', () => {
+    expect(withDraft([], 'x'.repeat(60))[0]).toHaveLength(40);
+    const full = Array.from({ length: 20 }, (_, i) => `t${i}`);
+    expect(withDraft(full, 'one more')).toHaveLength(20);
   });
 });
