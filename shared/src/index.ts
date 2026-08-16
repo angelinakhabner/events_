@@ -474,3 +474,106 @@ export type ProbeOutcome = ProbeSuccess | ProbeProblem;
 /** How many free/paid probes a user gets, and over what window (GOI-72 §7). */
 export const PROBE_FREE_PER_HOUR = 10;
 export const PROBE_PAID_PER_DAY = 3;
+
+// ─── Venue filter row (GOI-76) ───────────────────────────────────────────────
+
+/**
+ * Why a venue's count is what it is.
+ *
+ * A zero that means "nothing on this Tuesday" and a zero that means "we can't
+ * read this venue any more" look identical on a chip, and the second one is a
+ * data problem the user deserves to be told about rather than left to read as
+ * an empty programme.
+ */
+export type VenueFilterStatus = 'active' | 'empty' | 'stale' | 'dark';
+
+export interface VenueFilterOption {
+  id: string;
+  /** Derived from the name — what goes in the URL instead of a UUID. */
+  slug: string;
+  name: string;
+  category: Category;
+  /** Events at this venue under the current day/time filters. Never reflects
+   *  the venue selection itself (GOI-76 §2). */
+  count: number;
+  status: VenueFilterStatus;
+  /** When this venue was last read successfully, for the "stale" note. */
+  lastScrapedAt: string | null;
+}
+
+/** A venue unread for longer than this is stale rather than quiet. */
+export const VENUE_STALE_AFTER_DAYS = 7;
+
+/**
+ * Classify a venue for the filter row.
+ *
+ * Order matters: a venue we cannot read is `dark` whatever its counts say,
+ * because every other reading of its numbers would be a guess.
+ */
+export function venueFilterStatus(
+  v: {
+    /** Events matching the current day/time filters. */
+    count: number;
+    /** Events upcoming at all, ignoring day/time. */
+    upcomingTotal: number;
+    /** Non-null when the last probe failed — see GOI-72. */
+    probeErrorCode?: string | null;
+    lastScrapedAt?: string | null;
+  },
+  now: Date = new Date(),
+  staleAfterDays: number = VENUE_STALE_AFTER_DAYS,
+): VenueFilterStatus {
+  // Codes that mean "the page is fine, there is simply nothing on" are not a
+  // reading failure — a venue between seasons is empty, not broken.
+  const benign = new Set(['NO_EVENTS_FOUND', 'PAST_EVENTS_ONLY']);
+  if (v.probeErrorCode && !benign.has(v.probeErrorCode)) return 'dark';
+
+  if (v.lastScrapedAt) {
+    const age = now.getTime() - Date.parse(v.lastScrapedAt);
+    if (Number.isFinite(age) && age > staleAfterDays * 86_400_000) return 'stale';
+  }
+
+  if (v.upcomingTotal === 0) return 'empty';
+  return 'active';
+}
+
+/** Human sentence for a chip's title/aria-description (GOI-76 §2, §7). */
+export function venueStatusNote(
+  status: VenueFilterStatus,
+  count: number,
+  lastScrapedAt: string | null,
+  now: Date = new Date(),
+): string | null {
+  switch (status) {
+    case 'dark':
+      return 'We can’t currently read this venue’s listings';
+    case 'stale': {
+      const days = lastScrapedAt
+        ? Math.floor((now.getTime() - Date.parse(lastScrapedAt)) / 86_400_000)
+        : null;
+      return days === null || !Number.isFinite(days)
+        ? 'Last updated a while ago'
+        : `Last updated ${days} day${days === 1 ? '' : 's'} ago`;
+    }
+    case 'empty':
+      return 'This venue has no events listed right now';
+    default:
+      return count === 0 ? 'Nothing on in this period' : null;
+  }
+}
+
+/**
+ * URL-safe form of a venue name. Used instead of the UUID so a shared link
+ * reads as `?venues=muranow,iluzjon` — and so a link keeps working across a
+ * database that was reseeded with new ids.
+ */
+export function venueSlug(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    // Polish ł has no combining form, so NFD leaves it alone.
+    .replace(/ł/gi, 'l')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}

@@ -19,6 +19,9 @@ vi.mock('../lib/trpc', () => ({
     events: {
       listDefault: { useQuery: () => eventsMock() },
       screenings: { useQuery: () => ({ data: [], isLoading: false, error: null }) },
+      // The venue filter row (GOI-76). These cases are about the museums
+      // split, so the row has nothing to show and stays out of the way.
+      filterOptions: { useQuery: () => ({ data: { venues: [] }, isLoading: false, error: null }) },
     },
     venues: { list: { useQuery: () => ({ data: venues, isLoading: false, error: null }) } },
     festivals: { list: { useQuery: () => ({ data: [], isLoading: false, error: null }) } },
