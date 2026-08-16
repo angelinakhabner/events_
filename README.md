@@ -82,11 +82,12 @@ npm run lint
 | `EXTRACTOR_MODEL_STRUCTURED` | unset | unset | Model used **only** for pages whose input is structured data (JSON-LD / `__NEXT_DATA__`) rather than HTML — see [Choosing an extraction model](#choosing-an-extraction-model). Unset ⇒ `EXTRACTOR_MODEL` |
 | `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
 | `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email. The domain must be verified in Resend |
-| `APP_URL` | `http://localhost:5173` | `https://<owner>.github.io/<repo>` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
+| `APP_URL` | `http://localhost:5173` | `https://afisz.cc` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
+| `API_PUBLIC_URL` | unset | `https://api.afisz.cc` | Public backend origin. Builds the Google OAuth redirect URI `<API_PUBLIC_URL>/auth/google/callback`, which must be registered verbatim in the Google console |
 | `NEWSLETTER_CRON_ENABLED` | unset | `true` | **Required for newsletter briefs to go out at all.** Unset ⇒ the send sweep never starts and no brief is ever mailed, however subscriptions are configured |
 | `ADMIN_TOKEN` | unset (optional) | a long random string | Enables the `/admin/*` debug endpoints, including the newsletter diagnostics below. Callers pass `?token=<value>` |
-| `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | set as a **GitHub Actions repo variable**, baked into the Pages build | Backend base URL the frontend calls |
-| `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/<repo>/` | Vite `base` for the GitHub Pages subpath |
+| `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | `https://api.afisz.cc`, set as a **GitHub Actions repo variable** and baked into the Pages build | Backend base URL the frontend calls |
+| `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/` (`/dev/` for the preview) | Vite `base`. The site is served from the `afisz.cc` apex, not the `/<repo>/` Pages subpath |
 
 `ANTHROPIC_API_KEY` and `RESEND_API_KEY` are read lazily — the server boots and
 serves venues/folders/default events without them; only AI parsing and email
@@ -127,7 +128,7 @@ go through the `dev` branch first:
 2. CI runs the full suite (typecheck, lint, unit + integration tests) on
    every push to `dev`.
 3. Each push to `dev` also redeploys a **password-gated dev preview** at
-   `https://<owner>.github.io/<repo>/dev/` — check your updates there. The
+   `https://afisz.cc/dev/` — check your updates there. The
    password's SHA-256 hash is baked into the dev build
    (`VITE_DEV_GATE_HASH` in `.github/workflows/deploy-frontend.yml`); the
    password itself is shared privately. The unlock persists per browser via
@@ -150,15 +151,20 @@ One-time setup in the repo:
 
 1. **Settings → Pages →** *Source: **GitHub Actions***.
 2. **Settings → Secrets and variables → Actions → Variables → New variable**
-   `VITE_API_URL` = the Railway backend URL (e.g. `https://goin-backend.up.railway.app`).
+   `VITE_API_URL` = the backend origin, `https://api.afisz.cc`.
 3. Push to `main`. Once `CI` goes green, `Deploy frontend` runs and the site
-   appears at `https://<owner>.github.io/<repo>/`. You can also trigger it
-   manually from **Actions → Deploy frontend → Run workflow**.
+   appears at `https://afisz.cc/`. You can also trigger it manually from
+   **Actions → Deploy frontend → Run workflow**.
 
-The Vite `base` is set from `VITE_BASE_PATH` (the workflow passes
-`/<repo>/`); locally it falls back to `/events_/`. In dev, the Vite proxy
-forwards `/trpc` to `http://localhost:3001`, so `VITE_API_URL` can stay
-empty in `.env`. In production it must be the Railway URL.
+The site is served from the `afisz.cc` custom domain, so the Vite `base` the
+workflow passes is `/` (`/dev/` for the password-gated preview); locally it
+falls back to `/events_/`. In dev, the Vite proxy forwards `/trpc` to
+`http://localhost:3001`, so `VITE_API_URL` can stay empty in `.env`. In
+production it must be the API origin.
+
+`VITE_API_URL` is baked in at build time, so changing the repo variable does
+nothing until the workflow re-runs. See [`docs/DOMAINS.md`](docs/DOMAINS.md)
+for the DNS records both hostnames need.
 
 ## Scraping pipeline
 
@@ -249,8 +255,10 @@ Short version:
    commands and `/health` as the healthcheck.
 3. Env vars: `DATABASE_URL=${{ Postgres.DATABASE_URL }}`, `ANTHROPIC_API_KEY`,
    `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `APP_URL`, `NODE_ENV=production`.
-4. Generate a public domain → set `VITE_API_URL` (repo Actions variable) to it
-   → re-run the **Deploy frontend** workflow.
+4. Add the custom domain `api.afisz.cc` (Settings → Networking) **and** the
+   matching DNS record — see [`docs/DOMAINS.md`](docs/DOMAINS.md) — then set
+   `VITE_API_URL` (repo Actions variable) to it and re-run the **Deploy
+   frontend** workflow.
 
 ## Choosing an extraction model
 
