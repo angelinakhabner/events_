@@ -577,3 +577,155 @@ export function venueSlug(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
+
+// ─── Event classification (GOI-80) ───────────────────────────────────────────
+
+/**
+ * What kind of *thing* an event is, as opposed to what shape it has in time.
+ *
+ * The ticket calls this field `category`. It is stored as `contentCategory`
+ * because `Event.category` already exists and means something else — the
+ * venue-derived cinema/theatre/exhibition/comedy/music/other. Overloading that
+ * name would have silently corrupted every existing filter that reads it, so
+ * the two live side by side.
+ *
+ * Flat, and deliberately not nested under the venue's category: CSW Zamek
+ * Ujazdowski is a museum that runs a real cinema programme, so `screening` on
+ * a museum venue is correct, not a validation error.
+ *
+ * Append-only. These strings persist inside saved folder filters, so a value
+ * must never be renamed or renumbered.
+ */
+export type ContentCategory =
+  | 'exhibition'
+  | 'guided_tour'
+  | 'workshop'
+  | 'screening'
+  | 'lecture'
+  | 'concert'
+  | 'performance'
+  | 'festival'
+  | 'other';
+
+export const CONTENT_CATEGORIES: ContentCategory[] = [
+  'exhibition', 'guided_tour', 'workshop', 'screening',
+  'lecture', 'concert', 'performance', 'festival', 'other',
+];
+
+export function isContentCategory(v: unknown): v is ContentCategory {
+  return typeof v === 'string' && (CONTENT_CATEGORIES as string[]).includes(v);
+}
+
+/** How a row's `contentCategory` was decided — so a misclassification can be
+ *  audited without re-running anything. */
+export type CategorySource = 'structural' | 'keyword' | 'llm';
+
+/** Cross-cutting, and deliberately not a category value (GOI-80 Field 3).
+ *  "Warsztaty rodzinne" is a workshop AND family; folding family into the
+ *  category vocabulary would swallow the workshop signal, which is the whole
+ *  reason this is a separate field. */
+export type Audience = 'family';
+
+/**
+ * Polish keyword pre-pass over the **title only** (GOI-80 Field 2, step 1).
+ *
+ * Never the description: a description mentions other event types constantly
+ * ("po wystawie", "przed koncertem"), so matching on it would misfile most of
+ * the catalogue.
+ *
+ * Order is the tie-break and is part of the contract — a title matching two
+ * keywords resolves to the first entry here, which is what makes the pass
+ * deterministic and testable.
+ */
+const KEYWORDS: [RegExp, ContentCategory][] = [
+  // Stems, not whole words: oprowadzanie / oprowadzenie / oprowadzeniu.
+  [/oprowadz|spacer/i, 'guided_tour'],
+  [/warsztat/i, 'workshop'],
+  [/pokaz|projekcj|seans/i, 'screening'],
+  [/wykład|wyklad|spotkani|dyskusj|debat/i, 'lecture'],
+  [/koncert/i, 'concert'],
+  [/spektakl|performans/i, 'performance'],
+  [/wystaw|ekspozycj/i, 'exhibition'],
+];
+
+export function classifyByKeyword(title: string): ContentCategory | null {
+  const hay = (title ?? '').toLowerCase();
+  for (const [re, category] of KEYWORDS) {
+    if (re.test(hay)) return category;
+  }
+  return null;
+}
+
+/** Independent of category, by design — see {@link Audience}. */
+const FAMILY = /dla dzieci|dla rodzin|rodzinn|najmłodsz|najmlodsz/i;
+
+export function classifyAudience(title: string): Audience | null {
+  return FAMILY.test(title ?? '') ? 'family' : null;
+}
+
+/**
+ * The whole classification for one row (GOI-80).
+ *
+ * Structure wins. A row whose dates say "a run with no clock" is an
+ * exhibition, and no keyword or model answer may overrule that — the temporal
+ * shape is what selects the date predicate at query time, and getting it from
+ * a guess would break date filtering rather than merely mislabel a chip.
+ */
+export interface ClassificationInput {
+  title: string;
+  /** True when the row is structurally a run: a date range with no clock. */
+  isExhibitionShape: boolean;
+  /** Category the model returned, when the keyword pass found nothing. */
+  llmCategory?: string | null;
+}
+
+export interface Classification {
+  contentCategory: ContentCategory;
+  categorySource: CategorySource;
+  audience: Audience | null;
+  /** Set when the model disagreed with the structure — logged, never applied. */
+  conflict: string | null;
+}
+
+export function classifyEvent(input: ClassificationInput): Classification {
+  const audience = classifyAudience(input.title);
+
+  // Structural rows never reach the keyword pass or the model.
+  if (input.isExhibitionShape) {
+    const conflict =
+      input.llmCategory && input.llmCategory !== 'exhibition'
+        ? `structure says exhibition, model said ${input.llmCategory}`
+        : null;
+    return { contentCategory: 'exhibition', categorySource: 'structural', audience, conflict };
+  }
+
+  const keyword = classifyByKeyword(input.title);
+  if (keyword) {
+    return { contentCategory: keyword, categorySource: 'keyword', audience, conflict: null };
+  }
+
+  if (input.llmCategory) {
+    // Anything outside the closed vocabulary becomes 'other' rather than
+    // entering the set — the vocabulary is a contract with saved filters.
+    return {
+      contentCategory: isContentCategory(input.llmCategory) ? input.llmCategory : 'other',
+      categorySource: 'llm',
+      audience,
+      conflict: isContentCategory(input.llmCategory)
+        ? null
+        : `model returned "${input.llmCategory}", outside the vocabulary`,
+    };
+  }
+
+  return { contentCategory: 'other', categorySource: 'keyword', audience, conflict: null };
+}
+
+/**
+ * Drop values a saved filter carries that this version doesn't know (GOI-80,
+ * persistence contract). A filter saved by a newer build — or by one rolled
+ * back since — keeps every value that still parses instead of erroring.
+ */
+export function keepKnownCategories(values: unknown): ContentCategory[] {
+  if (!Array.isArray(values)) return [];
+  return values.filter(isContentCategory);
+}

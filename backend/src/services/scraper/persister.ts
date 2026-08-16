@@ -1,7 +1,7 @@
 import { sql, and, eq, gte, lte, lt } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import type { ValidatedEvent } from './validator.js';
-import type { Venue } from '@afisz/shared';
+import { classifyEvent, type Venue } from '@afisz/shared';
 
 export interface PersistResult {
   inserted: number;
@@ -46,6 +46,11 @@ export async function saveEvents(
       priceMax: e.price_max,
       sourceUrl: e.source_url,
       sourceId: e.source_id ?? null,
+      // GOI-80. The structural shape is decided here, from the row's own
+      // dates, and outranks anything the keyword pass or the model says —
+      // `kind` selects the date predicate at query time, so a guess there
+      // breaks filtering rather than merely mislabelling a chip.
+      ...classifyRow(e),
       scrapedAt: now,
       updatedAt: now,
     };
@@ -63,6 +68,9 @@ export async function saveEvents(
       priceMin: values.priceMin,
       priceMax: values.priceMax,
       sourceUrl: values.sourceUrl,
+      contentCategory: values.contentCategory,
+      categorySource: values.categorySource,
+      audience: values.audience,
       scrapedAt: values.scrapedAt,
       updatedAt: values.updatedAt,
     };
@@ -125,4 +133,31 @@ export async function pruneStaleEvents(
     )
     .returning({ id: schema.events.id });
   return deleted.length;
+}
+
+
+/**
+ * One row's classification (GOI-80), decided at save time.
+ *
+ * A conflict between the structure and the model is logged and discarded, not
+ * applied: the structure is what the date predicate keys off.
+ */
+function classifyRow(e: {
+  title: string;
+  kind?: string;
+  content_category?: unknown;
+}): { contentCategory: string; categorySource: string; audience: string | null } {
+  const result = classifyEvent({
+    title: e.title,
+    isExhibitionShape: e.kind === 'exhibition',
+    llmCategory: typeof e.content_category === 'string' ? e.content_category : null,
+  });
+  if (result.conflict) {
+    console.warn(`[classify] ${e.title}: ${result.conflict}`);
+  }
+  return {
+    contentCategory: result.contentCategory,
+    categorySource: result.categorySource,
+    audience: result.audience,
+  };
 }
