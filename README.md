@@ -87,6 +87,7 @@ npm run lint
 | `API_PUBLIC_URL` | unset | `https://api.afisz.cc` | Public backend origin. Builds the Google OAuth redirect URI `<API_PUBLIC_URL>/auth/google/callback`, which must be registered verbatim in the Google console |
 | `NEWSLETTER_CRON_ENABLED` | unset | `true` | **Required for newsletter briefs to go out at all.** Unset ⇒ the send sweep never starts and no brief is ever mailed, however subscriptions are configured |
 | `ADMIN_TOKEN` | unset (optional) | a long random string | Enables the `/admin/*` debug endpoints, including the newsletter diagnostics below. Callers pass `?token=<value>` |
+| `NEWSLETTER_API_KEY` | unset (optional) | a long random string | Enables the [public newsletter API](#public-newsletter-api-goi-87). Unset ⇒ every `/api/v1/newsletter/*` route answers 503. Keep it distinct from `ADMIN_TOKEN`: this one is handed to third parties |
 | `VITE_API_URL` | empty (Vite proxies `/trpc` → :3001) | `https://api.afisz.cc`, set as a **GitHub Actions repo variable** and baked into the Pages build | Backend base URL the frontend calls |
 | `VITE_BASE_PATH` | falls back to `/events_/` | workflow passes `/` (`/dev/` for the preview) | Vite `base`. The site is served from the `afisz.cc` apex, not the `/<repo>/` Pages subpath |
 
@@ -96,6 +97,58 @@ calls fail if they're missing. In particular, **email sign-in silently does
 nothing useful without `RESEND_API_KEY`**: the token is still minted, but the
 link is only written to the server log and the UI says email isn't configured. CI uses a throwaway set (`backend/.env.test`)
 against the CI Postgres service.
+
+## Public newsletter API (GOI-87)
+
+A REST/JSON surface so **other services** can work with the newsletter —
+a signup form on another site, a CRM syncing its list, an external scheduler
+driving sends. The SPA's tRPC procedures need a browser session and are not
+usable from outside; this is.
+
+Enable it by setting `NEWSLETTER_API_KEY` to a long random string. While it is
+unset every route answers `503`, so a deploy that forgets to configure one
+exposes nothing. Authenticate with `Authorization: Bearer <NEWSLETTER_API_KEY>`.
+
+The API sits **above the invite gate** — the services it exists for hold no
+invite cookie — and carries its own bearer auth instead. Subscriptions are
+addressed by **email**, never by internal user id.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/newsletter/status` | Whether this deployment can actually deliver (cron flag, DB, Resend). Start here — it separates "my key is wrong" from "this environment sends no email" |
+| `GET` | `/api/v1/newsletter/subscriptions` | Every enabled subscription |
+| `GET` | `/api/v1/newsletter/subscriptions/:email` | One subscription; `404` if the address has none |
+| `POST` | `/api/v1/newsletter/subscriptions` | Create or replace one. An address with no account gets one — this is what makes an external signup form work. It mints no session, so the caller gains no way to act *as* that user |
+| `DELETE` | `/api/v1/newsletter/subscriptions/:email` | Unsubscribe. **Disables rather than deletes**, so a resubscribe isn't a fresh setup and the send history survives |
+| `POST` | `/api/v1/newsletter/send` | Run a send sweep now. Body: `{ "dryRun": true, "force": true, "only": "ada@example.com" }`, all optional |
+
+```bash
+API=https://api.afisz.cc/api/v1/newsletter
+KEY=$NEWSLETTER_API_KEY
+
+# Can this deployment deliver at all?
+curl -s -H "Authorization: Bearer $KEY" "$API/status"
+
+# Subscribe someone: only email and frequency are required, everything
+# else takes the same defaults the app's own form uses.
+curl -s -X POST -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"email":"ada@example.com","frequency":"daily","sendHour":8}' "$API/subscriptions"
+
+# What would go out right now, without sending anything:
+curl -s -X POST -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"dryRun":true}' "$API/send"
+
+curl -s -X DELETE -H "Authorization: Bearer $KEY" "$API/subscriptions/ada%40example.com"
+```
+
+`POST /send` with no options runs exactly the sweep the in-process scheduler
+runs, which is what lets an external cron replace it — set `dryRun` first while
+wiring it up, since it reports every outcome and sends nothing.
+
+The request body for a subscription is validated by the same schema the app's
+own form posts through (`services/newsletter-input.ts`), so the two front doors
+cannot drift: a field added for the app is accepted here on the same commit,
+with the same bounds and defaults.
 
 ## Scheduled scraping (not yet wired)
 

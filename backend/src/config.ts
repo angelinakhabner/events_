@@ -63,6 +63,12 @@ const Env = z.object({
   // When set, enables the /admin/* debug endpoints (manual scrape trigger,
   // venue list). Callers must pass ?token=<this>. Unset → endpoints disabled.
   ADMIN_TOKEN: z.string().optional(),
+  // Bearer key for the public newsletter API (GOI-87), which lets other
+  // services manage subscriptions and trigger sends. Unset → every /api/v1
+  // route answers 503, so forgetting to configure it exposes nothing. Separate
+  // from ADMIN_TOKEN on purpose: this one is handed to third parties, and
+  // rotating it must not also disable the debug endpoints.
+  NEWSLETTER_API_KEY: z.string().optional(),
   SCRAPE_CRON_ENABLED: z
     .string()
     .optional()
