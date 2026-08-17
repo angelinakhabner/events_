@@ -81,7 +81,8 @@ npm run lint
 | `EXTRACTOR_MODEL` | `claude-sonnet-4-6` | `claude-sonnet-4-6` | Extraction model. Override to trial a candidate without a deploy |
 | `EXTRACTOR_MODEL_STRUCTURED` | unset | unset | Model used **only** for pages whose input is structured data (JSON-LD / `__NEXT_DATA__`) rather than HTML — see [Choosing an extraction model](#choosing-an-extraction-model). Unset ⇒ `EXTRACTOR_MODEL` |
 | `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
-| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@goin.app` | From-address for outbound email. The domain must be verified in Resend |
+| `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@afisz.cc` | From-address for transactional email (sign-in links, welcome mail). The domain must be verified in Resend |
+| `NEWSLETTER_FROM_EMAIL` | unset | `newsletter@afisz.cc` | From-address for newsletter briefs. Unset ⇒ falls back to `RESEND_FROM_EMAIL`. Same verified domain, so a second address needs no extra DNS |
 | `APP_URL` | `http://localhost:5173` | `https://afisz.cc` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
 | `API_PUBLIC_URL` | unset | `https://api.afisz.cc` | Public backend origin. Builds the Google OAuth redirect URI `<API_PUBLIC_URL>/auth/google/callback`, which must be registered verbatim in the Google console |
 | `NEWSLETTER_CRON_ENABLED` | unset | `true` | **Required for newsletter briefs to go out at all.** Unset ⇒ the send sweep never starts and no brief is ever mailed, however subscriptions are configured |

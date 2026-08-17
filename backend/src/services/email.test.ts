@@ -6,11 +6,14 @@ vi.mock('resend', () => ({
     emails = { send };
   },
 }));
-vi.mock('../config.js', () => ({
-  env: { RESEND_API_KEY: 'test-key', RESEND_FROM_EMAIL: 'hello@goin.app' },
-}));
+const testEnv: Record<string, string | undefined> = {
+  RESEND_API_KEY: 'test-key',
+  RESEND_FROM_EMAIL: 'hello@goin.app',
+  NEWSLETTER_FROM_EMAIL: undefined,
+};
+vi.mock('../config.js', () => ({ env: testEnv }));
 
-const { welcomeEmail, sendEmail } = await import('./email.js');
+const { welcomeEmail, sendEmail, newsletterFromEmail } = await import('./email.js');
 
 const msg = { to: 'ada@example.com', subject: 'Hi', html: '<p>Hi</p>' };
 
@@ -22,6 +25,35 @@ describe('sendEmail', () => {
   it('returns the created email on success', async () => {
     send.mockResolvedValue({ data: { id: 'email-1' }, error: null });
     await expect(sendEmail(msg)).resolves.toEqual({ id: 'email-1' });
+  });
+
+  it('sends from the transactional sender when the message names none', async () => {
+    send.mockResolvedValue({ data: { id: 'email-1' }, error: null });
+    await sendEmail(msg);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ from: 'hello@goin.app' }));
+  });
+
+  // The newsletter passes its own sender so briefs and sign-in links can sit on
+  // separate addresses of the same verified domain.
+  it("uses the message's own from-address when it has one", async () => {
+    send.mockResolvedValue({ data: { id: 'email-1' }, error: null });
+    await sendEmail({ ...msg, from: 'newsletter@afisz.cc' });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ from: 'newsletter@afisz.cc' }));
+  });
+});
+
+describe('newsletterFromEmail', () => {
+  // An unset NEWSLETTER_FROM_EMAIL has to keep the old single-sender
+  // behaviour: briefs from the transactional address, never from nothing.
+  it('falls back to the transactional sender when unset', () => {
+    testEnv.NEWSLETTER_FROM_EMAIL = undefined;
+    expect(newsletterFromEmail()).toBe('hello@goin.app');
+  });
+
+  it('prefers NEWSLETTER_FROM_EMAIL when configured', () => {
+    testEnv.NEWSLETTER_FROM_EMAIL = 'newsletter@afisz.cc';
+    expect(newsletterFromEmail()).toBe('newsletter@afisz.cc');
+    testEnv.NEWSLETTER_FROM_EMAIL = undefined;
   });
 
   // Resend resolves 4xx as { data: null, error } rather than rejecting. Left
