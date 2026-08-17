@@ -18,18 +18,21 @@ import type { DescriptionClient, DescriptionResult } from './enricher.js';
  *  bound the bill, not to shape the answer. */
 const MAX_TOKENS = 300;
 
-const SYSTEM = `You write one-sentence descriptions of cultural events for a listings app.
+const SYSTEM = `You describe cultural events for a listings app.
 
-You are given the readable text of a single event's page. Reply with a plain
-description of what the event IS — the play, film, concert or exhibition
-itself. No greeting, no preamble, no quotes, no markdown.
+You are given the readable text of a single event's page. Reply with exactly
+two lines and nothing else:
+
+CATEGORY: <one of: exhibition, guided_tour, workshop, screening, lecture, concert, performance, festival, other>
+DESCRIPTION: <what the event IS — the play, film, concert or exhibition itself>
 
 Rules:
-- Answer in the same language as the page.
+- Answer the description in the same language as the page.
 - At most 2 sentences, ideally 1.
 - Describe the work, not the logistics. Never mention ticket prices, booking,
   opening hours, accessibility or the venue's address.
-- If the page carries no description of the work, reply with exactly: NONE`;
+- If the page carries no description of the work, write: DESCRIPTION: NONE
+- CATEGORY must be one of the listed values exactly. Use "other" if unsure.`;
 
 export class AnthropicDescriber implements DescriptionClient {
   private client: Anthropic;
@@ -48,15 +51,34 @@ export class AnthropicDescriber implements DescriptionClient {
 
     const raw = resp.content
       .map((block) => (block.type === 'text' ? block.text : ''))
-      .join(' ')
+      .join('\n')
       .trim();
 
+    const parsed = parseReply(raw);
     return {
-      description: normalize(raw),
+      description: parsed.description,
+      // GOI-80 step 2: the classification rides along on this call rather than
+      // costing a second one. `classifyEvent` ignores it whenever the keyword
+      // pass already answered, so an unnecessary value here is harmless.
+      category: parsed.category,
       inputTokens: resp.usage.input_tokens,
       outputTokens: resp.usage.output_tokens,
     };
   }
+}
+
+/**
+ * Split the two-line reply. Tolerant on purpose: a model that answers with
+ * only a description still yields one, and a missing category simply leaves
+ * the row to the keyword pass and the 'other' fallback.
+ */
+export function parseReply(raw: string): { description: string | null; category: string | null } {
+  const category = raw.match(/^\s*CATEGORY:\s*(.+)$/im)?.[1]?.trim().toLowerCase() ?? null;
+  const described = raw.match(/^\s*DESCRIPTION:\s*([\s\S]*)$/im)?.[1];
+  // No labels at all — treat the whole reply as the description, which is what
+  // the pre-GOI-80 prompt produced.
+  const body = described ?? (category ? '' : raw);
+  return { description: normalize(body), category: category || null };
 }
 
 /**

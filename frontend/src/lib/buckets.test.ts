@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  FALLBACK_MAX_EVENTS,
+  FALLBACK_MIN_EVENTS,
   bucketEvents,
   dedupeAllDay,
   isAllDay,
+  periodKey,
   filterEventsByDay,
   filterEventsFromHour,
   splitExhibitions,
@@ -146,23 +149,21 @@ describe('filterEventsFromHour', () => {
 // vanish. Because the pages only render their empty state when the *filtered*
 // list is empty, a venue whose next event was further out rendered nothing at
 // all — no rows, no explanation. Every Warsaw theatre looked broken in summer.
-describe('bucketEvents — nothing this week', () => {
+describe('bucketEvents — nothing this week (GOI-82)', () => {
   const now = new Date('2026-07-29T10:00:00.000Z');
 
-  it('names the nearest day instead of rendering nothing', () => {
+  it('shows the nearest events instead of rendering nothing', () => {
     const autumn = evt('2026-09-12T18:00:00+02:00', 'sep');
     const buckets = bucketEvents([autumn], now);
     expect(buckets).toHaveLength(1);
-    expect(buckets[0]!.key).toBe('later');
-    // Matched loosely on purpose: the exact rendering is the runtime's ICU
-    // ("Sat 12 Sept" under Node, "Sat, 12 Sept" in Chromium), and pinning it
-    // makes the test assert the environment rather than the behaviour.
-    expect(buckets[0]!.label).toMatch(/^Nearest screening on \w{3},? 12 Sept/);
     expect(buckets[0]!.items.map((e) => e.id)).toEqual(['sep']);
+    // A period, not a single date: "how far off is the programme?".
+    expect(buckets[0]!.label).toBe('Later');
   });
 
-  it('shows every event on that nearest day, but not the days after it', () => {
-    // "When does this start again?" — not "what is the autumn programme?".
+  // The old rule stopped at the nearest day, which in a Warsaw summer meant a
+  // single row on a page — that reads as breakage, not as a quiet season.
+  it('widens past the nearest day when it has fewer than five rows', () => {
     const buckets = bucketEvents(
       [
         evt('2026-09-12T18:00:00+02:00', 'a'),
@@ -172,19 +173,40 @@ describe('bucketEvents — nothing this week', () => {
       ],
       now,
     );
-    expect(buckets).toHaveLength(1);
-    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(buckets.flatMap((b) => b.items.map((e) => e.id)))
+      .toEqual(['a', 'b', 'next-day', 'october']);
+  });
+
+  it('stops once there is enough to read, rather than unrolling the season', () => {
+    const many = Array.from({ length: 40 }, (_, i) =>
+      evt(`2026-09-${String(12 + i).padStart(2, '0')}T18:00:00+02:00`, `e${i}`),
+    );
+    const buckets = bucketEvents(many, now);
+    const shown = buckets.flatMap((b) => b.items);
+    expect(shown.length).toBeGreaterThanOrEqual(FALLBACK_MIN_EVENTS);
+    expect(shown.length).toBeLessThanOrEqual(FALLBACK_MAX_EVENTS);
+  });
+
+  // Stopping mid-evening would hide the 20:30 showing of something whose
+  // 18:00 made the cut.
+  it('never splits a day', () => {
+    const events = [
+      ...Array.from({ length: 4 }, (_, i) => evt(`2026-09-12T1${i}:00:00+02:00`, `d1-${i}`)),
+      ...Array.from({ length: 4 }, (_, i) => evt(`2026-09-13T1${i}:00:00+02:00`, `d2-${i}`)),
+    ];
+    const shown = bucketEvents(events, now).flatMap((b) => b.items.map((e) => e.id));
+    // Day one is 4 rows — under the minimum — so day two comes too, whole.
+    expect(shown.filter((id) => id.startsWith('d2-'))).toHaveLength(4);
   });
 
   it('picks the nearest day in Warsaw terms', () => {
-    // 22:30Z on the 11th is already 00:30 on the 12th in Warsaw, so both of
-    // these belong to the same nearest day.
+    // 22:30Z on the 11th is already 00:30 on the 12th in Warsaw.
     const buckets = bucketEvents(
       [evt('2026-09-11T22:30:00.000Z', 'past-midnight'), evt('2026-09-12T16:00:00.000Z', 'evening')],
       now,
     );
-    expect(buckets[0]!.items.map((e) => e.id)).toEqual(['past-midnight', 'evening']);
-    expect(buckets[0]!.label).toMatch(/^Nearest screening on \w{3},? 12 Sept/);
+    expect(buckets.flatMap((b) => b.items.map((e) => e.id)))
+      .toEqual(['past-midnight', 'evening']);
   });
 
   it('stays out of the way when the week has something', () => {
@@ -370,5 +392,43 @@ describe('bucketEvents — exhibitions', () => {
     const film = evt('2026-06-08T14:25:00.000Z', 'in25');
     const buckets = bucketEvents([run, film], now);
     expect(buckets.flatMap((b) => b.items.map((e) => e.id))).toEqual(['in25']);
+  });
+});
+
+
+describe('periodKey (GOI-82)', () => {
+  // Wednesday 29 July 2026; that Warsaw week runs Mon 27 Jul – Sun 2 Aug.
+  const now = new Date('2026-07-29T10:00:00.000Z');
+
+  it('names the rest of the current week', () => {
+    expect(periodKey('2026-08-02T18:00:00+02:00', now)).toBe('thisWeek');
+  });
+
+  it('names the following week', () => {
+    expect(periodKey('2026-08-03T18:00:00+02:00', now)).toBe('nextWeek');
+    expect(periodKey('2026-08-09T18:00:00+02:00', now)).toBe('nextWeek');
+  });
+
+  // The finer answer wins: eight days out is "next week", not "this month".
+  it('prefers a week label over a month one', () => {
+    expect(periodKey('2026-08-04T18:00:00+02:00', now)).toBe('nextWeek');
+  });
+
+  it('names the rest of this month, then next month', () => {
+    expect(periodKey('2026-07-31T18:00:00+02:00', now)).toBe('thisWeek');
+    expect(periodKey('2026-08-20T18:00:00+02:00', now)).toBe('nextMonth');
+  });
+
+  it('falls back to "later" beyond next month', () => {
+    expect(periodKey('2026-10-01T18:00:00+02:00', now)).toBe('later');
+  });
+
+  it('rolls the month over a year boundary', () => {
+    const december = new Date('2026-12-15T10:00:00.000Z');
+    expect(periodKey('2027-01-20T18:00:00+01:00', december)).toBe('nextMonth');
+  });
+
+  it('does not throw on an unparseable date', () => {
+    expect(periodKey('not-a-date', now)).toBe('later');
   });
 });
