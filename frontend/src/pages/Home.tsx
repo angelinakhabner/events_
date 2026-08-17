@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Category } from '@afisz/shared';
+import type { Category, ContentCategory } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { filterEventsByDay, filterEventsFromHour } from '../lib/buckets';
 import {
@@ -11,6 +11,7 @@ import { CategoryBar } from '../components/CategoryBar';
 import { DayBar } from '../components/DayBar';
 import { TimeBar } from '../components/TimeBar';
 import { VenueBar } from '../components/VenueBar';
+import { ContentCategoryBar, filterByContent } from '../components/ContentCategoryBar';
 import { EmptyState, ErrorState, SkeletonList } from '../components/states';
 import { FestivalsSection } from '../components/FestivalsSection';
 
@@ -52,6 +53,8 @@ export function HomePage() {
   const [fromHour, setFromHour] = useState<number | null>(null);
 
   const [venueSelection, setVenueSelection] = useState<VenueSelection>({});
+  const [contentCategories, setContentCategories] = useState<ContentCategory[]>([]);
+  const [familyOnly, setFamilyOnly] = useState(false);
 
   const eventsQuery = trpc.events.listDefault.useQuery(
     category ? { filters: { categories: [category] } } : undefined,
@@ -92,7 +95,10 @@ export function HomePage() {
     [venuesQuery.data],
   );
 
-  const events = useMemo(() => {
+  // Everything except this row's own filter. The type chips count over *this*
+  // set, for the same reason the venue counts exclude the venue selection: a
+  // chip that reads 0 the moment another chip is picked is useless (GOI-80).
+  const beforeContentFilter = useMemo(() => {
     const byTime = filterEventsFromHour(
       filterEventsByDay(eventsQuery.data ?? [], day),
       fromHour,
@@ -101,6 +107,11 @@ export function HomePage() {
     const wanted = new Set(selectedVenues);
     return byTime.filter((e) => wanted.has(e.venueId));
   }, [eventsQuery.data, day, fromHour, selectedVenues]);
+
+  const events = useMemo(
+    () => filterByContent(beforeContentFilter, contentCategories, familyOnly),
+    [beforeContentFilter, contentCategories, familyOnly],
+  );
 
   return (
     <section>
@@ -117,6 +128,13 @@ export function HomePage() {
           category={category}
           loading={filterOptionsQuery.isLoading}
         />
+        <ContentCategoryBar
+          events={beforeContentFilter}
+          selected={contentCategories}
+          onChange={setContentCategories}
+          familyOnly={familyOnly}
+          onFamilyChange={setFamilyOnly}
+        />
 
         <div className="mt-8">
           {eventsQuery.isLoading ? <SkeletonList /> : null}
@@ -130,11 +148,13 @@ export function HomePage() {
             <EmptyState
               title={
                 category || day || fromHour !== null || selectedVenues.length > 0
+                || contentCategories.length > 0 || familyOnly
                   ? 'No upcoming events match your selection.'
                   : 'No upcoming events.'
               }
               action={
                 category || day || fromHour !== null || selectedVenues.length > 0
+                || contentCategories.length > 0 || familyOnly
                   ? {
                       label: 'Show all',
                       onClick: () => {
@@ -142,6 +162,8 @@ export function HomePage() {
                         setDay(null);
                         setFromHour(null);
                         changeVenues([]);
+                        setContentCategories([]);
+                        setFamilyOnly(false);
                       },
                     }
                   : undefined

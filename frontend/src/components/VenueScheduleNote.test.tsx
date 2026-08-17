@@ -6,7 +6,7 @@ import { VenueScheduleNote } from './VenueScheduleNote';
 const quiet: VenueSchedule = {
   state: 'quiet',
   nextStartsAt: '2026-09-19T18:00:00+02:00',
-  upcomingCount: 4,
+  upcomingCount: 4, exhibitionCount: 0,
   daysUntilNext: 53,
 };
 
@@ -34,7 +34,7 @@ describe('VenueScheduleNote', () => {
   it('says "nothing listed" when there is no next date to name', () => {
     render(
       <VenueScheduleNote
-        schedule={{ state: 'dark', nextStartsAt: null, upcomingCount: 0, daysUntilNext: null }}
+        schedule={{ state: 'dark', nextStartsAt: null, upcomingCount: 0, exhibitionCount: 0, daysUntilNext: null }}
       />,
     );
     expect(screen.getByText('nothing listed')).toBeInTheDocument();
@@ -46,7 +46,7 @@ describe('VenueScheduleNote', () => {
   it('renders nothing for a running venue, or before the data arrives', () => {
     const { container, rerender } = render(
       <VenueScheduleNote
-        schedule={{ state: 'running', nextStartsAt: '2026-07-29T18:00:00Z', upcomingCount: 9, daysUntilNext: 1 }}
+        schedule={{ state: 'running', nextStartsAt: '2026-07-29T18:00:00Z', upcomingCount: 9, exhibitionCount: 0, daysUntilNext: 1 }}
       />,
     );
     expect(container).toBeEmptyDOMElement();

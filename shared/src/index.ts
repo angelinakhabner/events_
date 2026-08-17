@@ -58,6 +58,12 @@ export interface Event {
   priceMax: number | null;
   sourceUrl: string;
   sourceId: string | null;
+  /** What kind of thing this is, independent of the venue's category (GOI-80).
+   *  Optional on the wire: rows scraped before classification existed carry
+   *  null, which reads as "not classified yet" rather than as a wrong answer. */
+  contentCategory?: ContentCategory | null;
+  /** 'family' or null — cross-cutting, never a category value (GOI-80). */
+  audience?: Audience | null;
   scrapedAt: string;
 }
 
@@ -295,6 +301,8 @@ export interface VenueSchedule {
   /** ISO start of the next event, when there is one. */
   nextStartsAt: string | null;
   upcomingCount: number;
+  /** How many of those are runs rather than showtimes (GOI-80). */
+  exhibitionCount: number;
   /** Whole days from now until the next event; null when nothing is upcoming. */
   daysUntilNext: number | null;
 }
@@ -305,16 +313,30 @@ export interface VenueSchedule {
  */
 export const VENUE_QUIET_AFTER_DAYS = 14;
 
+/**
+ * "6 exhibitions · 63 events" (GOI-80) — or just one half when the other is
+ * zero, because "0 exhibitions" is noise on a theatre.
+ */
+export function upcomingSummary(upcomingCount: number, exhibitionCount = 0): string {
+  const runs = Math.max(0, Math.min(exhibitionCount, upcomingCount));
+  const timed = upcomingCount - runs;
+  const parts: string[] = [];
+  if (runs > 0) parts.push(`${runs} exhibition${runs === 1 ? '' : 's'}`);
+  if (timed > 0 || parts.length === 0) parts.push(`${timed} event${timed === 1 ? '' : 's'}`);
+  return parts.join(' · ');
+}
+
 /** Classify a venue's calendar. Pure — the caller supplies "now". */
 export function venueSchedule(
-  activity: { nextStartsAt: string | null; upcomingCount: number },
+  activity: { nextStartsAt: string | null; upcomingCount: number; exhibitionCount?: number },
   now: Date = new Date(),
   quietAfterDays: number = VENUE_QUIET_AFTER_DAYS,
 ): VenueSchedule {
   const { nextStartsAt, upcomingCount } = activity;
+  const exhibitionCount = activity.exhibitionCount ?? 0;
   const t = nextStartsAt ? Date.parse(nextStartsAt) : NaN;
   if (!nextStartsAt || Number.isNaN(t)) {
-    return { state: 'dark', nextStartsAt: null, upcomingCount, daysUntilNext: null };
+    return { state: 'dark', nextStartsAt: null, upcomingCount, exhibitionCount, daysUntilNext: null };
   }
   // Round down: an event 13.9 days out is still "13 days", so the threshold
   // means what it says rather than tripping half a day early.
@@ -323,6 +345,7 @@ export function venueSchedule(
     state: daysUntilNext >= quietAfterDays ? 'quiet' : 'running',
     nextStartsAt,
     upcomingCount,
+    exhibitionCount,
     daysUntilNext,
   };
 }

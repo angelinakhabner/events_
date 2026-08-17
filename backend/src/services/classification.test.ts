@@ -6,6 +6,7 @@ import {
   classifyEvent,
   isContentCategory,
   keepKnownCategories,
+  upcomingSummary,
 } from '@afisz/shared';
 import { parseReply } from './scraper/describer.js';
 
@@ -196,5 +197,33 @@ describe('describer reply parsing', () => {
   it('keeps a multi-line description whole', () => {
     const r = parseReply('CATEGORY: other\nDESCRIPTION: Pierwsze zdanie.\nDrugie zdanie.');
     expect(r.description).toBe('Pierwsze zdanie. Drugie zdanie.');
+  });
+});
+
+// ─── The venue list's split count (GOI-80 UI) ────────────────────────────────
+
+describe('upcomingSummary', () => {
+  // "69 upcoming" at a museum is mostly one three-month run and dozens of
+  // tours; the single figure says neither.
+  it('splits runs from showtimes', () => {
+    expect(upcomingSummary(69, 6)).toBe('6 exhibitions · 63 events');
+  });
+
+  it('drops the half that is zero', () => {
+    expect(upcomingSummary(63, 0)).toBe('63 events');
+    expect(upcomingSummary(6, 6)).toBe('6 exhibitions');
+  });
+
+  it('reads correctly in the singular', () => {
+    expect(upcomingSummary(2, 1)).toBe('1 exhibition · 1 event');
+  });
+
+  it('says "0 events" rather than nothing at all', () => {
+    expect(upcomingSummary(0, 0)).toBe('0 events');
+  });
+
+  // A count that outran its total would otherwise print a negative.
+  it('never reports more runs than there are events', () => {
+    expect(upcomingSummary(3, 9)).toBe('3 exhibitions');
   });
 });

@@ -1,5 +1,6 @@
 import { and, asc, eq, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
+import { isContentCategory } from '@afisz/shared';
 import type { Event, EventKind, EventVenue, Category } from '@afisz/shared';
 
 export interface EventListInput {
@@ -36,6 +37,11 @@ export interface VenueActivity {
   /** ISO start of the soonest upcoming event, or null when there is none. */
   nextStartsAt: string | null;
   upcomingCount: number;
+  /** How many of `upcomingCount` are runs rather than showtimes (GOI-80).
+   *  "69 upcoming" at a museum is mostly one three-month exhibition and
+   *  sixty-eight tours; splitting them is what makes the number mean
+   *  something. */
+  exhibitionCount: number;
 }
 
 export class EventStore {
@@ -119,6 +125,7 @@ export class EventStore {
         venueId: schema.events.venueId,
         nextStartsAt: sql<Date | null>`min(${schema.events.startsAt})`,
         upcomingCount: sql<number>`count(*)::int`,
+        exhibitionCount: sql<number>`count(*) FILTER (WHERE ${schema.events.kind} = 'exhibition')::int`,
       })
       .from(schema.events)
       .where(
@@ -142,11 +149,13 @@ export class EventStore {
           // drizzle hands back whatever pg's driver parsed; normalise to ISO.
           nextStartsAt: r.nextStartsAt ? new Date(r.nextStartsAt).toISOString() : null,
           upcomingCount: Number(r.upcomingCount),
+          exhibitionCount: Number(r.exhibitionCount ?? 0),
         },
       ]),
     );
     return venueIds.map(
-      (id) => found.get(id) ?? { venueId: id, nextStartsAt: null, upcomingCount: 0 },
+      (id) =>
+        found.get(id) ?? { venueId: id, nextStartsAt: null, upcomingCount: 0, exhibitionCount: 0 },
     );
   }
 
@@ -326,6 +335,8 @@ function rowToEvent(
     priceMax: row.priceMax,
     sourceUrl: row.sourceUrl,
     sourceId: row.sourceId,
+    contentCategory: isContentCategory(row.contentCategory) ? row.contentCategory : null,
+    audience: row.audience === 'family' ? 'family' : null,
     scrapedAt: row.scrapedAt.toISOString(),
   };
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Category, ScrapeRun } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { categoryLabel, formatEventTime, formatShortDate } from '../lib/format';
+import { upcomingSummary } from '@afisz/shared';
 import type { VenueSchedule } from '@afisz/shared';
 import { AddVenueForm, CATEGORIES } from './AddVenueForm';
 import { CategorySwatch } from './CategorySwatch';
@@ -372,7 +373,12 @@ function VenueRow({
               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 tag text-[12px]">
                 <span>{categoryLabel(venue.category)}</span>
                 <span aria-hidden>·</span>
-                <span>{schedule?.upcomingCount ?? 0} upcoming</span>
+                {/* "6 exhibitions · 63 events" rather than "69 upcoming"
+                    (GOI-80): at a museum that number is mostly one long run
+                    and dozens of tours, and the single figure says neither. */}
+                <span>
+                  {upcomingSummary(schedule?.upcomingCount ?? 0, schedule?.exhibitionCount ?? 0)}
+                </span>
                 <span aria-hidden>·</span>
                 <span>{venue.windowDays ? `${venue.windowDays}d window` : 'default window'}</span>
                 <VenueScheduleNote schedule={schedule} />

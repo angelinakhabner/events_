@@ -30,6 +30,9 @@ describe('venueSchedule', () => {
       state: 'dark',
       nextStartsAt: null,
       upcomingCount: 0,
+      // The venue list splits runs from showtimes (GOI-80); a dark venue has
+      // neither.
+      exhibitionCount: 0,
       daysUntilNext: null,
     });
   });
