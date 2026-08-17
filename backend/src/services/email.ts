@@ -14,6 +14,17 @@ export interface EmailMessage {
   to: string;
   subject: string;
   html: string;
+  /** Sender for this one message. Omitted → `RESEND_FROM_EMAIL`, the
+   *  transactional sender. The newsletter passes its own; see
+   *  `newsletterFromEmail`. */
+  from?: string;
+}
+
+/** The address briefs go out from: `NEWSLETTER_FROM_EMAIL` when configured,
+ *  otherwise the transactional sender, so an unset variable keeps the old
+ *  single-sender behaviour rather than silently sending from nothing. */
+export function newsletterFromEmail(): string {
+  return env.NEWSLETTER_FROM_EMAIL || env.RESEND_FROM_EMAIL;
 }
 
 /**
@@ -29,7 +40,7 @@ export interface EmailMessage {
  */
 export async function sendEmail(msg: EmailMessage): Promise<{ id: string }> {
   const { data, error } = await client().emails.send({
-    from: env.RESEND_FROM_EMAIL,
+    from: msg.from ?? env.RESEND_FROM_EMAIL,
     to: msg.to,
     subject: msg.subject,
     html: msg.html,

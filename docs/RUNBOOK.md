@@ -142,7 +142,9 @@ naming the account's own address confirms the unverified-domain case.
 2. Add the DKIM/SPF DNS records Resend shows to that domain's DNS, then hit
    **Verify**. Propagation is usually minutes.
 3. Set `RESEND_FROM_EMAIL` on Railway to an address on the verified domain
-   (`hello@goin.app`) and redeploy.
+   (`hello@afisz.cc`) and redeploy. Optionally set `NEWSLETTER_FROM_EMAIL`
+   (e.g. `newsletter@afisz.cc`) to send briefs from a second address on the
+   same domain — check it with `&sender=newsletter` on the call below.
 4. Re-run the `/admin/email-test` call above for the tester's address.
 
 Notes:
