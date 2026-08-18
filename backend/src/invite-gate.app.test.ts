@@ -102,6 +102,33 @@ describe('deny by default', () => {
   });
 });
 
+/**
+ * The public newsletter API (GOI-87) is mounted deliberately *above* the gate.
+ *
+ * The gate keeps the unfinished SPA out of public view, but the services this
+ * API exists for hold no invite cookie — gating it would make it unusable for
+ * its only purpose. What replaces the gate is its own bearer key. That key's
+ * behaviour is covered in services/newsletter-api.test.ts, which mocks config
+ * and can therefore vary it; the only thing provable here — and the thing that
+ * breaks silently if someone moves the `app.route` call below `inviteGate()` —
+ * is that these requests reach the API at all.
+ */
+describe('the newsletter API is mounted outside the gate', () => {
+  const paths = [
+    '/api/v1/newsletter/status',
+    '/api/v1/newsletter/subscriptions',
+    '/api/v1/newsletter/subscriptions/ada%40example.com',
+  ];
+
+  // 503 is the API answering "no NEWSLETTER_API_KEY on this deploy" — none is
+  // set in the test env. The gate's answer would be 401, so a 503 is what
+  // shows the gate never ran. It is never 200: an unset key means closed.
+  it.each(paths)('answers %s itself rather than 401ing at the gate', async (path) => {
+    const res = await createApp().request(path);
+    expect(res.status).toBe(503);
+  });
+});
+
 describe('exchanging an invite', () => {
   it('sets an httpOnly cookie and redirects to the app', async () => {
     const res = await createApp().request(`/i/${VALID}`, {

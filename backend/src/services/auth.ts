@@ -23,6 +23,10 @@ export interface AuthStore {
   consumeToken(tokenHash: string, now: Date): Promise<string | null>;
   /** Find-or-create the user for a verified email. */
   upsertUser(email: string): Promise<AuthUser>;
+  /** The user with this (already normalized) email, or null. Unlike
+   *  `upsertUser` this never creates one — the newsletter API (GOI-87) reads
+   *  and unsubscribes by address, and neither should conjure an account. */
+  findUserByEmail(email: string): Promise<AuthUser | null>;
   saveSession(tokenHash: string, userId: string, expiresAt: Date): Promise<void>;
   /** User for a live session, or null when unknown/expired. */
   userForSession(tokenHash: string, now: Date): Promise<AuthUser | null>;
@@ -151,6 +155,10 @@ export class InMemoryAuthStore implements AuthStore {
     return user;
   }
 
+  async findUserByEmail(email: string): Promise<AuthUser | null> {
+    return this.users.get(email) ?? null;
+  }
+
   async saveSession(tokenHash: string, userId: string, expiresAt: Date): Promise<void> {
     this.sessions.set(tokenHash, { userId, expiresAt });
   }
@@ -200,6 +208,15 @@ export class DbAuthStore implements AuthStore {
     const [existing] = await db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
     if (!existing) throw new Error(`User upsert for ${email} found no row`);
     return { id: existing.id, email: existing.email };
+  }
+
+  async findUserByEmail(email: string): Promise<AuthUser | null> {
+    const rows = await getDb()
+      .select({ id: schema.users.id, email: schema.users.email })
+      .from(schema.users)
+      .where(eq(schema.users.email, email))
+      .limit(1);
+    return rows[0] ?? null;
   }
 
   async saveSession(tokenHash: string, userId: string, expiresAt: Date): Promise<void> {

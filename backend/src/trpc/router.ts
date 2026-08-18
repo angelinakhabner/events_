@@ -24,6 +24,7 @@ import {
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
+import { newsletterSaveInput } from '../services/newsletter-input.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -223,34 +224,6 @@ const myVenueUpdateInput = z.object({
   tags: z.array(z.string().trim().max(40)).max(20).optional(),
   /** Move the venue into another folder (GOI-25). */
   listId: z.string().optional(),
-});
-
-const newsletterSaveInput = z.object({
-  email: z.string().email(),
-  /** Name the brief greets you by; blank greets you without one. */
-  recipientName: z.string().trim().max(80).nullable().optional(),
-  frequency: z.enum(['daily', 'weekly', 'monthly']),
-  venueIds: z.array(z.string()).default([]),
-  afterHour: z.number().int().min(0).max(23).nullable().optional(),
-  beforeHour: z.number().int().min(0).max(23).nullable().optional(),
-  /** Warsaw hour the brief is sent at. */
-  sendHour: z.number().int().min(0).max(23).default(8),
-  /** Minute past that hour (0-59). */
-  sendMinute: z.number().int().min(0).max(59).default(0),
-  /** Weekday weekly briefs go out on (0=Sun … 6=Sat). */
-  sendWeekday: z.number().int().min(0).max(6).default(1),
-  /** Per-category cadence + detail; empty = one brief covering everything. */
-  categoryRules: z
-    .array(
-      z.object({
-        category: z.string().trim().min(1).max(40),
-        frequency: z.enum(['daily', 'weekly', 'monthly']),
-        detail: z.enum(['short', 'full']),
-      }),
-    )
-    .max(20)
-    .default([]),
-  enabled: z.boolean().default(true),
 });
 
 const my = router({

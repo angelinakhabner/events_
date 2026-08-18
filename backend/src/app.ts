@@ -9,6 +9,7 @@ import { scrapeVenue } from './services/scraper/runner.js';
 import { firecrawlScrape } from './services/scraper/fetcher.js';
 import { defaultAuthStore, loginWithVerifiedEmail } from './services/auth.js';
 import { newsletterConfigStatus, sendNewsletterBriefs } from './services/newsletter.js';
+import { createNewsletterApi } from './services/newsletter-api.js';
 import { newsletterFromEmail, sendEmail } from './services/email.js';
 import {
   exchangeGoogleCode,
@@ -52,6 +53,13 @@ export function createApp() {
     c.header('X-Robots-Tag', NOINDEX);
   });
   app.get('/robots.txt', (c) => c.text(ROBOTS_TXT));
+
+  // ─── Public newsletter API (GOI-87) ───────────────────────────────────────
+  // Mounted above the invite gate deliberately: the gate keeps the unfinished
+  // SPA out of public view, but the services this API exists for hold no
+  // invite cookie, so gating it would make it unusable. It carries its own
+  // bearer-key auth and is inert until NEWSLETTER_API_KEY is set.
+  app.route('/api/v1/newsletter', createNewsletterApi());
 
   // ─── Invite gate (GOI-83) ─────────────────────────────────────────────────
   // Deny by default, at the router root, before every route below — including
