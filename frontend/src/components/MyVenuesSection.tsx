@@ -4,6 +4,7 @@ import { trpc } from '../lib/trpc';
 import { categoryLabel, formatEventTime, formatShortDate } from '../lib/format';
 import type { VenueSchedule } from '@afisz/shared';
 import { AddVenueForm, CATEGORIES } from './AddVenueForm';
+import { SuggestVenuesPanel } from './SuggestVenuesPanel';
 import { CategorySwatch } from './CategorySwatch';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
@@ -142,6 +143,13 @@ export function MyVenuesSection() {
               ))}
             </ul>
           )}
+          {/* GOI-86: the folder's own venues are the taste signal, so this
+              belongs under the folder rather than in a global control. Needs
+              a real folder (not the "Unfiled" bucket) and something to match
+              against. */}
+          {folder.id && folder.venues.length > 0 ? (
+            <SuggestVenuesPanel folderId={folder.id} folderName={folder.name} onAdded={invalidate} />
+          ) : null}
         </div>
       ))}
     </section>

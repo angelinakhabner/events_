@@ -50,6 +50,10 @@ const Env = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   API_PUBLIC_URL: z.string().optional(),
+  // Model behind "propose similar venues" (GOI-86). Separate from
+  // EXTRACTOR_MODEL: that one transcribes messy HTML, this one needs world
+  // knowledge about real venues, so they are worth tuning independently.
+  VENUE_SUGGEST_MODEL: z.string().default('claude-sonnet-4-6'),
   RESEND_API_KEY: z.string().optional(),
   // From-address for transactional mail: sign-in links, welcome mail, the
   // deliverability check. Its domain must be verified in Resend.

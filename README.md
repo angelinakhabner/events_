@@ -80,6 +80,7 @@ npm run lint
 | `ANTHROPIC_API_KEY` | `sk-ant-…` (optional locally) | `sk-ant-…` | Claude API key for AI event parsing |
 | `EXTRACTOR_MODEL` | `claude-sonnet-4-6` | `claude-sonnet-4-6` | Extraction model. Override to trial a candidate without a deploy |
 | `EXTRACTOR_MODEL_STRUCTURED` | unset | unset | Model used **only** for pages whose input is structured data (JSON-LD / `__NEXT_DATA__`) rather than HTML — see [Choosing an extraction model](#choosing-an-extraction-model). Unset ⇒ `EXTRACTOR_MODEL` |
+| `VENUE_SUGGEST_MODEL` | `claude-sonnet-4-6` | `claude-sonnet-4-6` | Model behind ["propose similar venues"](#proposing-similar-venues-goi-86). Separate from `EXTRACTOR_MODEL`: that one transcribes HTML, this one needs world knowledge about real venues |
 | `RESEND_API_KEY` | `re_…` (optional locally) | `re_…` | Resend key for transactional email |
 | `RESEND_FROM_EMAIL` | `hello@goin.app` | `hello@afisz.cc` | From-address for transactional email (sign-in links, welcome mail). The domain must be verified in Resend |
 | `NEWSLETTER_FROM_EMAIL` | unset | `newsletter@afisz.cc` | From-address for newsletter briefs. Unset ⇒ falls back to `RESEND_FROM_EMAIL`. Same verified domain, so a second address needs no extra DNS |
@@ -96,6 +97,32 @@ calls fail if they're missing. In particular, **email sign-in silently does
 nothing useful without `RESEND_API_KEY`**: the token is still minted, but the
 link is only written to the server log and the UI says email isn't configured. CI uses a throwaway set (`backend/.env.test`)
 against the CI Postgres service.
+
+## Proposing similar venues (GOI-86)
+
+On **/my → My venues**, each non-empty folder carries a *"Propose similar
+venues elsewhere"* action: give it a city and an optional type ("Museums") and
+it suggests venues in that city resembling the ones already in the folder.
+
+The folder is the point. Someone whose "Warsaw" folder holds POLIN, Zachęta and
+the Museum of Modern Art is not asking for "museums in Berlin" — they want
+*that kind* of museum, and a category filter cannot express it. So the folder's
+venues (with the user's own tags, often the sharpest signal) go to the model as
+exemplars.
+
+Two properties worth keeping if this is edited:
+
+- **Suggestions are proposals, never subscriptions.** "Add" runs the ordinary
+  add-venue mutation, so each one is probed exactly like a pasted URL. A venue
+  the model invented fails there, visibly, instead of quietly joining the folder
+  and never producing an event.
+- **It is a mutation, not a query.** Queries refetch on focus, on reconnect and
+  on cache invalidation; none of those are moments the user asked to spend a
+  model call.
+
+Anything the user already follows — in any folder, matched on normalised URL
+and on name+city — is filtered out of the results. Needs `ANTHROPIC_API_KEY`;
+without it the panel reports that rather than failing silently.
 
 ## Scheduled scraping (not yet wired)
 
