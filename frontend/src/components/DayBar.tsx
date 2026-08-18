@@ -1,32 +1,42 @@
-import { warsawDayKey } from '../lib/buckets';
+import { warsawDayKey, WEEK_DAYS, WEEK_FILTER, type DayFilter } from '../lib/buckets';
+import { formatWeekdayDate } from '../lib/format';
 
 interface Props {
-  /** Selected Europe/Warsaw day key (YYYY-MM-DD), or null for any day. */
-  selected: string | null;
-  onChange: (next: string | null) => void;
+  /** Selected day filter: a Warsaw day key, `WEEK_FILTER`, or null for any day. */
+  selected: DayFilter;
+  onChange: (next: DayFilter) => void;
   now?: Date;
 }
 
 interface Option {
   label: string;
-  value: string | null;
+  value: DayFilter;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Today + 6 more days: matches the "this week" window of the event buckets,
-// so every offered day can actually contain events.
-const DAYS_SHOWN = 7;
 
-const dayLabelFmt = new Intl.DateTimeFormat('en-GB', {
-  weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/Warsaw',
-});
-
+/**
+ * The strip's options: any day, the two days that have their own names, the
+ * whole week, then the rest of the week by date.
+ *
+ * "This week" sits with "Today" and "Tomorrow" rather than at the end because
+ * it is the same kind of answer — a scope you can name — and it is the one
+ * the listing itself heads a bucket with, so the strip can now select every
+ * bucket the feed shows.
+ */
 function buildOptions(now: Date): Option[] {
-  const options: Option[] = [{ label: 'Any day', value: null }];
-  for (let i = 0; i < DAYS_SHOWN; i++) {
+  const options: Option[] = [
+    { label: 'Any day', value: null },
+    { label: 'Today', value: warsawDayKey(now) },
+    { label: 'Tomorrow', value: warsawDayKey(new Date(now.getTime() + DAY_MS)) },
+    { label: 'This week', value: WEEK_FILTER },
+  ];
+  // From the day after tomorrow to the end of the same seven-day window "This
+  // week" covers, so every offered day is inside a scope the strip can also
+  // select as a whole.
+  for (let i = 2; i < WEEK_DAYS; i++) {
     const d = new Date(now.getTime() + i * DAY_MS);
-    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayLabelFmt.format(d);
-    options.push({ label, value: warsawDayKey(d) });
+    options.push({ label: formatWeekdayDate(d), value: warsawDayKey(d) });
   }
   return options;
 }

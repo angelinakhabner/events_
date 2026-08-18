@@ -267,13 +267,7 @@ export function exhibitionCoversDay(
   event: Pick<Event, 'startsAt' | 'endsAt'>,
   dayKey: string,
 ): boolean {
-  const start = Date.parse(event.startsAt);
-  if (Number.isNaN(start)) return false;
-  if (warsawDayKey(new Date(start)) > dayKey) return false;
-  if (!event.endsAt) return true;
-  const end = Date.parse(event.endsAt);
-  if (Number.isNaN(end)) return true;
-  return warsawDayKey(new Date(end)) >= dayKey;
+  return exhibitionCoversRange(event, { fromDay: dayKey, toDay: dayKey });
 }
 
 /**
@@ -308,21 +302,148 @@ function normaliseTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:]+$/, '').trim();
 }
 
+// ─── The day filter (GOI-88) ─────────────────────────────────────────────────
+
 /**
- * Keep only events on the given Europe/Warsaw day; null means any day.
+ * What the day strip can be set to: a Europe/Warsaw day key (YYYY-MM-DD),
+ * {@link WEEK_FILTER} for the coming week, or null for any day.
+ */
+export type DayFilter = string | null;
+
+/** The "This week" chip's value — a scope rather than a date, so it can't
+ *  collide with a day key. */
+export const WEEK_FILTER = 'week';
+
+/** Today plus six more days. The same window `bucketEvents` calls "this
+ *  week", so the chip and the bucket heading mean one thing. */
+export const WEEK_DAYS = 7;
+
+export interface DayRange {
+  /** Inclusive Warsaw day keys, YYYY-MM-DD. */
+  fromDay: string;
+  toDay: string;
+}
+
+/**
+ * The Warsaw day window a filter selects, or null for "any day".
+ *
+ * A single day is a one-day window rather than a special case, so everything
+ * downstream — the SQL narrowing, the client filter, the venue counts — has
+ * exactly one shape to handle.
+ */
+export function dayFilterRange(filter: DayFilter, now: Date = new Date()): DayRange | null {
+  if (!filter) return null;
+  if (filter === WEEK_FILTER) {
+    return {
+      fromDay: warsawDayKey(now),
+      toDay: warsawDayKey(new Date(now.getTime() + (WEEK_DAYS - 1) * 86_400_000)),
+    };
+  }
+  return { fromDay: filter, toDay: filter };
+}
+
+/**
+ * Keep only events inside the day filter's window; null means any day.
  *
  * A timed event matches the day it starts. An exhibition matches any day its
  * run covers (GOI-67) — asking "what's on Saturday" about a show that runs
  * June to September has one obvious answer, and start-date equality gives the
  * opposite one.
  */
-export function filterEventsByDay(events: Event[], dayKey: string | null): Event[] {
-  if (!dayKey) return events;
+export function filterEventsByDay(
+  events: Event[],
+  filter: DayFilter,
+  now: Date = new Date(),
+): Event[] {
+  const range = dayFilterRange(filter, now);
+  if (!range) return events;
   return events.filter((e) => {
-    if (isExhibition(e)) return exhibitionCoversDay(e, dayKey);
+    if (isExhibition(e)) return exhibitionCoversRange(e, range);
     const t = Date.parse(e.startsAt);
-    return !Number.isNaN(t) && warsawDayKey(new Date(t)) === dayKey;
+    if (Number.isNaN(t)) return false;
+    const day = warsawDayKey(new Date(t));
+    return day >= range.fromDay && day <= range.toDay;
   });
+}
+
+/**
+ * Keep only what is on from this Warsaw day onward.
+ *
+ * The listing under a "next event on…" notice starts where the reader was
+ * looking, not where the calendar is: asked about a quiet Thursday, "the
+ * nearest events" means Friday's, and answering with Tuesday evening's would
+ * be pointing backwards.
+ */
+export function filterEventsFrom(events: Event[], fromDay: string): Event[] {
+  return events.filter((e) => {
+    if (isExhibition(e)) return !e.endsAt || dayKeyOf(e.endsAt) >= fromDay;
+    const t = Date.parse(e.startsAt);
+    return !Number.isNaN(t) && warsawDayKey(new Date(t)) >= fromDay;
+  });
+}
+
+/**
+ * The rows a listing will actually render.
+ *
+ * `bucketEvents` drops what has already started, so a caller that decides
+ * "did my filter match anything?" from the raw list gets it wrong at the end
+ * of the day: by 22:00 "Today" is a list of events that have all already
+ * begun, which bucketed to nothing and drew a blank page under a filter that
+ * looked applied. Asking this first is what turns that into the "next event
+ * on…" notice.
+ */
+export function visibleEvents(events: Event[], now: Date = new Date()): Event[] {
+  const todayDay = warsawDayKey(now);
+  return events.filter((e) => {
+    if (isExhibition(e)) return !e.endsAt || dayKeyOf(e.endsAt) >= todayDay;
+    const t = Date.parse(e.startsAt);
+    if (Number.isNaN(t)) return false;
+    // Same rule as `bucketEvents`: an all-day row is on until its day is out.
+    return isAllDay(e) ? warsawDayKey(new Date(t)) >= todayDay : t >= now.getTime();
+  });
+}
+
+/**
+ * When the next thing happens, as an ISO start — what the "next event on…"
+ * notice names.
+ *
+ * Exhibitions are skipped when anything timed is on: a run has no "next
+ * date", it is simply on, and naming its opening day would answer a question
+ * about the coming week with a date in June.
+ */
+export function nextEventStart(events: Event[], now: Date = new Date()): string | null {
+  let best: string | null = null;
+  let bestAt = Infinity;
+  for (const e of visibleEvents(events, now)) {
+    if (isExhibition(e)) continue;
+    // Compared as instants, not strings: a row written with a `+02:00` offset
+    // sorts before a `Z` one that is genuinely earlier.
+    const t = Date.parse(e.startsAt);
+    if (t < bestAt) {
+      bestAt = t;
+      best = e.startsAt;
+    }
+  }
+  return best;
+}
+
+/** Whether an exhibition's run overlaps a day window. */
+function exhibitionCoversRange(
+  event: Pick<Event, 'startsAt' | 'endsAt'>,
+  range: DayRange,
+): boolean {
+  const start = Date.parse(event.startsAt);
+  if (Number.isNaN(start)) return false;
+  if (warsawDayKey(new Date(start)) > range.toDay) return false;
+  if (!event.endsAt) return true;
+  const end = Date.parse(event.endsAt);
+  if (Number.isNaN(end)) return true;
+  return warsawDayKey(new Date(end)) >= range.fromDay;
+}
+
+function dayKeyOf(iso: string): string {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? '' : warsawDayKey(new Date(t));
 }
 
 /**

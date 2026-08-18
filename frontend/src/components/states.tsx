@@ -1,3 +1,5 @@
+import { formatWeekdayDate } from '../lib/format';
+
 interface EmptyProps {
   title: string;
   hint?: string;
@@ -17,6 +19,40 @@ export function EmptyState({ title, hint, action }: EmptyProps) {
           {action.label}
         </button>
       ) : null}
+    </div>
+  );
+}
+
+interface NextUpProps {
+  /** How the reader named the window they asked about: "today", "this week",
+   *  "on Thu 20 Aug". */
+  scope: string;
+  /** ISO start of the soonest event being shown instead, or null when the
+   *  only thing on is an exhibition, which has no next date. */
+  nextIso: string | null;
+}
+
+/**
+ * What stands in for the empty state when a day filter matches nothing but
+ * the listing has something later (GOI-88).
+ *
+ * "No events match your selection" is a dead end: the reader has to guess
+ * which day to try next, and on a quiet Warsaw August they can guess wrong
+ * five times. Naming the date answers the question they were really asking —
+ * when *is* something on — and the nearest events render underneath, so the
+ * answer arrives with the listing rather than instead of it.
+ */
+export function NextUpNotice({ scope, nextIso }: NextUpProps) {
+  return (
+    <div className="pt-10 md:pt-14">
+      <p className="font-display text-2xl md:text-[32px] text-ink m-0">
+        {nextIso ? `Next event on ${formatWeekdayDate(nextIso)}` : `Nothing ${scope}`}
+      </p>
+      <p className="mt-2.5 text-sm text-muted max-w-[520px]">
+        {nextIso
+          ? `Nothing ${scope} — showing the nearest events instead.`
+          : 'Showing what else is on instead.'}
+      </p>
     </div>
   );
 }
