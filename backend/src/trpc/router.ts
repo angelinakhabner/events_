@@ -108,17 +108,25 @@ const events = router({
       // were spent long before the week's concerts appeared in them. /my never
       // had the bug because it narrows by venue in SQL.
       //
-      // The day strip moves the listing's *start* here rather than filtering
-      // it in the browser, for exactly the reason the category is narrowed in
-      // SQL (GOI-88): cutting the 100 nearest rows down to Friday's answers
+      // That fixes the *filtered* view. Unfiltered, there is nothing to narrow
+      // to — every category is wanted at once — so the limit still buries the
+      // sparse ones, and a category with nothing on in the next few days drops
+      // out of the feed even with a full autumn programme behind it. Which is
+      // every Warsaw theatre in July and August. So each category short of the
+      // floor is topped up from within a 90-day window (GOI-85).
+      //
+      // The day strip moves the listing's *start*, rather than filtering it in
+      // the browser, for the same reason the category is narrowed in SQL
+      // (GOI-88): cutting the 100 nearest rows down to Friday's answers
       // "nothing on Friday" whenever those 100 stop on Wednesday, which on a
-      // cinema-heavy day is most Fridays.
+      // cinema-heavy day is most Fridays. `fromDay` rides along in the input,
+      // so the per-category top-ups start where the reader is looking too.
       //
       // Only the near edge is passed, never the far one. The caller wants the
       // selected day *and*, if it is empty, whatever comes after it — and
       // since these rows are ordered by start, the selected day's are at the
       // head of the response, where the limit can't reach them.
-      const rows = await defaultEventStore.listUpcoming({
+      const rows = await defaultEventStore.listUpcomingWithCategoryFloor({
         city: 'Warsaw',
         categories: filters.categories,
         fromDay,
