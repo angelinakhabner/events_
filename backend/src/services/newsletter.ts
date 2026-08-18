@@ -6,7 +6,7 @@ import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
 import { defaultEventStore, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
-import { sendEmail } from './email.js';
+import { newsletterFromEmail, sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
 import { lastWarsawTimeAtOrBefore, warsawWeekday } from './scheduler.js';
 import { env } from '../config.js';
@@ -383,6 +383,7 @@ export async function sendNewsletterBriefs(
       }
       await sendEmail({
         to: sub.email,
+        from: newsletterFromEmail(),
         subject: briefSubject(sections),
         html: renderBriefHtml({
           sections,
@@ -422,7 +423,8 @@ export function newsletterConfigStatus() {
     newsletterCronEnabled: !!env.NEWSLETTER_CRON_ENABLED,
     databaseConfigured: !!env.DATABASE_URL,
     resendConfigured: !!env.RESEND_API_KEY,
-    fromEmail: env.RESEND_FROM_EMAIL,
+    fromEmail: newsletterFromEmail(),
+    transactionalFromEmail: env.RESEND_FROM_EMAIL,
     catchUpHours: CATCH_UP_HOURS,
     problems,
   };

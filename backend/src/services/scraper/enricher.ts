@@ -27,6 +27,9 @@ import { fetchVenueHTML } from './fetcher.js';
 export interface EnrichableEvent {
   source_url: string;
   description: string | null;
+  /** Set by enrichment when the model classified the page (GOI-80). The
+   *  persister decides whether to use it — a keyword match outranks it. */
+  content_category?: string | null;
 }
 
 /** Extracts a description from a detail page's main text. Separate from the
@@ -38,6 +41,8 @@ export interface DescriptionClient {
 
 export interface DescriptionResult {
   description: string | null;
+  /** Content type from the same call (GOI-80). Never a second request. */
+  category?: string | null;
   inputTokens: number;
   outputTokens: number;
 }
@@ -136,6 +141,7 @@ export async function enrichDescriptions(
   }
 
   const cache = new Map<string, string | null>();
+  const categories = new Map<string, string | null>();
 
   for (const [i, url] of urls.entries()) {
     if (result.fetched >= maxFetches) {
@@ -154,7 +160,7 @@ export async function enrichDescriptions(
     try {
       const html = await fetchVenueHTML(url, { fetcher, timeoutMs });
       result.fetched++;
-      cache.set(url, await describe(html, url, client, result));
+      cache.set(url, await describe(html, url, client, result, categories));
     } catch (e) {
       result.fetched++;
       result.failed++;
@@ -164,6 +170,11 @@ export async function enrichDescriptions(
   }
 
   for (const [url, list] of needs) {
+    // Rows grouped under one URL are the same show, so they share both the
+    // description and the classification the page yielded.
+    const category = categories.get(url) ?? null;
+    if (category) for (const e of list) e.content_category = category;
+
     const desc = cache.get(url);
     if (!desc) continue;
     for (const e of list) e.description = desc;
@@ -185,6 +196,7 @@ async function describe(
   url: string,
   client: DescriptionClient | undefined,
   result: EnrichResult,
+  categories: Map<string, string | null>,
 ): Promise<string | null> {
   const meta = extractDescription(html);
   if (!client) return meta;
@@ -196,6 +208,7 @@ async function describe(
     const out = await client.describe({ text, url });
     result.inputTokens += out.inputTokens;
     result.outputTokens += out.outputTokens;
+    if (out.category) categories.set(url, out.category);
     return out.description ? clean(out.description) : meta;
   } catch (e) {
     result.failed++;

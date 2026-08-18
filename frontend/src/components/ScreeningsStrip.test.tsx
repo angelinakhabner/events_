@@ -289,3 +289,39 @@ describe('ScreeningsStrip — Track film', () => {
     expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
   });
 });
+
+describe('ScreeningsStrip — the row stays on one line (GOI-66)', () => {
+  // Both callers place this inside `.act-row`, which is a baseline-aligned
+  // flex row. Wrapping the button and the expanded panel in one div made that
+  // div a single flex item whose baseline is the panel's last line, so every
+  // sibling action was dragged to the bottom of the strip. The bug only became
+  // visible once saved rows started opening by default.
+  it('does not wrap the toggle and the panel in one flex item', () => {
+    useQueryMock.mockReturnValue({ data: [], isLoading: false, isError: false });
+    const { container } = render(<ScreeningsStrip event={makeEvent()} defaultOpen />);
+
+    const button = screen.getByRole('button', { name: /hide screenings/i });
+    // The button is a direct child of whatever contains the strip — not
+    // nested inside a wrapper that also holds the panel.
+    expect(button.parentElement).toBe(container);
+  });
+
+  it('gives the panel a full-width line of its own', () => {
+    useQueryMock.mockReturnValue({
+      data: [makeEvent({ id: 'x', startsAt: '2026-06-02T18:00:00.000Z' })],
+      isLoading: false,
+      isError: false,
+    });
+    const { container } = render(<ScreeningsStrip event={makeEvent()} defaultOpen />);
+
+    // The second child is the panel, and it wraps onto its own row.
+    const panel = container.children[1] as HTMLElement;
+    expect(panel).toHaveClass('w-full');
+  });
+
+  it('renders nothing but the button while closed', () => {
+    useQueryMock.mockReturnValue({ data: [], isLoading: false, isError: false });
+    const { container } = render(<ScreeningsStrip event={makeEvent()} />);
+    expect(container.children).toHaveLength(1);
+  });
+});

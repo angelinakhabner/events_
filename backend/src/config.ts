@@ -51,10 +51,24 @@ const Env = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   API_PUBLIC_URL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
+  // From-address for transactional mail: sign-in links, welcome mail, the
+  // deliverability check. Its domain must be verified in Resend.
   RESEND_FROM_EMAIL: z.string().default('hello@goin.app'),
+  // From-address for newsletter briefs. Unset → briefs go out from
+  // RESEND_FROM_EMAIL, the single-sender behaviour this replaced. Splitting
+  // them keeps a brief that lands in spam from dragging sign-in links —
+  // which people are actively waiting on — down with it. Same verified
+  // domain, so a second address costs no extra DNS.
+  NEWSLETTER_FROM_EMAIL: z.string().optional(),
   // When set, enables the /admin/* debug endpoints (manual scrape trigger,
   // venue list). Callers must pass ?token=<this>. Unset → endpoints disabled.
   ADMIN_TOKEN: z.string().optional(),
+  // Bearer key for the public newsletter API (GOI-87), which lets other
+  // services manage subscriptions and trigger sends. Unset → every /api/v1
+  // route answers 503, so forgetting to configure it exposes nothing. Separate
+  // from ADMIN_TOKEN on purpose: this one is handed to third parties, and
+  // rotating it must not also disable the debug endpoints.
+  NEWSLETTER_API_KEY: z.string().optional(),
   SCRAPE_CRON_ENABLED: z
     .string()
     .optional()

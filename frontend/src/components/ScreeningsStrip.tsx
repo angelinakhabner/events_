@@ -55,8 +55,21 @@ export function ScreeningsStrip({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // The button and the panel are siblings, not a wrapped pair (GOI-66).
+  //
+  // Both callers put this inside `.act-row`, which is `flex flex-wrap
+  // items-baseline`. Wrapping the two in a div made that div a single flex
+  // item whose baseline, once open, is the *last* line of the expanded panel —
+  // so "Seen it", "Remove", "Add to calendar" and "Share" were pushed down to
+  // align with the bottom of the strip instead of with the button they sit
+  // beside. Invisible while every strip started closed; obvious the moment a
+  // saved row began opening by default.
+  //
+  // As siblings, the button keeps its place on the row's baseline and the
+  // panel takes a full-width line of its own, which is what `flex-wrap` is
+  // already there to do.
   return (
-    <div>
+    <>
       <button
         type="button"
         aria-expanded={open}
@@ -67,8 +80,12 @@ export function ScreeningsStrip({
       >
         {label(event, open)}
       </button>
-      {open ? <Strip event={event} includeSelf={includeSelf} canTrack={canTrack} /> : null}
-    </div>
+      {open ? (
+        <div className="w-full">
+          <Strip event={event} includeSelf={includeSelf} canTrack={canTrack} />
+        </div>
+      ) : null}
+    </>
   );
 }
 

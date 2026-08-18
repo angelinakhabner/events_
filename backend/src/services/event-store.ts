@@ -182,6 +182,79 @@ export class EventStore {
   }
 
   /**
+   * Per-venue event counts for the filter row (GOI-76 §6).
+   *
+   * One grouped query, not one per venue — a category with sixteen venues
+   * would otherwise cost sixteen round trips on every date click.
+   *
+   * The counts deliberately know nothing about which venues are *selected*.
+   * Applying the selection before counting is the easy bug the ticket calls
+   * out: every unselected venue would read 0 the moment anything was picked,
+   * and the row would destroy its own usefulness on first use.
+   *
+   * `LEFT JOIN` rather than an inner one so a venue with nothing on still
+   * comes back, with a zero. A visible zero says "watched, nothing on", which
+   * is different from the venue not being covered at all.
+   */
+  async venueFilterCounts(input: {
+    category?: Category;
+    city?: string;
+    /** Warsaw calendar day, YYYY-MM-DD. */
+    day?: string;
+    /** Keep events starting at or after this Warsaw hour. */
+    fromHour?: number;
+    now?: Date;
+  }): Promise<VenueFilterCountRow[]> {
+    const db = getDb();
+    const now = input.now ?? new Date();
+
+    // Both counts come from the same scan: one narrowed by the day/time
+    // filters, one not. The second is what tells "nothing on this Tuesday"
+    // apart from "nothing on at all", which is the difference between an
+    // `active` chip reading 0 and an `empty` one.
+    const inFilter = [
+      sql`e.id IS NOT NULL`,
+      input.day
+        ? sql`(e.starts_at AT TIME ZONE 'Europe/Warsaw')::date = ${input.day}::date`
+        : sql`true`,
+      input.fromHour !== undefined
+        ? sql`extract(hour from e.starts_at AT TIME ZONE 'Europe/Warsaw') >= ${input.fromHour}`
+        : sql`true`,
+    ];
+
+    const rows = await db.execute(sql`
+      SELECT
+        v.id,
+        v.name,
+        v.category,
+        v.probe_error_code,
+        count(e.id) FILTER (WHERE ${sql.join(inFilter, sql` AND `)}) AS in_filter,
+        count(e.id) AS upcoming_total,
+        max(e.scraped_at) AS last_scraped_at
+      FROM venues v
+      LEFT JOIN events e
+        ON e.venue_id = v.id
+        -- "Upcoming" has to mean the same thing it means in the listing
+        -- (GOI-67): an exhibition that opened in June and closes in September
+        -- is on today, and is selected by its closing date.
+        AND (e.starts_at >= ${now} OR (e.kind = 'exhibition' AND e.ends_at >= ${now}))
+      WHERE ${input.category ? sql`v.category = ${input.category}` : sql`true`}
+        AND ${input.city ? sql`v.city = ${input.city}` : sql`true`}
+      GROUP BY v.id, v.name, v.category, v.probe_error_code
+    `);
+
+    return unwrap(rows).map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      category: String(r.category) as Category,
+      probeErrorCode: r.probe_error_code === null ? null : String(r.probe_error_code),
+      count: Number(r.in_filter ?? 0),
+      upcomingTotal: Number(r.upcoming_total ?? 0),
+      lastScrapedAt: r.last_scraped_at ? new Date(r.last_scraped_at as string).toISOString() : null,
+    }));
+  }
+
+  /**
    * Which of these detail URLs already have a stored description (GOI-79).
    *
    * This is what makes a re-scrape cheap. A monthly theatre programme
@@ -208,6 +281,28 @@ export class EventStore {
 }
 
 export const defaultEventStore = new EventStore();
+
+/** One venue's raw numbers for the filter row, before status is derived. */
+export interface VenueFilterCountRow {
+  id: string;
+  name: string;
+  category: Category;
+  probeErrorCode: string | null;
+  count: number;
+  upcomingTotal: number;
+  lastScrapedAt: string | null;
+}
+
+/** drizzle's `execute` returns either an array or a `{ rows }` wrapper
+ *  depending on the driver; normalise before reading. */
+function unwrap(result: unknown): Record<string, unknown>[] {
+  if (Array.isArray(result)) return result as Record<string, unknown>[];
+  if (result && typeof result === 'object' && 'rows' in result) {
+    const r = (result as { rows: unknown }).rows;
+    if (Array.isArray(r)) return r as Record<string, unknown>[];
+  }
+  return [];
+}
 
 function rowToEvent(
   row: typeof schema.events.$inferSelect,

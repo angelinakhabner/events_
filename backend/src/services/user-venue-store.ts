@@ -35,6 +35,9 @@ export interface AddCustomVenueInput {
   windowDays?: number | null;
   /** Which of the user's lists to add the venue to; defaults to the active one. */
   listId?: string;
+  /** Free-form personal tags, set at add time (GOI-74). Personal like the
+   *  name and category overrides — the shared venue row carries none. */
+  tags?: string[];
 }
 
 /** A named grouping of a user's venue subscriptions (e.g. "Warsaw", "Poznan").
@@ -382,6 +385,7 @@ export class DbUserVenueStore implements UserVenueStore {
         nameOverride,
         categoryOverride,
         windowDays: input.windowDays ?? null,
+        tags: normalizeTags(input.tags ?? []),
       })
       .onConflictDoUpdate({
         target: [schema.userVenues.userId, schema.userVenues.venueId],
@@ -605,7 +609,7 @@ export class InMemoryUserVenueStore implements UserVenueStore {
         nameOverride: created || venue.name === input.name ? null : input.name,
         categoryOverride: created || venue.category === input.category ? null : input.category,
         windowDays: input.windowDays ?? null,
-        tags: [],
+        tags: normalizeTags(input.tags ?? []),
       });
     }
     return this.toUserVenue(venue, subs.get(venue.id)!);

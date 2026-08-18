@@ -9,7 +9,8 @@ import { scrapeVenue } from './services/scraper/runner.js';
 import { firecrawlScrape } from './services/scraper/fetcher.js';
 import { defaultAuthStore, loginWithVerifiedEmail } from './services/auth.js';
 import { newsletterConfigStatus, sendNewsletterBriefs } from './services/newsletter.js';
-import { sendEmail } from './services/email.js';
+import { createNewsletterApi } from './services/newsletter-api.js';
+import { newsletterFromEmail, sendEmail } from './services/email.js';
 import {
   exchangeGoogleCode,
   googleAuthConfig,
@@ -52,6 +53,13 @@ export function createApp() {
     c.header('X-Robots-Tag', NOINDEX);
   });
   app.get('/robots.txt', (c) => c.text(ROBOTS_TXT));
+
+  // ─── Public newsletter API (GOI-87) ───────────────────────────────────────
+  // Mounted above the invite gate deliberately: the gate keeps the unfinished
+  // SPA out of public view, but the services this API exists for hold no
+  // invite cookie, so gating it would make it unusable. It carries its own
+  // bearer-key auth and is inert until NEWSLETTER_API_KEY is set.
+  app.route('/api/v1/newsletter', createNewsletterApi());
 
   // ─── Invite gate (GOI-83) ─────────────────────────────────────────────────
   // Deny by default, at the router root, before every route below — including
@@ -222,9 +230,12 @@ export function createApp() {
     if (!authorized(c.req.query('token'))) return c.json({ error: 'unauthorized' }, 401);
     const to = c.req.query('to');
     if (!to) return c.json({ error: 'pass ?to=<recipient address>' }, 400);
+    // The two senders are verified independently as far as a recipient's spam
+    // filter is concerned, so the check has to be able to exercise either.
+    const from = c.req.query('sender') === 'newsletter' ? newsletterFromEmail() : env.RESEND_FROM_EMAIL;
     if (!env.RESEND_API_KEY) {
       return c.json(
-        { ok: false, to, from: env.RESEND_FROM_EMAIL, error: 'RESEND_API_KEY is not set — this deploy sends no email at all' },
+        { ok: false, to, from, error: 'RESEND_API_KEY is not set — this deploy sends no email at all' },
         400,
       );
     }
@@ -232,19 +243,20 @@ export function createApp() {
     try {
       const { id } = await sendEmail({
         to,
+        from,
         subject: 'AFISZ deliverability check',
         html: '<p>This is a deliverability check from AFISZ. Nothing to do — if you can read it, sign-in emails reach this address.</p>',
       });
-      return c.json({ ok: true, to, from: env.RESEND_FROM_EMAIL, id });
+      return c.json({ ok: true, to, from, id });
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       // Resend phrases the unverified-domain refusal as "you can only send
       // testing emails to your own email address" — worth naming outright,
       // since the fix (verify the domain) isn't obvious from the message.
       const hint = /own email address|not verified|domain/i.test(error)
-        ? `The domain of ${env.RESEND_FROM_EMAIL} is not verified in Resend, so Resend refuses every recipient except the Resend account's own address. Verify the sending domain in Resend → Domains (DNS records), then set RESEND_FROM_EMAIL to an address on it.`
+        ? `The domain of ${from} is not verified in Resend, so Resend refuses every recipient except the Resend account's own address. Verify the sending domain in Resend → Domains (DNS records), then set RESEND_FROM_EMAIL (or NEWSLETTER_FROM_EMAIL) to an address on it.`
         : undefined;
-      return c.json({ ok: false, to, from: env.RESEND_FROM_EMAIL, error, ...(hint ? { hint } : {}) }, 502);
+      return c.json({ ok: false, to, from, error, ...(hint ? { hint } : {}) }, 502);
     }
   });
 

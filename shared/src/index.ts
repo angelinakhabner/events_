@@ -474,3 +474,258 @@ export type ProbeOutcome = ProbeSuccess | ProbeProblem;
 /** How many free/paid probes a user gets, and over what window (GOI-72 §7). */
 export const PROBE_FREE_PER_HOUR = 10;
 export const PROBE_PAID_PER_DAY = 3;
+
+// ─── Venue filter row (GOI-76) ───────────────────────────────────────────────
+
+/**
+ * Why a venue's count is what it is.
+ *
+ * A zero that means "nothing on this Tuesday" and a zero that means "we can't
+ * read this venue any more" look identical on a chip, and the second one is a
+ * data problem the user deserves to be told about rather than left to read as
+ * an empty programme.
+ */
+export type VenueFilterStatus = 'active' | 'empty' | 'stale' | 'dark';
+
+export interface VenueFilterOption {
+  id: string;
+  /** Derived from the name — what goes in the URL instead of a UUID. */
+  slug: string;
+  name: string;
+  category: Category;
+  /** Events at this venue under the current day/time filters. Never reflects
+   *  the venue selection itself (GOI-76 §2). */
+  count: number;
+  status: VenueFilterStatus;
+  /** When this venue was last read successfully, for the "stale" note. */
+  lastScrapedAt: string | null;
+}
+
+/** A venue unread for longer than this is stale rather than quiet. */
+export const VENUE_STALE_AFTER_DAYS = 7;
+
+/**
+ * Classify a venue for the filter row.
+ *
+ * Order matters: a venue we cannot read is `dark` whatever its counts say,
+ * because every other reading of its numbers would be a guess.
+ */
+export function venueFilterStatus(
+  v: {
+    /** Events matching the current day/time filters. */
+    count: number;
+    /** Events upcoming at all, ignoring day/time. */
+    upcomingTotal: number;
+    /** Non-null when the last probe failed — see GOI-72. */
+    probeErrorCode?: string | null;
+    lastScrapedAt?: string | null;
+  },
+  now: Date = new Date(),
+  staleAfterDays: number = VENUE_STALE_AFTER_DAYS,
+): VenueFilterStatus {
+  // Codes that mean "the page is fine, there is simply nothing on" are not a
+  // reading failure — a venue between seasons is empty, not broken.
+  const benign = new Set(['NO_EVENTS_FOUND', 'PAST_EVENTS_ONLY']);
+  if (v.probeErrorCode && !benign.has(v.probeErrorCode)) return 'dark';
+
+  if (v.lastScrapedAt) {
+    const age = now.getTime() - Date.parse(v.lastScrapedAt);
+    if (Number.isFinite(age) && age > staleAfterDays * 86_400_000) return 'stale';
+  }
+
+  if (v.upcomingTotal === 0) return 'empty';
+  return 'active';
+}
+
+/** Human sentence for a chip's title/aria-description (GOI-76 §2, §7). */
+export function venueStatusNote(
+  status: VenueFilterStatus,
+  count: number,
+  lastScrapedAt: string | null,
+  now: Date = new Date(),
+): string | null {
+  switch (status) {
+    case 'dark':
+      return 'We can’t currently read this venue’s listings';
+    case 'stale': {
+      const days = lastScrapedAt
+        ? Math.floor((now.getTime() - Date.parse(lastScrapedAt)) / 86_400_000)
+        : null;
+      return days === null || !Number.isFinite(days)
+        ? 'Last updated a while ago'
+        : `Last updated ${days} day${days === 1 ? '' : 's'} ago`;
+    }
+    case 'empty':
+      return 'This venue has no events listed right now';
+    default:
+      return count === 0 ? 'Nothing on in this period' : null;
+  }
+}
+
+/**
+ * URL-safe form of a venue name. Used instead of the UUID so a shared link
+ * reads as `?venues=muranow,iluzjon` — and so a link keeps working across a
+ * database that was reseeded with new ids.
+ */
+export function venueSlug(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    // Polish ł has no combining form, so NFD leaves it alone.
+    .replace(/ł/gi, 'l')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// ─── Event classification (GOI-80) ───────────────────────────────────────────
+
+/**
+ * What kind of *thing* an event is, as opposed to what shape it has in time.
+ *
+ * The ticket calls this field `category`. It is stored as `contentCategory`
+ * because `Event.category` already exists and means something else — the
+ * venue-derived cinema/theatre/exhibition/comedy/music/other. Overloading that
+ * name would have silently corrupted every existing filter that reads it, so
+ * the two live side by side.
+ *
+ * Flat, and deliberately not nested under the venue's category: CSW Zamek
+ * Ujazdowski is a museum that runs a real cinema programme, so `screening` on
+ * a museum venue is correct, not a validation error.
+ *
+ * Append-only. These strings persist inside saved folder filters, so a value
+ * must never be renamed or renumbered.
+ */
+export type ContentCategory =
+  | 'exhibition'
+  | 'guided_tour'
+  | 'workshop'
+  | 'screening'
+  | 'lecture'
+  | 'concert'
+  | 'performance'
+  | 'festival'
+  | 'other';
+
+export const CONTENT_CATEGORIES: ContentCategory[] = [
+  'exhibition', 'guided_tour', 'workshop', 'screening',
+  'lecture', 'concert', 'performance', 'festival', 'other',
+];
+
+export function isContentCategory(v: unknown): v is ContentCategory {
+  return typeof v === 'string' && (CONTENT_CATEGORIES as string[]).includes(v);
+}
+
+/** How a row's `contentCategory` was decided — so a misclassification can be
+ *  audited without re-running anything. */
+export type CategorySource = 'structural' | 'keyword' | 'llm';
+
+/** Cross-cutting, and deliberately not a category value (GOI-80 Field 3).
+ *  "Warsztaty rodzinne" is a workshop AND family; folding family into the
+ *  category vocabulary would swallow the workshop signal, which is the whole
+ *  reason this is a separate field. */
+export type Audience = 'family';
+
+/**
+ * Polish keyword pre-pass over the **title only** (GOI-80 Field 2, step 1).
+ *
+ * Never the description: a description mentions other event types constantly
+ * ("po wystawie", "przed koncertem"), so matching on it would misfile most of
+ * the catalogue.
+ *
+ * Order is the tie-break and is part of the contract — a title matching two
+ * keywords resolves to the first entry here, which is what makes the pass
+ * deterministic and testable.
+ */
+const KEYWORDS: [RegExp, ContentCategory][] = [
+  // Stems, not whole words: oprowadzanie / oprowadzenie / oprowadzeniu.
+  [/oprowadz|spacer/i, 'guided_tour'],
+  [/warsztat/i, 'workshop'],
+  [/pokaz|projekcj|seans/i, 'screening'],
+  [/wykład|wyklad|spotkani|dyskusj|debat/i, 'lecture'],
+  [/koncert/i, 'concert'],
+  [/spektakl|performans/i, 'performance'],
+  [/wystaw|ekspozycj/i, 'exhibition'],
+];
+
+export function classifyByKeyword(title: string): ContentCategory | null {
+  const hay = (title ?? '').toLowerCase();
+  for (const [re, category] of KEYWORDS) {
+    if (re.test(hay)) return category;
+  }
+  return null;
+}
+
+/** Independent of category, by design — see {@link Audience}. */
+const FAMILY = /dla dzieci|dla rodzin|rodzinn|najmłodsz|najmlodsz/i;
+
+export function classifyAudience(title: string): Audience | null {
+  return FAMILY.test(title ?? '') ? 'family' : null;
+}
+
+/**
+ * The whole classification for one row (GOI-80).
+ *
+ * Structure wins. A row whose dates say "a run with no clock" is an
+ * exhibition, and no keyword or model answer may overrule that — the temporal
+ * shape is what selects the date predicate at query time, and getting it from
+ * a guess would break date filtering rather than merely mislabel a chip.
+ */
+export interface ClassificationInput {
+  title: string;
+  /** True when the row is structurally a run: a date range with no clock. */
+  isExhibitionShape: boolean;
+  /** Category the model returned, when the keyword pass found nothing. */
+  llmCategory?: string | null;
+}
+
+export interface Classification {
+  contentCategory: ContentCategory;
+  categorySource: CategorySource;
+  audience: Audience | null;
+  /** Set when the model disagreed with the structure — logged, never applied. */
+  conflict: string | null;
+}
+
+export function classifyEvent(input: ClassificationInput): Classification {
+  const audience = classifyAudience(input.title);
+
+  // Structural rows never reach the keyword pass or the model.
+  if (input.isExhibitionShape) {
+    const conflict =
+      input.llmCategory && input.llmCategory !== 'exhibition'
+        ? `structure says exhibition, model said ${input.llmCategory}`
+        : null;
+    return { contentCategory: 'exhibition', categorySource: 'structural', audience, conflict };
+  }
+
+  const keyword = classifyByKeyword(input.title);
+  if (keyword) {
+    return { contentCategory: keyword, categorySource: 'keyword', audience, conflict: null };
+  }
+
+  if (input.llmCategory) {
+    // Anything outside the closed vocabulary becomes 'other' rather than
+    // entering the set — the vocabulary is a contract with saved filters.
+    return {
+      contentCategory: isContentCategory(input.llmCategory) ? input.llmCategory : 'other',
+      categorySource: 'llm',
+      audience,
+      conflict: isContentCategory(input.llmCategory)
+        ? null
+        : `model returned "${input.llmCategory}", outside the vocabulary`,
+    };
+  }
+
+  return { contentCategory: 'other', categorySource: 'keyword', audience, conflict: null };
+}
+
+/**
+ * Drop values a saved filter carries that this version doesn't know (GOI-80,
+ * persistence contract). A filter saved by a newer build — or by one rolled
+ * back since — keeps every value that still parses instead of erroring.
+ */
+export function keepKnownCategories(values: unknown): ContentCategory[] {
+  if (!Array.isArray(values)) return [];
+  return values.filter(isContentCategory);
+}

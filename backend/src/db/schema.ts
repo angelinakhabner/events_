@@ -80,6 +80,24 @@ export const events = pgTable(
     priceMax: integer('price_max'),
     sourceUrl: text('source_url').notNull(),
     sourceId: text('source_id'),
+
+    // ── Classification (GOI-80) ───────────────────────────────────────────
+    // `category` above is the venue-derived one (cinema/theatre/…). These are
+    // about the *content*: what kind of thing this row is, who it's for, and
+    // how we decided. Kept as separate columns because the ticket is explicit
+    // that they are three independent fields, not one enum and not a tree.
+    /** exhibition | guided_tour | workshop | screening | lecture | concert |
+     *  performance | festival | other. Append-only: these strings live inside
+     *  saved folder filters. */
+    contentCategory: text('content_category'),
+    /** structural | keyword | llm — lets a misclassification be audited
+     *  without re-running the scrape that produced it. */
+    categorySource: text('category_source'),
+    /** 'family' or null. Cross-cutting on purpose: "Warsztaty rodzinne" is a
+     *  workshop AND family, and folding family into the category vocabulary
+     *  would swallow the workshop signal. */
+    audience: text('audience'),
+
     scrapedAt: timestamp('scraped_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

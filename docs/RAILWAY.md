@@ -54,6 +54,7 @@ In the backend service → **Variables** tab → **+ New Variable**, add the fol
 | `NODE_ENV` | `production` | |
 | `ANTHROPIC_API_KEY` | `sk-ant-…` | Your Anthropic key. Used by the AI parser when scraping lands. |
 | `RESEND_API_KEY` | `re_…` | **Required for email sign-in.** Without it the backend mints the login token but only prints the link to the server log — the user never gets an email. |
+| `NEWSLETTER_FROM_EMAIL` | `newsletter@afisz.cc` | Optional second sender, used only for newsletter briefs. Unset means briefs go out from `RESEND_FROM_EMAIL`. It must sit on the same verified domain — no extra DNS records are needed for a second address. |
 | `RESEND_FROM_EMAIL` | `hello@goin.app` | The sending domain must be verified in Resend (DNS records), otherwise Resend rejects the send and "Continue with email" surfaces the provider error. To try it before owning a domain, use `onboarding@resend.dev`, which only delivers to your own Resend account address. |
 | `APP_URL` | `https://afisz.cc` | **Required for email sign-in.** Login emails are built as `<APP_URL>/auth?token=…`. Defaults to `http://localhost:5173`, so if it is unset in production every emailed link points at localhost. Must track the frontend's current domain — a stale value sends users to the old host. No trailing slash needed. |
 | `API_PUBLIC_URL` | `https://api.afisz.cc` | Required only for "Sign in with Google". The redirect URI is built as `<API_PUBLIC_URL>/auth/google/callback` and must be registered verbatim in the Google Cloud console, so it changes whenever the API's domain does. |

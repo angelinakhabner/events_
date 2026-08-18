@@ -24,6 +24,20 @@ export interface AddVenueInput {
   url: string;
   category: Category;
   language: string;
+  /** Free-form personal tags typed while adding (GOI-74). */
+  tags: string[];
+}
+
+/**
+ * Commit a half-typed tag into the list (GOI-74): trimmed, capped, and
+ * de-duplicated case-insensitively so "Jazz" and "jazz" don't both survive.
+ * Mirrors the server's `normalizeTags`, which is the real enforcement.
+ */
+export function withDraft(tags: string[], draft: string): string[] {
+  const tag = draft.trim().slice(0, 40);
+  if (!tag) return tags;
+  if (tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return tags;
+  return [...tags, tag].slice(0, 20);
 }
 
 function hostnameOf(url: string): string {
@@ -54,6 +68,8 @@ export function AddVenueForm({
   const [category, setCategory] = useState<Category | null>(null);
   const [name, setName] = useState('');
   const [checkedUrl, setCheckedUrl] = useState<string | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagDraft, setTagDraft] = useState('');
 
   // Tracks which run is in flight so "Checking…" and "Trying paid fetch…"
   // don't both claim the same pending flag.
@@ -103,6 +119,10 @@ export function AddVenueForm({
           url: url.trim(),
           category,
           language,
+          // Whatever is still sitting in the draft field counts — nobody
+          // expects a tag they typed to be dropped because they pressed the
+          // form's submit instead of the tag's.
+          tags: withDraft(tags, tagDraft),
         });
       }}
     >
@@ -171,7 +191,7 @@ export function AddVenueForm({
       </div>
 
       <fieldset>
-        <legend className={stepLabel}>3 · Tag</legend>
+        <legend className={stepLabel}>3 · Category</legend>
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map((c) => (
             <button
@@ -190,6 +210,54 @@ export function AddVenueForm({
           ))}
         </div>
       </fieldset>
+
+      {/* GOI-74: the six categories above are fixed because the scraper reads
+          them (they pick the scrape window). Tags are yours — type anything.
+          They were already free-form on a venue's row; there was just no way
+          to set them at the moment you actually know what they are. */}
+      <div>
+        <label className={stepLabel} htmlFor="add-tags">4 · Your tags — optional, type your own</label>
+        <div className="flex flex-wrap items-center gap-2">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1.5 border-2 border-ink px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.5px] text-ink"
+            >
+              {tag}
+              <button
+                type="button"
+                aria-label={`Remove tag ${tag}`}
+                onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
+                className="act act-sm leading-none"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <input
+            id="add-tags"
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter and comma both commit. Enter must not submit the whole
+              // form — you are mid-thought, not finished.
+              if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                setTags((prev) => withDraft(prev, tagDraft));
+                setTagDraft('');
+              } else if (e.key === 'Backspace' && !tagDraft) {
+                setTags((prev) => prev.slice(0, -1));
+              }
+            }}
+            onBlur={() => {
+              setTags((prev) => withDraft(prev, tagDraft));
+              setTagDraft('');
+            }}
+            placeholder="e.g. date night, walking distance"
+            className="field-sm flex-1 min-w-[12rem]"
+          />
+        </div>
+      </div>
 
       <div>
         <label className={stepLabel} htmlFor="add-name">Name — suggested from the page, edit freely</label>

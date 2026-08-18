@@ -15,12 +15,15 @@ import { cacheProbe, cachedProbe, consumeQuota } from '../services/probe/limits.
 import { listFestivals } from '../data/festivals.js';
 import {
   festivalsAtVenues, venueSchedule,
+  venueFilterStatus, venueSlug,
   type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
+  type VenueFilterOption,
 } from '@afisz/shared';
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
+import { newsletterSaveInput } from '../services/newsletter-input.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -101,6 +104,54 @@ const events = router({
       return defaultEventStore.listUpcoming({ venueId: input.venueId, limit: 200 });
     }),
 
+  /**
+   * The venue filter row's chips (GOI-76 §6): every venue in the category,
+   * with how many events it has under the current day/time filters.
+   *
+   * Note what the input does *not* take: the venue selection. Counts must be
+   * computed with the selection excluded, or every unselected venue reads 0
+   * the moment one is picked and the row destroys its own usefulness. Leaving
+   * it out of the signature is the cheapest way to make that mistake
+   * impossible rather than merely discouraged — and it means React Query
+   * caches the counts across selection changes for free, since the key can't
+   * contain the selection.
+   */
+  filterOptions: publicProcedure
+    .input(
+      z.object({
+        category: categorySchema.optional(),
+        /** Warsaw calendar day, YYYY-MM-DD. */
+        day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        fromHour: z.number().int().min(0).max(23).optional(),
+      }).optional(),
+    )
+    .query(async ({ input }): Promise<{ venues: VenueFilterOption[] }> => {
+      if (!env.DATABASE_URL) return { venues: [] };
+      const now = new Date();
+      const rows = await defaultEventStore.venueFilterCounts({
+        category: input?.category,
+        city: 'Warsaw',
+        day: input?.day,
+        fromHour: input?.fromHour,
+        now,
+      });
+
+      const venues = rows.map((r) => ({
+        id: r.id,
+        slug: venueSlug(r.name),
+        name: r.name,
+        category: r.category,
+        count: r.count,
+        status: venueFilterStatus(r, now),
+        lastScrapedAt: r.lastScrapedAt,
+      }));
+
+      // Sorted here so every caller gets the same order for the same inputs.
+      // The frontend still freezes it per category session — see GOI-76 §3.
+      venues.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      return { venues };
+    }),
+
   /** Upcoming screenings of one title across every venue, soonest first —
    *  powers the "Nearest screenings" button on film cards. */
   screenings: publicProcedure
@@ -172,34 +223,6 @@ const myVenueUpdateInput = z.object({
   tags: z.array(z.string().trim().max(40)).max(20).optional(),
   /** Move the venue into another folder (GOI-25). */
   listId: z.string().optional(),
-});
-
-const newsletterSaveInput = z.object({
-  email: z.string().email(),
-  /** Name the brief greets you by; blank greets you without one. */
-  recipientName: z.string().trim().max(80).nullable().optional(),
-  frequency: z.enum(['daily', 'weekly', 'monthly']),
-  venueIds: z.array(z.string()).default([]),
-  afterHour: z.number().int().min(0).max(23).nullable().optional(),
-  beforeHour: z.number().int().min(0).max(23).nullable().optional(),
-  /** Warsaw hour the brief is sent at. */
-  sendHour: z.number().int().min(0).max(23).default(8),
-  /** Minute past that hour (0-59). */
-  sendMinute: z.number().int().min(0).max(59).default(0),
-  /** Weekday weekly briefs go out on (0=Sun … 6=Sat). */
-  sendWeekday: z.number().int().min(0).max(6).default(1),
-  /** Per-category cadence + detail; empty = one brief covering everything. */
-  categoryRules: z
-    .array(
-      z.object({
-        category: z.string().trim().min(1).max(40),
-        frequency: z.enum(['daily', 'weekly', 'monthly']),
-        detail: z.enum(['short', 'full']),
-      }),
-    )
-    .max(20)
-    .default([]),
-  enabled: z.boolean().default(true),
 });
 
 const my = router({
@@ -289,6 +312,10 @@ const my = router({
           language: z.string().trim().toLowerCase().regex(/^[a-z]{2,3}$/).optional(),
           windowDays: z.number().int().min(1).max(90).nullable().optional(),
           listId: z.string().optional(),
+          /** Personal tags typed in the add form (GOI-74). Same shape and
+           *  limits as the update path, so a tag can't arrive by one route
+           *  that the other would reject. */
+          tags: z.array(z.string().trim().max(40)).max(20).optional(),
         }),
       )
       .mutation(async ({ ctx, input }) => {
