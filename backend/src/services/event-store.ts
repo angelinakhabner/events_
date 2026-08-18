@@ -29,6 +29,58 @@ export interface EventListInput {
   now?: Date;
 }
 
+/**
+ * How far ahead "upcoming" reaches when a category has nothing on soon
+ * (GOI-85). Beyond this a listing stops being "what's on" and becomes an
+ * archive of next season.
+ */
+export const UPCOMING_WINDOW_DAYS = 90;
+
+/**
+ * How many rows a category should contribute to the feed before we stop
+ * reaching further out for it (GOI-85).
+ *
+ * One row is not an answer — "the theatres are back on 12 September" reads as
+ * a broken page rather than as a quiet season, which is the same reasoning
+ * behind the frontend's own fallback floor.
+ */
+export const MIN_EVENTS_PER_CATEGORY = 5;
+
+/** Every category a listing can carry, in the order they should be topped up.
+ *  'other' is deliberately absent: it is the bucket for rows we failed to
+ *  classify, and reaching 90 days out to surface more of them would fill the
+ *  feed with exactly the rows least worth showing. */
+export const FEED_CATEGORIES: Category[] = ['cinema', 'theatre', 'exhibition', 'comedy', 'music'];
+
+/**
+ * Which of `wanted` are under-represented in `events` (GOI-85).
+ *
+ * Pure so the quota rule is testable without a database — the query that acts
+ * on it needs one, the arithmetic doesn't.
+ */
+export function categoriesBelowFloor(
+  events: Pick<Event, 'category'>[],
+  wanted: Category[],
+  floor: number = MIN_EVENTS_PER_CATEGORY,
+): Category[] {
+  const counts = new Map<string, number>();
+  for (const e of events) counts.set(e.category, (counts.get(e.category) ?? 0) + 1);
+  return wanted.filter((c) => (counts.get(c) ?? 0) < floor);
+}
+
+/**
+ * Fold the per-category top-ups back into the base list (GOI-85).
+ *
+ * Deduped by id — a top-up query re-selects rows the base query already
+ * returned — and re-sorted by start, so the caller still receives one
+ * chronological listing and the frontend's bucketing keeps working unchanged.
+ */
+export function mergeUpcoming(base: Event[], extra: Event[]): Event[] {
+  const byId = new Map<string, Event>();
+  for (const e of [...base, ...extra]) byId.set(e.id, e);
+  return [...byId.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
 /** How busy a venue's calendar is right now — the raw input to the "dark
  *  until…" notice on /my (GOI-13). */
 export interface VenueActivity {
@@ -103,6 +155,48 @@ export class EventStore {
     );
   }
 
+
+  /**
+   * Upcoming events, with a floor under every category (GOI-85).
+   *
+   * The plain query takes the globally-earliest rows, which is the right
+   * answer for "what's on next" and the wrong one for a feed meant to cover
+   * several categories at once: a cinema publishes eight screenings a day and
+   * a theatre three a month, so the limit is spent on cinema long before a
+   * sparse category appears — and in a Warsaw summer, when the theatres go
+   * dark for two months, they are absent from the feed entirely.
+   *
+   * GOI-70 fixed this for a *filtered* view by narrowing in SQL. This is the
+   * unfiltered case, which cannot be narrowed: every category is wanted at
+   * once. So after the base query, any category still short of
+   * {@link MIN_EVENTS_PER_CATEGORY} gets a second, category-scoped query
+   * reaching out to {@link UPCOMING_WINDOW_DAYS}.
+   *
+   * The top-ups are small (one indexed query per short category, capped at
+   * the floor) and only run for categories that are actually short, so a busy
+   * week costs exactly one query as before.
+   */
+  async listUpcomingWithCategoryFloor(
+    input: EventListInput = {},
+    opts: { categories?: Category[]; floor?: number; windowDays?: number } = {},
+  ): Promise<Event[]> {
+    const base = await this.listUpcoming(input);
+    const floor = opts.floor ?? MIN_EVENTS_PER_CATEGORY;
+    // What the caller asked for, else everything the feed can show. An
+    // explicit empty selection stays empty — same rule as `categories`.
+    const wanted = opts.categories ?? input.categories ?? FEED_CATEGORIES;
+    const short = categoriesBelowFloor(base, wanted, floor);
+    if (short.length === 0) return base;
+
+    const now = input.now ?? new Date();
+    const until = new Date(now.getTime() + (opts.windowDays ?? UPCOMING_WINDOW_DAYS) * 86_400_000);
+    const topUps = await Promise.all(
+      short.map((category) =>
+        this.listUpcoming({ ...input, categories: [category], until, limit: floor }),
+      ),
+    );
+    return mergeUpcoming(base, topUps.flat());
+  }
   /**
    * Per-venue upcoming activity: when the next event is, and how many are
    * listed. Venues with nothing upcoming are returned with a null date and a

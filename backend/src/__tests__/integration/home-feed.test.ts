@@ -171,9 +171,21 @@ describeIfDb('home feed vs /my — category narrowing (GOI-70)', () => {
     expect(home).toHaveLength(CONCERT_DAYS.length);
   });
 
-  it('leaves the unfiltered feed alone', async () => {
+  /**
+   * GOI-85: the unfiltered feed used to stop at exactly the row limit, which
+   * is where the sparse categories were being lost. It now carries the limit
+   * *plus* the top-ups for whatever was short — so it is no longer 100, and
+   * asserting 100 here would be asserting the bug.
+   */
+  it('carries the limit plus the per-category top-ups', async () => {
     const all = await listDefault();
-    expect(all).toHaveLength(100);
+    expect(all.length).toBeGreaterThan(100);
+    // Still one chronological listing, which the frontend's bucketing needs.
+    const starts = all.map((e) => e.startsAt);
+    expect([...starts].sort()).toEqual(starts);
+    // And no row arrives twice, though the top-up re-selects rows the base
+    // query already returned.
+    expect(new Set(all.map((e) => e.id)).size).toBe(all.length);
   });
 
   /**
@@ -217,5 +229,56 @@ describeIfDb('home feed vs /my — category narrowing (GOI-70)', () => {
   it('treats an explicitly empty category list as "nothing", not "everything"', async () => {
     const rows = await defaultEventStore.listUpcoming({ city: 'Warsaw', categories: [], limit: 100 });
     expect(rows).toHaveLength(0);
+  });
+
+  /**
+   * GOI-85: "if no events in the nearest days available — show upcoming",
+   * within a 90-day window, at least five per category.
+   *
+   * GOI-70 above fixed the *filtered* view by narrowing in SQL. This is the
+   * case that narrowing cannot reach: the unfiltered feed wants every category
+   * at once, so the limit is still spent on cinema and a theatre returning
+   * from summer break — 62 days out, in this fixture — never arrives.
+   */
+  describe('a floor under every category (GOI-85)', () => {
+    it('reaches past the limit for a theatre that is dark for two months', async () => {
+      const all = await listDefault();
+      const theatre = all.filter((e) => e.category === 'theatre');
+      expect(theatre.map((e) => e.title).sort()).toEqual(
+        THEATRE_DAYS.map((d) => `Spektakl +${d}d`).sort(),
+      );
+    });
+
+    // The old behaviour, kept as the contrast: without the floor these rows
+    // are real, upcoming, and unreachable.
+    it('is the difference — the plain query still cannot see them', async () => {
+      const rows = await defaultEventStore.listUpcoming({ city: 'Warsaw', limit: 100 });
+      expect(rows.filter((e) => e.category === 'theatre')).toHaveLength(0);
+    });
+
+    it('completes a category the limit only half-reached', async () => {
+      const all = await listDefault();
+      const music = all.filter((e) => e.category === 'music');
+      // Two concerts fit inside the limit; the floor fetches the rest.
+      expect(music.map((e) => e.title).sort()).toEqual(
+        CONCERT_DAYS.map((d) => `Concert +${d}d`).sort(),
+      );
+      expect(music.length).toBe(CONCERT_DAYS.length);
+    });
+
+    // A category with plenty on this week must not be reached further out for
+    // — that would trail next season behind a listing headed "what's on".
+    it('leaves a busy category at the limit rather than reaching further', async () => {
+      const all = await listDefault();
+      const cinema = all.filter((e) => e.category === 'cinema');
+      const furthest = Math.max(...cinema.map((e) => Date.parse(e.startsAt)));
+      expect(furthest - Date.now()).toBeLessThan(30 * DAY);
+    });
+
+    it('still honours an explicit category filter', async () => {
+      const theatre = await listDefault({ categories: ['theatre'] });
+      expect(theatre.every((e) => e.category === 'theatre')).toBe(true);
+      expect(theatre).toHaveLength(THEATRE_DAYS.length);
+    });
   });
 });

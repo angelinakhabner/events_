@@ -261,16 +261,7 @@ function NewsletterForm({
 
         <FormSection step={2} label="When it goes out">
           <div className="flex flex-wrap items-center gap-3.5">
-            <label className="sr-only" htmlFor="newsletter-frequency">How often</label>
-            <select
-              id="newsletter-frequency"
-              value={frequency}
-              onChange={(e) => setFrequency(e.target.value as NewsletterFrequency)}
-              className="field-sm font-extrabold uppercase tracking-[0.5px] text-xs cursor-pointer"
-            >
-              <option value="daily">Every day</option>
-              <option value="weekly">Weekly</option>
-            </select>
+            <ScheduleToggle value={frequency} onChange={setFrequency} />
 
             {frequency === 'weekly' ? (
               <>
@@ -499,6 +490,58 @@ function NewsletterForm({
         error={preview.error?.message ?? null}
       />
     </section>
+  );
+}
+
+/**
+ * How often the brief goes out, as a segmented control (design pack: "WHEN IT
+ * GOES OUT").
+ *
+ * A dropdown hid the choice behind a click and read as a form field among
+ * form fields; there are two options and the design gives them both a face,
+ * so the current one is legible without opening anything. Drawn as one
+ * bordered strip with an ink-filled active segment — the poster system's way
+ * of showing selection everywhere else (see the category chips).
+ *
+ * A radiogroup rather than buttons with `aria-pressed`: this is one choice
+ * among mutually exclusive options, which is what a radio group means, and it
+ * gets arrow-key navigation from the platform for free.
+ */
+function ScheduleToggle({
+  value,
+  onChange,
+}: {
+  value: NewsletterFrequency;
+  onChange: (v: NewsletterFrequency) => void;
+}) {
+  // Only the cadences the top-level schedule actually supports. 'monthly'
+  // exists in the type for *per-category* rules, where a month is a sensible
+  // rhythm for museums — as the whole brief's cadence it would mean eleven
+  // silent months, so it is deliberately not offered here.
+  const options: { value: NewsletterFrequency; label: string }[] = [
+    { value: 'daily', label: 'Every day' },
+    { value: 'weekly', label: 'Weekly' },
+  ];
+  return (
+    <div role="radiogroup" aria-label="How often" className="flex border-2 border-ink">
+      {options.map((o, i) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.value)}
+            className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+              i < options.length - 1 ? 'border-r-2 border-ink' : ''
+            } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
