@@ -22,6 +22,7 @@ import {
 import {
   briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
+import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
 import { env } from '../config.js';
@@ -421,6 +422,74 @@ const my = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'That venue is not in your list.' });
         }
         return scrapeVenue(input.venueId);
+      }),
+
+    /**
+     * "Propose me similar venues in city X, like the ones in folder Y, of
+     * type Z" (GOI-86).
+     *
+     * A mutation rather than a query because it costs a model call: queries
+     * are refetched on focus, on reconnect and on cache invalidation, and none
+     * of those are moments the user asked to spend money.
+     *
+     * Suggestions are returned, never subscribed. Adding one goes through the
+     * ordinary `add` path, so it is probed like any pasted URL and a
+     * hallucinated address fails there rather than becoming a silent venue
+     * that never yields events.
+     */
+    suggestSimilar: userProcedure
+      .input(
+        z.object({
+          /** Folder whose venues are the taste exemplars. */
+          listId: z.string().min(1),
+          /** Target city, as typed. */
+          city: z.string().trim().min(1).max(80),
+          /** Optional narrowing ("Museums"). Free text — the ticket's example
+           *  is a phrase, not an enum. */
+          type: z.string().trim().max(60).optional(),
+          limit: z.number().int().min(1).max(10).default(6),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        const like = await ctx.userVenues.list(ctx.user.id, input.listId);
+        if (like.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'That folder has no venues yet — add a couple first, so there is something to match against.',
+          });
+        }
+        // Everything the user follows, not just this folder: a venue already
+        // in another folder is not a useful suggestion either.
+        const followed = await ctx.userVenues.listAll(ctx.user.id);
+
+        let suggestions;
+        try {
+          suggestions = await suggestSimilarVenues({
+            like: like.map((v) => ({ name: v.name, city: v.city, category: v.category, tags: v.tags })),
+            city: input.city,
+            type: input.type,
+            limit: input.limit,
+          });
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          throw new TRPCError({
+            code: message.includes('ANTHROPIC_API_KEY') ? 'PRECONDITION_FAILED' : 'INTERNAL_SERVER_ERROR',
+            message: message.includes('ANTHROPIC_API_KEY')
+              ? 'Venue suggestions need ANTHROPIC_API_KEY to be configured on the server.'
+              : `Could not get suggestions: ${message}`,
+          });
+        }
+
+        return {
+          city: input.city,
+          type: input.type ?? null,
+          basedOn: like.length,
+          suggestions: dedupeSuggestions(
+            suggestions,
+            followed.map((v) => ({ name: v.name, city: v.city, category: v.category })),
+            followed.map((v) => v.url),
+          ),
+        };
       }),
 
     update: userProcedure.input(myVenueUpdateInput).mutation(async ({ ctx, input }) => {
