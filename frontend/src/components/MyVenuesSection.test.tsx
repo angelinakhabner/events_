@@ -46,6 +46,10 @@ vi.mock('../lib/trpc', () => {
           listAll: { useQuery: () => venuesMock() },
           activity: { useQuery: () => activityMock() },
           add: stubMutation(),
+          // GOI-86: the per-folder "propose similar venues" panel renders
+          // inside every non-empty folder, so its hooks must exist here even
+          // though this suite is about the venue rows.
+          suggestSimilar: stubMutation(),
           checkUrl: stubMutation(),
           update: stubMutation(),
           remove: stubMutation(),
