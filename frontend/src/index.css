@@ -37,6 +37,14 @@
   /** Row divider inside a listing. */
   .rule-soft { @apply border-b-2 border-rule; }
 
+  /**
+   * A listing row that lights up under the cursor (`.goin-row` in the design
+   * pack). Paper is the page; panel is one step lighter, so the row lifts
+   * without drawing a box around itself — the poster system has no shadows
+   * and no rounded chrome to hover with.
+   */
+  .row-hover { @apply hover:bg-panel; }
+
   /* ── Actions ────────────────────────────────────────────────────────── */
 
   /**
