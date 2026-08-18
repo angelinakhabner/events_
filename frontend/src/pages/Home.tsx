@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { Category } from '@afisz/shared';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Category, Event } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import { filterEventsByDay, filterEventsFromHour } from '../lib/buckets';
+import {
+  dayFilterRange, filterEventsByDay, filterEventsFrom, filterEventsFromHour, nextEventStart,
+  visibleEvents, type DayFilter,
+} from '../lib/buckets';
+import { dayFilterPhrase } from '../lib/format';
 import {
   parseSlugParam, selectionFor, selectionToSlugs, slugsToSelection, withSelection,
   type VenueSelection,
@@ -11,7 +15,7 @@ import { CategoryBar } from '../components/CategoryBar';
 import { DayBar } from '../components/DayBar';
 import { TimeBar } from '../components/TimeBar';
 import { VenueBar } from '../components/VenueBar';
-import { EmptyState, ErrorState, SkeletonList } from '../components/states';
+import { EmptyState, ErrorState, NextUpNotice, SkeletonList } from '../components/states';
 import { FestivalsSection } from '../components/FestivalsSection';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
@@ -48,13 +52,29 @@ function writeVenueParam(slugs: string[]): void {
 
 export function HomePage() {
   const [category, setCategory] = useState<Category | null>(null);
-  const [day, setDay] = useState<string | null>(null);
+  const [day, setDay] = useState<DayFilter>(null);
   const [fromHour, setFromHour] = useState<number | null>(null);
 
   const [venueSelection, setVenueSelection] = useState<VenueSelection>({});
 
+  // The day strip's selection as a Warsaw day window. Recomputed only when the
+  // selection changes, so it stays referentially stable as a query key.
+  const range = useMemo(() => dayFilterRange(day), [day]);
+
+  /**
+   * The listing, starting at the selected day rather than at now (GOI-88).
+   *
+   * One query answers both halves of the day filter. The rows come back in
+   * start order from `fromDay`, so the selected window's events are at the
+   * head — the server's limit can't hide them the way filtering the nearest
+   * hundred rows in the browser did — and everything after them is exactly the
+   * "nearest events" the notice shows when that window turns out to be empty.
+   */
   const eventsQuery = trpc.events.listDefault.useQuery(
-    category ? { filters: { categories: [category] } } : undefined,
+    {
+      ...(category ? { filters: { categories: [category] } } : {}),
+      ...(range ? { fromDay: range.fromDay } : {}),
+    },
     { refetchInterval: REFETCH_INTERVAL_MS, refetchOnWindowFocus: true },
   );
   const venuesQuery = trpc.venues.list.useQuery();
@@ -63,7 +83,7 @@ export function HomePage() {
   // selection, so picking a venue re-renders from cache instead of refetching
   // counts that by definition didn't change.
   const filterOptionsQuery = trpc.events.filterOptions.useQuery(
-    { category: category ?? undefined, day: day ?? undefined, fromHour: fromHour ?? undefined },
+    { category: category ?? undefined, range: range ?? undefined, fromHour: fromHour ?? undefined },
     { enabled: category !== null },
   );
   const venueOptions = useMemo(
@@ -92,15 +112,37 @@ export function HomePage() {
     [venuesQuery.data],
   );
 
-  const events = useMemo(() => {
-    const byTime = filterEventsFromHour(
-      filterEventsByDay(eventsQuery.data ?? [], day),
-      fromHour,
-    );
-    if (selectedVenues.length === 0) return byTime;
-    const wanted = new Set(selectedVenues);
-    return byTime.filter((e) => wanted.has(e.venueId));
-  }, [eventsQuery.data, day, fromHour, selectedVenues]);
+  // The filters that aren't the day: they apply to the selected window and to
+  // the fallback listing alike, so the nearest events shown under "next event
+  // on…" are still the reader's own category, hour and venues.
+  const applyRest = useCallback(
+    (rows: Event[]) => {
+      const byTime = filterEventsFromHour(visibleEvents(rows), fromHour);
+      if (selectedVenues.length === 0) return byTime;
+      const wanted = new Set(selectedVenues);
+      return byTime.filter((e) => wanted.has(e.venueId));
+    },
+    [fromHour, selectedVenues],
+  );
+
+  /** Everything from the selected day onward — the fallback listing. The
+   *  server already starts there; re-applying the cut keeps a stale cached
+   *  page from answering a Thursday with Tuesday's rows. */
+  const nearest = useMemo(() => {
+    const rows = eventsQuery.data ?? [];
+    return applyRest(range ? filterEventsFrom(rows, range.fromDay) : rows);
+  }, [applyRest, range, eventsQuery.data]);
+  /** What the day strip actually asked for. */
+  const selected = useMemo(
+    () => (range ? filterEventsByDay(nearest, day) : nearest),
+    [nearest, range, day],
+  );
+
+  // Nothing in the chosen window, but something on after it: name the date and
+  // show that, instead of a dead end the reader can only escape by guessing
+  // days (GOI-88).
+  const fallback = range !== null && selected.length === 0 && nearest.length > 0;
+  const events = fallback ? nearest : selected;
 
   return (
     <section>
@@ -147,6 +189,9 @@ export function HomePage() {
                   : undefined
               }
             />
+          ) : null}
+          {fallback ? (
+            <NextUpNotice scope={dayFilterPhrase(day)} nextIso={nextEventStart(nearest)} />
           ) : null}
           {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
         </div>

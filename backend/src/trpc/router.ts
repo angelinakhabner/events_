@@ -73,14 +73,34 @@ const venues = router({
   categories: publicProcedure.query(({ ctx }) => ctx.venues.categories()),
 });
 
+const dayKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * An inclusive Europe/Warsaw calendar-day window (GOI-88) — what the day
+ * strip selects, whether it names one date or a whole week.
+ */
+const dayRangeSchema = z.object({ fromDay: dayKeySchema, toDay: dayKeySchema });
+
+/** Rows for a listing that starts at a chosen day. A week of Warsaw cinema
+ *  alone outruns the feed's own 100, and a window the caller asked for should
+ *  come back whole. */
+const FROM_DAY_LIMIT = 300;
+
 const events = router({
   listDefault: publicProcedure
-    .input(z.object({ filters: eventFiltersSchema.optional() }).optional())
+    .input(
+      z.object({
+        filters: eventFiltersSchema.optional(),
+        /** Start the listing at this Warsaw day instead of now — see below. */
+        fromDay: dayKeySchema.optional(),
+      }).optional(),
+    )
     .query(async ({ input }) => {
       // Reads only from DB. NEVER triggers scraping — that happens via cron
       // (scrape:all) or the admin.triggerScrape procedure.
       if (!env.DATABASE_URL) return [];
       const filters = input?.filters ?? {};
+      const fromDay = input?.fromDay;
       // Narrow by category in SQL, before the limit (GOI-70). Fetching the 100
       // globally-earliest Warsaw events and *then* keeping the music ones is
       // how the home page came to show less music than /my did for the same
@@ -94,10 +114,23 @@ const events = router({
       // out of the feed even with a full autumn programme behind it. Which is
       // every Warsaw theatre in July and August. So each category short of the
       // floor is topped up from within a 90-day window (GOI-85).
+      //
+      // The day strip moves the listing's *start*, rather than filtering it in
+      // the browser, for the same reason the category is narrowed in SQL
+      // (GOI-88): cutting the 100 nearest rows down to Friday's answers
+      // "nothing on Friday" whenever those 100 stop on Wednesday, which on a
+      // cinema-heavy day is most Fridays. `fromDay` rides along in the input,
+      // so the per-category top-ups start where the reader is looking too.
+      //
+      // Only the near edge is passed, never the far one. The caller wants the
+      // selected day *and*, if it is empty, whatever comes after it — and
+      // since these rows are ordered by start, the selected day's are at the
+      // head of the response, where the limit can't reach them.
       const rows = await defaultEventStore.listUpcomingWithCategoryFloor({
         city: 'Warsaw',
         categories: filters.categories,
-        limit: 100,
+        fromDay,
+        limit: fromDay ? FROM_DAY_LIMIT : 100,
       });
       // Re-use the existing filter logic for the dimensions SQL didn't cover
       // (day, hour, price). Venues map left empty so per-venue filters
@@ -128,8 +161,8 @@ const events = router({
     .input(
       z.object({
         category: categorySchema.optional(),
-        /** Warsaw calendar day, YYYY-MM-DD. */
-        day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        /** The day strip's window, when one is selected. */
+        range: dayRangeSchema.optional(),
         fromHour: z.number().int().min(0).max(23).optional(),
       }).optional(),
     )
@@ -139,7 +172,8 @@ const events = router({
       const rows = await defaultEventStore.venueFilterCounts({
         category: input?.category,
         city: 'Warsaw',
-        day: input?.day,
+        fromDay: input?.range?.fromDay,
+        toDay: input?.range?.toDay,
         fromHour: input?.fromHour,
         now,
       });

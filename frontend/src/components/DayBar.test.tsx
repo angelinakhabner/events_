@@ -2,17 +2,32 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DayBar } from './DayBar';
+import { WEEK_FILTER } from '../lib/buckets';
 
 // "now" = Wed 2026-07-08 14:00 in Warsaw (CEST +02:00)
 const now = new Date('2026-07-08T12:00:00.000Z');
 
 describe('DayBar', () => {
-  it('renders "Any day", "Today", "Tomorrow" and the five following days', () => {
+  it('renders the named scopes and the rest of the week by date', () => {
     render(<DayBar selected={null} onChange={() => {}} now={now} />);
     expect(screen.getByRole('button', { name: 'Any day', pressed: true })).toBeInTheDocument();
-    for (const label of ['Today', 'Tomorrow', 'Fri 10 Jul', 'Sat 11 Jul', 'Sun 12 Jul', 'Mon 13 Jul', 'Tue 14 Jul']) {
+    for (const label of ['Today', 'Tomorrow', 'This week', 'Fri 10 Jul', 'Sat 11 Jul', 'Sun 12 Jul', 'Mon 13 Jul', 'Tue 14 Jul']) {
       expect(screen.getByRole('button', { name: label, pressed: false })).toBeInTheDocument();
     }
+  });
+
+  it('offers "This week" as a scope, not a date', async () => {
+    const onChange = vi.fn();
+    render(<DayBar selected={null} onChange={onChange} now={now} />);
+    await userEvent.click(screen.getByRole('button', { name: 'This week' }));
+    expect(onChange).toHaveBeenCalledWith(WEEK_FILTER);
+  });
+
+  it('marks "This week" as pressed when it is the selection', () => {
+    render(<DayBar selected={WEEK_FILTER} onChange={() => {}} now={now} />);
+    expect(screen.getByRole('button', { name: 'This week', pressed: true })).toBeInTheDocument();
+    // A day inside the week is not itself selected — the scope is.
+    expect(screen.getByRole('button', { name: 'Today', pressed: false })).toBeInTheDocument();
   });
 
   it('marks the currently-selected day as pressed', () => {

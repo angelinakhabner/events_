@@ -47,8 +47,11 @@ const THEATRE_URL = 'https://goi70-teatr.test/repertuar';
 
 interface TrpcEnvelope<T> { result: { data: T } }
 
-async function listDefault(filters?: unknown): Promise<Event[]> {
-  const input = filters ? `?input=${encodeURIComponent(JSON.stringify({ filters }))}` : '';
+async function listDefault(filters?: unknown, fromDay?: string): Promise<Event[]> {
+  const params = { ...(filters ? { filters } : {}), ...(fromDay ? { fromDay } : {}) };
+  const input = Object.keys(params).length > 0
+    ? `?input=${encodeURIComponent(JSON.stringify(params))}`
+    : '';
   const res = await app.request(`http://localhost/trpc/events.listDefault${input}`, {
     headers: { 'x-device-id': 'goi70-device' },
   });
@@ -281,4 +284,69 @@ describeIfDb('home feed vs /my — category narrowing (GOI-70)', () => {
       expect(theatre).toHaveLength(THEATRE_DAYS.length);
     });
   });
+
+  /**
+   * GOI-88: the same limit, one dimension over. The day strip narrowed the
+   * feed's nearest 100 rows in the browser, and this cinema's programme fills
+   * those in about twelve days — so every chip past the twelfth answered
+   * "nothing on", for days that are visibly full.
+   */
+  describe('the day strip (GOI-88)', () => {
+    /** The Warsaw day a fixture actually landed on. Derived rather than
+     *  computed from its offset: these rows are seeded at `now + n days + 19h`,
+     *  so which Warsaw day that is depends on the hour the suite runs at. */
+    async function dayOf(title: string, category: 'music' | 'theatre'): Promise<string> {
+      const rows = await defaultEventStore.listUpcoming({
+        city: 'Warsaw', categories: [category], limit: 100,
+      });
+      const row = rows.find((e) => e.title === title);
+      expect(row, `fixture ${title} should exist`).toBeDefined();
+      return warsawDay(row!.startsAt);
+    }
+
+    it('reproduces the bug: the nearest 100 rows stop long before the chip does', async () => {
+      const rows = await defaultEventStore.listUpcoming({ city: 'Warsaw', limit: 100 });
+      const days = new Set(rows.map((e) => warsawDay(e.startsAt)));
+
+      expect(rows).toHaveLength(100);
+      // A month out there is a concert on a day this listing never reaches:
+      // filtering these rows for it can only ever answer "nothing on".
+      expect(days.has(await dayOf('Concert +31d', 'music'))).toBe(false);
+    });
+
+    it('starting the listing at the chosen day reaches it', async () => {
+      const day = await dayOf('Concert +31d', 'music');
+      const rows = await listDefault(undefined, day);
+
+      expect(rows.map((e) => e.title)).toContain('Concert +31d');
+      // …and nothing before it: the strip asked for that day onward. The
+      // per-category top-ups (GOI-85) inherit the same start, so they cannot
+      // reach back behind the reader either.
+      expect(rows.every((e) => warsawDay(e.startsAt) >= day)).toBe(true);
+      expect(warsawDay(rows[0]!.startsAt)).toBe(day);
+    });
+
+    it('carries on past the chosen day, so an empty one can name the next', async () => {
+      // The theatre plays three days two months out; the day after the first
+      // of them has nothing on it.
+      const quiet = nextDay(await dayOf('Spektakl +62d', 'theatre'));
+      const rows = await listDefault({ categories: ['theatre'] }, quiet);
+
+      expect(rows.map((e) => warsawDay(e.startsAt))).not.toContain(quiet);
+      // What is left is exactly what the "next event on…" notice reads.
+      expect(rows[0]!.title).toBe('Spektakl +64d');
+    });
+  });
 });
+
+/** The Warsaw day after a day key. */
+function nextDay(dayKey: string): string {
+  return new Date(Date.parse(`${dayKey}T12:00:00.000Z`) + DAY).toISOString().slice(0, 10);
+}
+
+/** Warsaw calendar day of an ISO instant — the unit the strip works in. */
+function warsawDay(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(iso));
+}

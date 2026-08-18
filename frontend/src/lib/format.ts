@@ -1,11 +1,12 @@
 import type { Category, Event, EventFilters } from '@afisz/shared';
-import { isAllDay } from './buckets';
+import { isAllDay, warsawDayKey, WEEK_FILTER, type DayFilter } from './buckets';
 
 const TZ = 'Europe/Warsaw';
 const dayFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ });
 const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ });
 const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: TZ });
 const shortDateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: TZ });
+const weekdayDateFmt = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });
 
 export function formatDayKey(iso: string): string {
   return dayKeyFmt.format(new Date(iso));
@@ -21,6 +22,32 @@ export function formatTime(iso: string): string {
 
 export function formatShortDate(iso: string): string {
   return shortDateFmt.format(new Date(iso));
+}
+
+/** "Sat 22 Aug" — the day strip's own label, and the date the "next event
+ *  on…" notice names. One formatter, so the chip you didn't click and the
+ *  notice telling you when to click it agree. */
+export function formatWeekdayDate(value: string | Date): string {
+  return weekdayDateFmt.format(typeof value === 'string' ? new Date(value) : value);
+}
+
+/**
+ * The day filter as a phrase a sentence can carry: "today", "tomorrow",
+ * "this week", "on Thu 20 Aug".
+ *
+ * "Today" and "Tomorrow" are named rather than dated because that is what
+ * their chips say — a notice that answered a click on "Tomorrow" with "on Wed
+ * 19 Aug" would make the reader do the arithmetic to check it had understood
+ * them.
+ */
+export function dayFilterPhrase(filter: DayFilter, now: Date = new Date()): string {
+  if (!filter) return 'in the listing';
+  if (filter === WEEK_FILTER) return 'this week';
+  if (filter === warsawDayKey(now)) return 'today';
+  if (filter === warsawDayKey(new Date(now.getTime() + 86_400_000))) return 'tomorrow';
+  // A day key is midnight UTC, which is the same Warsaw day at every time of
+  // year — Warsaw is never behind UTC.
+  return `on ${formatWeekdayDate(new Date(`${filter}T00:00:00.000Z`))}`;
 }
 
 /**
