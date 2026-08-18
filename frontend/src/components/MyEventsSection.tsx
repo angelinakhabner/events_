@@ -1,12 +1,16 @@
 import { useMemo, useState } from 'react';
 import type { Category } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import { filterEventsByDay } from '../lib/buckets';
+import {
+  dayFilterRange, filterEventsByDay, filterEventsFrom, nextEventStart, visibleEvents,
+  type DayFilter,
+} from '../lib/buckets';
+import { dayFilterPhrase } from '../lib/format';
 import { EventBuckets } from './EventBuckets';
 import { CategoryBar } from './CategoryBar';
 import { DayBar } from './DayBar';
 import { PanelHeading } from './PanelHeading';
-import { EmptyState, ErrorState, SkeletonList } from './states';
+import { EmptyState, ErrorState, NextUpNotice, SkeletonList } from './states';
 import { MyFestivalsSection } from './MyFestivalsSection';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
@@ -18,7 +22,7 @@ const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
  */
 export function MyEventsSection() {
   const [category, setCategory] = useState<Category | null>(null);
-  const [day, setDay] = useState<string | null>(null);
+  const [day, setDay] = useState<DayFilter>(null);
 
   const eventsQuery = trpc.my.events.list.useQuery(
     category ? { filters: { categories: [category] } } : undefined,
@@ -31,10 +35,21 @@ export function MyEventsSection() {
     [venuesQuery.data],
   );
 
-  const events = useMemo(
-    () => filterEventsByDay(eventsQuery.data ?? [], day),
-    [eventsQuery.data, day],
+  // Same rule as the public listing (GOI-88): what the day strip selected, and
+  // — when that is empty — the nearest events with the date named above them.
+  // This list is small enough to arrive whole, so the window is applied here
+  // rather than in SQL as the public feed's is.
+  const range = useMemo(() => dayFilterRange(day), [day]);
+  const nearest = useMemo(() => {
+    const rows = eventsQuery.data ?? [];
+    return visibleEvents(range ? filterEventsFrom(rows, range.fromDay) : rows);
+  }, [eventsQuery.data, range]);
+  const selected = useMemo(
+    () => (range ? filterEventsByDay(nearest, day) : nearest),
+    [nearest, range, day],
   );
+  const fallback = range !== null && selected.length === 0 && nearest.length > 0;
+  const events = fallback ? nearest : selected;
 
   const noVenues = venuesQuery.data && venuesQuery.data.length === 0;
 
@@ -70,6 +85,9 @@ export function MyEventsSection() {
                 : undefined
             }
           />
+        ) : null}
+        {fallback ? (
+          <NextUpNotice scope={dayFilterPhrase(day)} nextIso={nextEventStart(nearest)} />
         ) : null}
         {events.length > 0 ? <EventBuckets events={events} venues={venueMap} compact /> : null}
       </div>

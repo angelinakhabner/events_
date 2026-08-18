@@ -10,6 +10,10 @@ import {
   filterEventsFromHour,
   splitExhibitions,
   exhibitionCoversDay,
+  dayFilterRange,
+  nextEventStart,
+  visibleEvents,
+  WEEK_FILTER,
   warsawDayKey,
   warsawHour,
 } from './buckets';
@@ -430,5 +434,101 @@ describe('periodKey (GOI-82)', () => {
 
   it('does not throw on an unparseable date', () => {
     expect(periodKey('not-a-date', now)).toBe('later');
+  });
+});
+
+
+// ─── The day filter's scopes (GOI-88) ────────────────────────────────────────
+
+describe('dayFilterRange', () => {
+  // Wed 8 Jul 2026, 14:00 Warsaw.
+  const now = new Date('2026-07-08T12:00:00.000Z');
+
+  it('is null for "any day"', () => {
+    expect(dayFilterRange(null, now)).toBeNull();
+  });
+
+  it('makes a single day a one-day window', () => {
+    expect(dayFilterRange('2026-07-11', now)).toEqual({
+      fromDay: '2026-07-11',
+      toDay: '2026-07-11',
+    });
+  });
+
+  it('makes "this week" today plus six more days — the bucket\'s own window', () => {
+    expect(dayFilterRange(WEEK_FILTER, now)).toEqual({
+      fromDay: '2026-07-08',
+      toDay: '2026-07-14',
+    });
+  });
+
+  it('anchors "this week" on the Warsaw day, not the UTC one', () => {
+    // 22:30 UTC on Wed 8 Jul is 00:30 Thu 9 Jul in Warsaw.
+    const pastMidnight = new Date('2026-07-08T22:30:00.000Z');
+    expect(dayFilterRange(WEEK_FILTER, pastMidnight)).toEqual({
+      fromDay: '2026-07-09',
+      toDay: '2026-07-15',
+    });
+  });
+});
+
+describe('filterEventsByDay — "this week"', () => {
+  const now = new Date('2026-07-08T12:00:00.000Z'); // Wed 8 Jul, 14:00 Warsaw
+  const inside = evt('2026-07-14T18:00:00.000Z', 'last-day'); // Tue 14 Jul
+  const outside = evt('2026-07-15T18:00:00.000Z', 'day-eight'); // Wed 15 Jul
+  const today = evt('2026-07-08T18:00:00.000Z', 'today');
+
+  it('keeps every day of the seven-day window and nothing past it', () => {
+    expect(filterEventsByDay([today, inside, outside], WEEK_FILTER, now).map((e) => e.id))
+      .toEqual(['today', 'last-day']);
+  });
+
+  it('keeps an exhibition whose run overlaps the window', () => {
+    const run = exhibition('2026-07-13T00:00:00+02:00', '2026-08-30T00:00:00+02:00', 'run');
+    const over = exhibition('2026-05-01T00:00:00+02:00', '2026-07-01T00:00:00+02:00', 'closed');
+    expect(filterEventsByDay([run, over], WEEK_FILTER, now).map((e) => e.id)).toEqual(['run']);
+  });
+});
+
+describe('visibleEvents', () => {
+  // 20:00 Warsaw — the hour at which "Today" used to render a blank page.
+  const now = new Date('2026-07-08T18:00:00.000Z');
+
+  it('drops timed events that have already started', () => {
+    const over = evt('2026-07-08T16:00:00.000Z', 'over');
+    const later = evt('2026-07-08T19:00:00.000Z', 'later');
+    expect(visibleEvents([over, later], now).map((e) => e.id)).toEqual(['later']);
+  });
+
+  it('keeps an all-day row until its own day is out', () => {
+    // A legacy museum row: midnight placeholder on today's date.
+    const allDay = { ...evt('2026-07-07T22:00:00.000Z', 'all-day'), category: 'exhibition' as const };
+    expect(visibleEvents([allDay], now).map((e) => e.id)).toEqual(['all-day']);
+  });
+
+  it('keeps a running exhibition and drops one that has closed', () => {
+    const running = exhibition('2026-06-01T00:00:00+02:00', '2026-09-01T00:00:00+02:00', 'running');
+    const closed = exhibition('2026-05-01T00:00:00+02:00', '2026-07-07T00:00:00+02:00', 'closed');
+    expect(visibleEvents([running, closed], now).map((e) => e.id)).toEqual(['running']);
+  });
+});
+
+describe('nextEventStart', () => {
+  const now = new Date('2026-07-08T18:00:00.000Z');
+
+  it('names the soonest event still to come', () => {
+    const over = evt('2026-07-08T16:00:00.000Z', 'over');
+    const soon = evt('2026-07-11T16:00:00.000Z', 'soon');
+    const later = evt('2026-07-19T16:00:00.000Z', 'later');
+    expect(nextEventStart([later, over, soon], now)).toBe(soon.startsAt);
+  });
+
+  it('has no date to give when the only thing on is a run', () => {
+    const run = exhibition('2026-06-01T00:00:00+02:00', '2026-09-01T00:00:00+02:00', 'run');
+    expect(nextEventStart([run], now)).toBeNull();
+  });
+
+  it('is null for an empty listing', () => {
+    expect(nextEventStart([], now)).toBeNull();
   });
 });

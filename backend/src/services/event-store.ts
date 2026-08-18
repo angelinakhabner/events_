@@ -24,6 +24,22 @@ export interface EventListInput {
   title?: string;
   /** Upper bound on start time — the caller's window, e.g. a week ahead. */
   until?: Date;
+  /**
+   * Start the listing at this Europe/Warsaw calendar day, YYYY-MM-DD, rather
+   * than at `now` (GOI-88).
+   *
+   * Narrowed in SQL for the same reason as `categories`, and broken the same
+   * way when it isn't: `limit` cuts the *globally* earliest rows, so a caller
+   * that fetches the next 100 events and then keeps Friday's gets whatever
+   * Friday survived a list that today's cinema programme had already filled.
+   * That is what made the day strip look inert — "Fri 21 Aug" was a real
+   * click on a real filter over rows that stopped at Wednesday.
+   */
+  fromDay?: string;
+  /** Optional closing edge of the window, inclusive. Left off, the listing
+   *  runs from `fromDay` into the future — which is what lets one query
+   *  answer both "what's on Thursday" and "…and if nothing, what's next". */
+  toDay?: string;
   /** Hard upper bound on rows. */
   limit?: number;
   now?: Date;
@@ -108,6 +124,7 @@ export class EventStore {
       )!,
     ];
     if (input.until) conditions.push(lte(schema.events.startsAt, input.until));
+    if (input.fromDay) conditions.push(warsawDayWindow(input.fromDay, input.toDay));
     if (input.venueId) conditions.push(eq(schema.events.venueId, input.venueId));
     // An explicitly empty list means "no venues", not "all of them" — matching
     // it to nothing is what keeps a subscriber with no venues from being
@@ -293,8 +310,10 @@ export class EventStore {
   async venueFilterCounts(input: {
     category?: Category;
     city?: string;
-    /** Warsaw calendar day, YYYY-MM-DD. */
-    day?: string;
+    /** Inclusive Warsaw calendar-day window, YYYY-MM-DD — one day when the
+     *  strip names a date, seven when it says "this week". */
+    fromDay?: string;
+    toDay?: string;
     /** Keep events starting at or after this Warsaw hour. */
     fromHour?: number;
     now?: Date;
@@ -308,8 +327,14 @@ export class EventStore {
     // `active` chip reading 0 and an `empty` one.
     const inFilter = [
       sql`e.id IS NOT NULL`,
-      input.day
-        ? sql`(e.starts_at AT TIME ZONE 'Europe/Warsaw')::date = ${input.day}::date`
+      input.fromDay && input.toDay
+        ? sql`(CASE WHEN e.kind = 'exhibition'
+            THEN (e.starts_at AT TIME ZONE 'Europe/Warsaw')::date <= ${input.toDay}::date
+                 AND (e.ends_at IS NULL
+                      OR (e.ends_at AT TIME ZONE 'Europe/Warsaw')::date >= ${input.fromDay}::date)
+            ELSE (e.starts_at AT TIME ZONE 'Europe/Warsaw')::date
+                 BETWEEN ${input.fromDay}::date AND ${input.toDay}::date
+          END)`
         : sql`true`,
       input.fromHour !== undefined
         ? sql`extract(hour from e.starts_at AT TIME ZONE 'Europe/Warsaw') >= ${input.fromHour}`
@@ -372,6 +397,25 @@ export class EventStore {
       );
     return new Set(rows.map((r) => r.sourceUrl));
   }
+}
+
+/**
+ * "Falls inside this Warsaw day window" — as a timed event's start day, or as
+ * an exhibition's run overlapping it (GOI-67).
+ *
+ * The dates are compared after converting to Warsaw, not in UTC: a 23:00
+ * screening is stored as 21:00Z, and asking UTC for its day answers with the
+ * day before, for roughly a tenth of the programme.
+ */
+function warsawDayWindow(fromDay: string, toDay?: string) {
+  const startDay = sql`(${schema.events.startsAt} AT TIME ZONE 'Europe/Warsaw')::date`;
+  const endDay = sql`(${schema.events.endsAt} AT TIME ZONE 'Europe/Warsaw')::date`;
+  const notAfter = toDay ? sql`${startDay} <= ${toDay}::date` : sql`true`;
+  return sql`(CASE WHEN ${schema.events.kind} = 'exhibition'
+    THEN ${notAfter}
+         AND (${schema.events.endsAt} IS NULL OR ${endDay} >= ${fromDay}::date)
+    ELSE ${startDay} >= ${fromDay}::date AND ${notAfter}
+  END)`;
 }
 
 export const defaultEventStore = new EventStore();
