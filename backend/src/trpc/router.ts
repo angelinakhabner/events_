@@ -87,7 +87,14 @@ const events = router({
       // venues: a cinema publishes eight screenings a day, so those 100 rows
       // were spent long before the week's concerts appeared in them. /my never
       // had the bug because it narrows by venue in SQL.
-      const rows = await defaultEventStore.listUpcoming({
+      //
+      // That fixes the *filtered* view. Unfiltered, there is nothing to narrow
+      // to — every category is wanted at once — so the limit still buries the
+      // sparse ones, and a category with nothing on in the next few days drops
+      // out of the feed even with a full autumn programme behind it. Which is
+      // every Warsaw theatre in July and August. So each category short of the
+      // floor is topped up from within a 90-day window (GOI-85).
+      const rows = await defaultEventStore.listUpcomingWithCategoryFloor({
         city: 'Warsaw',
         categories: filters.categories,
         limit: 100,
