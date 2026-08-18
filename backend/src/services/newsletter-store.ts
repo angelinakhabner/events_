@@ -108,7 +108,10 @@ export class DbNewsletterStore implements NewsletterStore {
   }
 }
 
-function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
+/** A subscription as callers outside this process may see it. The internal
+ *  user id is session-adjacent and never leaves the backend — the public API
+ *  (GOI-87) addresses subscriptions by email instead. */
+export function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
   return {
     email: sub.email,
     recipientName: sub.recipientName,
