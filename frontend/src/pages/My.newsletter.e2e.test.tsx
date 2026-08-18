@@ -98,7 +98,7 @@ describe('MyPage — newsletter end-to-end', () => {
 
     // Daily at 03:45, after 22:00 — none of the three reachable without the
     // full ranges.
-    await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
+    await user.click(within(section).getByRole('radio', { name: /every day/i }));
     await user.selectOptions(sendHour, '3');
     await user.selectOptions(sendMinute, '45');
     await user.selectOptions(within(section).getByLabelText(/only events after/i), '22');
@@ -125,6 +125,51 @@ describe('MyPage — newsletter end-to-end', () => {
     });
   });
 
+  /**
+   * GOI-60: the cadence is a segmented control rather than a dropdown, so the
+   * choice is legible without opening anything. These pin the behaviour the
+   * visual change has to keep — one selected option at a time, and the
+   * selection actually reaching the payload.
+   */
+  it('shows the cadence as a segmented control with exactly one option selected', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const section = email.closest('section')!;
+    await waitFor(() => expect(email.value).toBe(USER_EMAIL));
+
+    const group = within(section).getByRole('radiogroup', { name: /how often/i });
+    const daily = within(group).getByRole('radio', { name: /every day/i });
+    const weekly = within(group).getByRole('radio', { name: /weekly/i });
+
+    // Both options are on screen — that is the point of the control.
+    expect(within(group).getAllByRole('radio')).toHaveLength(2);
+
+    await user.click(daily);
+    expect(daily).toHaveAttribute('aria-checked', 'true');
+    expect(weekly).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(weekly);
+    expect(weekly).toHaveAttribute('aria-checked', 'true');
+    expect(daily).toHaveAttribute('aria-checked', 'false');
+  });
+
+  // 'monthly' is a per-category rhythm, not a whole-brief one: as the top-level
+  // cadence it would mean eleven silent months.
+  it('does not offer monthly as the whole brief\'s cadence', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const email = await screen.findByLabelText(/email address/i);
+    const section = email.closest('section')!;
+
+    const group = within(section).getByRole('radiogroup', { name: /how often/i });
+    expect(within(group).queryByRole('radio', { name: /monthly/i })).not.toBeInTheDocument();
+  });
+
   it('weekly briefs let you pick the weekday, and Generate renders a preview', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -134,11 +179,12 @@ describe('MyPage — newsletter end-to-end', () => {
     const section = email.closest('section')!;
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
-    // The weekday picker only exists for weekly briefs.
-    await user.selectOptions(within(section).getByLabelText(/how often/i), 'daily');
+    // The weekday picker only exists for weekly briefs. Cadence is a segmented
+    // control (GOI-60) — a radiogroup, so each option is its own radio.
+    await user.click(within(section).getByRole('radio', { name: /every day/i }));
     expect(within(section).queryByLabelText(/day of the week/i)).not.toBeInTheDocument();
 
-    await user.selectOptions(within(section).getByLabelText(/how often/i), 'weekly');
+    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
     await user.selectOptions(await within(section).findByLabelText(/day of the week/i), '4');
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');

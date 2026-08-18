@@ -72,7 +72,7 @@ export function MyVenuesSection() {
     <section>
       <PanelHeading
         title="My venues"
-        blurb="Every venue you follow, filed into folders. Rename a venue, change its category or add your own tags — those changes are only visible to you."
+        blurb="Venues you follow — upcoming events surface first in your feed. Rename one, change its category or add your own tags; those changes are only visible to you."
         rule={false}
         action={
           /* GOI-73: this is the one thing the tab exists to let you do, and as
@@ -364,7 +364,7 @@ function VenueRow({
 
   if (!editing) {
     return (
-      <li className="flex items-start gap-4 md:gap-5 py-5 md:py-6 rule-soft">
+      <li className="row-hover flex items-start gap-4 md:gap-5 py-5 md:py-6 rule-soft">
         <CategorySwatch category={venue.category} size={20} className="mt-1.5" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
