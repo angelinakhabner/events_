@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { VenuePickerModal } from './VenuePickerModal';
 import type { VenueFilterOption, VenueFilterStatus } from '@afisz/shared';
 import { venueStatusNote } from '@afisz/shared';
 
@@ -22,20 +23,31 @@ export interface VenueBarProps {
   /** Hidden entirely on the ALL tab — see below. */
   category: string | null;
   loading?: boolean;
+  /** Passed to the picker so it can drop the "log in to add venues" hint. */
+  signedIn?: boolean;
 }
 
-export function VenueBar({ venues, selected, onChange, category, loading }: VenueBarProps) {
+export function VenueBar({ venues, selected, onChange, category, loading, signedIn }: VenueBarProps) {
   // §4: sixteen-plus chips is not a row, and someone on ALL is browsing rather
   // than narrowing. Hiding is the decision, not a limitation.
   if (category === null) return null;
   if (!loading && venues.length === 0) return null;
 
-  return <Row venues={venues} selected={selected} onChange={onChange} category={category} />;
+  return (
+    <Row
+      venues={venues}
+      selected={selected}
+      onChange={onChange}
+      category={category}
+      signedIn={signedIn}
+    />
+  );
 }
 
-function Row({ venues, selected, onChange, category }: Omit<VenueBarProps, 'loading'>) {
+function Row({ venues, selected, onChange, category, signedIn }: Omit<VenueBarProps, 'loading'>) {
   const order = useStableOrder(venues, category);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [picking, setPicking] = useState(false);
 
   const byId = useMemo(() => new Map(venues.map((v) => [v.id, v])), [venues]);
   const ordered = order.map((id) => byId.get(id)).filter((v): v is VenueFilterOption => !!v);
@@ -67,15 +79,28 @@ function Row({ venues, selected, onChange, category }: Omit<VenueBarProps, 'load
       aria-label="Filter by venue"
       className="scroll-x flex flex-nowrap md:flex-wrap items-center gap-x-4 gap-y-2 pb-3"
     >
+      {/* GOI-89: this one opens the full list rather than clearing the
+          selection outright. The row can only ever show the busiest few, and
+          it names venues without saying what they are — "Edito" means nothing
+          until you see edito.pl beside it. Clearing is still one click, now
+          the first row of the dialog.
+
+          The label and the count are unchanged, and deliberately so: GOI-76 §2
+          fixed that number as the *unfiltered* total, so it stays a stable
+          reading of "what's on in this category" rather than echoing the
+          selection back. */}
       <button
         ref={(el) => { refs.current[0] = el; }}
         type="button"
         aria-pressed={all}
-        onClick={() => onChange([])}
+        aria-haspopup="dialog"
+        aria-expanded={picking}
+        onClick={() => setPicking(true)}
         onKeyDown={(e) => onKeyDown(e, 0)}
         className={chipClass(all, false)}
       >
         All venues <span className="opacity-70">{total}</span>
+        <span aria-hidden className="ml-1.5 text-[8px] align-middle">▼</span>
       </button>
 
       {ordered.map((v, i) => (
@@ -88,6 +113,20 @@ function Row({ venues, selected, onChange, category }: Omit<VenueBarProps, 'load
           onKeyDown={(e) => onKeyDown(e, i + 1)}
         />
       ))}
+
+      {picking ? (
+        <VenuePickerModal
+          venues={venues}
+          selected={selected}
+          category={category ?? ''}
+          signedIn={signedIn}
+          onApply={(next) => {
+            onChange(next);
+            setPicking(false);
+          }}
+          onCancel={() => setPicking(false)}
+        />
+      ) : null}
     </div>
   );
 }

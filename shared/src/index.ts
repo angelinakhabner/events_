@@ -206,12 +206,34 @@ export interface NewsletterSettings {
 
 // ─── Festivals ───────────────────────────────────────────────────────────────
 
+/**
+ * Which listing a festival belongs to (GOI-68).
+ *
+ * Festivals started as a cinema-only idea and the type said so — the hosts
+ * field was called `cinemas`. A theatre festival filed under a field of that
+ * name is a lie the compiler can't catch, so the field is `venues` and the
+ * listing it belongs to is stated outright.
+ *
+ * A narrow set on purpose: these are the categories that actually run
+ * festivals. It is a subset of `Category`, not the whole of it — there is no
+ * such thing as an "other" festival worth putting on a page.
+ */
+export type FestivalCategory = 'cinema' | 'theatre' | 'music';
+
+/** Whether a listing has festivals of its own (GOI-68). Narrows a `Category`
+ *  from the filter bar down to the ones festivals are filed under. */
+export function isFestivalCategory(category: string): category is FestivalCategory {
+  return category === 'cinema' || category === 'theatre' || category === 'music';
+}
+
 export interface Festival {
   id: string;
   name: string;
   url: string;
-  /** Cinemas (venue names) hosting the festival. */
-  cinemas: string[];
+  /** The listing this festival belongs under. */
+  category: FestivalCategory;
+  /** Venue names hosting the festival. */
+  venues: string[];
   city: string;
   /** ISO dates (YYYY-MM-DD), inclusive. */
   startDate: string;
@@ -255,7 +277,7 @@ function foldVenueName(s: string): string {
  * is deliberately loose; the alternative (exact match) misses most real pairs.
  */
 export function festivalVenueMatches(festival: Festival, venueNames: string[]): string[] {
-  const hosts = festival.cinemas.map(foldVenueName).filter(Boolean);
+  const hosts = festival.venues.map(foldVenueName).filter(Boolean);
   if (hosts.length === 0) return [];
   return venueNames.filter((name) => {
     const folded = foldVenueName(name);
@@ -492,6 +514,10 @@ export interface VenueFilterOption {
   /** Derived from the name — what goes in the URL instead of a UUID. */
   slug: string;
   name: string;
+  /** The venue's own site. Shown in the venue picker (GOI-89) so a name that
+   *  means nothing to the reader can still be identified — and so they can go
+   *  straight to the source. */
+  url: string;
   category: Category;
   /** Events at this venue under the current day/time filters. Never reflects
    *  the venue selection itself (GOI-76 §2). */

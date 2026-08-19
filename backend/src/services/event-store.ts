@@ -345,6 +345,7 @@ export class EventStore {
       SELECT
         v.id,
         v.name,
+        v.url,
         v.category,
         v.probe_error_code,
         count(e.id) FILTER (WHERE ${sql.join(inFilter, sql` AND `)}) AS in_filter,
@@ -359,12 +360,13 @@ export class EventStore {
         AND (e.starts_at >= ${now} OR (e.kind = 'exhibition' AND e.ends_at >= ${now}))
       WHERE ${input.category ? sql`v.category = ${input.category}` : sql`true`}
         AND ${input.city ? sql`v.city = ${input.city}` : sql`true`}
-      GROUP BY v.id, v.name, v.category, v.probe_error_code
+      GROUP BY v.id, v.name, v.url, v.category, v.probe_error_code
     `);
 
     return unwrap(rows).map((r) => ({
       id: String(r.id),
       name: String(r.name),
+      url: String(r.url),
       category: String(r.category) as Category,
       probeErrorCode: r.probe_error_code === null ? null : String(r.probe_error_code),
       count: Number(r.in_filter ?? 0),
@@ -424,6 +426,7 @@ export const defaultEventStore = new EventStore();
 export interface VenueFilterCountRow {
   id: string;
   name: string;
+  url: string;
   category: Category;
   probeErrorCode: string | null;
   count: number;

@@ -19,6 +19,7 @@ function venue(over: Partial<VenueFilterOption> & { name: string }): VenueFilter
     ...over,
     id: over.id ?? over.name.toLowerCase(),
     slug: over.slug ?? over.name.toLowerCase(),
+    url: over.url ?? `https://${over.name.toLowerCase()}.example`,
   };
 }
 
@@ -34,11 +35,13 @@ function Harness({
   category = 'cinema' as string | null,
   initial = [] as string[],
   onSelection,
+  signedIn,
 }: {
   venues?: VenueFilterOption[];
   category?: string | null;
   initial?: string[];
   onSelection?: (ids: string[]) => void;
+  signedIn?: boolean;
 }) {
   const [selected, setSelected] = useState(initial);
   return (
@@ -46,6 +49,7 @@ function Harness({
       venues={venues}
       selected={selected}
       category={category}
+      signedIn={signedIn}
       onChange={(ids) => { setSelected(ids); onSelection?.(ids); }}
     />
   );
@@ -86,10 +90,21 @@ describe('VenueBar — selection (GOI-76 §1)', () => {
     expect(chip(/^All venues/)).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('clears the subset from "All venues"', () => {
+  // GOI-89 moved clearing one level in: "All venues" now opens the picker,
+  // and the picker's first row is what clears. The chip no longer clears on
+  // its own — a dialog that opened *and* changed the feed under you would be
+  // two actions from one click.
+  it('clears the subset from the picker\'s "All venues" row', () => {
     const onSelection = vi.fn();
     render(<Harness initial={[MURANOW.id, KINOTEKA.id]} onSelection={onSelection} />);
+
     fireEvent.click(chip(/^All venues/));
+    expect(onSelection).not.toHaveBeenCalled();
+
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /^All venues$/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /show all venues/i }));
+
     expect(onSelection).toHaveBeenLastCalledWith([]);
   });
 
@@ -304,5 +319,80 @@ describe('counts ignore the selection (GOI-76 §2 — the regression that matter
   it('keeps the "All venues" total at the unfiltered sum while a subset is on', () => {
     render(<Harness initial={[MURANOW.id]} />);
     expect(within(chip(/^All venues/)).getByText('25')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The venue picker (GOI-89).
+ *
+ * The row above it can only ever carry the busiest few venues, and it names
+ * them without saying what they are. This is the full list, with addresses.
+ */
+describe('VenueBar — the venue picker (GOI-89)', () => {
+  /** Captured before opening: once the dialog is up, its own "All venues"
+   *  row answers to the same accessible name as the chip. */
+  const openPicker = (initial: string[] = [], props: Record<string, unknown> = {}) => {
+    const onSelection = vi.fn();
+    render(<Harness initial={initial} onSelection={onSelection} {...props} />);
+    const trigger = chip(/^All venues/);
+    fireEvent.click(trigger);
+    return { onSelection, trigger, dialog: screen.getByRole('dialog') };
+  };
+
+  it('opens from the "All venues" chip', () => {
+    const { dialog, trigger } = openPicker();
+    expect(dialog).toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('lists every venue with its address', () => {
+    const { dialog } = openPicker();
+    for (const v of ALL_FOUR) {
+      expect(within(dialog).getByRole('button', { name: new RegExp(`^${v.name},`) })).toBeInTheDocument();
+    }
+    // The address is what makes an unfamiliar name identifiable, and it links
+    // out — so it is a link, not decoration.
+    const link = within(dialog).getByRole('link', { name: 'muranow.example' });
+    expect(link).toHaveAttribute('href', 'https://muranow.example');
+  });
+
+  it('applies a multi-venue selection only on submit', () => {
+    const { onSelection, dialog } = openPicker();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Muranow,/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Kinoteka,/ }));
+    // Nothing has reached the feed yet: re-filtering under the reader after
+    // every tick is what makes a list like this unusable.
+    expect(onSelection).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /show 2 venues/i }));
+    expect(onSelection).toHaveBeenLastCalledWith([MURANOW.id, KINOTEKA.id]);
+  });
+
+  it('drops the selection on cancel', () => {
+    const { onSelection, dialog } = openPicker();
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Muranow,/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+
+    expect(onSelection).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('filters the list by name or address', () => {
+    const { dialog } = openPicker();
+    fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'kino' } });
+
+    expect(within(dialog).getByRole('button', { name: /^Kinoteka,/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /^Muranow,/ })).not.toBeInTheDocument();
+  });
+
+  it('tells a signed-out reader where venues come from', () => {
+    const { dialog } = openPicker();
+    expect(within(dialog).getByRole('link', { name: /log in to my venues/i })).toBeInTheDocument();
+  });
+
+  it('spares a signed-in reader the hint', () => {
+    const { dialog } = openPicker([], { signedIn: true });
+    expect(within(dialog).queryByRole('link', { name: /log in to my venues/i })).not.toBeInTheDocument();
   });
 });

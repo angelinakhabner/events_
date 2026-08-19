@@ -15,6 +15,7 @@ import { CategoryBar } from '../components/CategoryBar';
 import { DayBar } from '../components/DayBar';
 import { TimeBar } from '../components/TimeBar';
 import { VenueBar } from '../components/VenueBar';
+import { isLoggedIn } from '../lib/auth';
 import { EmptyState, ErrorState, NextUpNotice, SkeletonList } from '../components/states';
 import { FestivalsSection } from '../components/FestivalsSection';
 
@@ -158,6 +159,7 @@ export function HomePage() {
           onChange={changeVenues}
           category={category}
           loading={filterOptionsQuery.isLoading}
+          signedIn={isLoggedIn()}
         />
 
         <div className="mt-8">
@@ -196,9 +198,10 @@ export function HomePage() {
           {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
         </div>
 
-        {/* Festivals are cinema news — keep them visible on the unfiltered view
-            and the cinema tab, but out of the way of other categories. */}
-        {category === null || category === 'cinema' ? <FestivalsSection /> : null}
+        {/* "Coming soon" sits at the foot of the listing it belongs to, so a
+            category's festivals arrive with its events rather than as cinema
+            news pinned to every page (GOI-68). */}
+        <FestivalsSection category={category} />
       </div>
     </section>
   );
