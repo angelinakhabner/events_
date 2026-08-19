@@ -15,6 +15,10 @@
   /* Square corners everywhere — the poster system draws with rules, never
      shadows or rounded chrome. Form controls opt out of the UA defaults. */
   input, select, textarea, button { border-radius: 0; }
+  /* No OS picker chrome anywhere — the design draws its own (see `.select-flat`). */
+  input[type='time']::-webkit-calendar-picker-indicator { display: none; }
+  input[type='time']::-webkit-inner-spin-button,
+  input[type='time']::-webkit-clear-button { display: none; -webkit-appearance: none; }
   ::selection { @apply bg-accent text-white; }
 }
 
@@ -28,6 +32,14 @@
   /** Form-section label, the heaviest of the small caps. */
   .label-caps {
     @apply block text-[11px] font-extrabold uppercase tracking-[1px] text-ink;
+  }
+  /**
+   * The newsletter form's section label. Same caps, one step up in size: at
+   * 11px it read as a caption beside the 22px Anton time readouts standing
+   * next to it, so the design pack raised it to 14px to hold that line.
+   */
+  .label-form {
+    @apply block text-sm font-extrabold uppercase tracking-[1px] text-ink;
   }
 
   /* ── Rules ──────────────────────────────────────────────────────────── */
@@ -94,6 +106,53 @@
   /** Secondary: outlined. */
   .btn-outline {
     @apply btn border-2 border-ink bg-transparent text-ink hover:text-accent hover:border-accent;
+  }
+
+  /* ── Pills ──────────────────────────────────────────────────────────── */
+
+  /**
+   * A small filled label-pill (`9px 16px` in the design pack): the active
+   * folder's name, and the one "add" action that sits under it. Shorter than
+   * `.btn` — these read as state and as a single inline action, not as the
+   * form-submitting buttons at the bottom of a panel.
+   */
+  .pill {
+    @apply inline-block px-4 py-[9px] text-xs font-extrabold uppercase
+           tracking-[0.5px] disabled:opacity-50 disabled:cursor-default;
+  }
+  .pill-ink { @apply pill bg-ink text-white; }
+  .pill-accent { @apply pill cursor-pointer bg-accent text-white hover:bg-ink; }
+  /** The inactive folder: outlined, waiting to be made active. */
+  .pill-outline {
+    @apply pill cursor-pointer border-2 border-ink bg-transparent text-ink
+           hover:text-accent hover:border-accent;
+  }
+
+  /* ── Selects ────────────────────────────────────────────────────────── */
+
+  /**
+   * Every dropdown in the app is drawn by us, not by the OS (design pack:
+   * "don't let any native OS picker UI show through"). `appearance:none`
+   * takes the rounded chrome and the platform arrow away; the flat chevron
+   * below puts back the only part worth keeping.
+   */
+  .select-chevron {
+    @apply appearance-none cursor-pointer focus:outline-none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 5 5-5' fill='none' stroke='%23141414' stroke-width='2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+  /** The standalone dropdown: square ink box, caps label, flat chevron. */
+  .select-flat {
+    @apply select-chevron border-2 border-ink bg-white py-[7px] pl-2 pr-6
+           text-xs font-extrabold uppercase tracking-[0.5px] text-ink
+           focus:border-accent;
+  }
+  /** The same control inside a shared box (the hour:minute picker), where the
+   *  surrounding border is already drawn. */
+  .select-flat-bare {
+    @apply select-chevron border-0 bg-white py-[9px] pl-2 pr-5 text-xs
+           font-extrabold uppercase tracking-[0.5px] text-ink;
   }
 
   /* ── Fields ─────────────────────────────────────────────────────────── */

@@ -191,7 +191,7 @@ describe('MyVenuesSection — "Add venue" prominence (GOI-73)', () => {
   it('draws "Add venue" as the screen’s one loud button, not as another text action', () => {
     render(<MyVenuesSection />);
     const add = screen.getByRole('button', { name: '+ Add venue' });
-    expect(add).toHaveClass('btn-accent');
+    expect(add).toHaveClass('pill-accent');
     // The control it used to be indistinguishable from.
     expect(screen.getByRole('button', { name: '+ New folder' })).toHaveClass('act');
   });
