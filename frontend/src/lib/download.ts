@@ -14,10 +14,16 @@
  */
 export function downloadText(filename: string, content: string, mime: string): boolean {
   if (typeof URL?.createObjectURL !== 'function') return false;
+  return downloadBlob(filename, new Blob([content], { type: `${mime};charset=utf-8` }));
+}
+
+/** The blob-URL-behind-a-synthetic-anchor dance, shared by both savers. */
+function downloadBlob(filename: string, blob: Blob): boolean {
+  if (typeof URL?.createObjectURL !== 'function') return false;
   let url: string | null = null;
   let anchor: HTMLAnchorElement | null = null;
   try {
-    url = URL.createObjectURL(new Blob([content], { type: `${mime};charset=utf-8` }));
+    url = URL.createObjectURL(blob);
     anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
@@ -46,6 +52,30 @@ export function downloadText(filename: string, content: string, mime: string): b
       }, 1000);
     }
   }
+}
+
+/**
+ * Save base64-encoded binary — the newsletter PDF (GOI-45/GOI-91) — to disk.
+ *
+ * Separate from `downloadText` because the bytes have to survive the trip
+ * intact: `atob` yields a binary string whose char codes are the bytes, and
+ * putting that string straight into a Blob would re-encode it as UTF-8 and
+ * corrupt every byte above 0x7F — which, in a PDF, is most of the font.
+ * Copying through a `Uint8Array` is what keeps it a PDF.
+ *
+ * Best-effort in the same way and for the same reason as `downloadText`.
+ */
+export function downloadBase64(filename: string, base64: string, mime: string): boolean {
+  if (typeof URL?.createObjectURL !== 'function') return false;
+  let bytes: Uint8Array;
+  try {
+    const binary = atob(base64);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  } catch {
+    return false;
+  }
+  return downloadBlob(filename, new Blob([bytes.buffer as ArrayBuffer], { type: mime }));
 }
 
 /** Filename-safe slug: accents folded, everything else collapsed to dashes. */

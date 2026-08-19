@@ -208,7 +208,9 @@ describe('MyPage — newsletter end-to-end', () => {
   });
 
   // GOI-45: generating also drops the brief on disk, ready to send by hand.
-  it('saves the generated brief as a dated .html file', async () => {
+  // GOI-91 made that a PDF — the same document the drive copy files, so what
+  // gets forwarded by hand and what lands in the folder cannot drift apart.
+  it('saves the generated brief as a dated PDF', async () => {
     const user = userEvent.setup();
     // jsdom has no blob URLs; stand one up so the helper gets as far as the
     // anchor, and record what it would have saved.
@@ -231,12 +233,18 @@ describe('MyPage — newsletter end-to-end', () => {
       await screen.findByTestId('newsletter-preview');
 
       expect(saved).toHaveLength(1);
-      expect(saved[0]!.name).toMatch(/^afisz-brief-\d{4}-\d{2}-\d{2}\.html$/);
-      expect(saved[0]!.type).toBe('text/html;charset=utf-8');
+      expect(saved[0]!.name).toMatch(/^afisz-\d{4}-\d{2}-\d{2}-(daily|weekly|monthly)\.pdf$/);
+      expect(saved[0]!.type).toBe('application/pdf');
 
-      // And it can be saved again without regenerating.
-      await user.click(screen.getByRole('button', { name: /download again/i }));
+      // And it can be saved again without regenerating — as either format,
+      // since the .html one is what you paste into a mail client.
+      await user.click(screen.getByRole('button', { name: /download pdf/i }));
       expect(saved).toHaveLength(2);
+      expect(saved[1]!.type).toBe('application/pdf');
+
+      await user.click(screen.getByRole('button', { name: /download \.html/i }));
+      expect(saved).toHaveLength(3);
+      expect(saved[2]!.type).toBe('text/html;charset=utf-8');
     } finally {
       URL.createObjectURL = origCreate;
       URL.revokeObjectURL = origRevoke;
