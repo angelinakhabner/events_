@@ -137,6 +137,86 @@ describeIfDb('scraper integration', () => {
     expect(tajny.description).toBe('Opis filmu.');
   });
 
+  // GOI-90. Enrichment deliberately skips detail pages whose description is
+  // already stored (that skip is the whole cost saving), so on every sweep
+  // after the first, the in-memory rows reach the persister with
+  // `description: null`. The upsert used to write that null straight over the
+  // stored text, so Muranów's descriptions appeared, vanished on the next
+  // sweep, were re-fetched (and re-billed) on the one after, and vanished
+  // again — a flip-flop, not a permanent loss, which is why it read as
+  // "sometimes there are no descriptions".
+  it('a re-scrape keeps descriptions the previous run enriched (GOI-90)', async () => {
+    const filmPage = '<html><head><meta property="og:description" content="Opis filmu."></head></html>';
+    let detailFetches = 0;
+    const fetcher = (async () => {
+      detailFetches++;
+      return new Response(filmPage, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const opts = {
+      htmlOverride: muranowHtml,
+      fetcher,
+      now: new Date('2026-06-07T08:00:00.000Z'),
+      enrichDelayMs: 0,
+      maxDetailFetches: 200,
+    };
+
+    const first = await scrapeVenue(muranowVenueId, opts);
+    expect(first.status).toBe('success');
+    const afterFirst = detailFetches;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    const db = getDb();
+    const described = async (): Promise<number> => {
+      const rows = await db.select().from(schema.events);
+      return rows.filter((r) => (r.description ?? '').trim().length > 0).length;
+    };
+    const firstDescribed = await described();
+    expect(firstDescribed).toBe(143);
+
+    // Same page, same descriptions already stored: `force` only bypasses the
+    // skip-unchanged shortcut, it does not make enrichment re-fetch.
+    const second = await scrapeVenue(muranowVenueId, { ...opts, force: true });
+    expect(second.status).toBe('success');
+
+    // The saving still holds — nothing was re-fetched...
+    expect(detailFetches).toBe(afterFirst);
+    // ...and the descriptions are still there.
+    expect(await described()).toBe(firstDescribed);
+    const tajny = (await db.select().from(schema.events)).find((r) => r.sourceId === '26919')!;
+    expect(tajny.description).toBe('Opis filmu.');
+  });
+
+  // A venue that genuinely rewrites its blurb must still win over the stored
+  // one — the fix preserves on null, it does not freeze the column.
+  it('a re-scrape still applies a description that actually changed (GOI-90)', async () => {
+    const page = (text: string) =>
+      `<html><head><meta property="og:description" content="${text}"></head></html>`;
+    let body = page('Stary opis.');
+    const fetcher = (async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+
+    const opts = {
+      htmlOverride: muranowHtml,
+      fetcher,
+      now: new Date('2026-06-07T08:00:00.000Z'),
+      enrichDelayMs: 0,
+      maxDetailFetches: 200,
+    };
+
+    await scrapeVenue(muranowVenueId, opts);
+    const db = getDb();
+    const before = (await db.select().from(schema.events)).find((r) => r.sourceId === '26919')!;
+    expect(before.description).toBe('Stary opis.');
+
+    // Wipe the stored descriptions so enrichment re-fetches, and serve new copy.
+    await db.update(schema.events).set({ description: null });
+    body = page('Nowy opis.');
+
+    await scrapeVenue(muranowVenueId, { ...opts, force: true });
+    const after = (await db.select().from(schema.events)).find((r) => r.sourceId === '26919')!;
+    expect(after.description).toBe('Nowy opis.');
+  });
+
   it('second run with identical HTML records status=skipped_unchanged', async () => {
     const ext = makeExtractor(expectedJson);
     const first = await scrapeVenue(venueId, {

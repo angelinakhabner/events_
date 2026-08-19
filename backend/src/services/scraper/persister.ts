@@ -9,6 +9,21 @@ export interface PersistResult {
 }
 
 /**
+ * "The incoming row learned nothing, and the stored one was classified by the
+ * model" — the open half of the CASE the upsert's classification columns use.
+ * ('other', 'keyword') is exactly what `classifyEvent` returns when neither
+ * the structure nor a keyword matched and no model answer was available.
+ *
+ * Built on call rather than held in a module-level constant: `schema` is not
+ * necessarily initialised when this module is first evaluated, and reading a
+ * column off it at import time throws in module graphs that reach the runner
+ * before the schema.
+ */
+const keepLlmClassification = () => sql`case when excluded.content_category = 'other'
+  and excluded.category_source = 'keyword'
+  and ${schema.events.categorySource} = 'llm'`;
+
+/**
  * Upserts events into the DB.
  *
  * Dedup strategy: if `source_id` is set, key on (venue_id, source_id).
@@ -57,7 +72,16 @@ export async function saveEvents(
 
     const set = {
       title: values.title,
-      description: values.description,
+      // Never let a re-scrape blank a description we already have (GOI-90).
+      // Enrichment skips detail pages whose description is already stored —
+      // that skip is the whole cost saving — so on every sweep after the
+      // first, a row arrives here with `description: null` and no new
+      // information about it. Writing that null over the stored text made
+      // descriptions flip-flop: present, gone, re-fetched (and re-billed),
+      // gone again. A non-null incoming value still wins, so a venue that
+      // genuinely rewrote its blurb is applied; null now means "I learned
+      // nothing this run", which is not the same as "there is nothing".
+      description: sql`coalesce(excluded.description, ${schema.events.description})`,
       startsAt: values.startsAt,
       endsAt: values.endsAt,
       kind: values.kind,
@@ -68,8 +92,16 @@ export async function saveEvents(
       priceMin: values.priceMin,
       priceMax: values.priceMax,
       sourceUrl: values.sourceUrl,
-      contentCategory: values.contentCategory,
-      categorySource: values.categorySource,
+      // Same trap as `description` above, one field over (GOI-90). The model's
+      // content category rides back on the *enrichment* call, so a sweep that
+      // skipped the detail page has no `content_category` to classify from and
+      // `classifyEvent` lands on its know-nothing fallback — ('other',
+      // 'keyword'). Writing that over a stored 'llm' answer silently demotes a
+      // correctly-filed lecture to 'other' and drops it out of the category
+      // chips. Structure and keywords still overwrite freely, because those
+      // are real answers derived from the row itself; only the fallback defers.
+      contentCategory: sql`${keepLlmClassification()} then ${schema.events.contentCategory} else excluded.content_category end`,
+      categorySource: sql`${keepLlmClassification()} then ${schema.events.categorySource} else excluded.category_source end`,
       audience: values.audience,
       scrapedAt: values.scrapedAt,
       updatedAt: values.updatedAt,
