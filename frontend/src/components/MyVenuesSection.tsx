@@ -74,24 +74,26 @@ export function MyVenuesSection() {
         title="My venues"
         blurb="Venues you follow — upcoming events surface first in your feed. Rename one, change its category or add your own tags; those changes are only visible to you."
         rule={false}
-        action={
-          /* GOI-73: this is the one thing the tab exists to let you do, and as
-             a text action it was indistinguishable from "+ New folder" sitting
-             directly beneath it — same size, same weight, same accent red. The
-             design system already has a name for the single main action on a
-             screen, so it takes it. Once the form is open the loud state is
-             wrong: "Cancel" isn't the main action, it's the way back. */
-          <button
-            type="button"
-            onClick={() => setAdding((v) => !v)}
-            className={adding ? 'btn-outline' : 'btn-accent'}
-          >
-            {adding ? 'Cancel' : '+ Add venue'}
-          </button>
-        }
       />
 
       <FoldersBar />
+
+      {/* GOI-73: this is the one thing the tab exists to let you do, and as a
+          text action it was indistinguishable from "+ New folder" — same size,
+          same weight, same accent red — so it keeps the loud state the design
+          system reserves for a screen's single main action. It sits on its own
+          line under the folder controls rather than on the title line or in the
+          folder row itself: the design pack puts it there deliberately ("kept
+          off the crowded folder row"), where nothing competes with it. Once the
+          form is open the loud state is wrong — "Cancel" isn't the main action,
+          it's the way back. */}
+      <button
+        type="button"
+        onClick={() => setAdding((v) => !v)}
+        className={`mb-5 ${adding ? 'btn-outline' : 'pill-accent'}`}
+      >
+        {adding ? 'Cancel' : '+ Add venue'}
+      </button>
 
       {adding ? (
         <AddVenueForm
@@ -191,8 +193,12 @@ function FoldersBar() {
     setActive.error?.message ?? create.error?.message ?? rename.error?.message ?? remove.error?.message ?? null;
 
   return (
-    <div className="mb-8">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="mb-5">
+      {/* One control row (design pack: folder pill, then every folder action
+          beside it at the same size and weight) — rename and delete used to
+          sit on a second line below, which read as a different kind of
+          control than "+ New folder" directly above them. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
         {folders.map((l) => (
           <button
             key={l.id}
@@ -200,11 +206,7 @@ function FoldersBar() {
             aria-pressed={l.active}
             onClick={() => { if (!l.active) setActive.mutate({ listId: l.id }); }}
             disabled={setActive.isPending}
-            className={`border-2 border-ink px-3.5 py-2 text-xs font-extrabold uppercase tracking-[0.5px] ${
-              l.active
-                ? 'bg-ink text-white cursor-default'
-                : 'bg-transparent text-ink hover:text-accent hover:border-accent cursor-pointer disabled:opacity-50'
-            }`}
+            className={l.active ? 'pill-ink cursor-default' : 'pill-outline disabled:opacity-50'}
           >
             {l.name} <span className="opacity-70">({l.venueCount})</span>
           </button>
@@ -238,15 +240,13 @@ function FoldersBar() {
             </button>
           </form>
         ) : (
-          <button type="button" onClick={() => setCreating(true)} className="act act-on">
+          <button type="button" onClick={() => setCreating(true)} className="act act-on act-sm text-xs">
             + New folder
           </button>
         )}
-      </div>
 
-      {active ? (
-        <div className="mt-3 flex flex-wrap items-center gap-5">
-          {renaming ? (
+        {active ? (
+          renaming ? (
             <form
               className="flex items-center gap-2"
               onSubmit={(e) => {
@@ -262,38 +262,40 @@ function FoldersBar() {
                 onChange={(e) => setRenameValue(e.target.value)}
                 className="field-sm"
               />
-              <button type="submit" disabled={rename.isPending} className="act act-sm act-on">
+              <button type="submit" disabled={rename.isPending} className="act act-sm act-on text-xs">
                 Save
               </button>
-              <button type="button" onClick={() => setRenaming(false)} className="act act-sm">
+              <button type="button" onClick={() => setRenaming(false)} className="act act-sm text-xs">
                 Cancel
               </button>
             </form>
           ) : (
-            <button
-              type="button"
-              onClick={() => { setRenameValue(active.name); setRenaming(true); }}
-              className="act act-sm"
-            >
-              Rename folder
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm(`Delete "${active.name}" and its ${active.venueCount} venue subscription(s)?`)) {
-                remove.mutate({ listId: active.id });
-              }
-            }}
-            className="act act-sm"
-          >
-            Delete folder
-          </button>
-        </div>
-      ) : null}
+            <>
+              <button
+                type="button"
+                onClick={() => { setRenameValue(active.name); setRenaming(true); }}
+                className="act act-sm text-xs"
+              >
+                Rename folder
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Delete "${active.name}" and its ${active.venueCount} venue subscription(s)?`)) {
+                    remove.mutate({ listId: active.id });
+                  }
+                }}
+                className="act act-sm text-xs"
+              >
+                Delete folder
+              </button>
+            </>
+          )
+        ) : null}
+      </div>
 
       {mutationError ? <p className="mt-2 text-sm text-accent">{mutationError}</p> : null}
-      <p className="mt-3.5 text-xs text-muted max-w-[520px]">
+      <p className="mt-3.5 text-xs text-muted max-w-[640px]">
         Only the active folder is kept fresh — venues in your other folders aren&rsquo;t
         scraped until you make their folder active.
       </p>
@@ -365,7 +367,7 @@ function VenueRow({
   if (!editing) {
     return (
       <li className="row-hover flex items-start gap-4 md:gap-5 py-5 md:py-6 rule-soft">
-        <CategorySwatch category={venue.category} size={20} className="mt-1.5" />
+        <CategorySwatch category={venue.category} size={20} className="mt-1" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
@@ -386,7 +388,20 @@ function VenueRow({
                 <VenueScheduleNote schedule={schedule} />
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-4">
+            {/*
+              A fixed column per action (design pack: REFRESH 66px, SHOW
+              UPCOMING 130px, EDIT 46px, REMOVE 66px). Widths hug the longest
+              label a slot can hold, not the label currently in it, so the
+              actions line up down the whole list instead of shuffling
+              sideways row by row — including when "Refresh" becomes
+              "Refreshing…" or "Show upcoming" becomes "Hide upcoming". That
+              in-flight label is why the first column is wider than the pack's
+              66px: the prototype's Refresh had no pending state, and a column
+              that can't hold its own widest label defeats the point of fixing
+              it. Below `md` there isn't room for four columns, so they wrap on
+              their own widths instead.
+            */}
+            <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 pt-0.5 md:flex-nowrap md:gap-0">
               {folders.length > 1 ? (
                 <>
                   <label className="sr-only" htmlFor={`folder-${venue.id}`}>Folder for {venue.name}</label>
@@ -395,7 +410,7 @@ function VenueRow({
                     value={venue.listId ?? ''}
                     onChange={(e) => update.mutate({ venueId: venue.id, listId: e.target.value })}
                     disabled={update.isPending}
-                    className="border-2 border-ink bg-transparent px-2 py-1 text-[11px] font-bold uppercase tracking-[0.5px] cursor-pointer"
+                    className="select-flat md:mr-4 py-1 text-[11px] font-bold"
                   >
                     {venue.listId === null ? <option value="">Unfiled</option> : null}
                     {folders.map((f) => (
@@ -410,7 +425,7 @@ function VenueRow({
                 type="button"
                 onClick={() => refresh.mutate({ venueId: venue.id })}
                 disabled={refresh.isPending}
-                className="act act-sm"
+                className="act act-sm md:w-[104px] md:text-left"
               >
                 {refresh.isPending ? 'Refreshing…' : 'Refresh'}
               </button>
@@ -418,17 +433,21 @@ function VenueRow({
                 type="button"
                 aria-expanded={showUpcoming}
                 onClick={() => setShowUpcoming((v) => !v)}
-                className={`act act-sm ${showUpcoming ? 'act-on' : ''}`}
+                className={`act act-sm md:w-[130px] md:text-left ${showUpcoming ? 'act-on' : ''}`}
               >
                 {showUpcoming ? 'Hide upcoming' : 'Show upcoming'}
               </button>
-              <button type="button" onClick={() => setEditing(true)} className="act act-sm">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="act act-sm md:w-[46px] md:text-left"
+              >
                 Edit
               </button>
               <button
                 type="button"
                 onClick={() => remove.mutate({ venueId: venue.id })}
-                className="act act-sm"
+                className="act act-sm md:w-[66px] md:text-left"
               >
                 Remove
               </button>
@@ -470,7 +489,7 @@ function VenueRow({
           id={`category-${venue.id}`}
           value={category}
           onChange={(e) => setCategory(e.target.value as Category)}
-          className="field-sm"
+          className="select-flat py-[9px]"
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -650,7 +669,7 @@ function VenueTags({
           type="button"
           aria-label={`Add tag to ${venue.name}`}
           onClick={() => setAdding(true)}
-          className="act act-sm act-on"
+          className="act act-sm act-on text-xs"
         >
           + Add tag
         </button>

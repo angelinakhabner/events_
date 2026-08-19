@@ -229,7 +229,7 @@ function NewsletterForm({
         <FormSection step={1} label="Contact">
           <div className="flex flex-wrap gap-5">
             <div className="flex-1 min-w-[14rem]">
-              <label className="label-caps mb-1.5" htmlFor="newsletter-email">
+              <label className="label-form mb-1.5" htmlFor="newsletter-email">
                 Email address
               </label>
               <input
@@ -243,7 +243,7 @@ function NewsletterForm({
               />
             </div>
             <div className="flex-1 min-w-[10rem]">
-              <label className="label-caps mb-1.5" htmlFor="newsletter-name">
+              <label className="label-form mb-1.5" htmlFor="newsletter-name">
                 Your name <span className="font-semibold text-faint">(optional)</span>
               </label>
               <input
@@ -272,7 +272,7 @@ function NewsletterForm({
                   id="newsletter-weekday"
                   value={sendWeekday}
                   onChange={(e) => setSendWeekday(Number(e.target.value))}
-                  className="field-sm font-extrabold uppercase tracking-[0.5px] text-xs cursor-pointer"
+                  className="select-flat py-[9px]"
                 >
                   {WEEKDAYS.map((d) => (
                     <option key={d.value} value={d.value}>{d.label}</option>
@@ -281,26 +281,32 @@ function NewsletterForm({
               </>
             ) : null}
 
-            <span className="inline-flex items-center gap-2 border-2 border-ink px-3 py-1.5">
-              <ClockIcon />
+            {/* Clock, hour, minute in one bordered box, divided by the same
+                2px ink rules the rest of the system draws with — so the send
+                time reads as a single control rather than two dropdowns that
+                happen to be adjacent. */}
+            <span className="inline-flex items-stretch border-2 border-ink bg-white">
+              <span className="flex items-center border-r-2 border-ink px-2.5">
+                <ClockIcon />
+              </span>
               <label className="sr-only" htmlFor="newsletter-send-hour">Hour</label>
               <select
                 id="newsletter-send-hour"
                 value={sendHour}
                 onChange={(e) => setSendHour(Number(e.target.value))}
-                className="border-0 bg-transparent p-0 text-sm font-bold text-ink cursor-pointer focus:outline-none"
+                className="select-flat-bare border-r-2 border-ink"
               >
                 {HOURS.map((h) => (
                   <option key={h} value={h}>{pad(h)}</option>
                 ))}
               </select>
-              <span aria-hidden className="text-sm font-bold">:</span>
+              <span aria-hidden className="flex items-center px-1 text-xs font-extrabold">:</span>
               <label className="sr-only" htmlFor="newsletter-send-minute">Minute</label>
               <select
                 id="newsletter-send-minute"
                 value={sendMinute}
                 onChange={(e) => setSendMinute(Number(e.target.value))}
-                className="border-0 bg-transparent p-0 text-sm font-bold text-ink cursor-pointer focus:outline-none"
+                className="select-flat-bare"
               >
                 {MINUTES.map((m) => (
                   <option key={m} value={m}>{pad(m)}</option>
@@ -357,19 +363,24 @@ function NewsletterForm({
             <>
               {/* Column headings, desktop only: the rows stack below `md`, where
                   a four-column header would label nothing. */}
-              <div className="hidden md:flex label-caps border-b-2 border-ink pb-2">
-                <span className="w-[120px]">Category</span>
-                <span className="w-[100px]">Frequency</span>
+              <div className="hidden md:flex gap-4 label-form border-b-2 border-ink pb-2">
+                <span className="w-[140px] shrink-0">Category</span>
+                <span className="w-[140px] shrink-0">Frequency</span>
                 <span className="flex-1">Depth</span>
-                <span className="w-[60px]" />
+                <span className="w-[60px] shrink-0" />
               </div>
               <ul className="mb-3.5 list-none m-0 p-0">
                 {rules.map((rule, i) => (
                   <li
                     key={`${rule.category}-${i}`}
-                    className="flex flex-wrap items-center gap-3 py-2.5 rule-soft text-[13px]"
+                    className="flex flex-wrap items-center gap-3 md:gap-4 py-2.5 rule-soft text-[13px]"
                   >
-                    <span className="md:w-[120px] font-bold">{categoryOrTagLabel(rule.category)}</span>
+                    {/* Caps at the dropdowns' own size and weight — the row is
+                        one line of type, and a sentence-case name beside two
+                        caps selects broke it. */}
+                    <span className="md:w-[140px] md:shrink-0 text-xs font-extrabold uppercase tracking-[0.5px]">
+                      {categoryOrTagLabel(rule.category)}
+                    </span>
 
                     <label className="sr-only" htmlFor={`rule-freq-${i}`}>
                       How often for {categoryOrTagLabel(rule.category)}
@@ -378,7 +389,7 @@ function NewsletterForm({
                       id={`rule-freq-${i}`}
                       value={rule.frequency}
                       onChange={(e) => patchRule(i, { frequency: e.target.value as NewsletterFrequency })}
-                      className="field-sm md:w-[100px] cursor-pointer"
+                      className="select-flat md:w-[140px] md:shrink-0"
                     >
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
@@ -392,7 +403,7 @@ function NewsletterForm({
                       id={`rule-detail-${i}`}
                       value={rule.detail}
                       onChange={(e) => patchRule(i, { detail: e.target.value as NewsletterDetail })}
-                      className="field-sm md:flex-1 cursor-pointer"
+                      className="select-flat md:flex-1"
                     >
                       <option value="short">Short description</option>
                       <option value="full">Wide description</option>
@@ -402,7 +413,7 @@ function NewsletterForm({
                       type="button"
                       aria-label={`Remove ${categoryOrTagLabel(rule.category)}`}
                       onClick={() => removeRule(i)}
-                      className="act act-sm ml-auto md:w-[60px] md:text-left"
+                      className="act act-sm ml-auto md:w-[60px] md:shrink-0 md:text-left"
                     >
                       Remove
                     </button>
@@ -424,7 +435,7 @@ function NewsletterForm({
                 id="add-rule"
                 value=""
                 onChange={(e) => { if (e.target.value) addRule(e.target.value); }}
-                className="bg-transparent border-0 p-0 text-xs font-bold uppercase tracking-[0.5px] text-accent cursor-pointer focus:outline-none"
+                className="select-chevron border-0 bg-transparent py-3 pl-0 pr-6 text-xs font-bold uppercase tracking-[0.5px] text-accent"
               >
                 <option value="">+ Add a category…</option>
                 {unusedCategories.map((c) => (
@@ -444,7 +455,7 @@ function NewsletterForm({
               aria-label="Only events after"
               value={afterHour}
               onChange={(e) => setAfterHour(e.target.value)}
-              className="field-sm font-extrabold uppercase tracking-[0.5px] text-xs cursor-pointer"
+              className="select-flat w-[180px] py-[9px] pl-2.5"
             >
               <option value={ANY}>Any time</option>
               {HOURS.map((h) => (
@@ -457,7 +468,10 @@ function NewsletterForm({
           </div>
         </FormSection>
 
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3.5 border-t-3 border-ink pt-5">
+        {/* Stacked, both left-aligned (design pack): the enabled/disabled
+            state is a statement about the brief, not a third button, so it
+            reads above the two actions rather than across from them. */}
+        <div className="flex flex-col items-start gap-3.5 border-t-3 border-ink pt-5">
           <button
             type="button"
             aria-pressed={enabled}
@@ -468,7 +482,7 @@ function NewsletterForm({
           >
             {enabled ? '● Newsletter enabled' : 'Enable newsletter'}
           </button>
-          <div className="flex flex-col md:flex-row gap-3.5">
+          <div className="flex w-full flex-col md:w-auto md:flex-row gap-3.5">
             <button type="submit" disabled={save.isPending} className="btn-outline text-center">
               {save.isPending ? 'Scheduling…' : 'Schedule newsletter'}
             </button>
@@ -554,7 +568,10 @@ function ScheduleToggle({
  * One block of the form, in the two shapes the design pack asks for.
  *
  * Desktop is a plain flush-left label with a light rule above it, so the whole
- * form reads as one continuous sheet. Below `md` the label becomes a numbered
+ * form reads as one continuous sheet. The label is `.label-form` (14px) rather
+ * than the 11px `.label-caps` used elsewhere: these sections sit beside 22px
+ * Anton readouts, and at caption size they read as annotations on the controls
+ * instead of as the headings of the sections they open. Below `md` the label becomes a numbered
  * black bar ("2 · WHEN IT GOES OUT") — on a narrow screen the sections have to
  * announce themselves, and the count tells you how much form is left.
  *
@@ -578,7 +595,7 @@ function FormSection({
         <span className="block bg-ink px-5 py-2.5 text-[10px] font-extrabold uppercase tracking-[1px] text-white md:hidden">
           {step} · {label}
         </span>
-        <span className="hidden md:block label-caps">{label}</span>
+        <span className="hidden md:block label-form">{label}</span>
       </legend>
       {note ? <p className="mt-1.5 mb-3 px-5 md:px-0 text-xs text-faint max-w-[520px]">{note}</p> : null}
       <div className={`px-5 py-4 md:px-0 md:pb-5 ${note ? '' : 'md:pt-3'}`}>{children}</div>
@@ -612,7 +629,7 @@ function NewsletterPreview({
   return (
     <div className="mt-10">
       <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-3.5">
-        <h3 className="label-caps">
+        <h3 className="label-form">
           Preview{count !== null ? ` — ${count} event${count === 1 ? '' : 's'}` : ''}
         </h3>
         {/* Generating already saved the PDF; these are for when it got lost
@@ -696,7 +713,7 @@ function DriveCard() {
   if (!status.data.available) {
     return (
       <div className="mt-10 border-t-3 border-ink pt-6">
-        <h3 className="label-caps">Save briefs to a drive</h3>
+        <h3 className="label-form">Save briefs to a drive</h3>
         <p className="mt-2 text-sm text-muted">
           Not available on this deployment — Google isn&rsquo;t configured.
         </p>
@@ -708,7 +725,7 @@ function DriveCard() {
 
   return (
     <div className="mt-10 border-t-3 border-ink pt-6">
-      <h3 className="label-caps">Save briefs to a drive</h3>
+      <h3 className="label-form">Save briefs to a drive</h3>
       <p className="mt-2 max-w-prose text-sm text-muted">
         Every brief also gets filed as a PDF in an <strong>Afisz.ka</strong> folder on your
         drive, on the same schedule as the email. AFISZ can only see files it puts there
