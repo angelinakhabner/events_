@@ -182,6 +182,7 @@ const events = router({
         id: r.id,
         slug: venueSlug(r.name),
         name: r.name,
+        url: r.url,
         category: r.category,
         count: r.count,
         status: venueFilterStatus(r, now),

@@ -15,6 +15,7 @@ import { CategoryBar } from '../components/CategoryBar';
 import { DayBar } from '../components/DayBar';
 import { TimeBar } from '../components/TimeBar';
 import { VenueBar } from '../components/VenueBar';
+import { isLoggedIn } from '../lib/auth';
 import { EmptyState, ErrorState, NextUpNotice, SkeletonList } from '../components/states';
 import { FestivalsSection } from '../components/FestivalsSection';
 
@@ -158,6 +159,7 @@ export function HomePage() {
           onChange={changeVenues}
           category={category}
           loading={filterOptionsQuery.isLoading}
+          signedIn={isLoggedIn()}
         />
 
         <div className="mt-8">

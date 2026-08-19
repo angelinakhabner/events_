@@ -514,6 +514,10 @@ export interface VenueFilterOption {
   /** Derived from the name — what goes in the URL instead of a UUID. */
   slug: string;
   name: string;
+  /** The venue's own site. Shown in the venue picker (GOI-89) so a name that
+   *  means nothing to the reader can still be identified — and so they can go
+   *  straight to the source. */
+  url: string;
   category: Category;
   /** Events at this venue under the current day/time filters. Never reflects
    *  the venue selection itself (GOI-76 §2). */
