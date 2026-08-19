@@ -22,8 +22,8 @@
     "invites": "tsx src/scripts/invites.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
     "@afisz/shared": "*",
+    "@anthropic-ai/sdk": "^0.32.1",
     "@hono/node-server": "^1.13.7",
     "@hono/trpc-server": "^0.3.4",
     "@trpc/server": "^11.0.0-rc.660",
@@ -33,6 +33,7 @@
     "drizzle-orm": "^0.36.4",
     "hono": "^4.6.12",
     "jsonrepair": "^3.14.0",
+    "pdfkit": "^0.19.1",
     "postgres": "^3.4.5",
     "resend": "^4.0.1",
     "undici": "^7.27.2",
@@ -40,7 +41,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
+    "@types/pdfkit": "^0.17.6",
     "drizzle-kit": "^0.28.1",
+    "pdfjs-dist": "^6.2.108",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"

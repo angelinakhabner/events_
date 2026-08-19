@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AFISZ — How It Works</title>
+<style>
+  :root{
+    --ink:#1c1a17; --soft:#565049; --faint:#8a8177;
+    --accent:#b1502a; --accent-soft:#f6ece5;
+    --teal:#2c6360; --teal-soft:#e8f0ef;
+    --paper:#fffdfa; --rule:#e2dbd0; --panel:#f7f3ec;
+  }
+  @page { size: A4; margin: 17mm 16mm 16mm 16mm; }
+  @page :first { margin: 0; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"DejaVu Serif", Georgia, serif;
+    font-size:10.2pt; line-height:1.58;
+    -webkit-font-smoothing:antialiased;
+  }
+  p{ margin:0 0 .62em; }
+  strong{ font-weight:700; }
+  em{ font-style:italic; }
+  code, .mono{ font-family:"DejaVu Sans Mono", monospace; font-size:.84em; }
+  h1,h2,h3,h4,.sans{ font-family:"DejaVu Sans", Helvetica, Arial, sans-serif; }
+
+  /* ---------- cover ---------- */
+  .cover{
+    height:297mm; width:210mm; padding:34mm 22mm 20mm;
+    display:flex; flex-direction:column; justify-content:space-between;
+    background:#1c1a17; color:#f6f1e9; page-break-after:always;
+  }
+  .cover .kicker{
+    font-family:"DejaVu Sans",sans-serif; font-size:8.5pt; letter-spacing:.32em;
+    text-transform:uppercase; color:#c99a80;
+  }
+  .cover h1{
+    font-size:52pt; line-height:1.02; margin:8mm 0 0; font-weight:700; letter-spacing:-.02em;
+  }
+  .cover .sub{
+    font-size:15pt; line-height:1.45; margin-top:7mm; color:#d9d0c4; max-width:135mm;
+    font-family:"DejaVu Serif",serif; font-style:italic;
+  }
+  .cover .rule{ height:2px; background:#b1502a; width:38mm; margin:9mm 0 0; }
+  .cover .foot{ font-family:"DejaVu Sans",sans-serif; font-size:9pt; color:#9a9187; line-height:1.8; }
+  .cover .foot b{ color:#e8dfd3; font-weight:400; }
+
+  /* ---------- structure ---------- */
+  section{ page-break-before:always; }
+  section.run-on{ page-break-before:auto; }
+  h2{
+    font-size:19pt; line-height:1.15; margin:0 0 1.5mm; font-weight:700; letter-spacing:-.01em;
+  }
+  h2 .num{
+    display:block; font-size:8.5pt; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--accent); font-weight:700; margin-bottom:2.2mm;
+  }
+  .dek{ color:var(--soft); font-size:11pt; font-style:italic; margin:0 0 5mm; max-width:150mm; }
+  h3{ font-size:11.5pt; margin:6mm 0 1.6mm; font-weight:700; }
+  h4{ font-size:9.4pt; margin:4mm 0 1mm; font-weight:700; letter-spacing:.02em; }
+  hr.sep{ border:0; border-top:1px solid var(--rule); margin:6mm 0; }
+
+  /* ---------- toc ---------- */
+  .toc{ margin-top:4mm; }
+  .toc div{
+    display:flex; align-items:baseline; gap:3mm; padding:2.1mm 0;
+    border-bottom:1px solid var(--rule); font-family:"DejaVu Sans",sans-serif; font-size:10pt;
+  }
+  .toc .n{ color:var(--accent); font-weight:700; width:8mm; font-size:9pt; }
+  .toc .t{ flex:1; font-weight:700; }
+  .toc .d{ color:var(--faint); font-size:8.6pt; font-family:"DejaVu Serif",serif; font-style:italic; flex:1.5; text-align:right; }
+
+  /* ---------- callouts ---------- */
+  .note{
+    background:var(--accent-soft); border-left:3px solid var(--accent);
+    padding:3.4mm 4.5mm; margin:4mm 0; font-size:9.6pt;
+  }
+  .note .lbl{
+    font-family:"DejaVu Sans",sans-serif; font-size:7.6pt; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--accent); font-weight:700; display:block; margin-bottom:1.2mm;
+  }
+  .note p:last-child{ margin-bottom:0; }
+  .note.teal{ background:var(--teal-soft); border-left-color:var(--teal); }
+  .note.teal .lbl{ color:var(--teal); }
+
+  /* ---------- diagrams ---------- */
+  .diagram{
+    background:var(--panel); border:1px solid var(--rule); border-radius:2mm;
+    padding:5mm 5mm 4mm; margin:5mm 0; page-break-inside:avoid;
+  }
+  .diagram .cap{
+    font-family:"DejaVu Sans",sans-serif; font-size:7.6pt; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--faint); margin-bottom:3.5mm; font-weight:700;
+  }
+  .box{
+    background:#fff; border:1px solid #cfc6b8; border-radius:1.6mm; padding:2.6mm 3.2mm;
+    font-family:"DejaVu Sans",sans-serif; font-size:8.6pt; line-height:1.4;
+  }
+  .box b{ display:block; font-size:9.2pt; margin-bottom:.6mm; }
+  .box .m{ color:var(--faint); font-size:7.8pt; }
+  .box.accent{ border-color:var(--accent); background:#fff8f4; }
+  .box.teal{ border-color:var(--teal); background:#f2f8f7; }
+  .box.dark{ background:#2c2925; border-color:#2c2925; color:#f2ece3; }
+  .box.dark .m{ color:#a9a096; }
+  .row{ display:flex; gap:3mm; align-items:stretch; }
+  .row > *{ flex:1; }
+  .arrow{
+    text-align:center; color:var(--accent); font-size:11pt; line-height:1;
+    margin:1.8mm 0; font-family:"DejaVu Sans",sans-serif;
+  }
+  .arrow.side{ flex:0 0 6mm; display:flex; align-items:center; justify-content:center; margin:0; }
+
+  /* ---------- ladder / steps ---------- */
+  .steps{ counter-reset:s; margin:4mm 0; }
+  .step{
+    display:flex; gap:4mm; padding:3mm 0; border-top:1px solid var(--rule);
+    page-break-inside:avoid;
+  }
+  .step:last-child{ border-bottom:1px solid var(--rule); }
+  .step .idx{
+    flex:0 0 9mm; height:9mm; border-radius:50%; background:var(--accent); color:#fff;
+    font-family:"DejaVu Sans",sans-serif; font-weight:700; font-size:9.5pt;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .step .idx.teal{ background:var(--teal); }
+  .step .idx.grey{ background:#9a9187; }
+  .step .bd{ flex:1; }
+  .step .bd b{ font-family:"DejaVu Sans",sans-serif; font-size:10pt; }
+  .step .bd .tag{
+    font-family:"DejaVu Sans Mono",monospace; font-size:7.4pt; color:var(--faint);
+    background:#efe9e0; padding:.4mm 1.4mm; border-radius:1mm; margin-left:1.5mm;
+  }
+  .step .bd p{ margin:.9mm 0 0; font-size:9.5pt; }
+
+  /* ---------- tables ---------- */
+  table{ width:100%; border-collapse:collapse; margin:4mm 0; font-size:9.1pt; page-break-inside:avoid; }
+  th{
+    text-align:left; font-family:"DejaVu Sans",sans-serif; font-size:7.8pt; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--faint); border-bottom:1.5px solid var(--ink);
+    padding:0 3mm 1.6mm 0; font-weight:700;
+  }
+  td{ padding:2.2mm 3mm 2.2mm 0; border-bottom:1px solid var(--rule); vertical-align:top; }
+  td:first-child{ font-family:"DejaVu Sans",sans-serif; font-weight:700; font-size:9pt; white-space:nowrap; }
+  td .m{ color:var(--faint); font-size:8.4pt; display:block; }
+
+  /* ---------- stat grid ---------- */
+  .stats{ display:flex; flex-wrap:wrap; gap:3mm; margin:5mm 0; }
+  .stat{
+    flex:1 1 40mm; background:var(--panel); border:1px solid var(--rule); border-radius:2mm;
+    padding:3.5mm 4mm;
+  }
+  .stat .v{
+    font-family:"DejaVu Sans",sans-serif; font-size:20pt; font-weight:700; color:var(--accent);
+    line-height:1; letter-spacing:-.02em;
+  }
+  .stat .k{
+    font-family:"DejaVu Sans",sans-serif; font-size:8pt; color:var(--soft); margin-top:1.6mm; line-height:1.35;
+  }
+
+  ul{ margin:.4em 0 .8em; padding-left:5mm; }
+  li{ margin-bottom:.35em; }
+  ul.tight li{ margin-bottom:.15em; }
+  .lead{ font-size:11pt; }
+  .pull{
+    font-size:13pt; line-height:1.4; font-style:italic; color:var(--accent);
+    border-left:3px solid var(--accent); padding-left:5mm; margin:6mm 0;
+  }
+  .kv{ font-family:"DejaVu Sans Mono",monospace; font-size:8.4pt; background:#f0eae1; padding:.3mm 1.2mm; border-radius:.8mm; }
+  .footer-note{ color:var(--faint); font-size:8.6pt; font-style:italic; margin-top:6mm; }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+  <div>
+    <div class="kicker">A guide for the curious non-engineer</div>
+    <h1>AFISZ</h1>
+    <div class="rule"></div>
+    <div class="sub">How a website that reads other websites, remembers what it found, and emails you about it actually works.</div>
+  </div>
+  <div class="foot">
+    <b>afisz.cc</b> &nbsp;·&nbsp; a customisable cultural-events aggregator<br>
+    Project overview &nbsp;·&nbsp; August 2026<br>
+    No prior programming knowledge assumed.
+  </div>
+</div>
+
+<!-- ============ CONTENTS ============ -->
+<section class="run-on">
+  <h2><span class="num">Contents</span>What's in here</h2>
+  <p class="dek">Read it front to back, or jump to whatever you were actually wondering about.</p>
+  <div class="toc">
+    <div><span class="n">1</span><span class="t">What AFISZ is for</span><span class="d">the problem it solves</span></div>
+    <div><span class="n">2</span><span class="t">The map</span><span class="d">three pieces you own, four you rent</span></div>
+    <div><span class="n">3</span><span class="t">What people actually see</span><span class="d">the screens, one by one</span></div>
+    <div><span class="n">4</span><span class="t">Adding a venue: the probe</span><span class="d">how a pasted link is judged</span></div>
+    <div><span class="n">5</span><span class="t">The nightly sweep</span><span class="d">where the events come from</span></div>
+    <div><span class="n">6</span><span class="t">Where the AI sits</span><span class="d">and how the bill stays small</span></div>
+    <div><span class="n">7</span><span class="t">What gets remembered</span><span class="d">the database in plain words</span></div>
+    <div><span class="n">8</span><span class="t">Doors and keys</span><span class="d">the invite gate and logging in</span></div>
+    <div><span class="n">9</span><span class="t">The newsletter</span><span class="d">and its side entrance for robots</span></div>
+    <div><span class="n">10</span><span class="t">From laptop to live site</span><span class="d">how a change reaches the public</span></div>
+    <div><span class="n">11</span><span class="t">The project by the numbers</span><span class="d">scale, at a glance</span></div>
+    <div><span class="n">12</span><span class="t">Glossary</span><span class="d">every term, unpacked</span></div>
+  </div>
+
+  <div class="note teal">
+    <span class="lbl">How to read the diagrams</span>
+    <p>Boxes are things that exist. Arrows are the direction information travels. Anything in a <span class="kv">monospaced box</span> is a literal name used in the code — you never have to type one, but recognising them makes conversations with a developer much shorter.</p>
+  </div>
+</section>
+
+<!-- ============ 1 ============ -->
+<section>
+  <h2><span class="num">Chapter One</span>What AFISZ is for</h2>
+  <p class="dek">Culture is published in a hundred places and collected in none of them.</p>
+
+  <p class="lead">Every cinema, theatre, gallery and concert hall publishes its own programme on its own website, in its own layout, in its own language. If you want to know what's on this Thursday evening near you, there is no single place to look. You visit eleven websites, or you miss things.</p>
+
+  <p><strong>AFISZ is the missing single place.</strong> You paste in the address of any venue you care about — in any city, in any country — and from then on AFISZ watches that venue for you. It reads the venue's own programme page, works out what's on and when, and files it alongside everything else you follow.</p>
+
+  <p>The difference from a conventional listings site is that <em>you</em> decide what's in it. There is no editor choosing which venues matter. A listings magazine covers a city; AFISZ covers <em>your</em> city, meaning the twelve places you actually go.</p>
+
+  <h3>The three promises</h3>
+  <div class="row" style="margin-top:3mm">
+    <div class="box accent"><b>Any venue</b><span class="m">Paste a link. If the page can be read at all, AFISZ works out how — and tells you plainly when it can't.</span></div>
+    <div class="box accent"><b>Your groupings</b><span class="m">Venues live in named lists — "Warsaw", "Kraków", "date nights" — each with its own saved filters.</span></div>
+    <div class="box accent"><b>It comes to you</b><span class="m">A brief lands in your inbox on the schedule you choose, covering only the venues you picked.</span></div>
+  </div>
+
+  <div class="pull">The hard part was never the website. The hard part is that every venue's programme page is shaped differently — and there are thousands of venues.</div>
+
+  <p>That one sentence explains most of the design decisions in the rest of this document. A great deal of AFISZ exists to answer a single question reliably and cheaply: <em>given a page a human can read, what events are on it?</em></p>
+
+  <div class="note">
+    <span class="lbl">The state of things today</span>
+    <p>AFISZ is live at <strong>afisz.cc</strong> but not open to the public — it sits behind an invite link while the work continues (see chapter 8). The venue set it ships with is Warsaw, but nothing in the design is Warsaw-specific: the data model has carried <em>city</em> and <em>country</em> from the first day.</p>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section>
+  <h2><span class="num">Chapter Two</span>The map</h2>
+  <p class="dek">Three pieces you own, four services you rent, and one that does the reading.</p>
+
+  <p>Nearly every modern web product is built from the same three parts. It's worth learning them once, because they explain the whole shape of the thing.</p>
+
+  <div class="steps">
+    <div class="step"><div class="idx">1</div><div class="bd">
+      <b>The frontend</b> <span class="tag">frontend/</span>
+      <p>What you see. The pages, the buttons, the filter chips. It runs <em>inside your browser</em> — downloaded to your laptop the moment you open the site. It knows how to draw things and nothing else; it holds no data of its own and asks the backend for everything.</p>
+    </div></div>
+    <div class="step"><div class="idx">2</div><div class="bd">
+      <b>The backend</b> <span class="tag">backend/</span>
+      <p>The brain, running on a rented computer that never sleeps. It answers the frontend's questions, does the reading of venue websites, sends the emails, and decides who is allowed to see what. Every rule that must not be negotiable lives here, because anything living in the browser can be tampered with by a determined visitor.</p>
+    </div></div>
+    <div class="step"><div class="idx">3</div><div class="bd">
+      <b>The database</b> <span class="tag">Postgres</span>
+      <p>The memory. A very reliable filing cabinet holding every venue, event, user, list and bookmark. If the backend restarts, nothing is lost, because nothing important was ever kept in the backend itself.</p>
+    </div></div>
+  </div>
+
+  <p>There's a fourth piece worth a mention: <span class="kv">shared/</span>, a small dictionary of definitions — what a "Venue" is, what an "Event" is — used by both the frontend and the backend so the two can never disagree about the shape of a thing.</p>
+
+  <div class="diagram">
+    <div class="cap">The system, end to end</div>
+    <div class="box dark" style="text-align:center"><b>Your browser</b><span class="m">The React app — pages, filters, buttons. Served free from GitHub Pages.</span></div>
+    <div class="arrow">▼ &nbsp;asks questions over the internet (<span class="mono" style="font-size:7.5pt">api.afisz.cc</span>)&nbsp; ▼</div>
+    <div class="box accent" style="text-align:center"><b>The backend server</b><span class="m">Rented from Railway. Answers questions, guards the doors, runs the nightly sweep, sends the mail.</span></div>
+    <div class="arrow">▼</div>
+    <div class="row">
+      <div class="box teal"><b>Postgres</b><span class="m">The database. Venues, events, users, lists, bookmarks, subscriptions, run history.</span></div>
+      <div class="box"><b>Venue websites</b><span class="m">The public web. Read, never written to.</span></div>
+      <div class="box"><b>Claude</b><span class="m">Anthropic's AI. Reads messy pages and returns tidy event data.</span></div>
+      <div class="box"><b>Resend</b><span class="m">The postman. Login links and newsletter briefs.</span></div>
+    </div>
+  </div>
+
+  <h3>Why it's split up like this</h3>
+  <p>The frontend is <em>static</em> — a fixed set of files, identical for every visitor, with no computation happening on the server that hands them out. That's why it can be hosted free, and why it's fast: it's the cheapest possible thing to serve. All the expense and all the risk are concentrated in the backend, where they can be watched.</p>
+
+  <table>
+    <tr><th>Piece</th><th>Built with</th><th>Lives at</th></tr>
+    <tr><td>Frontend</td><td>React + Vite + TypeScript</td><td>GitHub Pages → afisz.cc</td></tr>
+    <tr><td>Backend</td><td>Node.js + Hono + tRPC + TypeScript</td><td>Railway → api.afisz.cc</td></tr>
+    <tr><td>Database</td><td>PostgreSQL, addressed through Drizzle</td><td>Railway (attached to the backend)</td></tr>
+    <tr><td>Reading pages</td><td>Anthropic Claude (Sonnet 4.6)</td><td>called from the backend</td></tr>
+    <tr><td>Email</td><td>Resend</td><td>called from the backend</td></tr>
+    <tr><td>Stubborn pages</td><td>Firecrawl<span class="m">a rented browser, for sites that refuse to be read any other way</span></td><td>called from the backend</td></tr>
+  </table>
+
+  <div class="note teal">
+    <span class="lbl">One word worth knowing: TypeScript</span>
+    <p>Every part of AFISZ is written in the same language, TypeScript. That's deliberate. It means a change to the definition of "Event" is instantly checked against every place in the whole project that touches an event — the computer catches the mismatch before a human ever sees a broken page.</p>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section>
+  <h2><span class="num">Chapter Three</span>What people actually see</h2>
+  <p class="dek">Four screens, and what each is really doing underneath.</p>
+
+  <h3>Home — the public feed</h3>
+  <p>A single scrolling page of what's on, with four rows of filters above it: <strong>category</strong> (cinema, theatre, museum…), <strong>day</strong>, <strong>time of day</strong>, and <strong>venue</strong>. Events are grouped into buckets by calendar day, so "this Thursday" is one glance rather than a scan.</p>
+  <p>The filtering happens <em>on the server</em>, not in your browser. This matters more than it sounds: the browser only ever receives the events that survived your filters, which keeps the page quick even when the database holds thousands of them. Below the feed sits a curated film-festival calendar, hand-maintained in the code, that flags which festivals are running at the cinemas you follow.</p>
+
+  <h3>My — the personal side</h3>
+  <p>Everything behind a login, organised into four tabs:</p>
+  <table>
+    <tr><th>Tab</th><th>What it does</th></tr>
+    <tr><td>My events</td><td>The feed narrowed to just the venues you follow, in your currently active list.</td></tr>
+    <tr><td>My venues</td><td>Add, rename, retag and remove venues; organise them into named lists; ask AFISZ to <em>propose similar venues in another city</em>.</td></tr>
+    <tr><td>Want to go</td><td>Your bookmarks. Mark one "seen" and it stays on the list, filed under Seen, rather than vanishing. A private film list lives here too — titles you want to catch, and where you caught them.</td></tr>
+    <tr><td>Newsletter</td><td>Compose your brief: which venues, how often, what hour, and per-category rules.</td></tr>
+  </table>
+
+  <div class="note">
+    <span class="lbl">A design decision worth understanding: "propose similar venues"</span>
+    <p>Ask for suggestions and AFISZ doesn't search a category — it sends the AI the venues <em>already in that folder</em> as examples. Somebody whose "Warsaw" folder holds POLIN, Zachęta and the Museum of Modern Art isn't asking for "museums in Berlin"; they want <em>that kind</em> of museum, and no dropdown can express that.</p>
+    <p>Crucially, a suggestion is a proposal, never a subscription. Pressing <em>Add</em> runs the ordinary add-a-venue process, so a venue the AI invented fails visibly at that point instead of quietly joining your list and never producing a single event.</p>
+  </div>
+
+  <h3>Shared list — a link you can send</h3>
+  <p>Your "want to go" list can be published as a read-only page at an unguessable address. The link <em>is</em> the key: anyone holding it can read the list, which is exactly what sharing means. Revoke it and share again, and a brand-new address is minted — the old link stops working rather than quietly springing back to life later.</p>
+
+  <h3>The venue-status idea</h3>
+  <p>A venue in your list is never simply "working" or "broken". AFISZ distinguishes four states, because the honest answer is usually the third one:</p>
+  <div class="row" style="margin-top:3mm">
+    <div class="box teal"><b>Active</b><span class="m">Events found, upcoming.</span></div>
+    <div class="box"><b>Empty</b><span class="m">Read fine. The venue simply has nothing scheduled.</span></div>
+    <div class="box"><b>Stale</b><span class="m">Nothing new for a while — worth a look.</span></div>
+    <div class="box accent"><b>Dark</b><span class="m">Genuinely can't be read. Needs a decision from you.</span></div>
+  </div>
+  <p style="margin-top:3mm">Collapsing those four into "error" would be the single most misleading thing the interface could do — most quiet venues are quiet because August is quiet, not because anything failed.</p>
+</section>
+
+<!-- ============ 4 ============ -->
+<section>
+  <h2><span class="num">Chapter Four</span>Adding a venue: the probe</h2>
+  <p class="dek">You paste a link. Something has to work out whether — and how — that page can be read.</p>
+
+  <p>This is the part of AFISZ with the most thought packed into the smallest space. When you paste a venue address, a routine called the <strong>probe</strong> runs before anything is saved. Its job is to answer two questions: <em>can this page be read at all?</em> and if so, <em>by what method?</em></p>
+
+  <p>The probe tries techniques in a deliberate order — <strong>cheapest and most exact first</strong>, most expensive and least certain last. It stops at the first rung that works.</p>
+
+  <div class="steps">
+    <div class="step"><div class="idx teal">1</div><div class="bd">
+      <b>Structured data hiding in the page</b> <span class="tag">JSON-LD</span>
+      <p>Many sites already publish their events in a machine-readable format, invisible to visitors, put there so Google can show showtimes in search results. If it's present, AFISZ simply reads it: free, instant and exact. No AI involved at all.</p>
+    </div></div>
+    <div class="step"><div class="idx teal">2</div><div class="bd">
+      <b>A calendar feed</b> <span class="tag">iCal</span>
+      <p>The same file format your phone's calendar uses. Equally free, equally exact.</p>
+    </div></div>
+    <div class="step"><div class="idx teal">3</div><div class="bd">
+      <b>The site's own data hatch</b> <span class="tag">WordPress REST · RSS</span>
+      <p>An enormous share of the cultural web runs on WordPress, which quietly offers its content as clean data to anyone who asks the right address. Also free.</p>
+    </div></div>
+    <div class="step"><div class="idx">4</div><div class="bd">
+      <b>Ask the AI to read the page</b> <span class="tag">llm_extract</span>
+      <p>No structured data anywhere. Now the page's visible text goes to Claude, which reads it the way a person would and returns a tidy list of events. This costs money per page, so it's the fourth thing tried, not the first.</p>
+    </div></div>
+    <div class="step"><div class="idx grey">5</div><div class="bd">
+      <b>Rent a real browser</b> <span class="tag">firecrawl · paid</span>
+      <p>Some pages are blank until scripts run in a real browser. Rendering one costs real money, so <strong>AFISZ never does it without you saying yes.</strong> The probe stops, reports "this one needs a paid fetch", and waits.</p>
+    </div></div>
+  </div>
+
+  <p>There's a cost guard along the way that's easy to miss and rather elegant: before spending anything on the AI, the probe checks whether the page contains a plausible density of <em>dates</em> at all. A page with no dates on it is not a programme page, and asking a language model to confirm that would be paying to be told the obvious.</p>
+
+  <h3>Thirteen ways to fail, sorted into three kinds</h3>
+  <p>When the probe can't read a page it never says "error". It returns one of thirteen specific outcomes, each classified by what <em>you</em> should do about it:</p>
+
+  <table>
+    <tr><th>Kind</th><th>Meaning</th><th>Examples</th></tr>
+    <tr><td>Fatal</td><td>This address will never work. Stop.</td><td>Not a real address; a Facebook page with no site behind it; the link points at a PDF.</td></tr>
+    <tr><td>Retryable</td><td>Nothing is wrong with the link — the attempt failed.</td><td>Site was down; we were rate-limited; the probe ran out of time.</td></tr>
+    <tr><td>Needs&nbsp;you</td><td>A decision only you can make.</td><td>Found the site but not the programme page — got a deeper link? Only past events listed. Needs a paid render — shall we?</td></tr>
+  </table>
+
+  <div class="note">
+    <span class="lbl">Why this distinction is the whole feature</span>
+    <p>"Couldn't add venue" teaches you nothing and leaves you stuck. "I found the site, but this is the homepage — paste me the link to their programme instead" turns a dead end into a ten-second fix. The entire probe exists so the interface can say the second thing.</p>
+  </div>
+
+  <p>The probe is also bounded in time: the free ladder has twenty seconds to reach a conclusion, a paid render sixty. And it <em>writes nothing</em> — it only reports. The decision about what to do with the answer stays with you, and pressing <em>Add</em> reuses the result rather than probing the site all over again.</p>
+
+  <p>One more thing happens at add time. Two people pasting two different spellings of the same cinema's address should not create two cinemas, so every address is reduced to a canonical form and that's what's checked for duplicates. A thousand users following Kinoteka share <em>one</em> venue record, which is read once per sweep, not a thousand times.</p>
+</section>
+
+<!-- ============ 5 ============ -->
+<section>
+  <h2><span class="num">Chapter Five</span>The nightly sweep</h2>
+  <p class="dek">Once a venue is in, something has to keep going back for the programme. That's the sweep.</p>
+
+  <p>At <strong>7 a.m. Warsaw time</strong> the backend wakes itself up and works through every venue that somebody is actually following. There's no external scheduler involved — the backend is always running anyway, so it simply keeps its own alarm clock. (It handles daylight saving properly: the target is 7 a.m. on the Warsaw wall clock, not a fixed moment in universal time.)</p>
+
+  <p>The sweep can run daily or weekly. Weekly is usually the better trade: most venues publish their programmes weeks or months ahead, so a daily sweep mostly pays to re-read listings that haven't changed. Dropping to once a week cuts that cost roughly sevenfold and still catches new events long before they happen.</p>
+
+  <h3>What happens to each venue</h3>
+  <div class="steps">
+    <div class="step"><div class="idx">1</div><div class="bd"><b>Fetch</b>
+      <p>Download the programme page — not the homepage you pasted, but the deeper page the probe identified as the one that actually carries events.</p></div></div>
+    <div class="step"><div class="idx">2</div><div class="bd"><b>Has it changed?</b>
+      <p>AFISZ keeps a short fingerprint of what the page looked like last time. Identical fingerprint means an identical page, so everything below is skipped. This is the single biggest saving in the system.</p></div></div>
+    <div class="step"><div class="idx">3</div><div class="bd"><b>Read it — by the cheapest route that works</b>
+      <p>Sixteen well-known venues have hand-written readers that understand their exact layout: precise, instant, free. Failing that, structured data in the page is mapped directly in code — also free. Only if both come up empty does the page go to the AI.</p></div></div>
+    <div class="step"><div class="idx">4</div><div class="bd"><b>Check every row</b>
+      <p>Every extracted event is checked against strict rules before it's allowed near the database. An exhibition must have a date range and must <em>not</em> carry an invented clock time; a screening must have a real start time. A bad row is dropped, not stored — and the same rule is enforced a second time by the database itself, because the AI can be argued with and the database cannot.</p></div></div>
+    <div class="step"><div class="idx">5</div><div class="bd"><b>Fill in descriptions</b>
+      <p>A calendar page carries a title, a date and a link — the description only exists behind the link. So a second pass follows those links. Since that's one fetch and one AI call per show, nearly all the effort here goes into <em>not</em> doing it: rows that already have a description are skipped, so are ones whose page was described in an earlier sweep; twelve performances of one play share a single fetch; and a hard ceiling caps the whole pass.</p></div></div>
+    <div class="step"><div class="idx">6</div><div class="bd"><b>File and tidy</b>
+      <p>Events are matched against what's already stored and updated in place rather than duplicated. Rows that have vanished from the venue's programme are pruned. Finally the run itself is recorded: how long it took, how many events it found, what it cost, and what went wrong if anything did.</p></div></div>
+  </div>
+
+  <div class="diagram">
+    <div class="cap">One venue through the sweep</div>
+    <div class="row">
+      <div class="box"><b>Fetch page</b><span class="m">the programme URL</span></div>
+      <div class="arrow side">→</div>
+      <div class="box teal"><b>Changed?</b><span class="m">no → stop here</span></div>
+      <div class="arrow side">→</div>
+      <div class="box"><b>Read</b><span class="m">hand-written reader, structured data, or AI</span></div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="row">
+      <div class="box accent"><b>Validate</b><span class="m">drop anything malformed</span></div>
+      <div class="arrow side">→</div>
+      <div class="box"><b>Enrich</b><span class="m">descriptions, capped</span></div>
+      <div class="arrow side">→</div>
+      <div class="box teal"><b>Save &amp; prune</b><span class="m">update, don't duplicate</span></div>
+      <div class="arrow side">→</div>
+      <div class="box"><b>Record the run</b><span class="m">counts, cost, errors</span></div>
+    </div>
+  </div>
+
+  <p>If a venue fails for a reason that might pass — out of credits, rate-limited — it isn't abandoned until the next sweep. It's retried after thirty minutes, then an hour, then two, and then left alone. A venue that failed for a permanent reason isn't retried at all, and venues that already succeeded are never touched again.</p>
+
+  <div class="note teal">
+    <span class="lbl">A nice touch: the window moves without re-reading</span>
+    <p>The site reads events out of the database on every page load, so simply refreshing slides "the next seven days" forward. Nothing needs re-scraping for today to become yesterday.</p>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section>
+  <h2><span class="num">Chapter Six</span>Where the AI sits</h2>
+  <p class="dek">The AI is a specialist tool used at one specific moment — and a surprising amount of engineering exists to avoid calling it.</p>
+
+  <p>It's tempting to imagine "the AI runs the site". It doesn't. Claude is called at exactly three points, and two of them are optional:</p>
+
+  <table>
+    <tr><th>Where</th><th>The job</th><th>How often</th></tr>
+    <tr><td>Extraction</td><td>Turn a messy programme page into a clean list of events.</td><td>Only for venues with no structured data and no hand-written reader.</td></tr>
+    <tr><td>Descriptions</td><td>Pull the blurb off an individual event's own page.</td><td>Only for events that lack one, capped per run.</td></tr>
+    <tr><td>Suggestions</td><td>Propose venues in another city resembling the ones in a folder.</td><td>Only when you press the button.</td></tr>
+  </table>
+
+  <p>Everything else — filtering, grouping, sorting, deciding who sees what, sending the mail — is ordinary code with no AI anywhere near it.</p>
+
+  <h3>Why Sonnet, and not something cheaper</h3>
+  <p>Real venue markup is genuinely hard: Polish copy, ambiguous date formats, a date split across three separate parts of the page. A weaker model would be a real accuracy risk on that job. But that argument doesn't apply to <em>every</em> page — when a page carries trustworthy structured data, AFISZ throws the messy part away and sends only the tidy data, and the job becomes copying well-formed data into well-formed data. So there's a separate, optional setting for that easy path alone, letting a cheaper model handle it while every hard page stays on Sonnet.</p>
+
+  <div class="note">
+    <span class="lbl">The rule that governs model changes</span>
+    <p>A candidate model is adopted only if it <strong>loses no events</strong>. There's a purpose-built comparison harness that sends the byte-identical page through two models and diffs the results event by event — not just the totals. A missing screening is a screening nobody ever hears about, and it is completely invisible in an aggregate count.</p>
+  </div>
+
+  <h3>Six ways the bill is kept down</h3>
+  <div class="steps">
+    <div class="step"><div class="idx teal">1</div><div class="bd"><b>Don't call it at all</b>
+      <p>Pages carrying two or more structured event entries are mapped in code for zero cost. Sixteen major venues have hand-written readers. Both paths bypass the AI entirely.</p></div></div>
+    <div class="step"><div class="idx teal">2</div><div class="bd"><b>Skip unchanged pages</b>
+      <p>Same fingerprint as last sweep, no work done.</p></div></div>
+    <div class="step"><div class="idx teal">3</div><div class="bd"><b>Send less</b>
+      <p>Before anything reaches the model the page is stripped to the part that actually carries listings, so nobody pays to transmit navigation menus and cookie banners.</p></div></div>
+    <div class="step"><div class="idx teal">4</div><div class="bd"><b>Buy at half price</b>
+      <p>Instead of sending each venue's request as it comes up, the whole sweep's requests are collected and submitted as one batch — billed at 50% of the standard rate, and exempt from the per-minute limits that otherwise force a pause between venues. The trade-off is patience: results usually land within the hour, but the guarantee is 24 hours.</p></div></div>
+    <div class="step"><div class="idx teal">5</div><div class="bd"><b>Go weekly</b>
+      <p>Sweeping once a week instead of daily cuts extraction cost roughly sevenfold with almost no practical loss.</p></div></div>
+    <div class="step"><div class="idx teal">6</div><div class="bd"><b>Never spend without consent</b>
+      <p>The paid browser render is never triggered automatically, and venues that require one are flagged in the database so the cost is visible up front rather than discovered on the invoice.</p></div></div>
+  </div>
+
+  <p>Every run records what it spent — page renders, description fetches, tokens in and out. Cost is a number you can look at, not a surprise.</p>
+</section>
+
+<!-- ============ 7 ============ -->
+<section>
+  <h2><span class="num">Chapter Seven</span>What gets remembered</h2>
+  <p class="dek">The database, described as what each table is actually for.</p>
+
+  <p>A database table is a spreadsheet with enforced rules: fixed columns, and a guarantee that certain nonsense simply cannot be written. Here's every table in AFISZ, in plain terms.</p>
+
+  <table>
+    <tr><th>Table</th><th>What it holds</th></tr>
+    <tr><td>venues</td><td>One row per venue, shared by everyone. Name, address, city, category — plus what the probe learned: the canonical address, the real programme URL, which reading method works, whether it needs a paid render, and what went wrong last time.</td></tr>
+    <tr><td>events</td><td>Every event found. Title, description, start, end, price range, source link. Two extra ideas live here: <em>kind</em> (a timed screening versus an exhibition running over a date range) and a three-part classification of what the event <em>is</em> — its content type, who it's for, and <strong>how that was decided</strong>, so a misfiling can be audited without re-reading the venue.</td></tr>
+    <tr><td>users</td><td>An email address and which list you're currently looking at. That's all — no password is stored, because none exists.</td></tr>
+    <tr><td>user_lists</td><td>Your named groupings: "Warsaw", "Kraków", "with the kids".</td></tr>
+    <tr><td>user_venues</td><td>Which venues you follow, in which list, with your private overrides: your own name for it, your own tags, your own how-far-ahead-to-look.</td></tr>
+    <tr><td>want_to_go</td><td>Your bookmarks, and whether you've since marked one seen.</td></tr>
+    <tr><td>want_to_go_shares</td><td>One row per user: the secret address of your shared list, if you've published one.</td></tr>
+    <tr><td>films</td><td>Your private film list — want to watch, and watched (with where, and a note).</td></tr>
+    <tr><td>newsletter_subscriptions</td><td>Your brief: which venues, how often, which hour and minute, which weekday, and per-category rules.</td></tr>
+    <tr><td>folders</td><td>The earlier, login-free way of grouping venues, kept per browser rather than per person.</td></tr>
+    <tr><td>scrape_runs</td><td>The logbook. One row per venue per sweep: how long, how many events, what it cost, what failed.</td></tr>
+    <tr><td>auth_tokens<br>sessions</td><td>Login links and active logins.</td></tr>
+    <tr><td>invites</td><td>The invite tokens that currently gate the whole site.</td></tr>
+  </table>
+
+  <div class="note teal">
+    <span class="lbl">Two habits worth admiring</span>
+    <p><strong>Nothing secret is stored as itself.</strong> Login links, sessions and invite tokens are stored only as irreversible fingerprints. Somebody who stole a complete copy of the database still could not log in as anyone.</p>
+    <p><strong>Venues are shared; opinions are personal.</strong> The venue row is global and read once. Your name for it, your tags and your settings are yours alone, sitting in a separate table. That's what makes the system get <em>cheaper</em> per user as it grows, rather than more expensive.</p>
+  </div>
+
+  <p>The shape of the database changes over time — twenty-four numbered change files have been applied so far. Each one is a small, ordered instruction ("add this column", "add this rule"), applied automatically every time the backend starts. Nobody edits the live database by hand, which means the structure of the production database is always exactly what the code says it should be.</p>
+</section>
+
+<!-- ============ 8 ============ -->
+<section>
+  <h2><span class="num">Chapter Eight</span>Doors and keys</h2>
+  <p class="dek">Two independent layers: one keeps the public out entirely, the other works out which person you are.</p>
+
+  <h3>The invite gate — a curtain, not a vault</h3>
+  <p>AFISZ isn't finished, so it isn't public. Access comes through a shared invite link. The stated goal is honest and narrow: <em>keep work-in-progress out of public view and off search engines</em> — explicitly not "protect sensitive data".</p>
+  <p>Two things about it are worth noticing. First, it's <strong>deny by default</strong>: a tiny list of addresses works without an invite and everything else is closed. Gating only the visible pages would be theatre, because an ungated data channel hands over the entire event set regardless of what the interface chooses to draw. Second, it's built to be <em>deleted</em>. The whole feature is one file plus one database table, and nothing in the rest of the codebase knows it exists — so opening the site to the public later is a deletion, not an untangling.</p>
+  <p>Tokens can be revoked, and revocation is checked on every single request, so an already-issued pass dies the moment its token does.</p>
+
+  <h3>Logging in — no passwords anywhere</h3>
+  <p>Two ways in, neither involving a password you have to invent and remember:</p>
+  <div class="row" style="margin-top:3mm">
+    <div class="box accent"><b>A link in your email</b><span class="m">Type your address, receive a single-use link valid for 15 minutes. Clicking it logs you in for 90 days. The link works once and only once.</span></div>
+    <div class="box accent"><b>Sign in with Google</b><span class="m">Google confirms who you are; AFISZ never sees a password and never stores one.</span></div>
+  </div>
+  <p style="margin-top:3mm">Because there is no password, there is no password to leak, reuse, or reset. The security work moves to keeping tokens short-lived, single-use and stored only as fingerprints — all of which the code does.</p>
+
+  <div class="note">
+    <span class="lbl">Where the rules are enforced</span>
+    <p>Every personal action — read my lists, add a venue, delete a bookmark — is checked on the server against the session that made the request. The frontend hiding a button is a convenience for you, never a security measure; the backend refusing the action is the security measure. Attempting to modify another device's folder is rejected outright, and that rejection lives in the storage layer itself, not just in the interface.</p>
+  </div>
+
+  <h3>A separate, guarded side entrance</h3>
+  <p>There's also a small set of maintenance endpoints for diagnosing a misbehaving venue or newsletter. They're switched off entirely unless an administrative secret is configured, so a deployment that forgets to set one exposes nothing at all. That "off unless explicitly enabled" pattern repeats throughout AFISZ, and it's the right default: a forgotten setting fails closed.</p>
+</section>
+
+<!-- ============ 9 ============ -->
+<section>
+  <h2><span class="num">Chapter Nine</span>The newsletter</h2>
+  <p class="dek">The part of AFISZ that reaches you without you visiting.</p>
+
+  <p>A brief is an email listing what's coming up at the venues you chose. You control it precisely:</p>
+  <ul>
+    <li><strong>Frequency</strong> — daily, weekly or monthly, which also sets how far ahead each brief looks.</li>
+    <li><strong>Exactly when</strong> — an hour and minute, and for weekly briefs, a weekday.</li>
+    <li><strong>Which venues</strong> — chosen directly, or by your own tags.</li>
+    <li><strong>Time of day</strong> — "everything after 6 p.m.", for people who work.</li>
+    <li><strong>Per-category rules</strong> — cinema weekly in full detail, exhibitions monthly in brief, in a single subscription.</li>
+  </ul>
+  <p>The backend runs a sweep on its own clock, sends each brief that's due, and records when it went — so a restart or a re-run never means the same brief twice. Briefs are sent from their own address, separate from login mail, so a marketing filter can't swallow the email you need to get in.</p>
+
+  <div class="note">
+    <span class="lbl">The safety catch</span>
+    <p>Newsletter sending is off unless one specific setting is switched on. If it isn't, no brief is ever mailed no matter how many subscriptions exist. That's deliberate: the alternative — a test environment happily emailing real people — is much worse than a forgotten flag.</p>
+  </div>
+
+  <h3>The side entrance for other systems</h3>
+  <p>There's a small public interface so <em>other software</em> can work with the newsletter: a signup form on a different website, a mailing-list tool syncing its records, an external scheduler triggering sends. It has its own key (kept separate from the administrative one, since it gets handed to third parties), is off entirely until that key is configured, and works by email address rather than internal identifiers.</p>
+  <p>Two details show the care taken. Creating a subscription for an unknown address creates the account — that's what makes an external signup form work — but it mints no login, so the caller gains no way to act <em>as</em> that person. And unsubscribing <em>disables</em> rather than deletes, so resubscribing isn't a fresh setup and the sending history survives.</p>
+  <p>Best of all, the external door and AFISZ's own form validate against the <em>same</em> rulebook. A field added to the app's form is accepted by the API on the same day, with the same limits and the same defaults. The two front doors cannot drift apart.</p>
+</section>
+
+<!-- ============ 10 ============ -->
+<section>
+  <h2><span class="num">Chapter Ten</span>From laptop to live site</h2>
+  <p class="dek">How a change gets from "written" to "everyone can see it" — with two checkpoints on the way.</p>
+
+  <p>Changes never go straight to the live site. There's a deliberate three-stage path, and each stage exists to catch a different kind of mistake.</p>
+
+  <div class="steps">
+    <div class="step"><div class="idx">1</div><div class="bd"><b>A feature branch</b>
+      <p>Work happens on a private copy of the project. Nothing here can affect anyone.</p></div></div>
+    <div class="step"><div class="idx">2</div><div class="bd"><b>The <span class="mono">dev</span> branch — a real preview</b>
+      <p>Merged work lands here first and is automatically published to a <em>password-protected preview site</em>. It's the real thing, running on real data, that only you can see. This is where changes are actually reviewed — by looking at them, not by imagining them.</p></div></div>
+    <div class="step"><div class="idx">3</div><div class="bd"><b>Production</b>
+      <p>Once you've approved the preview, <span class="mono">dev</span> is promoted to the main branch, and that automatically redeploys the public site and the backend.</p></div></div>
+  </div>
+
+  <h3>The automatic checks</h3>
+  <p>On every proposed change, a robot runs the same three checks a developer runs locally, and blocks anything that fails:</p>
+  <table>
+    <tr><th>Check</th><th>Question it answers</th></tr>
+    <tr><td>Type check</td><td>Do all the pieces still fit together? Did something start passing a date where a number was expected?</td></tr>
+    <tr><td>Lint</td><td>Is the code written in the house style, without the patterns known to cause bugs?</td></tr>
+    <tr><td>Tests</td><td>Does everything still <em>behave</em> correctly? Ninety-seven test files, run against a real throwaway database.</td></tr>
+  </table>
+
+  <div class="diagram">
+    <div class="cap">The path to production</div>
+    <div class="row">
+      <div class="box"><b>Feature branch</b><span class="m">work in progress</span></div>
+      <div class="arrow side">→</div>
+      <div class="box accent"><b>Checks</b><span class="m">types · style · tests</span></div>
+      <div class="arrow side">→</div>
+      <div class="box teal"><b>dev</b><span class="m">password-gated preview — you look at it</span></div>
+      <div class="arrow side">→</div>
+      <div class="box dark"><b>main</b><span class="m">live: afisz.cc + api.afisz.cc</span></div>
+    </div>
+  </div>
+
+  <p>Deployment itself is fully automatic. Merging to the main branch rebuilds the website and republishes it, and separately rebuilds the backend, applies any pending database changes, and restarts the server — with a health check that must pass before the new version takes over.</p>
+
+  <div class="note teal">
+    <span class="lbl">Why the preview stage matters most</span>
+    <p>Automated checks are excellent at catching things that are <em>broken</em>. They are useless at catching things that are <em>wrong</em> — a filter that works perfectly but isn't what you meant, a layout that's correct and ugly. The preview site exists for that second category, and it's the reason a human approval sits between "the tests pass" and "the public sees it".</p>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section>
+  <h2><span class="num">Chapter Eleven</span>By the numbers</h2>
+  <p class="dek">Rough scale of the thing, as of August 2026.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="v">~37,800</div><div class="k">lines of code across the whole project</div></div>
+    <div class="stat"><div class="v">132</div><div class="k">source files (excluding tests)</div></div>
+    <div class="stat"><div class="v">97</div><div class="k">test files, run on every change</div></div>
+    <div class="stat"><div class="v">13</div><div class="k">database tables</div></div>
+    <div class="stat"><div class="v">24</div><div class="k">database changes applied in order</div></div>
+    <div class="stat"><div class="v">16</div><div class="k">venues with hand-written readers that need no AI</div></div>
+    <div class="stat"><div class="v">7</div><div class="k">ways a venue page can be read</div></div>
+    <div class="stat"><div class="v">13</div><div class="k">specific reasons a venue link can fail</div></div>
+    <div class="stat"><div class="v">4</div><div class="k">screens in the whole app</div></div>
+    <div class="stat"><div class="v">50%</div><div class="k">discount on AI extraction, via batching</div></div>
+  </div>
+
+  <h3>The five ideas that shaped it</h3>
+  <div class="steps">
+    <div class="step"><div class="idx">1</div><div class="bd"><b>Cheapest route first, always</b>
+      <p>Both the probe and the sweep try free and exact methods before expensive and approximate ones. The AI is a fallback, not a foundation.</p></div></div>
+    <div class="step"><div class="idx">2</div><div class="bd"><b>Failure is information, not an error message</b>
+      <p>Thirteen named outcomes, sorted by what you should do. Four venue states, not two. The interface's job is to tell you which one you're in.</p></div></div>
+    <div class="step"><div class="idx">3</div><div class="bd"><b>Off unless switched on</b>
+      <p>Sending, the external API, the maintenance endpoints, the paid renders — every one is inert until deliberately enabled. A forgotten setting fails closed.</p></div></div>
+    <div class="step"><div class="idx">4</div><div class="bd"><b>Never trust a single guard</b>
+      <p>The AI's output is checked by strict rules, and then checked <em>again</em> by the database. Interfaces hide what you can't do; the server refuses it.</p></div></div>
+    <div class="step"><div class="idx">5</div><div class="bd"><b>Build the exit at the same time as the feature</b>
+      <p>The invite gate is one deletable file. The database's venue table was ready before the venue reading was. Temporary things are built so they can actually be removed.</p></div></div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section>
+  <h2><span class="num">Chapter Twelve</span>Glossary</h2>
+  <p class="dek">Every term used in this document, and a few you'll hear in any conversation about it.</p>
+
+  <table>
+    <tr><th>Term</th><th>What it means</th></tr>
+    <tr><td>Backend</td><td>The program running on a rented server that holds the rules and the data. Nobody sees it directly.</td></tr>
+    <tr><td>Frontend</td><td>The part that runs inside your browser and draws the pages.</td></tr>
+    <tr><td>Database</td><td>Structured, durable memory. AFISZ uses PostgreSQL, an unglamorous and extremely dependable choice.</td></tr>
+    <tr><td>Migration</td><td>A numbered instruction that changes the database's structure, applied automatically and in order at every start-up.</td></tr>
+    <tr><td>Scraping</td><td>Reading a website automatically, the way a visitor would, to extract information from it.</td></tr>
+    <tr><td>Probe</td><td>AFISZ's routine for judging whether and how a pasted venue link can be read.</td></tr>
+    <tr><td>Sweep</td><td>One full pass over all followed venues, collecting their programmes.</td></tr>
+    <tr><td>JSON-LD</td><td>Machine-readable information many sites embed invisibly for search engines. Free and exact to read — AFISZ's favourite thing to find.</td></tr>
+    <tr><td>Token</td><td>A long random string acting as a key: a login link, a session, an invite, a share link.</td></tr>
+    <tr><td>Hash</td><td>An irreversible fingerprint. Used to store keys safely, and to tell whether a page changed since last time.</td></tr>
+    <tr><td>API</td><td>A doorway one program uses to talk to another — the interface AFISZ offers to other software, and the ones it uses to reach Claude and Resend.</td></tr>
+    <tr><td>Branch</td><td>A parallel copy of the project where work happens without disturbing the live version.</td></tr>
+    <tr><td>Deploy</td><td>Publishing a new version so real people are using it.</td></tr>
+    <tr><td>CI</td><td>"Continuous integration" — the robot that runs the checks on every proposed change.</td></tr>
+    <tr><td>Test</td><td>Code whose only job is to prove other code behaves. Cheap insurance against breaking something quietly.</td></tr>
+    <tr><td>Token (AI)</td><td>Confusingly, a second meaning: the unit AI usage is billed in, roughly a word-fragment. "Sending less" means fewer of these.</td></tr>
+    <tr><td>Rate limit</td><td>A cap on how often you may ask a service for something. Hitting one isn't an error, it's a request to slow down.</td></tr>
+    <tr><td>Static site</td><td>A website of fixed files, identical for everyone, computed nowhere. Cheap and fast — AFISZ's frontend is one.</td></tr>
+  </table>
+
+  <hr class="sep">
+  <p class="footer-note">Written from the AFISZ codebase as it stands in August 2026. Where this document and the code disagree, the code is right — but the ideas above are the ones the code was built to express.</p>
+</section>
+
+</body>
+</html>

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, userProcedure, ownerProcedure } from './trpc.js';
 import { requestMagicLink, verifyMagicLink, logout as authLogout } from '../services/auth.js';
-import { googleAuthEnabled } from '../services/google-auth.js';
+import { googleAuthEnabled, makeSignedState } from '../services/google-auth.js';
 import { generateDefaultEvents } from '../data/default-events.js';
 import { filterEvents } from '../services/filters.js';
 import { defaultEventStore } from '../services/event-store.js';
@@ -24,6 +24,8 @@ import {
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
+import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js';
+import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
 import { env } from '../config.js';
 
@@ -621,17 +623,65 @@ const my = router({
         // cadence isn't due today is genuinely absent from it — same rule the
         // sweep applies.
         const sections = buildBriefSections(all, input, venues, now);
+        const brief = {
+          sections,
+          fallbackFrequency: plannedFrequency(input),
+          recipientName: input.recipientName,
+          festival: currentFestival(),
+          now,
+        };
+        // The PDF rides along with the preview (GOI-45) so "Generate" can hand
+        // the user a file to send by hand, and so what they download is
+        // provably the same brief the modal is showing rather than a second
+        // render that could drift from it. Base64 because tRPC's transport is
+        // JSON; a brief is a few tens of KB, so the ~33% inflation is cheaper
+        // than standing up a separate authenticated download route.
         return {
           events: sections.flatMap((s) => s.events),
-          html: renderBriefHtml({
-            sections,
-            fallbackFrequency: plannedFrequency(input),
-            recipientName: input.recipientName,
-            festival: currentFestival(),
-            now,
-          }),
+          html: renderBriefHtml(brief),
+          pdf: {
+            filename: briefPdfFilename(now, plannedFrequency(input)),
+            base64: (await renderBriefPdf(brief)).toString('base64'),
+          },
         };
       }),
+
+    /**
+     * Filing briefs on a cloud drive (GOI-91).
+     *
+     * `connectUrl` is a mutation, not a query: it mints a single-use signed
+     * state, and queries refetch on window focus and reconnect — which would
+     * quietly mint states nobody asked for.
+     */
+    drive: router({
+      status: userProcedure.query(async ({ ctx }) => ({
+        available: googleDriveConfig() !== null,
+        connections: await ctx.drives.view(ctx.user.id),
+      })),
+
+      connectUrl: userProcedure.mutation(({ ctx }) => {
+        const cfg = googleDriveConfig();
+        if (!cfg) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'Google Drive is not configured on this deployment',
+          });
+        }
+        // The user id travels in the signed state: Google's callback is a
+        // top-level redirect carrying no Authorization header, so it has no
+        // other way to know whose drive it is completing.
+        return {
+          url: googleDriveAuthUrl(cfg, makeSignedState(ctx.user.id, cfg.clientSecret)),
+        };
+      }),
+
+      disconnect: userProcedure
+        .input(z.object({ provider: z.literal('google').default('google') }))
+        .mutation(async ({ ctx, input }) => {
+          await ctx.drives.disconnect(ctx.user.id, input.provider);
+          return { ok: true };
+        }),
+    }),
   }),
 
   wantToGo: router({

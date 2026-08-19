@@ -8,6 +8,7 @@ import { defaultEventStore, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
 import { newsletterFromEmail, sendEmail } from './email.js';
 import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
+import { deliverBriefToDrives, type DeliverOptions, type DriveDeliveryOutcome } from './drive-delivery.js';
 import { lastWarsawTimeAtOrBefore, warsawWeekday } from './scheduler.js';
 import { env } from '../config.js';
 
@@ -289,6 +290,9 @@ export interface BriefOutcome {
   /** The slot this subscription was last due in, ISO; null before its first. */
   dueAt?: string | null;
   eventCount?: number;
+  /** Per-drive results for the filed PDF copy (GOI-91). Absent when the
+   *  subscriber has no drive connected — which is most of them. */
+  drives?: DriveDeliveryOutcome[];
 }
 
 export interface SweepOptions {
@@ -304,6 +308,12 @@ export interface SweepOptions {
    *  a test's behaviour depend on whether DATABASE_URL happens to be set. */
   venues?: UserVenueStore;
   events?: Pick<EventStore, 'listUpcoming'>;
+  /** Drive delivery seams (GOI-91), injected in tests. */
+  drive?: DeliverOptions;
+  /** Skip filing the PDF copy entirely. The public API's `dryRun` already
+   *  returns before this point; this is for a caller that wants the email
+   *  and nothing else. */
+  skipDrives?: boolean;
 }
 
 export interface SweepResult {
@@ -381,21 +391,41 @@ export async function sendNewsletterBriefs(
         outcomes.push({ ...base, status: 'sent', eventCount, detail: 'dry run — not actually sent' });
         continue;
       }
+      // Both renderings describe the same brief, so they are built from one
+      // set of arguments rather than assembled twice.
+      const brief = {
+        sections,
+        fallbackFrequency: plannedFrequency(sub),
+        recipientName: sub.recipientName,
+        // Scoped to this subscriber's venues (GOI-33).
+        festival: currentFestival(venues.map((v) => v.name)),
+        now,
+      };
       await sendEmail({
         to: sub.email,
         from: newsletterFromEmail(),
         subject: briefSubject(sections),
-        html: renderBriefHtml({
-          sections,
-          fallbackFrequency: plannedFrequency(sub),
-          recipientName: sub.recipientName,
-          // Scoped to this subscriber's venues (GOI-33).
-          festival: currentFestival(venues.map((v) => v.name)),
-          now,
-        }),
+        html: renderBriefHtml(brief),
       });
       await store.markSent(sub.userId, now);
-      outcomes.push({ ...base, status: 'sent', eventCount });
+
+      // File a PDF copy on any drive this user connected (GOI-91). After the
+      // email and after `markSent` on purpose: `deliverBriefToDrives` never
+      // throws, but ordering it here means that even if that changed, a drive
+      // outage could not cost the subscriber the brief they were sent — nor
+      // cause a retry to email it twice.
+      const drives = opts.skipDrives
+        ? []
+        : await deliverBriefToDrives(sub.userId, brief, plannedFrequency(sub), {
+            ...opts.drive,
+            now,
+          });
+      outcomes.push({
+        ...base,
+        status: 'sent',
+        eventCount,
+        ...(drives.length ? { drives } : {}),
+      });
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
       console.error(`[newsletter] send to ${sub.email} failed:`, detail);

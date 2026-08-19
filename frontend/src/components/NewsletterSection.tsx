@@ -3,7 +3,7 @@ import type {
   NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency, NewsletterSettings,
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import { downloadText } from '../lib/download';
+import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
 import { briefSummary } from '../lib/newsletter';
 import { PanelHeading } from './PanelHeading';
@@ -172,10 +172,12 @@ function NewsletterForm({
       await utils.my.newsletter.get.invalidate();
     },
   });
-  // GOI-45: generating also drops the brief on disk, ready to paste or
-  // attach into whatever the user actually sends mail from.
+  // GOI-45: generating also drops the brief on disk, ready to attach to
+  // whatever the user actually sends mail from. The PDF is what lands —
+  // it is the same artefact the drive copy files (GOI-91), so what they
+  // forward by hand and what appears in their folder are the same document.
   const preview = trpc.my.newsletter.preview.useMutation({
-    onSuccess: (data) => downloadBrief(data.html),
+    onSuccess: (data) => downloadPdf(data.pdf),
   });
 
   const payload = () => ({
@@ -486,9 +488,12 @@ function NewsletterForm({
 
       <NewsletterPreview
         html={preview.data?.html ?? null}
+        pdf={preview.data?.pdf ?? null}
         count={preview.data?.events.length ?? null}
         error={preview.error?.message ?? null}
       />
+
+      <DriveCard />
     </section>
   );
 }
@@ -593,10 +598,12 @@ function FormSection({
  */
 function NewsletterPreview({
   html,
+  pdf,
   count,
   error,
 }: {
   html: string | null;
+  pdf: { filename: string; base64: string } | null;
   count: number | null;
   error: string | null;
 }) {
@@ -608,11 +615,18 @@ function NewsletterPreview({
         <h3 className="label-caps">
           Preview{count !== null ? ` — ${count} event${count === 1 ? '' : 's'}` : ''}
         </h3>
-        {/* Generating already saved a copy; this is for when it got lost in
-            the downloads folder, or the same brief is wanted twice. */}
-        <button type="button" onClick={() => downloadBrief(html)} className="act act-sm">
-          Download again
-        </button>
+        {/* Generating already saved the PDF; these are for when it got lost
+            in the downloads folder, or the .html version is wanted instead. */}
+        <div className="flex gap-3.5">
+          {pdf ? (
+            <button type="button" onClick={() => downloadPdf(pdf)} className="act act-sm">
+              Download PDF
+            </button>
+          ) : null}
+          <button type="button" onClick={() => downloadBrief(html)} className="act act-sm">
+            Download .html
+          </button>
+        </div>
       </div>
       <iframe
         data-testid="newsletter-preview"
@@ -633,6 +647,125 @@ function NewsletterPreview({
  * attach, or to open and paste into a mail client. Dated so a week of drafts
  * doesn't collapse onto one filename.
  */
+function downloadPdf(pdf: { filename: string; base64: string }): void {
+  downloadBase64(pdf.filename, pdf.base64, 'application/pdf');
+}
+
+/**
+ * Filing every brief on a cloud drive (GOI-91).
+ *
+ * Sits below the form rather than inside it: connecting is not part of the
+ * subscription being edited, and a half-filled form must not be lost to an
+ * OAuth redirect. Nothing here is submitted with the rest of the settings.
+ */
+function DriveCard() {
+  const utils = trpc.useUtils();
+  const status = trpc.my.newsletter.drive.status.useQuery();
+  const [error, setError] = useState<string | null>(null);
+
+  // The callback comes back as a top-level redirect, so its result arrives in
+  // the fragment rather than as a mutation response.
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const outcome = hash.get('drive');
+    if (!outcome) return;
+    if (outcome === 'error') setError(hash.get('message') || 'Connecting the drive failed.');
+    if (outcome === 'connected') void utils.my.newsletter.drive.status.invalidate();
+    // Clear it so a refresh doesn't replay the banner.
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }, [utils]);
+
+  const connect = trpc.my.newsletter.drive.connectUrl.useMutation({
+    onSuccess: (data) => {
+      window.location.href = data.url;
+    },
+    onError: (e) => setError(e.message),
+  });
+
+  const disconnect = trpc.my.newsletter.drive.disconnect.useMutation({
+    onSuccess: async () => {
+      await utils.my.newsletter.drive.status.invalidate();
+    },
+    onError: (e) => setError(e.message),
+  });
+
+  if (status.isLoading || !status.data) return null;
+
+  // Nothing to offer on a deployment with no Google credentials — say so
+  // rather than showing a button that can only fail.
+  if (!status.data.available) {
+    return (
+      <div className="mt-10 border-t-3 border-ink pt-6">
+        <h3 className="label-caps">Save briefs to a drive</h3>
+        <p className="mt-2 text-sm text-muted">
+          Not available on this deployment — Google isn&rsquo;t configured.
+        </p>
+      </div>
+    );
+  }
+
+  const google = status.data.connections.find((c) => c.provider === 'google') ?? null;
+
+  return (
+    <div className="mt-10 border-t-3 border-ink pt-6">
+      <h3 className="label-caps">Save briefs to a drive</h3>
+      <p className="mt-2 max-w-prose text-sm text-muted">
+        Every brief also gets filed as a PDF in an <strong>Afisz.ka</strong> folder on your
+        drive, on the same schedule as the email. AFISZ can only see files it puts there
+        itself — nothing else in your drive.
+      </p>
+
+      {google ? (
+        <div className="mt-4 border-3 border-ink p-4">
+          <p className="text-sm font-bold">
+            Google Drive connected{google.accountEmail ? ` — ${google.accountEmail}` : ''}
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            Folder: {google.folderName}
+            {google.lastUploadAt
+              ? ` · last brief filed ${new Date(google.lastUploadAt).toLocaleDateString()}`
+              : ' · no brief filed yet'}
+          </p>
+          {google.lastError ? (
+            <p className="mt-2 text-sm text-accent">
+              Last upload failed: {google.lastError}
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-3.5">
+            <button
+              type="button"
+              onClick={() => connect.mutate()}
+              disabled={connect.isPending}
+              className="act act-sm"
+            >
+              Reconnect
+            </button>
+            <button
+              type="button"
+              onClick={() => disconnect.mutate({ provider: 'google' })}
+              disabled={disconnect.isPending}
+              className="act act-sm"
+            >
+              {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => connect.mutate()}
+          disabled={connect.isPending}
+          className="btn-outline mt-4 text-center"
+        >
+          {connect.isPending ? 'Opening Google…' : 'Connect Google Drive'}
+        </button>
+      )}
+
+      {error ? <p className="mt-3 text-sm text-accent">{error}</p> : null}
+    </div>
+  );
+}
+
 function downloadBrief(html: string): void {
   const day = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit',
