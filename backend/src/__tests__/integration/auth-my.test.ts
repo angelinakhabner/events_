@@ -410,7 +410,7 @@ describe('festivals.mine (GOI-33)', () => {
     const res = await trpcCall('festivals.mine', { token });
     expect(res.status).toBe(200);
 
-    const mine = res.data as Array<{ id: string; cinemas: string[]; yourVenues: string[] }>;
+    const mine = res.data as Array<{ id: string; venues: string[]; yourVenues: string[] }>;
     // Every returned festival must name at least one of the reader's venues —
     // that is the whole contract, and it holds whatever the seed list contains.
     for (const f of mine) {
@@ -420,9 +420,9 @@ describe('festivals.mine (GOI-33)', () => {
     // The seeded defaults include Kinoteka and Kino Muranów, which host the
     // curated Warsaw festivals — so a fresh account sees a non-empty list as
     // long as any edition is still ahead.
-    const all = (await trpcCall('festivals.list')).data as Array<{ cinemas: string[] }>;
+    const all = (await trpcCall('festivals.list')).data as Array<{ venues: string[] }>;
     const anyAtSeededVenue = all.some((f) =>
-      f.cinemas.some((c) => /kinoteka|muran/i.test(c)),
+      f.venues.some((c) => /kinoteka|muran/i.test(c)),
     );
     if (anyAtSeededVenue) expect(mine.length).toBeGreaterThan(0);
     // Never wider than the unscoped list.

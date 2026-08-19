@@ -196,9 +196,10 @@ export function HomePage() {
           {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
         </div>
 
-        {/* Festivals are cinema news — keep them visible on the unfiltered view
-            and the cinema tab, but out of the way of other categories. */}
-        {category === null || category === 'cinema' ? <FestivalsSection /> : null}
+        {/* "Coming soon" sits at the foot of the listing it belongs to, so a
+            category's festivals arrive with its events rather than as cinema
+            news pinned to every page (GOI-68). */}
+        <FestivalsSection category={category} />
       </div>
     </section>
   );
