@@ -11,7 +11,8 @@ function fest(over: Partial<Festival> = {}): Festival {
     id: 'f1',
     name: 'Warsaw Film Festival',
     url: 'https://wff.pl',
-    cinemas: ['Kinoteka', 'Kino Muranów'],
+    category: 'cinema',
+    venues: ['Kinoteka', 'Kino Muranów'],
     city: 'Warsaw',
     startDate: '2026-10-09',
     endDate: '2026-10-18',
@@ -30,10 +31,10 @@ describe('festivalVenueMatches', () => {
     // A user-typed or scraped name rarely matches the curated one byte for byte.
     expect(festivalVenueMatches(fest(), ['Kino Muranow'])).toEqual(['Kino Muranow']);
     expect(
-      festivalVenueMatches(fest({ cinemas: ['Kino Iluzjon'] }), ['kino iluzjon']),
+      festivalVenueMatches(fest({ venues: ['Kino Iluzjon'] }), ['kino iluzjon']),
     ).toEqual(['kino iluzjon']);
     expect(
-      festivalVenueMatches(fest({ cinemas: ['Kino Świt'] }), ['kino swit']),
+      festivalVenueMatches(fest({ venues: ['Kino Świt'] }), ['kino swit']),
     ).toEqual(['kino swit']);
   });
 
@@ -41,7 +42,7 @@ describe('festivalVenueMatches', () => {
     // The festival says "Kino Muranów"; the user renamed theirs to "Muranów".
     expect(festivalVenueMatches(fest(), ['Muranów'])).toEqual(['Muranów']);
     expect(
-      festivalVenueMatches(fest({ cinemas: ['Muranów'] }), ['Kino Muranów']),
+      festivalVenueMatches(fest({ venues: ['Muranów'] }), ['Kino Muranów']),
     ).toEqual(['Kino Muranów']);
   });
 
@@ -58,14 +59,14 @@ describe('festivalVenueMatches', () => {
 
   it('does not match on blank names or an empty cinema list', () => {
     expect(festivalVenueMatches(fest(), ['', '   '])).toEqual([]);
-    expect(festivalVenueMatches(fest({ cinemas: [] }), ['Kinoteka'])).toEqual([]);
-    expect(festivalVenueMatches(fest({ cinemas: ['  '] }), ['Kinoteka'])).toEqual([]);
+    expect(festivalVenueMatches(fest({ venues: [] }), ['Kinoteka'])).toEqual([]);
+    expect(festivalVenueMatches(fest({ venues: ['  '] }), ['Kinoteka'])).toEqual([]);
   });
 });
 
 describe('festivalsAtVenues', () => {
   const wff = fest();
-  const jazz = fest({ id: 'f2', name: 'Jazz Days', cinemas: ['Jassmine'] });
+  const jazz = fest({ id: 'f2', name: 'Jazz Days', venues: ['Jassmine'] });
 
   it('keeps only festivals at the reader\'s venues, annotated with which', () => {
     const out = festivalsAtVenues([wff, jazz], ['Kinoteka']);

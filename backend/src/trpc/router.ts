@@ -772,9 +772,19 @@ function mapStoreError(e: unknown): TRPCError {
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: msg });
 }
 
+const festivalCategorySchema = z.enum(['cinema', 'theatre', 'music']);
+
 const festivals = router({
-  /** Ongoing and upcoming film festivals at covered cinemas, soonest first. */
-  list: publicProcedure.query(() => listFestivals()),
+  /**
+   * Ongoing and upcoming festivals, soonest first — narrowed to one listing's
+   * own when a category is given (GOI-68).
+   *
+   * Filtered here rather than in the browser so the "coming soon" block under
+   * a category can ask only for what it will show.
+   */
+  list: publicProcedure
+    .input(z.object({ category: festivalCategorySchema.optional() }).optional())
+    .query(({ input }) => listFestivals(new Date(), input?.category)),
 
   /**
    * The same list narrowed to festivals hosted at venues the user actually
