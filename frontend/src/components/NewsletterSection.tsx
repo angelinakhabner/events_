@@ -313,12 +313,6 @@ function NewsletterForm({
                 ))}
               </select>
             </span>
-
-            {/* The same time again, at poster scale — the one number you check
-                before closing the page. */}
-            <span aria-hidden className="font-display text-xl md:text-[22px]">
-              AT {pad(sendHour)}:{pad(sendMinute)}
-            </span>
           </div>
           <p className="mt-2.5 text-xs text-faint">
             Warsaw time — next brief at {pad(sendHour)}:{pad(sendMinute)}
@@ -449,23 +443,18 @@ function NewsletterForm({
         </FormSection>
 
         <FormSection step={5} label="Only events after">
-          <div className="flex items-center gap-3.5">
-            <select
-              id="newsletter-after"
-              aria-label="Only events after"
-              value={afterHour}
-              onChange={(e) => setAfterHour(e.target.value)}
-              className="select-flat w-[180px] py-[9px] pl-2.5"
-            >
-              <option value={ANY}>Any time</option>
-              {HOURS.map((h) => (
-                <option key={h} value={h}>After {hourLabel(h)}</option>
-              ))}
-            </select>
-            <span aria-hidden className="font-display text-xl md:text-[22px]">
-              {afterHour === ANY ? 'ANY TIME' : hourLabel(Number(afterHour))}
-            </span>
-          </div>
+          <select
+            id="newsletter-after"
+            aria-label="Only events after"
+            value={afterHour}
+            onChange={(e) => setAfterHour(e.target.value)}
+            className="select-flat w-[180px] py-[9px] pl-2.5"
+          >
+            <option value={ANY}>Any time</option>
+            {HOURS.map((h) => (
+              <option key={h} value={h}>After {hourLabel(h)}</option>
+            ))}
+          </select>
         </FormSection>
 
         {/* Stacked, both left-aligned (design pack): the enabled/disabled
