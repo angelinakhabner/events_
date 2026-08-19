@@ -323,3 +323,44 @@ export const invites = pgTable(
     labelIdx: index('invites_label_idx').on(t.label),
   }),
 );
+
+/**
+ * A user's connected cloud drive, where their briefs get filed (GOI-91).
+ *
+ * One row per user per provider, so a user can have Google Drive and (once a
+ * second provider exists) another one at the same time without either
+ * displacing the other.
+ *
+ * `refresh_token` is the sensitive column: unlike the token tables above this
+ * one cannot store a hash, because the value has to be *replayed* to Google on
+ * every scheduled upload rather than merely compared. It is therefore the one
+ * secret in this database that a dump would expose, which is why the scope
+ * granted is `drive.file` — access limited to files AFISZ itself created, not
+ * to the user's Drive.
+ */
+export const driveConnections = pgTable(
+  'drive_connections',
+  {
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** 'google' today; the column is text so a new provider needs no migration. */
+    provider: text('provider').notNull(),
+    refreshToken: text('refresh_token').notNull(),
+    /** Which of the user's accounts the folder lives in — they often have more
+     *  than one, and "which Drive did I connect?" is otherwise unanswerable. */
+    accountEmail: text('account_email'),
+    folderName: text('folder_name').notNull().default('Afisz.ka'),
+    /** Cached so the common upload costs no folder search. Re-verified before
+     *  use: a user can bin the folder, and uploading into a trashed folder
+     *  succeeds while putting the brief where nobody will look. */
+    folderId: text('folder_id'),
+    /** Set on a failed upload, cleared by the next success. A drive that has
+     *  quietly stopped receiving briefs is the failure worth surfacing. */
+    lastError: text('last_error'),
+    lastUploadAt: timestamp('last_upload_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.provider] }),
+  }),
+);

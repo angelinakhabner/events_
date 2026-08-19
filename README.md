@@ -86,6 +86,7 @@ npm run lint
 | `NEWSLETTER_FROM_EMAIL` | unset | `newsletter@afisz.cc` | From-address for newsletter briefs. Unset ⇒ falls back to `RESEND_FROM_EMAIL`. Same verified domain, so a second address needs no extra DNS |
 | `APP_URL` | `http://localhost:5173` | `https://afisz.cc` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
 | `API_PUBLIC_URL` | unset | `https://api.afisz.cc` | Public backend origin. Builds the Google OAuth redirect URI `<API_PUBLIC_URL>/auth/google/callback`, which must be registered verbatim in the Google console |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset (optional) | from the Google console | Google sign-in **and** ["save briefs to a drive"](#saving-briefs-to-a-drive-goi-91). Unset ⇒ both features report themselves unavailable rather than failing |
 | `NEWSLETTER_CRON_ENABLED` | unset | `true` | **Required for newsletter briefs to go out at all.** Unset ⇒ the send sweep never starts and no brief is ever mailed, however subscriptions are configured |
 | `ADMIN_TOKEN` | unset (optional) | a long random string | Enables the `/admin/*` debug endpoints, including the newsletter diagnostics below. Callers pass `?token=<value>` |
 | `NEWSLETTER_API_KEY` | unset (optional) | a long random string | Enables the [public newsletter API](#public-newsletter-api-goi-87). Unset ⇒ every `/api/v1/newsletter/*` route answers 503. Keep it distinct from `ADMIN_TOKEN`: this one is handed to third parties |
@@ -150,6 +151,55 @@ The request body for a subscription is validated by the same schema the app's
 own form posts through (`services/newsletter-input.ts`), so the two front doors
 cannot drift: a field added for the app is accepted here on the same commit,
 with the same bounds and defaults.
+
+## Saving briefs to a drive (GOI-91)
+
+Each brief is also filed as a **PDF** in an `Afisz.ka` folder on the user's own
+cloud drive, on the same schedule as the email. Connect it under
+**/my → Newsletter → Save briefs to a drive**.
+
+Only **Google Drive** is implemented. `services/cloud-drive.ts` is the
+provider-independent half — a second provider is one object satisfying
+`DriveProvider` plus its id in the union, with no change to the sweep, the
+store or the UI.
+
+**Scope is `drive.file`, deliberately.** It grants access only to files AFISZ
+itself created, so the app can write into its own folder and can see nothing
+else in the user's Drive. It is also non-sensitive, so it needs no Google
+verification review — widening to `drive` would lose both properties.
+
+Setup, beyond the sign-in credentials that already exist:
+
+1. In the Google console, add `https://www.googleapis.com/auth/drive.file` to
+   the OAuth consent screen's scopes.
+2. Register the extra redirect URI `<API_PUBLIC_URL>/auth/google/drive/callback`
+   verbatim, alongside the sign-in one.
+
+No new environment variable: the flow reuses `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET` and `API_PUBLIC_URL`. Without them the panel reports
+that it isn't available instead of offering a button that can only fail.
+
+Two properties worth keeping if this is edited:
+
+- **A drive failure never costs the email.** `deliverBriefToDrives` runs after
+  the send and after `markSent`, and never throws: a full, revoked or offline
+  drive is recorded on the connection (and surfaced in the Newsletter tab), not
+  raised into the sweep.
+- **The consent URL is minted by a tRPC mutation, not a GET route.** The
+  callback has to know whose drive it is completing, and it arrives as a
+  top-level redirect with no Authorization header — so the user id rides in the
+  HMAC-signed `state`. A start route would instead have to take the session in
+  a query string, putting a live bearer token in browser history and logs.
+
+The PDF is drawn from the same `BriefSection[]` the email renders from, not
+converted from the email HTML — converting would mean shipping a headless
+browser to Railway, and email markup is nested presentation tables built for
+Outlook. Fonts are embedded (`backend/assets/fonts`, DejaVu subset to Latin-1 +
+Latin Extended-A, 22KB each) because PDF's built-in Helvetica is WinAnsi and has
+no ł, ą, ę, ś, ż, ź, ć or ń.
+
+**Generate now** on the same tab downloads that identical PDF, so a brief sent
+by hand and a brief filed on the drive are the same document (GOI-45).
 
 ## Proposing similar venues (GOI-86)
 

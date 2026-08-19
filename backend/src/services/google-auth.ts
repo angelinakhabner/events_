@@ -49,6 +49,40 @@ export function makeState(key: string, now: Date = new Date()): string {
   return `${payload}.${signState(payload, key)}`;
 }
 
+/**
+ * CSRF state that also carries a payload: `<payload>.<timestamp>.<nonce>.<hmac>`.
+ *
+ * Connecting a drive (GOI-91) has to come back knowing *whose* drive it is, and
+ * the callback arrives as a top-level browser redirect from Google — it carries
+ * no Authorization header and cannot read the SPA's bearer session. The user id
+ * therefore rides in the state, signed by the same key, so a forged callback
+ * cannot attach a drive to somebody else's account.
+ *
+ * The payload is signed, not encrypted: a user id is not a secret, and it is
+ * already visible to the browser that asked for the URL.
+ */
+export function makeSignedState(payload: string, key: string, now: Date = new Date()): string {
+  if (payload.includes('.')) throw new Error('state payload must not contain "."');
+  const body = `${payload}.${now.getTime()}.${randomBytes(16).toString('base64url')}`;
+  return `${body}.${signState(body, key)}`;
+}
+
+/** The payload from a state this server signed within the TTL, or null. */
+export function readSignedState(state: string, key: string, now: Date = new Date()): string | null {
+  const parts = state.split('.');
+  if (parts.length !== 4) return null;
+  const [payload, ts, nonce, sig] = parts as [string, string, string, string];
+  const expected = signState(`${payload}.${ts}.${nonce}`, key);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  const minted = Number(ts);
+  if (!Number.isFinite(minted) || now.getTime() - minted > STATE_TTL_MS || minted > now.getTime()) {
+    return null;
+  }
+  return payload;
+}
+
 /** True when `state` was minted by us within the TTL and wasn't tampered with. */
 export function verifyState(state: string, key: string, now: Date = new Date()): boolean {
   const parts = state.split('.');
