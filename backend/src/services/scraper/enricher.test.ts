@@ -178,15 +178,64 @@ describe('enrichDescriptions — cost control (GOI-79)', () => {
       venueUrl: 'https://v.example/repertuar',
       delayMs: 0,
       fetcher: fetchSpy as unknown as typeof fetch,
-      alreadyDescribed: async () => new Set(['https://v.example/film/known']),
+      storedDetails: async () =>
+        new Map([['https://v.example/film/known', { description: 'stored' }]]),
     });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy.mock.calls[0]![0]).toBe('https://v.example/film/new');
-    // The known row is left alone, not blanked.
-    expect(events[0]!.description).toBeNull();
     expect(events[1]!.description).toBe('desc');
     expect(r.fetched).toBe(1);
+  });
+
+  // GOI-90. The skip above is per *detail page*, but rows are keyed per event
+  // — one film page serves every showing of the film. A showing the cinema
+  // publishes later is a new row under an already-described URL, so it reaches
+  // the persister as an INSERT, where the upsert's coalesce cannot save it.
+  // Not fetching that page again is right; sending the row on with a null
+  // description is what saved it blank.
+  it('hands a stored description to a row that has never carried one (GOI-90)', async () => {
+    const fetchSpy = vi.fn(ok);
+    const events = [
+      { source_url: 'https://v.example/film/known', description: null as string | null },
+      { source_url: 'https://v.example/film/known', description: null as string | null },
+    ];
+
+    const r = await enrichDescriptions(events, {
+      venueUrl: 'https://v.example/repertuar',
+      delayMs: 0,
+      fetcher: fetchSpy as unknown as typeof fetch,
+      storedDetails: async () =>
+        new Map([['https://v.example/film/known', { description: 'stored opis' }]]),
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(events.map((e) => e.description)).toEqual(['stored opis', 'stored opis']);
+    // Counted apart from `enriched`: this run paid nothing for it.
+    expect(r.backfilled).toBe(2);
+    expect(r.enriched).toBe(0);
+    expect(r.fetched).toBe(0);
+  });
+
+  // The model's content category rides back on the same call (GOI-80), so a
+  // row filled from the store needs it too — otherwise `classifyEvent` falls
+  // to ('other', 'keyword') and the new showing drops out of its category chip
+  // while its siblings stay in.
+  it('carries a stored model category onto a backfilled row (GOI-90)', async () => {
+    const events = [{ source_url: 'https://v.example/film/known', description: null as string | null }];
+
+    await enrichDescriptions(events, {
+      venueUrl: 'https://v.example/repertuar',
+      delayMs: 0,
+      fetcher: vi.fn(ok) as unknown as typeof fetch,
+      storedDetails: async () =>
+        new Map([[
+          'https://v.example/film/known',
+          { description: 'stored opis', contentCategory: 'lecture' },
+        ]]),
+    });
+
+    expect((events[0] as { content_category?: string | null }).content_category).toBe('lecture');
   });
 
   it('enriches everything rather than nothing when the lookup itself fails', async () => {
@@ -197,7 +246,7 @@ describe('enrichDescriptions — cost control (GOI-79)', () => {
       venueUrl: 'https://v.example/repertuar',
       delayMs: 0,
       fetcher: fetchSpy as unknown as typeof fetch,
-      alreadyDescribed: async () => { throw new Error('db down'); },
+      storedDetails: async () => { throw new Error('db down'); },
     });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);

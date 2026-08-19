@@ -74,6 +74,28 @@ describeIfDb('scraper integration', () => {
     }
   });
 
+  /** Splice one extra screening into the fixture's first day cell — a film the
+   *  cinema is already playing, given another showing. */
+  const addScreening = (
+    html: string,
+    s: { sourceId: string; time: string; title: string; href: string },
+  ): string => {
+    const block = `<div class="movie-calendar-info">
+      <div class="movie-calendar-info__inner" data-id="${s.sourceId}">
+        <div class="movie-calendar-info__text-details">
+          <span class="movie-calendar-info__date">${s.time}</span>
+          <h5 class="movie-calendar-info__title">${s.title}</h5>
+        </div>
+      </div>
+      <div class="movie-calendar-info-expand">
+        <a href="${s.href}" class="movie-calendar-info-expand__thumb"></a>
+      </div>
+    </div>`;
+    const at = html.indexOf('<div class="movie-calendar-info">');
+    if (at < 0) throw new Error('fixture shape changed: no screening block found');
+    return html.slice(0, at) + block + html.slice(at);
+  };
+
   const makeExtractor = (returns: string): ExtractorClient => ({
     extract: async () => returns,
   });
@@ -215,6 +237,113 @@ describeIfDb('scraper integration', () => {
     await scrapeVenue(muranowVenueId, { ...opts, force: true });
     const after = (await db.select().from(schema.events)).find((r) => r.sourceId === '26919')!;
     expect(after.description).toBe('Nowy opis.');
+  });
+
+  // GOI-90, the half the coalesce fix could not reach. Muranów's rows are keyed
+  // on the *screening* id, but enrichment is skipped per *film page* URL — one
+  // page serves every showing of a film. So once a film has been described,
+  // any later showing of it the cinema publishes is a brand-new row that
+  // enrichment declines to fetch for, and it INSERTs with `description: null`.
+  // `coalesce(excluded.description, ...)` only runs ON CONFLICT, so an insert
+  // never sees the stored text. The programme decays a showing at a time,
+  // which is why descriptions still went missing after #145.
+  it('a newly published screening inherits its film page description (GOI-90)', async () => {
+    const filmPage = '<html><head><meta property="og:description" content="Opis filmu."></head></html>';
+    let detailFetches = 0;
+    const fetcher = (async () => {
+      detailFetches++;
+      return new Response(filmPage, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const opts = {
+      fetcher,
+      now: new Date('2026-06-07T08:00:00.000Z'),
+      enrichDelayMs: 0,
+      maxDetailFetches: 200,
+    };
+
+    const first = await scrapeVenue(muranowVenueId, { ...opts, htmlOverride: muranowHtml });
+    expect(first.status).toBe('success');
+    const afterFirst = detailFetches;
+
+    const db = getDb();
+    const blank = async (): Promise<number> => {
+      const rows = await db.select().from(schema.events);
+      return rows.filter((r) => (r.description ?? '').trim().length === 0).length;
+    };
+    expect(await blank()).toBe(0);
+
+    // The cinema adds one more showing of a film it is already playing: same
+    // detail page, new screening id — exactly what a week's fresh programme is.
+    const extra = addScreening(muranowHtml, {
+      sourceId: '99999',
+      time: '22:30',
+      title: 'Tajny agent',
+      href: 'https://kinomuranow.pl/film/tajny-agent',
+    });
+
+    const second = await scrapeVenue(muranowVenueId, { ...opts, htmlOverride: extra });
+    expect(second.status).toBe('success');
+
+    const rows = await db.select().from(schema.events);
+    const added = rows.find((r) => r.sourceId === '99999');
+    expect(added).toBeDefined();
+    // The film page was described on the first sweep, so it is not fetched
+    // again — the saving holds — but the new showing must still carry the copy.
+    expect(detailFetches).toBe(afterFirst);
+    expect(added!.description).toBe('Opis filmu.');
+    expect(await blank()).toBe(0);
+  });
+
+  // The same trap one field over (GOI-80/GOI-90). The model's content category
+  // rides back on the enrichment call, so a new showing of an already-described
+  // film has nothing to classify from and `classifyEvent` lands on its
+  // know-nothing fallback, ('other', 'keyword'). On an INSERT the persister's
+  // "keep the stored llm answer" CASE never runs, so the new showing dropped
+  // out of the category chips while its siblings stayed in.
+  it('a newly published screening keeps the film\'s stored model category (GOI-90)', async () => {
+    // Long enough that `mainContentText` hands the page to the describer.
+    const filmPage =
+      '<html><body><article><p>' + 'Wyklad o kinie. '.repeat(20) + '</p></article></body></html>';
+    const fetcher = (async () => new Response(filmPage, { status: 200 })) as unknown as typeof fetch;
+    const describer = {
+      describe: async () => ({
+        description: 'Opis wykladu.',
+        category: 'lecture',
+        inputTokens: 10,
+        outputTokens: 5,
+      }),
+    };
+
+    const opts = {
+      fetcher,
+      describer,
+      now: new Date('2026-06-07T08:00:00.000Z'),
+      enrichDelayMs: 0,
+      maxDetailFetches: 200,
+    };
+
+    const first = await scrapeVenue(muranowVenueId, { ...opts, htmlOverride: muranowHtml });
+    expect(first.status).toBe('success');
+
+    const db = getDb();
+    const before = (await db.select().from(schema.events)).find((r) => r.sourceId === '26919')!;
+    expect(before.contentCategory).toBe('lecture');
+    expect(before.categorySource).toBe('llm');
+
+    const extra = addScreening(muranowHtml, {
+      sourceId: '99999',
+      time: '22:30',
+      title: 'Tajny agent',
+      href: 'https://kinomuranow.pl/film/tajny-agent',
+    });
+    const second = await scrapeVenue(muranowVenueId, { ...opts, htmlOverride: extra });
+    expect(second.status).toBe('success');
+
+    const added = (await db.select().from(schema.events)).find((r) => r.sourceId === '99999')!;
+    expect(added.description).toBe('Opis wykladu.');
+    expect(added.contentCategory).toBe('lecture');
+    expect(added.categorySource).toBe('llm');
   });
 
   it('second run with identical HTML records status=skipped_unchanged', async () => {
