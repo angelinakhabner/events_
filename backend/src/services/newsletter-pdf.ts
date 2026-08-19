@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +52,33 @@ const CONTENT = PAGE.width - MARGIN * 2;
 const fontDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/fonts');
 const FONT_REGULAR = path.join(fontDir, 'DejaVuSans.subset.ttf');
 const FONT_BOLD = path.join(fontDir, 'DejaVuSans-Bold.subset.ttf');
+
+/** Read once, not per brief — the sweep renders one of these per subscriber. */
+let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
+
+/**
+ * The font bytes, as a `Uint8Array` built by *this* realm's constructor.
+ *
+ * That copy is not ceremony. `readFileSync` returns a Node `Buffer`, and
+ * fontkit (which pdfkit parses fonts with) sniffs the format behind an
+ * `instanceof Uint8Array` check. Under a jsdom test environment the global
+ * `Uint8Array` belongs to jsdom's realm while the Buffer belongs to Node's, so
+ * that check is false for a perfectly valid TTF and the only symptom is
+ * "Not a supported font format or standard PDF font" — which reads like a
+ * corrupt file and is nothing of the kind. `new Uint8Array(buf)` is
+ * constructed by whichever realm is current, so it satisfies the check in
+ * both. The frontend's newsletter end-to-end test mounts this backend
+ * in-process under jsdom, which is how it got found.
+ */
+function fonts(): { regular: Uint8Array; bold: Uint8Array } {
+  if (!fontCache) {
+    fontCache = {
+      regular: new Uint8Array(readFileSync(FONT_REGULAR)),
+      bold: new Uint8Array(readFileSync(FONT_BOLD)),
+    };
+  }
+  return fontCache;
+}
 
 export interface BriefPdfContent {
   sections: BriefSection[];
@@ -125,8 +153,9 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
     doc.on('error', reject);
   });
 
-  doc.registerFont('body', FONT_REGULAR);
-  doc.registerFont('bold', FONT_BOLD);
+  const face = fonts();
+  doc.registerFont('body', face.regular);
+  doc.registerFont('bold', face.bold);
 
   paintPageBackground(doc);
   // Every page break repaints the ground — pdfkit's `margin` reserves space but
