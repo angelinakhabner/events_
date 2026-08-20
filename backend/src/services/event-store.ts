@@ -376,17 +376,29 @@ export class EventStore {
   }
 
   /**
-   * Which of these detail URLs already have a stored description (GOI-79).
+   * What we already know about these detail URLs, from rows saved earlier
+   * (GOI-79, GOI-90).
    *
-   * This is what makes a re-scrape cheap. A monthly theatre programme
-   * re-parsed every night would otherwise re-fetch and re-extract every show
-   * on it, every night, for a description that hasn't changed since the first
-   * time. Scoped to the venue so one venue's rows can't answer for another's.
+   * Two jobs, one query. It is what makes a re-scrape cheap — a monthly
+   * theatre programme re-parsed every night would otherwise re-fetch and
+   * re-extract every show on it, every night, for a description that hasn't
+   * changed since the first time — and it is also what a *new* row for an
+   * already-known page gets its description from. A cinema keyed on screening
+   * ids publishes new showings of the same film constantly; each one is an
+   * insert, and enrichment (rightly) won't pay for that page twice, so
+   * without the stored text to hand back the new showing is saved blank.
+   *
+   * Scoped to the venue so one venue's rows can't answer for another's.
    */
-  async describedSourceUrls(venueId: string, urls: string[]): Promise<Set<string>> {
-    if (urls.length === 0) return new Set();
+  async storedDetails(venueId: string, urls: string[]): Promise<Map<string, StoredDetail>> {
+    if (urls.length === 0) return new Map();
     const rows = await getDb()
-      .select({ sourceUrl: schema.events.sourceUrl })
+      .select({
+        sourceUrl: schema.events.sourceUrl,
+        description: schema.events.description,
+        contentCategory: schema.events.contentCategory,
+        categorySource: schema.events.categorySource,
+      })
       .from(schema.events)
       .where(
         and(
@@ -397,8 +409,27 @@ export class EventStore {
           sql`length(trim(${schema.events.description})) > 0`,
         ),
       );
-    return new Set(rows.map((r) => r.sourceUrl));
+
+    const out = new Map<string, StoredDetail>();
+    for (const r of rows) {
+      if (out.has(r.sourceUrl)) continue; // one page, one answer
+      out.set(r.sourceUrl, {
+        description: r.description!,
+        // Only a model answer travels. 'structure' and 'keyword' are derived
+        // from the row itself, so the persister re-derives them correctly for
+        // the new row and a stale copy here could only contradict it.
+        contentCategory: r.categorySource === 'llm' ? r.contentCategory : null,
+      });
+    }
+    return out;
   }
+}
+
+/** What an earlier sweep already learned about one detail page. */
+export interface StoredDetail {
+  description: string;
+  /** The model's content category (GOI-80), when that is what classified it. */
+  contentCategory: string | null;
 }
 
 /**
