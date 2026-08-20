@@ -13,9 +13,12 @@ import { fetchVenueHTML } from './fetcher.js';
  *
  * Four things keep the bill down, in the order they bite:
  *   1. Rows already carrying a description are skipped outright.
- *   2. Rows whose detail URL is already in the DB *with* a description are
- *      dropped before any fetch — a weekly re-scrape of a monthly programme
- *      would otherwise re-extract every show, every time.
+ *   2. Rows whose detail URL is already in the DB *with* a description take
+ *      that stored text instead of a fetch — a weekly re-scrape of a monthly
+ *      programme would otherwise re-extract every show, every time. They are
+ *      handed the copy rather than merely skipped: a venue keyed on screening
+ *      ids adds new showings of a film it is already playing, and those rows
+ *      are inserts, so leaving them null saves them blank (GOI-90).
  *   3. Rows are grouped by URL, so a show playing twelve times costs one fetch.
  *   4. A hard per-run cap stops the whole pass.
  *
@@ -60,20 +63,29 @@ export interface EnrichOptions {
    *  leaves the rest null; it never fails the run. */
   maxFetches?: number;
   /**
-   * Which of these detail URLs already have a stored description. Injected
+   * What earlier sweeps already learned about these detail URLs. Injected
    * rather than queried here so the enricher stays free of DB knowledge and
    * testable without one.
    */
-  alreadyDescribed?: (urls: string[]) => Promise<Set<string>>;
+  storedDetails?: (urls: string[]) => Promise<Map<string, StoredDetail>>;
   /** Absent → fall back to the page's own og:description/meta, no model call. */
   client?: DescriptionClient;
   /** Test seam for the inter-fetch delay. */
   sleep?: (ms: number) => Promise<void>;
 }
 
+/** What a previous run already established about one detail page. */
+export interface StoredDetail {
+  description: string;
+  /** The model's content category (GOI-80), when that is what classified it. */
+  contentCategory?: string | null;
+}
+
 export interface EnrichResult {
-  /** Rows that ended up with a description. */
+  /** Rows that ended up with a description from a fetch this run. */
   enriched: number;
+  /** Rows filled from a previously stored description — no fetch, no tokens. */
+  backfilled: number;
   /** Rows never considered: already described, or no detail page. */
   skipped: number;
   /** Detail pages that failed to fetch or extract. */
@@ -101,13 +113,13 @@ export async function enrichDescriptions(
     delayMs = DEFAULT_DELAY_MS,
     maxFetches = DEFAULT_MAX_DETAIL_FETCHES,
     client,
-    alreadyDescribed,
+    storedDetails,
     sleep = defaultSleep,
   } = opts;
 
   const venueTarget = normUrl(venueUrl);
   const result: EnrichResult = {
-    enriched: 0, skipped: 0, failed: 0, fetched: 0, capped: 0,
+    enriched: 0, backfilled: 0, skipped: 0, failed: 0, fetched: 0, capped: 0,
     inputTokens: 0, outputTokens: 0,
   };
 
@@ -124,14 +136,27 @@ export async function enrichDescriptions(
 
   let urls = [...needs.keys()];
 
-  // Only new events get fetched. This is the difference between a re-scrape
-  // costing nothing and costing the whole programme again.
-  if (alreadyDescribed && urls.length > 0) {
+  const cache = new Map<string, string | null>();
+  const categories = new Map<string, string | null>();
+  // URLs answered from the DB rather than a fetch — counted apart from
+  // `enriched` so the log still reports what this run actually paid for.
+  const fromStore = new Set<string>();
+
+  // Only pages we have never described get fetched. This is the difference
+  // between a re-scrape costing nothing and costing the whole programme again.
+  // The stored text is seeded into `cache` on the way past, so the rows under
+  // a known URL are filled by the same apply loop as a freshly fetched one —
+  // they are new rows as often as not, and an insert has nothing to keep.
+  if (storedDetails && urls.length > 0) {
     try {
-      const known = await alreadyDescribed(urls);
-      const fresh = urls.filter((u) => !known.has(u));
+      const known = await storedDetails(urls);
+      const fresh: string[] = [];
       for (const u of urls) {
-        if (known.has(u)) result.skipped += needs.get(u)?.length ?? 0;
+        const hit = known.get(u);
+        if (!hit) { fresh.push(u); continue; }
+        cache.set(u, hit.description);
+        if (hit.contentCategory) categories.set(u, hit.contentCategory);
+        fromStore.add(u);
       }
       urls = fresh;
     } catch (e) {
@@ -139,9 +164,6 @@ export async function enrichDescriptions(
       console.warn('[enricher] existing-description lookup failed, enriching all:', message(e));
     }
   }
-
-  const cache = new Map<string, string | null>();
-  const categories = new Map<string, string | null>();
 
   for (const [i, url] of urls.entries()) {
     if (result.fetched >= maxFetches) {
@@ -178,7 +200,8 @@ export async function enrichDescriptions(
     const desc = cache.get(url);
     if (!desc) continue;
     for (const e of list) e.description = desc;
-    result.enriched += list.length;
+    if (fromStore.has(url)) result.backfilled += list.length;
+    else result.enriched += list.length;
   }
 
   return result;

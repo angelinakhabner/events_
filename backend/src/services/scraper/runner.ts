@@ -250,16 +250,19 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         delayMs: opts.enrichDelayMs,
         maxFetches: opts.maxDetailFetches ?? env.MAX_DETAIL_FETCHES,
         client: opts.describer ?? defaultDescriber() ?? undefined,
-        // Only new events get fetched (GOI-79). Scoped to this venue.
-        alreadyDescribed: (urls) => defaultEventStore.describedSourceUrls(venue.id, urls),
+        // Only pages we've never described get fetched (GOI-79); the rest are
+        // filled from what that fetch already bought us (GOI-90). Scoped to
+        // this venue.
+        storedDetails: (urls) => defaultEventStore.storedDetails(venue.id, urls),
       });
       detailFetches = enrich.fetched;
       detailInputTokens = enrich.inputTokens;
       detailOutputTokens = enrich.outputTokens;
-      if (enrich.enriched > 0 || enrich.failed > 0 || enrich.capped > 0) {
+      if (enrich.enriched > 0 || enrich.backfilled > 0 || enrich.failed > 0 || enrich.capped > 0) {
         console.log(
           `[scraper] ${venue.name}: enriched ${enrich.enriched} description(s) from ` +
-          `${enrich.fetched} detail page(s) (${enrich.failed} failed, ${enrich.skipped} skipped, ` +
+          `${enrich.fetched} detail page(s), ${enrich.backfilled} reused from store ` +
+          `(${enrich.failed} failed, ${enrich.skipped} skipped, ` +
           `${enrich.capped} over cap; ${enrich.inputTokens}+${enrich.outputTokens} tokens)`,
         );
       }
