@@ -4,7 +4,7 @@ import { trpc } from '../lib/trpc';
 import { categoryLabel, formatEventTime, formatShortDate } from '../lib/format';
 import type { VenueSchedule } from '@afisz/shared';
 import { AddVenueForm, CATEGORIES } from './AddVenueForm';
-import { SuggestVenuesPanel } from './SuggestVenuesPanel';
+import { ElsewherePanel } from './ElsewherePanel';
 import { CategorySwatch } from './CategorySwatch';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
@@ -78,22 +78,40 @@ export function MyVenuesSection() {
 
       <FoldersBar />
 
-      {/* GOI-73: this is the one thing the tab exists to let you do, and as a
-          text action it was indistinguishable from "+ New folder" — same size,
-          same weight, same accent red — so it keeps the loud state the design
-          system reserves for a screen's single main action. It sits on its own
-          line under the folder controls rather than on the title line or in the
-          folder row itself: the design pack puts it there deliberately ("kept
-          off the crowded folder row"), where nothing competes with it. Once the
-          form is open the loud state is wrong — "Cancel" isn't the main action,
-          it's the way back. */}
-      <button
-        type="button"
-        onClick={() => setAdding((v) => !v)}
-        className={`mb-5 ${adding ? 'btn-outline' : 'pill-accent'}`}
-      >
-        {adding ? 'Cancel' : '+ Add venue'}
-      </button>
+      {/* GOI-73: "+ Add venue" is the one thing the tab exists to let you do,
+          and as a text action it was indistinguishable from "+ New folder" —
+          same size, same weight, same accent red — so it keeps the loud state
+          the design system reserves for a screen's single main action. It sits
+          below the folder controls rather than on the title line or in the
+          folder row itself ("kept off the crowded folder row"). Once the form
+          is open the loud state is wrong — "Cancel" isn't the main action,
+          it's the way back.
+
+          GOI-92: one row beneath the folder bar — "Elsewhere" on one side,
+          "+ Add venue" on the other. Discovery used to hang off the bottom of
+          every folder block, which put a model call behind a control repeated
+          once per folder and buried it below the venue list. It is one global
+          action, so it belongs beside the other one.
+
+          Wrapping is asymmetric on purpose: "+ Add venue" is the screen's
+          single main action and keeps its full label at every width, so
+          "Elsewhere" is the one that truncates when the row runs out of room.
+          The discovery form itself is `w-full`, so it wraps onto its own line
+          below rather than squeezing the row. */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
+        <ElsewherePanel
+          folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+          activeFolderId={folders.find((f) => f.active)?.id ?? null}
+          onAdded={invalidate}
+        />
+        <button
+          type="button"
+          onClick={() => setAdding((v) => !v)}
+          className={`shrink-0 ${adding ? 'btn-outline' : 'pill-accent'}`}
+        >
+          {adding ? 'Cancel' : '+ Add venue'}
+        </button>
+      </div>
 
       {adding ? (
         <AddVenueForm
@@ -145,13 +163,6 @@ export function MyVenuesSection() {
               ))}
             </ul>
           )}
-          {/* GOI-86: the folder's own venues are the taste signal, so this
-              belongs under the folder rather than in a global control. Needs
-              a real folder (not the "Unfiled" bucket) and something to match
-              against. */}
-          {folder.id && folder.venues.length > 0 ? (
-            <SuggestVenuesPanel folderId={folder.id} folderName={folder.name} onAdded={invalidate} />
-          ) : null}
         </div>
       ))}
     </section>
@@ -314,6 +325,12 @@ interface VenueRowVenue {
   customized: boolean;
   listId: string | null;
   tags: string[];
+  /** How this venue is read, once probed (GOI-92). */
+  sourceMethod?: string | null;
+  /** Why it can't be read, if it can't. A venue added from a discovery search
+   *  despite a failing probe keeps its reason, so the row explains itself
+   *  rather than looking like a venue with nothing on (GOI-92). */
+  probeErrorCode?: string | null;
 }
 
 interface FolderOption {
@@ -458,6 +475,11 @@ function VenueRow({
             onSave={(tags) => update.mutate({ venueId: venue.id, tags })}
             saving={update.isPending}
           />
+          {venue.probeErrorCode ? (
+            <p className="mt-1.5 text-xs font-bold text-accent">
+              {probeErrorNote(venue.probeErrorCode)}
+            </p>
+          ) : null}
           {update.error ? <p className="mt-1.5 text-sm text-accent">{update.error.message}</p> : null}
           {refresh.isPending ? (
             <p className="mt-2 text-sm text-muted">Scraping {venue.name}…</p>
@@ -521,6 +543,34 @@ function VenueRow({
       </div>
     </li>
   );
+}
+
+/**
+ * Why a venue isn't populating, in one line on its row (GOI-92).
+ *
+ * Two of these codes are not failures at all — a venue between seasons has
+ * nothing on, which is a fact about its programme rather than about our
+ * ability to read it — so they say so instead of reading as breakage.
+ */
+export function probeErrorNote(code: string): string {
+  switch (code) {
+    case 'NO_EVENTS_FOUND':
+      return 'Nothing listed here at the moment.';
+    case 'PAST_EVENTS_ONLY':
+      return 'Only past events are listed here.';
+    case 'JS_RENDERED_NEEDS_PAID':
+      return 'Won’t populate — this site only renders in a browser, and we don’t pay for that automatically.';
+    case 'NO_LISTING_PAGE_FOUND':
+      return 'Won’t populate — no programme page found. Try adding the Repertuar/Program page directly.';
+    case 'SOCIAL_ONLY':
+      return 'Won’t populate — this venue only posts on social media.';
+    case 'BLOCKED':
+      return 'Won’t populate — the site refuses our requests.';
+    case 'UNREACHABLE':
+      return 'Won’t populate — the site couldn’t be reached.';
+    default:
+      return 'Won’t populate — we can’t read this venue’s listings.';
+  }
 }
 
 // ─── Refresh / upcoming (GOI-75) ─────────────────────────────────────────────

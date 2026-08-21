@@ -497,6 +497,23 @@ export type ProbeOutcome = ProbeSuccess | ProbeProblem;
 export const PROBE_FREE_PER_HOUR = 10;
 export const PROBE_PAID_PER_DAY = 3;
 
+/**
+ * The "Elsewhere" discovery search (GOI-92).
+ *
+ * One search costs a model call plus one probe per candidate, so the candidate
+ * cap and the per-hour search cap are the whole spend control. Eight is chosen
+ * against `PROBE_FREE_PER_HOUR`: a full search plus one retry stays inside the
+ * free probe allowance, so a user is never told "rate limited" halfway through
+ * a list they just asked for. The ticket suggests 20; the site is invite-only,
+ * and eight good matches beat twenty guesses.
+ */
+export const VENUE_SUGGEST_MAX_CANDIDATES = 8;
+export const VENUE_SUGGEST_PER_HOUR = 5;
+/** How many candidates are probed at once. The ticket's 3–5 — enough that a
+ *  list of eight resolves quickly, few enough that one search is not a burst
+ *  of fetches at some venue's small server. */
+export const VENUE_SUGGEST_PROBE_CONCURRENCY = 4;
+
 // ─── Venue filter row (GOI-76) ───────────────────────────────────────────────
 
 /**
