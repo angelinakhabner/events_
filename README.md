@@ -100,6 +100,30 @@ nothing useful without `RESEND_API_KEY`**: the token is still minted, but the
 link is only written to the server log and the UI says email isn't configured. CI uses a throwaway set (`backend/.env.test`)
 against the CI Postgres service.
 
+## The public landing page
+
+`/` serves a real, crawlable page — what AFISZ.KA is, how to ask for an
+invitation, a contact address and the privacy policy — rather than the app or a
+redirect to it. The app itself stays behind the invite gate; the landing page is
+what everyone else gets.
+
+It is **static HTML baked into `index.html` at build time**, not a React route.
+A crawler handed an empty `#root` and a bundle to run may never see a word of a
+gated SPA, so the page is complete in the served document: no JavaScript, no API
+call, no webfont, nothing fetched from anywhere. That last part is why its own
+privacy policy can say so.
+
+| File | What it is |
+|---|---|
+| `frontend/src/landing/content.ts` | All the copy — name, description, invitation note, contact, policy. The only place it lives. |
+| `frontend/src/landing/render.ts` | Renders that copy to HTML, plus the inline stylesheet and the `<head>` tags (title, description, canonical, Open Graph, JSON-LD). |
+| `frontend/vite.config.ts` | The `afisz-landing` plugin, which substitutes the result into the `<!--afisz:head-->` and `<!--afisz:landing-->` markers in `index.html`. A missing marker fails the build. |
+| `frontend/src/lib/landing.ts` | Shows and hides the page in the browser. React never renders it — it can only draw the curtain. |
+| `frontend/public/robots.txt` | Allows `/`, disallows the `/dev/` preview (which builds the same markup with `noindex`). |
+
+To change the copy, edit `content.ts` and nothing else. `src/landing/render.test.ts`
+asserts that everything the page promises to carry is in the served markup.
+
 ## Public newsletter API (GOI-87)
 
 A REST/JSON surface so **other services** can work with the newsletter —
