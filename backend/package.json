@@ -18,8 +18,7 @@
     "scrape:all": "node dist/backend/src/scripts/scrape-all.js",
     "scrape:all:dev": "tsx src/scripts/scrape-all.ts",
     "scrape:one": "tsx src/scripts/scrape-one.ts",
-    "compare:models": "tsx src/scripts/compare-extractor-models.ts",
-    "invites": "tsx src/scripts/invites.ts"
+    "compare:models": "tsx src/scripts/compare-extractor-models.ts"
   },
   "dependencies": {
     "@afisz/shared": "*",

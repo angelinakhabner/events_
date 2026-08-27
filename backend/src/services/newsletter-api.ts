@@ -24,10 +24,9 @@ import { newsletterSaveInput } from './newsletter-input.js';
  *
  * Two things follow from that and are worth stating outright:
  *
- *  - It is mounted BEFORE the invite gate (see app.ts). The gate exists to
- *    keep the work-in-progress SPA out of public view; applying it here would
- *    make the API unusable by the very services it exists for, since they hold
- *    no invite cookie.
+ *  - It is mounted ahead of everything else (see app.ts) and answers to its
+ *    own key rather than to a user session. Its callers are machines: there
+ *    is nobody to log in, so nothing user-facing may ever gate it.
  *  - It is off unless NEWSLETTER_API_KEY is set. An unset key means every
  *    route answers 503, so a deploy that forgets to configure one exposes
  *    nothing rather than everything.

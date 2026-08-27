@@ -100,6 +100,33 @@ nothing useful without `RESEND_API_KEY`**: the token is still minted, but the
 link is only written to the server log and the UI says email isn't configured. CI uses a throwaway set (`backend/.env.test`)
 against the CI Postgres service.
 
+## Who can use the site
+
+**Anyone.** The site is open: a visitor lands on Home, browses events and
+venues, and can open a shared "want to go" list without an account. Signing in
+is what makes it *theirs* — saved venues, folders, want-to-go lists and the
+newsletter all hang off a user — and anyone can do it from **/my**, with either
+a magic link sent to their email or "Sign in with Google" (the Google button
+only renders where `GOOGLE_CLIENT_ID`/`SECRET` and `API_PUBLIC_URL` are set).
+There is no invite list and no approval step: whoever proves an email address
+owns it gets an account on the spot.
+
+Two things this does *not* mean:
+
+- **Private data stays private.** Access is enforced per procedure, not at the
+  door: `userProcedure`/`ownerProcedure` in `backend/src/trpc/trpc.ts` are what
+  keep one account's lists out of another's, and they always have been.
+- **Open is not indexed.** Every response still carries
+  `X-Robots-Tag: noindex, nofollow, noarchive` and `/robots.txt` still
+  disallows everything (`backend/src/services/robots.ts`). Being reachable by
+  people who have the link and being listed in Google are separate calls; flip
+  those two constants when you want the second one.
+
+Earlier builds sat behind a pre-auth invite gate (GOI-83) that answered `401`
+to every request without an invite cookie. It is gone — middleware, table,
+admin script and `INVITE_GATE_ENABLED` flag. If that variable is still set on
+a deployment it is now simply ignored, and can be deleted.
+
 ## Public newsletter API (GOI-87)
 
 A REST/JSON surface so **other services** can work with the newsletter —
@@ -111,9 +138,9 @@ Enable it by setting `NEWSLETTER_API_KEY` to a long random string. While it is
 unset every route answers `503`, so a deploy that forgets to configure one
 exposes nothing. Authenticate with `Authorization: Bearer <NEWSLETTER_API_KEY>`.
 
-The API sits **above the invite gate** — the services it exists for hold no
-invite cookie — and carries its own bearer auth instead. Subscriptions are
-addressed by **email**, never by internal user id.
+The API carries its own bearer auth rather than a user session — its callers
+are machines, with nobody to log in. Subscriptions are addressed by **email**,
+never by internal user id.
 
 | Method | Path | Purpose |
 |---|---|---|
