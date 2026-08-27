@@ -3,9 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AFISZ</title>
+    <!--
+      The title, description, canonical URL and social card are generated from
+      src/landing/content.ts and injected here at the marker below, so the copy
+      on the page and the copy a crawler reads cannot drift apart.
+    -->
+    <!--afisz:head-->
   </head>
   <body class="bg-paper text-ink">
+    <!--
+      The public landing page is injected here: a complete, self-contained
+      document that needs no JavaScript to read. It sits outside #root because
+      React must not own it — see src/landing/render.ts and src/lib/landing.ts.
+    -->
+    <!--afisz:landing-->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
