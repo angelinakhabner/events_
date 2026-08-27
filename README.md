@@ -154,9 +154,20 @@ with the same bounds and defaults.
 
 ## Saving briefs to a drive (GOI-91)
 
-Each brief is also filed as a **PDF** in an `Afisz.ka` folder on the user's own
+Each brief is also filed as a **PDF** in a folder at the root of the user's own
 cloud drive, on the same schedule as the email. Connect it under
 **/my → Newsletter → Save briefs to a drive**.
+
+The folder is named `Afisz.ka` by default and can be renamed from that panel.
+Renaming **renames the folder in the drive** (`renameDriveFolder`) rather than
+pointing the connection at a new one: the alternative strands every brief filed
+so far in a folder the user has stopped looking at. The new name is stored only
+once the drive has accepted it, so the panel never promises a folder that isn't
+there. If the folder has been deleted, the rename is recorded and the cached
+folder id dropped, which makes the next send recreate it under the new name —
+`ensureFolder` re-verifies that a cached id is *live* but never that it still
+carries the expected name, so a new name against a surviving stale id is the one
+combination that must not be stored.
 
 Only **Google Drive** is implemented. `services/cloud-drive.ts` is the
 provider-independent half — a second provider is one object satisfying
@@ -178,6 +189,9 @@ Setup, beyond the sign-in credentials that already exist:
 No new environment variable: the flow reuses `GOOGLE_CLIENT_ID`,
 `GOOGLE_CLIENT_SECRET` and `API_PUBLIC_URL`. Without them the panel reports
 that it isn't available instead of offering a button that can only fail.
+
+The folder is created with no `parents`, which is how Drive is told "the root of
+My Drive" — adding a parent would nest it somewhere the user didn't ask for.
 
 Two properties worth keeping if this is edited:
 

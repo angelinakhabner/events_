@@ -15,7 +15,7 @@ import { cacheProbe, cachedProbe, consumeQuota } from '../services/probe/limits.
 import { listFestivals } from '../data/festivals.js';
 import {
   festivalsAtVenues, venueSchedule,
-  venueFilterStatus, venueSlug,
+  venueFilterStatus, venueSlug, MAX_DRIVE_FOLDER_NAME,
   type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
   type VenueFilterOption,
 } from '@afisz/shared';
@@ -26,6 +26,7 @@ import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/v
 import { renderBriefHtml } from '../services/newsletter-render.js';
 import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js';
 import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
+import { renameDriveFolder } from '../services/drive-delivery.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
 import { env } from '../config.js';
 
@@ -674,6 +675,32 @@ const my = router({
           url: googleDriveAuthUrl(cfg, makeSignedState(ctx.user.id, cfg.clientSecret)),
         };
       }),
+
+      /**
+       * Rename the folder briefs are filed in.
+       *
+       * The folder is renamed in the drive itself, so briefs already filed stay
+       * with the ones still to come — see `renameDriveFolder`, which is also
+       * where the failure handling lives. Everything it throws is a message
+       * written for the user, so it is surfaced rather than swallowed.
+       */
+      setFolderName: userProcedure
+        .input(z.object({
+          provider: z.literal('google').default('google'),
+          folderName: z.string().min(1).max(MAX_DRIVE_FOLDER_NAME),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await renameDriveFolder(ctx.user.id, input.provider, input.folderName, {
+              store: ctx.drives,
+            });
+          } catch (e) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: e instanceof Error ? e.message : 'Renaming the folder failed.',
+            });
+          }
+        }),
 
       disconnect: userProcedure
         .input(z.object({ provider: z.literal('google').default('google') }))

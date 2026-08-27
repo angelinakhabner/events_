@@ -1,4 +1,5 @@
 import { env } from '../config.js';
+import { DriveFolderMissingError } from './cloud-drive.js';
 import type { DriveProvider, DriveUpload, DriveUploadResult } from './cloud-drive.js';
 
 /**
@@ -254,6 +255,27 @@ export const googleDriveProvider: DriveProvider = {
     const cfg = requireConfig();
     const accessToken = await refreshAccessToken(cfg, refreshToken, fetcher);
     return uploadMultipart(accessToken, folderId, file, fetcher);
+  },
+
+  async renameFolder({ refreshToken, folderId, name, fetcher = fetch }) {
+    const cfg = requireConfig();
+    const accessToken = await refreshAccessToken(cfg, refreshToken, fetcher);
+    const url = new URL(`${DRIVE_FILES}/${encodeURIComponent(folderId)}`);
+    url.searchParams.set('fields', 'id');
+    const res = await fetcher(url.toString(), {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    // A 404 here means the folder is gone from the user's Drive, not that the
+    // name is bad. Say so: the fix is to let the next send recreate it, which
+    // is what the caller does when it clears the stored id.
+    if (res.status === 404) {
+      throw new DriveFolderMissingError(
+        'That folder is no longer in your Drive — it will be recreated with the next brief.',
+      );
+    }
+    if (!res.ok) throw new Error(`Renaming the Google Drive folder failed (HTTP ${res.status})`);
   },
 };
 
