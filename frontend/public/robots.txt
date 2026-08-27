@@ -1,0 +1,10 @@
+# The landing page at / is the only page with anything in the served document:
+# it says what AFISZ.KA is, how to sign in, and what the app stores. The app
+# itself renders in the browser, so a crawler that followed a link into it
+# would read the same landing markup and nothing more.
+User-agent: *
+Allow: /$
+# The password-gated staging preview. Same landing copy, not the canonical one.
+Disallow: /dev/
+
+Sitemap: https://afisz.cc/sitemap.xml

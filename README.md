@@ -111,21 +111,48 @@ only renders where `GOOGLE_CLIENT_ID`/`SECRET` and `API_PUBLIC_URL` are set).
 There is no invite list and no approval step: whoever proves an email address
 owns it gets an account on the spot.
 
-Two things this does *not* mean:
-
-- **Private data stays private.** Access is enforced per procedure, not at the
-  door: `userProcedure`/`ownerProcedure` in `backend/src/trpc/trpc.ts` are what
-  keep one account's lists out of another's, and they always have been.
-- **Open is not indexed.** Every response still carries
-  `X-Robots-Tag: noindex, nofollow, noarchive` and `/robots.txt` still
-  disallows everything (`backend/src/services/robots.ts`). Being reachable by
-  people who have the link and being listed in Google are separate calls; flip
-  those two constants when you want the second one.
+**Private data stays private.** Opening the door is not the same as opening the
+rooms: access is enforced per procedure, by `userProcedure`/`ownerProcedure` in
+`backend/src/trpc/trpc.ts`, and always has been. One account's lists, venues and
+brief settings stay out of another's.
 
 Earlier builds sat behind a pre-auth invite gate (GOI-83) that answered `401`
 to every request without an invite cookie. It is gone — middleware, table,
 admin script and `INVITE_GATE_ENABLED` flag. If that variable is still set on
-a deployment it is now simply ignored, and can be deleted.
+a deployment it is now simply ignored, and can be deleted. The API keeps the
+one half of the gate that was never about access: every backend response
+carries `X-Robots-Tag: noindex` and `api.afisz.cc/robots.txt` disallows
+everything (`backend/src/services/robots.ts`). The frontend is a different
+origin and is meant to be found — see below.
+
+## The public landing page
+
+`/` serves a real, crawlable page — what AFISZ.KA is, how to sign in, a contact
+address and the privacy policy — rather than the app or a redirect to it. It is
+what a crawler reads and what a reader with JavaScript switched off is left
+with. A browser that can run the app gets the app: `main.tsx` draws the curtain
+over the landing page before the first render. (It used to wait on the invite
+gate's answer and leave the page up for anyone without one; there is no gate
+now, and nobody to turn away.)
+
+It is **static HTML baked into `index.html` at build time**, not a React route.
+A crawler handed an empty `#root` and a bundle to run may never see a word of a
+client-rendered SPA, so the page is complete in the served document: no
+JavaScript, no API call, no webfont, nothing fetched from anywhere. That last
+part is why its own privacy policy can say so.
+
+| File | What it is |
+|---|---|
+| `frontend/src/landing/content.ts` | All the copy — name, description, how to sign in, contact, policy. The only place it lives. |
+| `frontend/src/landing/render.ts` | Renders that copy to HTML, plus the inline stylesheet and the `<head>` tags (title, description, canonical, Open Graph, JSON-LD). |
+| `frontend/vite.config.ts` | The `afisz-landing` plugin, which substitutes the result into the `<!--afisz:head-->` and `<!--afisz:landing-->` markers in `index.html`. A missing marker fails the build. |
+| `frontend/src/lib/landing.ts` | Hides the page in the browser. React never renders it — it can only draw the curtain. |
+| `frontend/public/robots.txt` | Allows `/`, disallows the `/dev/` preview (which builds the same markup with `noindex`). |
+
+To change the copy, edit `content.ts` and nothing else. `src/landing/render.test.ts`
+asserts that everything the page promises to carry is in the served markup —
+including, since the site opened, that it tells a reader how to sign in rather
+than how to ask for an invitation.
 
 ## Public newsletter API (GOI-87)
 
