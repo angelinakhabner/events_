@@ -272,6 +272,30 @@ go through the `dev` branch first:
 To rotate the dev password: `printf '%s' 'new-password' | sha256sum` and put
 the digest in `DEV_GATE_HASH` in `deploy-frontend.yml`.
 
+### App icon and the dev variant
+
+`frontend/public/icons/` holds two sets of the AFISZ mark:
+
+| Set | Files | Used by |
+|---|---|---|
+| Production | `afisz-app-icon-*.png` | the default branch build, local dev |
+| Dev preview | `afisz-dev-app-icon-*.png` | the `/dev/` build |
+
+The dev set is the production mark with a red DEV foot across the bottom, so
+a tab, a bookmark or an installed PWA reads as staging at a glance. Each set
+has a 48px favicon, a 120px `apple-touch-icon`, a 512px PWA icon, and a 432px
+maskable icon for Android adaptive icons.
+
+The switch is `VITE_APP_VARIANT`, set per build step in
+`deploy-frontend.yml`. `dev` makes the `appVariantIcons` plugin in
+`frontend/vite.config.ts` rewrite `index.html` to the DEV icons and
+`manifest.dev.webmanifest`, retitle the tab `AFISZ — dev`, and makes
+`Layout` put a DEV chip next to the wordmark. Anything else — including
+unset, so `npm run dev` — gets the production mark.
+
+Replacing the artwork means replacing both sets; the DEV foot is baked into
+the PNGs rather than drawn at runtime.
+
 ## Deploying the frontend to GitHub Pages
 
 The workflow at `.github/workflows/deploy-frontend.yml` runs after CI passes
