@@ -22,9 +22,17 @@ CREATE INDEX IF NOT EXISTS "user_venues_list_id_idx" ON "user_venues" ("list_id"
 
 -- Backfill: every user with subscriptions gets a default "Warsaw" list, their
 -- existing subscriptions move into it, and it becomes their active list.
+-- Matched on the normalised name rather than ON CONFLICT ("user_id", "name"):
+-- 0025 replaces that exact-match constraint with a unique index over
+-- lower(btrim("name")), and every migration is replayed on each run, so a
+-- conflict target naming the dropped constraint would fail the second pass.
+-- NOT EXISTS needs no named key and holds under either shape.
 INSERT INTO "user_lists" ("user_id", "name")
 SELECT DISTINCT uv."user_id", 'Warsaw' FROM "user_venues" uv
-ON CONFLICT ("user_id", "name") DO NOTHING;
+WHERE NOT EXISTS (
+  SELECT 1 FROM "user_lists" ul
+  WHERE ul."user_id" = uv."user_id" AND lower(btrim(ul."name")) = 'warsaw'
+);
 
 UPDATE "user_venues" uv
 SET "list_id" = ul."id"

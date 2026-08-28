@@ -511,3 +511,75 @@ describe('my.venues.activity (GOI-13)', () => {
     expect((await trpcCall('my.venues.activity')).status).toBe(401);
   });
 });
+
+/**
+ * GOI-92 — the Elsewhere flow's folder handling, through the real router.
+ *
+ * In CI this runs against Postgres, where the unique index from 0025 is the
+ * thing actually being tested: the store's own normalisation and the index's
+ * `lower(btrim(name))` have to agree, and no unit test can prove that.
+ */
+describe('Elsewhere: the destination city folder (GOI-92)', () => {
+  const venue = (n: number) => ({
+    name: `Elsewhere venue ${n} ${RUN}`,
+    url: `https://elsewhere-${RUN}-${n}.example/programm`,
+    city: 'Berlin',
+    country: 'DE',
+    category: 'theatre' as const,
+  });
+
+  it('creates the city folder on the first add and reuses it however it is spelled', async () => {
+    const token = await login(`elsewhere-${RUN}@example.com`);
+    const city = `Berlin ${RUN}`;
+
+    // Nothing yet — the search itself creates no folder, so an abandoned one
+    // leaves nothing behind.
+    const before = (await trpcCall('my.lists.list', { token })).data as Array<{ name: string }>;
+    expect(before.some((l) => l.name === city)).toBe(false);
+
+    for (const [i, spelling] of [city, city.toLowerCase(), `  ${city.toUpperCase()} `].entries()) {
+      const res = await trpcCall('my.venues.add', {
+        body: { ...venue(i), listName: spelling },
+        token,
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const after = (await trpcCall('my.lists.list', { token })).data as Array<{
+      id: string; name: string; venueCount: number;
+    }>;
+    const matching = after.filter((l) => l.name.trim().toLowerCase() === city.toLowerCase());
+    expect(matching).toHaveLength(1);
+    // The display form is the first spelling, not the normalised key.
+    expect(matching[0]!.name).toBe(city);
+    expect(matching[0]!.venueCount).toBe(3);
+  });
+
+  it('keeps the probe verdict on a venue added despite a failed check', async () => {
+    const token = await login(`elsewhere-probe-${RUN}@example.com`);
+    const res = await trpcCall('my.venues.add', {
+      body: {
+        ...venue(99),
+        listName: `Berlin probe ${RUN}`,
+        probe: { probeErrorCode: 'BLOCKED', requiresPaidFetch: false },
+      },
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect((res.data as { probeErrorCode: string | null }).probeErrorCode).toBe('BLOCKED');
+
+    const listed = (await trpcCall('my.venues.listAll', { token })).data as Array<{
+      url: string; probeErrorCode: string | null;
+    }>;
+    expect(listed.find((v) => v.url === venue(99).url)?.probeErrorCode).toBe('BLOCKED');
+  });
+
+  it('refuses two folders differing only by case', async () => {
+    const token = await login(`elsewhere-case-${RUN}@example.com`);
+    const name = `Poznan ${RUN}`;
+    expect((await trpcCall('my.lists.create', { body: { name }, token })).status).toBe(200);
+    const dup = await trpcCall('my.lists.create', { body: { name: name.toUpperCase() }, token });
+    expect(dup.status).not.toBe(200);
+    expect(dup.error).toMatch(/already have a list/i);
+  });
+});

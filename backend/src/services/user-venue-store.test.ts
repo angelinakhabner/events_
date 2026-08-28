@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { InMemoryUserVenueStore, normalizeTags, normalizeVenueUrl } from './user-venue-store.js';
+import {
+  InMemoryUserVenueStore,
+  normalizeListName,
+  normalizeTags,
+  normalizeVenueUrl,
+} from './user-venue-store.js';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 
 const KINOTEKA = { name: 'Kinoteka', url: 'https://kinoteka.pl/repertuar/', category: 'cinema' as const, city: 'Warsaw', country: 'PL' };
@@ -227,5 +232,73 @@ describe('normalizeVenueUrl', () => {
 
   it('leaves unparseable input as trimmed text (zod validated upstream)', () => {
     expect(normalizeVenueUrl(' not a url ')).toBe('not a url');
+  });
+});
+
+
+describe('normalizeListName', () => {
+  /**
+   * This has to stay byte-for-byte equivalent to `lower(btrim(name))`, the
+   * expression the unique index in 0025 is built on. If the two disagree the
+   * store believes a name is free while Postgres rejects the insert, and the
+   * Elsewhere flow loses whatever it was committing (GOI-92).
+   */
+  it('folds case and surrounding whitespace, and nothing else', () => {
+    expect(normalizeListName('berlin')).toBe('berlin');
+    expect(normalizeListName('Berlin ')).toBe('berlin');
+    expect(normalizeListName('  BERLIN')).toBe('berlin');
+    // btrim doesn't collapse interior spaces, so neither may this.
+    expect(normalizeListName('New  York')).toBe('new  york');
+  });
+});
+
+describe('ensureList (GOI-92)', () => {
+  it('creates once and then returns the same folder for every spelling', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    const first = await s.ensureList('u1', 'Berlin');
+    for (const spelling of ['berlin', 'BERLIN', ' Berlin ']) {
+      expect((await s.ensureList('u1', spelling)).id).toBe(first.id);
+    }
+    expect(await s.lists('u1')).toHaveLength(1);
+    // The display form is what was typed first, not the normalised key.
+    expect(first.name).toBe('Berlin');
+  });
+
+  it('is safe to race — concurrent commits for one city share a folder', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    const ids = await Promise.all(
+      ['Berlin', 'berlin', 'BERLIN'].map((n) => s.ensureList('u1', n)),
+    );
+    expect(new Set(ids.map((l) => l.id)).size).toBe(1);
+    expect(await s.lists('u1')).toHaveLength(1);
+  });
+
+  it('keeps folders per user', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    const mine = await s.ensureList('u1', 'Berlin');
+    const theirs = await s.ensureList('u2', 'Berlin');
+    expect(theirs.id).not.toBe(mine.id);
+  });
+
+  it('refuses a blank name rather than creating an unnameable folder', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await expect(s.ensureList('u1', '   ')).rejects.toThrow(/folder name/i);
+  });
+});
+
+describe('createList and renameList agree with the same key', () => {
+  it('rejects a second folder that differs only by case', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await s.createList('u1', 'Berlin');
+    await expect(s.createList('u1', 'berlin ')).rejects.toThrow(/already have a list/i);
+  });
+
+  it('rejects renaming onto another folder, case-insensitively', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await s.createList('u1', 'Berlin');
+    const poznan = await s.createList('u1', 'Poznan');
+    await expect(s.renameList('u1', poznan.id, 'BERLIN')).rejects.toThrow(/already have a list/i);
+    // Re-casing a folder's own name is not a collision with itself.
+    expect((await s.renameList('u1', poznan.id, 'POZNAN')).name).toBe('POZNAN');
   });
 });
