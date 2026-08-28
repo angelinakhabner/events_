@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,9 +49,42 @@ const PAGE = { width: 595.28, height: 841.89 }; // A4 in points
 const MARGIN = 48;
 const CONTENT = PAGE.width - MARGIN * 2;
 
-const fontDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/fonts');
-const FONT_REGULAR = path.join(fontDir, 'DejaVuSans.subset.ttf');
-const FONT_BOLD = path.join(fontDir, 'DejaVuSans-Bold.subset.ttf');
+const FONT_REGULAR_FILE = 'DejaVuSans.subset.ttf';
+const FONT_BOLD_FILE = 'DejaVuSans-Bold.subset.ttf';
+
+/**
+ * Where `backend/assets/fonts` actually is, found by walking up (GOI-96).
+ *
+ * It used to be `../../assets/fonts` from this module, which is right when
+ * this file runs as TypeScript out of `backend/src/services` and wrong
+ * everywhere else. `tsc` emits to `backend/dist/backend/src/services`, and
+ * nothing copies `assets/` into `dist`, so in production that same relative
+ * path pointed at `backend/dist/backend/assets/fonts` — a directory that has
+ * never existed. The only symptom was the brief refusing to render, with
+ * "ENOENT: no such file or directory" naming a path deep inside `dist` that
+ * gives no hint the fonts are sitting unbuilt two levels above it.
+ *
+ * Walking up until the directory turns up is indifferent to how deep the
+ * compiler nests its output, so dev, `dist`, and the test runner all resolve
+ * to the one copy of the fonts in the repo instead of three guesses at it.
+ */
+export function resolveFontDir(startDir: string): string {
+  let dir = startDir;
+  // `backend/dist/backend/src/services` is five levels below `backend/`, so
+  // the bound is generous rather than tight; the loop stops at the filesystem
+  // root regardless.
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, 'assets', 'fonts');
+    if (existsSync(path.join(candidate, FONT_REGULAR_FILE))) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(
+    `Could not find ${FONT_REGULAR_FILE}: no assets/fonts directory above ` +
+      `${startDir}. The brief needs the embedded DejaVu subset to set Polish text.`,
+  );
+}
 
 /** Read once, not per brief — the sweep renders one of these per subscriber. */
 let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
@@ -72,9 +105,10 @@ let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
  */
 function fonts(): { regular: Uint8Array; bold: Uint8Array } {
   if (!fontCache) {
+    const dir = resolveFontDir(path.dirname(fileURLToPath(import.meta.url)));
     fontCache = {
-      regular: new Uint8Array(readFileSync(FONT_REGULAR)),
-      bold: new Uint8Array(readFileSync(FONT_BOLD)),
+      regular: new Uint8Array(readFileSync(path.join(dir, FONT_REGULAR_FILE))),
+      bold: new Uint8Array(readFileSync(path.join(dir, FONT_BOLD_FILE))),
     };
   }
   return fontCache;

@@ -201,6 +201,8 @@ function NewsletterForm({
     sendMinute,
     sendWeekday,
     afterHour: afterHour === ANY ? null : Number(afterHour),
+    email,
+    enabled,
   });
 
   const toggleVenue = (id: string) =>

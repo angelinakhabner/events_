@@ -38,6 +38,7 @@ const FESTIVAL: Festival = {
   startDate: '2026-06-19',
   endDate: '2026-08-30',
   description: 'Open-air summer screenings on the Vistula boulevards — free entry, films at dusk.',
+  imageUrl: null,
   status: 'ongoing',
 };
 

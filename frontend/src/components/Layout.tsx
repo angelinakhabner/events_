@@ -34,9 +34,11 @@ export function Layout() {
         </div>
       </header>
 
-      <main className="flex-1 pb-24 md:pb-20">
+      <main className="flex-1">
         <Outlet />
       </main>
+
+      <Footer />
 
       <nav
         aria-label="Sections"
@@ -46,6 +48,43 @@ export function Layout() {
         <TabLink to="/my">/my</TabLink>
       </nav>
     </div>
+  );
+}
+
+/**
+ * The footer, which exists to carry the two legal links (GOI-95).
+ *
+ * They have to be reachable from every page — art. 8(1)(1) of the ustawa o
+ * świadczeniu usług drogą elektroniczną requires the terms to be available to
+ * the user before they use the service, and a document you can only find by
+ * typing its URL is not available in any useful sense.
+ *
+ * Its bottom padding is what used to sit on `main`: below `md` the tab bar is
+ * fixed over the end of the page, so the last thing in the document needs room
+ * to clear it. On `main` that padding was a permanent gap above the footer.
+ */
+function Footer() {
+  return (
+    <footer className="mt-16 border-t-3 border-ink page-x py-7 pb-24 md:pb-9">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <span className="tag">
+          AFISZ &middot; Warsaw
+        </span>
+        <FooterLink to="/policy">Privacy policy</FooterLink>
+        <FooterLink to="/terms">Terms of use</FooterLink>
+      </div>
+    </footer>
+  );
+}
+
+function FooterLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <NavLink
+      to={to}
+      className="text-[11px] font-bold uppercase tracking-[1px] text-ink hover:text-accent"
+    >
+      {children}
+    </NavLink>
   );
 }
 

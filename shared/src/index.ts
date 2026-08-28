@@ -240,6 +240,48 @@ export interface Festival {
   endDate: string;
   description: string;
   status: 'ongoing' | 'upcoming';
+  /**
+   * The festival's own banner artwork, taken from its site (GOI-99), or null
+   * where we don't have one. Null is an ordinary case, not a gap to be filled
+   * with a placeholder: a festival announces itself in its own poster or not
+   * at all, and a grey rectangle saying "no image" announces nothing. The
+   * banner sets the name in the app's own display type instead.
+   */
+  imageUrl: string | null;
+}
+
+/**
+ * How far ahead a festival is worth a banner (GOI-99).
+ *
+ * Two weeks is the window in which "there is a festival on" is *news* — near
+ * enough to change what you do with a given evening, far enough to still buy a
+ * ticket. Beyond it a banner is an advertisement occupying the top of a page
+ * the reader opened to see what is on tonight, and it is the listing further
+ * down that wants the festival, not the masthead.
+ */
+export const FESTIVAL_BANNER_LEAD_DAYS = 14;
+
+/**
+ * The festivals that earn the top of the page: on now, or starting within
+ * `FESTIVAL_BANNER_LEAD_DAYS` (GOI-99). Soonest first, ongoing ones ahead of
+ * upcoming ones — what is on today outranks what opens on Friday.
+ *
+ * Dates are compared on the Warsaw calendar day, like everything else that
+ * decides whether an event is "on": a festival's opening night is a day in
+ * Warsaw, not an instant in UTC, and a server in another zone must not
+ * disagree with the page about which day it is.
+ */
+export function bannerFestivals<T extends Festival>(festivals: T[], now: Date = new Date()): T[] {
+  const today = warsawDayKey(now);
+  const until = warsawDayKey(new Date(now.getTime() + FESTIVAL_BANNER_LEAD_DAYS * 86_400_000));
+  return festivals
+    .filter((f) => f.endDate >= today && f.startDate <= until)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+/** YYYY-MM-DD on the Warsaw calendar. */
+function warsawDayKey(at: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw' }).format(at);
 }
 
 // ─── Festivals at a user's venues (GOI-33) ───────────────────────────────────
