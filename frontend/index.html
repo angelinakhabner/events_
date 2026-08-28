@@ -6,14 +6,26 @@
     <meta name="theme-color" content="#141414" />
     <!-- Icon set lives in public/icons. These are the production references;
          the dev-preview build rewrites them to the DEV-marked set (see the
-         appVariantIcons plugin in vite.config.ts). -->
+         appVariantIcons plugin in vite.config.ts). Kept out of the landing
+         head below: that block is generated copy, this is chrome. -->
     <link rel="icon" type="image/png" sizes="48x48" href="/icons/afisz-app-icon-48.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/afisz-app-icon-512.png" />
     <link rel="apple-touch-icon" sizes="120x120" href="/icons/afisz-app-icon-120.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>AFISZ</title>
+    <!--
+      The title, description, canonical URL and social card are generated from
+      src/landing/content.ts and injected here at the marker below, so the copy
+      on the page and the copy a crawler reads cannot drift apart.
+    -->
+    <!--afisz:head-->
   </head>
   <body class="bg-paper text-ink">
+    <!--
+      The public landing page is injected here: a complete, self-contained
+      document that needs no JavaScript to read. It sits outside #root because
+      React must not own it — see src/landing/render.ts and src/lib/landing.ts.
+    -->
+    <!--afisz:landing-->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
