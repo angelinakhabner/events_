@@ -64,6 +64,10 @@ jobs:
           # BrowserRouter basename (frontend/src/main.tsx) and share links
           # (frontend/src/lib/share.ts) all derive from this.
           VITE_BASE_PATH: /
+          # Plain AFISZ app icon and wordmark. This is also the default when
+          # the variable is unset, so it is here to pair with the dev build
+          # below rather than because the build needs it.
+          VITE_APP_VARIANT: prod
         run: |
           npm ci
           npm --workspace frontend run build
@@ -75,6 +79,10 @@ jobs:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
           VITE_BASE_PATH: /dev/
           VITE_DEV_GATE_HASH: ${{ env.DEV_GATE_HASH }}
+          # Ships the DEV-marked app icon (public/icons/afisz-dev-app-icon-*),
+          # the dev manifest and the DEV chip in the header, so the preview is
+          # never mistaken for production in a tab, a bookmark or a screenshot.
+          VITE_APP_VARIANT: dev
         run: |
           npm ci
           npm --workspace frontend run build

@@ -63,10 +63,37 @@ export interface DriveProvider {
     file: DriveUpload;
     fetcher?: typeof fetch;
   }): Promise<DriveUploadResult>;
+
+  /**
+   * Rename the app's folder in place, keeping the briefs already in it.
+   *
+   * Renaming rather than pointing at a fresh folder is the whole reason this
+   * is a provider method: the alternative — store the new name and let
+   * `ensureFolder` find-or-create it on the next send — silently strands every
+   * brief filed so far in a folder the user has stopped looking at.
+   */
+  renameFolder(args: {
+    refreshToken: string;
+    folderId: string;
+    name: string;
+    fetcher?: typeof fetch;
+  }): Promise<void>;
 }
 
-/** Default folder created in a user's drive. */
-export const DEFAULT_DRIVE_FOLDER = 'Afisz.ka';
+/**
+ * The app's folder is no longer in the user's drive.
+ *
+ * A distinct type rather than a message a caller has to pattern-match: the
+ * recovery (forget the cached id so the next send recreates the folder) is
+ * different from every other failure, and matching on error text breaks the
+ * moment a provider rewords one.
+ */
+export class DriveFolderMissingError extends Error {
+  constructor(message = 'The folder is no longer in the drive.') {
+    super(message);
+    this.name = 'DriveFolderMissingError';
+  }
+}
 
 /**
  * A drive connection as the rest of the app sees it.

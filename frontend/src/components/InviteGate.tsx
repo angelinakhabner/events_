@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { hideLanding, rememberGate, showLanding } from '../lib/landing';
 
 /**
  * The client half of the access gate (GOI-83).
@@ -13,6 +14,13 @@ import { useEffect, useState, type ReactNode } from 'react';
  * It can't read the cookie itself (httpOnly, and set on the API's origin), so
  * it asks the API once. Until the answer arrives it renders nothing at all —
  * a "loading" flash of app chrome would defeat the point.
+ *
+ * What a visitor without an invite sees is no longer this component's
+ * business. The public landing page (`src/landing/render.ts`) is already in
+ * the document when the browser gets it, so the closed case is not something
+ * to render but something to leave alone; the open case draws the curtain
+ * over it. That also means the page a stranger reads is complete before any
+ * of this runs, which is the point of serving it statically.
  *
  * Removing the gate later is deleting this file and its two lines in main.tsx.
  */
@@ -43,20 +51,16 @@ export function InviteGate({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  if (state === 'checking') return null;
-  if (state === 'closed') return <NotAvailable />;
-  return <>{children}</>;
-}
+  // Before paint, not after: the app has just been committed into `#root`,
+  // which the landing page's stylesheet keeps collapsed while the landing is
+  // up. Deferring this to a passive effect would paint one blank frame.
+  useLayoutEffect(() => {
+    if (state === 'checking') return;
+    const open = state === 'open';
+    if (open) hideLanding();
+    else showLanding();
+    rememberGate(open);
+  }, [state]);
 
-/**
- * Carries no venue names, no event data, and no copy describing what this is.
- * There is deliberately nothing here worth indexing — and nothing that tells a
- * stranger what they're missing.
- */
-function NotAvailable() {
-  return (
-    <div className="min-h-full flex items-center justify-center px-5">
-      <p className="text-sm text-muted">Not available.</p>
-    </div>
-  );
+  return state === 'open' ? <>{children}</> : null;
 }
