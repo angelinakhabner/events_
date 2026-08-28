@@ -1,4 +1,9 @@
-import { PROBE_FREE_PER_HOUR, PROBE_PAID_PER_DAY, type ProbeOutcome } from '@afisz/shared';
+import {
+  PROBE_FREE_PER_HOUR,
+  PROBE_PAID_PER_DAY,
+  VENUE_SUGGEST_PER_HOUR,
+  type ProbeOutcome,
+} from '@afisz/shared';
 
 /**
  * Rate limits and the result cache (GOI-72 §7).
@@ -20,12 +25,22 @@ export const PROBE_CACHE_TTL_MS = 15 * 60_000;
 interface Hits {
   free: number[];
   paid: number[];
+  /** Discovery searches (GOI-92). A model call each, and unlike a probe there
+   *  is no cache to fall back on — the same city asked twice is two calls. */
+  suggest: number[];
 }
 
 const hits = new Map<string, Hits>();
 const cache = new Map<string, { at: number; outcome: ProbeOutcome }>();
 
-export type QuotaKind = 'free' | 'paid';
+export type QuotaKind = 'free' | 'paid' | 'suggest';
+
+const WINDOW_MS: Record<QuotaKind, number> = { free: HOUR_MS, paid: DAY_MS, suggest: HOUR_MS };
+const LIMIT: Record<QuotaKind, number> = {
+  free: PROBE_FREE_PER_HOUR,
+  paid: PROBE_PAID_PER_DAY,
+  suggest: VENUE_SUGGEST_PER_HOUR,
+};
 
 /**
  * Record an attempt and say whether it's allowed. Returns false when the user
@@ -37,9 +52,9 @@ export function consumeQuota(
   kind: QuotaKind,
   now: number = Date.now(),
 ): boolean {
-  const entry = hits.get(userId) ?? { free: [], paid: [] };
-  const window = kind === 'free' ? HOUR_MS : DAY_MS;
-  const limit = kind === 'free' ? PROBE_FREE_PER_HOUR : PROBE_PAID_PER_DAY;
+  const entry = hits.get(userId) ?? { free: [], paid: [], suggest: [] };
+  const window = WINDOW_MS[kind];
+  const limit = LIMIT[kind];
 
   const kept = entry[kind].filter((t) => now - t < window);
   if (kept.length >= limit) {
