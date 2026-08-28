@@ -61,6 +61,7 @@ In the backend service → **Variables** tab → **+ New Variable**, add the fol
 | `NEWSLETTER_CRON_ENABLED` | `true` | **Required for newsletter briefs.** Unset (the default) means the send sweep never starts — users can subscribe on `/my` and nothing is ever mailed. Also needs `DATABASE_URL` and `RESEND_API_KEY`; on boot the backend logs a `[newsletter]` warning naming whichever is missing. |
 | `SCRAPE_CRON_ENABLED` | `true` | Enables the scheduled scrape. Without events in the database, briefs have nothing to report and are skipped as empty. |
 | `ADMIN_TOKEN` | long random string | Enables `/admin/*`, including the newsletter diagnostics in §"Newsletter isn't arriving" of [`RUNBOOK.md`](RUNBOOK.md). |
+| `INVITE_GATE_ENABLED` | leave unset | The access gate. **Unset or blank keeps the site closed** — only an explicit `false`/`0`/`no`/`off` opens it. Set it to `false` only when the site goes public. See §8. |
 
 Do **not** set `PORT` — Railway injects it automatically and the backend reads it via `process.env.PORT`.
 
@@ -117,6 +118,89 @@ Wait ~1 minute. The Pages site at `https://afisz.cc/` now talks to Railway inste
 
 ---
 
+## 8. Invite someone through the access gate
+
+While `INVITE_GATE_ENABLED` is on (the default), every route except `/health`,
+`/gate`, `/robots.txt` and `/i/*` answers `401 {"error":"not available"}` — the
+frontend included. Access comes from an invite link:
+
+```
+https://api.afisz.cc/i/<token>
+```
+
+Opening it sets a 90-day httpOnly cookie and redirects to `APP_URL`. The link is
+**reusable** — one link per person (or per group) that they can come back
+through, not a one-time code.
+
+Invites live in the `invites` table on the Railway Postgres, so minting one
+means running `backend/src/scripts/invites.ts` against the production database.
+Only the SHA-256 of a token is stored: **the link is printed once and cannot be
+recovered.** Lose it and you mint a new one.
+
+### a) From inside the deployed container (preferred)
+
+Nothing leaves Railway, and `DATABASE_URL` / `API_PUBLIC_URL` are already
+correct in the service's environment.
+
+```bash
+npm i -g @railway/cli          # once
+railway login
+railway link                   # pick the project, then the backend service
+railway ssh -- node dist/backend/src/scripts/invites.js create "kasia"
+```
+
+Use the compiled path, not `npm run invites` — that entry point runs through
+`tsx`, a devDependency that the production image may not carry. The build
+compiles `src/scripts/**` alongside everything else, so
+`dist/backend/src/scripts/invites.js` is always there.
+
+The label is for you, not the invitee; it is what `revoke` takes. Add
+`--days 30` for an expiring link (default: never expires).
+
+### b) From your machine, against the production database
+
+If `railway ssh` isn't available to you, connect to Postgres over its public
+proxy. In the Railway dashboard: Postgres service → **Variables** →
+`DATABASE_PUBLIC_URL`. The plain `DATABASE_URL` is the private-network host
+(`postgres.railway.internal`) and does **not** resolve outside Railway.
+
+```bash
+DATABASE_URL='<DATABASE_PUBLIC_URL>' API_PUBLIC_URL='https://api.afisz.cc' \
+  npm --workspace backend run invites -- create "kasia"
+```
+
+`API_PUBLIC_URL` is not optional here: the script builds the link from it, and
+without it you get `http://localhost:3001/i/…`, which is useless to the
+invitee. It must be the API's origin — the `/i/<token>` route is served by the
+backend, and it is the response to *that* request that sets the cookie.
+
+### c) Managing what you've handed out
+
+```bash
+railway ssh -- node dist/backend/src/scripts/invites.js list
+railway ssh -- node dist/backend/src/scripts/invites.js revoke kasia
+```
+
+`list` shows label, status, use count, last use, expiry, and an 8-character id
+(never the token). `revoke` takes a label or that id prefix, and takes effect on
+the invitee's next request — the cookie carries the token itself and is
+re-checked against the table every time, so there is no window where a revoked
+link keeps working.
+
+### Before you send the link
+
+- **Send it privately** (DM, signal, email — not an issue, PR, or public
+  channel). Anyone holding the URL is in; there is no per-person identity
+  behind it. Railway's own edge logs see the path, which is why the link is
+  shared privately rather than treated as a secret the platform protects.
+- The cookie is `SameSite=None; Secure` because the SPA (GitHub Pages) and the
+  API (Railway) are different origins. Both ends must be HTTPS, so the link you
+  send must be the `api.afisz.cc` (or `…up.railway.app`) origin.
+- Ask them to open it in the browser they'll actually use — the cookie is
+  per-browser, and it's the gate, not a login.
+
+---
+
 ## Troubleshooting
 
 ### `Unexpected token '<', "<html>..." is not valid JSON` in the modal alert
@@ -145,6 +229,27 @@ Not currently possible — the backend uses `cors({ origin: '*' })`. If you tigh
 ### Pages site loads but every request hangs
 
 Railway service may have spun down on the free tier. First request can take ~10s while it cold-starts. Subsequent requests are fast.
+
+### An invited person sees "Not available." or a blank 401
+
+Walk it in this order:
+
+- **The link was mistyped or truncated.** A token is exactly 43 base64url
+  characters; anything else is rejected before it reaches the database, and
+  every failure returns the same page on purpose. Chat clients that linkify
+  aggressively are the usual culprit — re-send it in backticks.
+- **It was revoked or expired.** `invites list` shows the row's status.
+- **They opened it, then went to the site in a different browser or profile**
+  (or a private window that has since closed). The cookie is per-browser.
+- **Their browser blocks third-party cookies.** The gate cookie is set by
+  `api.afisz.cc` while the app runs on `afisz.cc` / GitHub Pages, so a strict
+  blocker drops it. Mint nothing new — this is a browser setting, not a bad
+  link.
+- **The whole site is 401, for you too.** Then it is the gate itself: check
+  `INVITE_GATE_ENABLED` in the backend service. Blank counts as "on".
+
+`GET /gate` on the API answers `{"open":true|false}` for the calling browser
+and is the fastest way to tell "cookie missing" from "link bad".
 
 ### Migration runs but tables don't appear in the Data tab
 
