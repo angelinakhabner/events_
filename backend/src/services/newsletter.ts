@@ -1,7 +1,8 @@
 import type {
   Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
+  NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
-import { festivalsAtVenues } from '@afisz/shared';
+import { deriveWindow, festivalsAtVenues, sendCadenceDays, timeFilterHour } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
 import { defaultEventStore, type EventStore } from './event-store.js';
@@ -18,10 +19,16 @@ const TZ = 'Europe/Warsaw';
 // venues the user picked, optionally narrowed to a time-of-day window
 // ("Kino Muranów and Kinoteka every day, everything after 6 pm").
 
-/** How far ahead a section looks — one day, one week, or one month. */
+/**
+ * How far ahead a whole newsletter looks, from its send cadence alone.
+ *
+ * A *section*'s window is no longer this (GOI-100): it is derived from the
+ * send cadence and the rule's own cadence together, by `deriveWindow`. This
+ * remains for the cases where there is no rule to derive from — the subject
+ * line, and a config whose rules are all switched off.
+ */
 export function briefWindowDays(frequency: NewsletterFrequency): number {
-  if (frequency === 'daily') return 1;
-  return frequency === 'weekly' ? 7 : 30;
+  return sendCadenceDays(frequency);
 }
 
 /** Warsaw wall-clock hour of an ISO instant. */
@@ -35,7 +42,13 @@ function warsawHour(iso: string): number {
  *  out (rather than Pick'd) so callers holding freshly-parsed input, where the
  *  optional narrowing fields may be absent, can pass it straight through. */
 export interface BriefScope {
-  frequency: NewsletterFrequency;
+  /**
+   * How far ahead this selection reaches, in days. A number rather than a
+   * cadence since GOI-100: a section's window is derived from two cadences at
+   * once and an optional override, so there is no single frequency that names
+   * it.
+   */
+  windowDays: number;
   /** The venues the brief covers. Already narrowed by the chosen tags — see
    *  `resolveBriefVenueIds`, which is what turns tags into venue ids. */
   venueIds: string[];
@@ -44,15 +57,15 @@ export interface BriefScope {
 }
 
 /**
- * Which events belong in a brief: within the cadence window, at one of the
- * chosen venues (empty selection = all), inside the after/before-hour window.
+ * Which events belong in a brief: within the window, at one of the chosen
+ * venues (empty selection = all), inside the after/before-hour window.
  */
 export function selectBriefEvents(
   events: Event[],
   sub: BriefScope,
   now: Date = new Date(),
 ): Event[] {
-  const horizon = new Date(now.getTime() + briefWindowDays(sub.frequency) * 24 * 3_600_000);
+  const horizon = new Date(now.getTime() + sub.windowDays * 24 * 3_600_000);
   return events.filter((e) => {
     const starts = new Date(e.startsAt);
     if (starts < now || starts > horizon) return false;
@@ -74,26 +87,35 @@ export function currentFestival(venueNames?: string[]): Festival | null {
   return festivalsAtVenues(ongoing, venueNames)[0] ?? null;
 }
 
-/** The widest cadence a subscription can produce — what an *empty* brief
- *  should still call itself. */
+/** The widest cadence a config can produce — what an *empty* brief should
+ *  still call itself. */
 export function plannedFrequency(sub: {
-  frequency: NewsletterFrequency;
+  sendCadence: NewsletterSendCadence;
   categoryRules: NewsletterCategoryRule[];
 }): NewsletterFrequency {
-  if (sub.categoryRules.length === 0) return sub.frequency;
-  return sub.categoryRules.reduce<NewsletterFrequency>(
-    (acc, r) => (briefWindowDays(r.frequency) > briefWindowDays(acc) ? r.frequency : acc),
-    'daily',
+  if (sub.categoryRules.length === 0) return sub.sendCadence;
+  const widest = Math.max(
+    ...sub.categoryRules.map((r) => deriveWindowDays(sub.sendCadence, r)),
   );
+  if (widest > 7) return 'monthly';
+  return widest > 1 ? 'weekly' : 'daily';
+}
+
+/** A rule's coverage window in days — `deriveWindow` measured rather than
+ *  dated, which is what the callers here actually want. */
+export function deriveWindowDays(
+  sendCadence: NewsletterSendCadence,
+  rule: Pick<NewsletterCategoryRule, 'cadence' | 'lookaheadDays'>,
+  issueDate: Date = new Date(),
+): number {
+  const { from, to } = deriveWindow({ sendCadence }, rule, issueDate);
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
 
 /** Subject line: the widest cadence in the email decides how it reads, since
  *  a brief carrying a monthly section is not "today in Warsaw". */
 export function briefSubject(sections: BriefSection[]): string {
-  const widest = sections.reduce(
-    (acc, s) => Math.max(acc, briefWindowDays(s.frequency)),
-    0,
-  );
+  const widest = sections.reduce((acc, s) => Math.max(acc, s.windowDays), 0);
   if (widest > 7) return 'AFISZ — your month in Warsaw';
   if (widest > 1) return 'AFISZ — your week in Warsaw';
   return 'AFISZ — today in Warsaw';
@@ -112,26 +134,34 @@ export const CATCH_UP_HOURS = 6;
 
 /** The scheduling fields the due check reads. */
 export interface BriefSchedule {
-  frequency: NewsletterFrequency;
-  categoryRules?: NewsletterCategoryRule[];
+  sendCadence: NewsletterSendCadence;
   sendHour?: number;
   sendMinute?: number;
-  sendWeekday?: number;
+  sendWeekday?: number | null;
+  sendDayOfMonth?: number | null;
   lastSentAt?: string | null;
 }
 
 /**
- * The slot this subscription was most recently due to go out in, at or before
- * `now` — null before its first one ever comes around.
+ * The slot this config was most recently due to go out in, at or before `now`
+ * — null before its first one ever comes around.
  *
- * Per-category rules bring their own cadence, so the *slot* only decides the
- * time of day: a subscription with rules is offered every day and
- * `buildBriefSections` drops the sections that aren't due yet.
+ * The envelope alone decides this now (GOI-100). It used to depend on the
+ * category rules: a config with any rule was offered a slot every day and the
+ * section builder dropped what wasn't due, which meant a "weekly" newsletter
+ * with rules woke every morning and the reader's chosen weekday decided
+ * nothing. The send cadence is the send cadence.
  */
 export function dueSlot(sub: BriefSchedule, now: Date): Date | null {
-  const perCategory = (sub.categoryRules?.length ?? 0) > 0;
-  const weekday = !perCategory && sub.frequency === 'weekly' ? sub.sendWeekday ?? 1 : undefined;
-  return lastWarsawTimeAtOrBefore(sub.sendHour ?? 8, sub.sendMinute ?? 0, weekday, now);
+  const weekday = sub.sendCadence === 'weekly' ? (sub.sendWeekday ?? 1) : undefined;
+  const slot = lastWarsawTimeAtOrBefore(sub.sendHour ?? 8, sub.sendMinute ?? 0, weekday, now);
+  if (!slot) return null;
+  // A monthly newsletter goes out on one day of the month; every other day's
+  // slot belongs to no issue.
+  if (sub.sendCadence === 'monthly' && warsawDayOfMonth(slot) !== (sub.sendDayOfMonth ?? 1)) {
+    return null;
+  }
+  return slot;
 }
 
 /**
@@ -181,22 +211,35 @@ export function eventInCategory(event: Event, category: string, venueTags: Map<s
 }
 
 /**
- * Is a rule due right now? Its cadence decides which day it lands on; the
- * subscription's `sendHour` decides the hour, so every due section arrives in
- * the same email rather than trickling out through the day.
+ * Which issues carry this category (GOI-100).
  *
- *  - daily — every day;
- *  - weekly — on the subscription's chosen weekday;
- *  - monthly — on the 1st.
+ * The rule's cadence is relative to the envelope, so "is it due" is a question
+ * about *which issue this is*, not about which day it is:
+ *
+ *  - `every_issue` — every issue there is, whatever the send cadence;
+ *  - `weekly` — inside a daily newsletter, the issue on the rule's own
+ *    weekday; inside a weekly one every issue already is weekly, so it is
+ *    every issue (validation stops that combination being saved, but a row
+ *    written before the rule existed must still behave sanely);
+ *  - `monthly` — the first issue of each calendar month. For a daily
+ *    newsletter that is the 1st; for a weekly one it is whichever send day
+ *    falls first, which is the first seven days.
  */
 export function isRuleDue(
-  frequency: NewsletterFrequency,
+  cadence: NewsletterRuleCadence,
+  sendCadence: NewsletterSendCadence,
   now: Date,
-  sendWeekday: number,
+  cadenceWeekday: number | null,
 ): boolean {
-  if (frequency === 'daily') return true;
-  if (frequency === 'weekly') return warsawWeekday(now) === sendWeekday;
-  return warsawDayOfMonth(now) === 1;
+  if (cadence === 'every_issue') return true;
+  if (cadence === 'weekly') {
+    if (sendCadence !== 'daily') return true;
+    return warsawWeekday(now) === (cadenceWeekday ?? 1);
+  }
+  // Monthly. The first issue of the month is the only one that carries it.
+  if (sendCadence === 'daily') return warsawDayOfMonth(now) === 1;
+  if (sendCadence === 'weekly') return warsawDayOfMonth(now) <= 7;
+  return true;
 }
 
 /** Day of the month in Warsaw (1-31). */
@@ -207,29 +250,34 @@ function warsawDayOfMonth(at: Date): number {
 /** One category's slice of a brief: the rule, plus the events it caught. */
 export interface BriefSection {
   category: string;
-  frequency: NewsletterFrequency;
+  /** How far ahead this section reached, in days — its derived window. Kept
+   *  on the section because the subject line and the PDF both need to know
+   *  how wide the widest section was, and neither can re-derive it. */
+  windowDays: number;
   detail: NewsletterDetail;
   events: Event[];
 }
 
 /**
- * Split the candidate events into the sections due right now.
+ * Split the candidate events into the sections due in this issue.
  *
  * With no rules the brief is one unnamed section covering everything on the
- * subscription's own cadence — the behaviour before per-category rules
- * existed. With rules, only the due ones appear, so a daily cinema section can
- * turn up every morning while a monthly museums section joins it on the 1st.
+ * config's own send cadence — the behaviour before per-category rules existed.
+ * With rules, only the due ones appear, so a cinema section can turn up in
+ * every issue while a monthly museums section joins it once a month.
  *
- * An event matching two due rules is placed in the first, so nothing is
- * listed twice in one email.
+ * Each section brings its own window (`deriveWindow`) and its own time filter,
+ * which is the point of GOI-100: a single global "only after 18:00" applied to
+ * every section is what emptied museums, since exhibitions are daytime.
+ *
+ * An event matching two due rules is placed in the first, so nothing is listed
+ * twice in one email.
  */
 export function buildBriefSections(
   events: Event[],
   sub: {
-    frequency: NewsletterFrequency;
-    sendWeekday: number;
+    sendCadence: NewsletterSendCadence;
     categoryRules: NewsletterCategoryRule[];
-    afterHour?: number | null;
     beforeHour?: number | null;
   },
   venues: UserVenue[],
@@ -239,17 +287,39 @@ export function buildBriefSections(
   const venueTags = new Map(venues.map((v) => [v.id, v.tags]));
 
   if (sub.categoryRules.length === 0) {
-    const picked = selectBriefEvents(events, { ...sub, venueIds }, now);
+    const picked = selectBriefEvents(
+      events,
+      { ...sub, windowDays: sendCadenceDays(sub.sendCadence), venueIds },
+      now,
+    );
     return picked.length
-      ? [{ category: '', frequency: sub.frequency, detail: 'short', events: picked }]
+      ? [
+          {
+            category: '',
+            windowDays: sendCadenceDays(sub.sendCadence),
+            detail: 'short',
+            events: picked,
+          },
+        ]
       : [];
   }
 
   const taken = new Set<string>();
   const sections: BriefSection[] = [];
-  for (const rule of sub.categoryRules) {
-    if (!isRuleDue(rule.frequency, now, sub.sendWeekday)) continue;
-    const inWindow = selectBriefEvents(events, { ...sub, frequency: rule.frequency, venueIds }, now);
+  for (const rule of [...sub.categoryRules].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    if (!isRuleDue(rule.cadence, sub.sendCadence, now, rule.cadenceWeekday)) continue;
+    const windowDays = deriveWindowDays(sub.sendCadence, rule, now);
+    const inWindow = selectBriefEvents(
+      events,
+      {
+        ...sub,
+        windowDays,
+        venueIds,
+        // Per-section, not per-newsletter. This is the fix GOI-100 exists for.
+        afterHour: timeFilterHour(rule.timeFilter),
+      },
+      now,
+    );
     const picked = inWindow.filter(
       (e) => !taken.has(e.id) && eventInCategory(e, rule.category, venueTags),
     );
@@ -257,7 +327,7 @@ export function buildBriefSections(
     for (const e of picked) taken.add(e.id);
     sections.push({
       category: rule.category,
-      frequency: rule.frequency,
+      windowDays,
       detail: rule.detail,
       events: picked,
     });
@@ -346,7 +416,7 @@ export async function sendNewsletterBriefs(
     const base = {
       userId: sub.userId,
       email: sub.email,
-      frequency: sub.frequency,
+      frequency: sub.sendCadence,
       dueAt: dueSlot(sub, now)?.toISOString() ?? null,
     };
     if (!opts.force) {
@@ -407,7 +477,9 @@ export async function sendNewsletterBriefs(
         subject: briefSubject(sections),
         html: renderBriefHtml(brief),
       });
-      await store.markSent(sub.userId, now);
+      // By config id, not user id: a reader may hold one newsletter per folder
+      // since GOI-100, and stamping the user would mark all of them sent.
+      await store.markSent(sub.id, now);
 
       // File a PDF copy on any drive this user connected (GOI-91). After the
       // email and after `markSent` on purpose: `deliverBriefToDrives` never

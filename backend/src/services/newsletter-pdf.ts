@@ -166,7 +166,12 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   const now = content.now ?? new Date();
   const sections = content.sections;
   const events: Event[] = sections.flatMap((s) => s.events);
-  const frequency = sections[0]?.frequency ?? content.fallbackFrequency ?? 'weekly';
+  // The widest section decides the masthead's wording, as it does in the
+  // email (GOI-100): a brief carrying a monthly section is not "today".
+  const widest = sections.reduce((acc, sec) => Math.max(acc, sec.windowDays), 0);
+  const frequency: NewsletterFrequency = sections.length
+    ? (widest > 7 ? 'monthly' : widest > 1 ? 'weekly' : 'daily')
+    : content.fallbackFrequency ?? 'weekly';
 
   const doc: PDFKit.PDFDocument = new PDFDocument({
     size: [PAGE.width, PAGE.height],

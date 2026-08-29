@@ -161,47 +161,220 @@ export interface SharedWantToGoList {
 
 // ─── Newsletter ──────────────────────────────────────────────────────────────
 
-export type NewsletterFrequency = 'daily' | 'weekly' | 'monthly';
-
-/** How much of each event a section shows: a trimmed one-liner, or the whole
- *  blurb ("wide"). */
-export type NewsletterDetail = 'short' | 'full';
+/**
+ * The two independent things a newsletter's timing used to conflate (GOI-100).
+ *
+ * `NewsletterSendCadence` is the **envelope**: when an email leaves, one per
+ * config. `NewsletterRuleCadence` is the **contents**: how often a category
+ * turns up *inside* the issues that go out. A config of "cinema daily, museums
+ * weekly, theatre weekly" described neither — it said something about three
+ * sections and nothing about when anyone would be emailed, so the scheduler
+ * had to guess a send rhythm out of the busiest section.
+ *
+ * Separating them is what makes the coverage window derivable rather than
+ * configured. See `deriveWindow`.
+ */
+export type NewsletterSendCadence = 'daily' | 'weekly' | 'monthly';
 
 /**
- * One category's own place in the brief: how often it turns up, and how much
- * it says. "Cinema daily, short; museums monthly, wide."
+ * How often a category appears inside the issues.
+ *
+ * `every_issue` rather than `daily` on purpose: the rule is relative to the
+ * send schedule, and "daily" was a lie in a weekly newsletter. A category can
+ * never appear more often than the envelope carrying it.
+ */
+export type NewsletterRuleCadence = 'every_issue' | 'weekly' | 'monthly';
+
+/** Kept for the sweep's own vocabulary and the public API (GOI-87), which
+ *  still speak of a subscription's frequency. */
+export type NewsletterFrequency = NewsletterSendCadence;
+
+/** How much of each event a section shows: title and time only, a trimmed
+ *  one-liner, or the whole blurb. */
+export type NewsletterDetail = 'line' | 'short' | 'full';
+
+/**
+ * Time-of-day narrowing, per category rather than per newsletter (GOI-100).
+ *
+ * It was one global "only events after" setting, and that setting silently
+ * emptied every museum section in the product: exhibitions are daytime, so
+ * "only after 18:00" — a perfectly reasonable thing to want for cinema — meant
+ * a museums section that could never match anything. A reader who set it saw
+ * museums vanish and had no way to connect the two.
+ */
+export type NewsletterTimeFilter = 'any' | 'after_17' | 'after_18' | 'after_19' | 'after_20';
+
+/** The hour a `NewsletterTimeFilter` cuts at, or null for "any". */
+export function timeFilterHour(filter: NewsletterTimeFilter): number | null {
+  return filter === 'any' ? null : Number(filter.slice('after_'.length));
+}
+
+/** The filter expressing "at or after this hour", for migrating the old
+ *  global setting and for the settings UI. Anything unrepresentable — 6am,
+ *  say — rounds down to the nearest offered option, or to `any`. */
+export function timeFilterForHour(hour: number | null | undefined): NewsletterTimeFilter {
+  if (hour == null) return 'any';
+  if (hour >= 20) return 'after_20';
+  if (hour >= 19) return 'after_19';
+  if (hour >= 18) return 'after_18';
+  if (hour >= 17) return 'after_17';
+  return 'any';
+}
+
+/**
+ * One category's own place in the brief: how often it turns up, how much it
+ * says, and what time of day it will consider.
  *
  * `category` matches either a built-in event category ("cinema") or one of the
- * reader's own venue tags ("arthouse") — whichever they picked.
+ * reader's own venue tags ("arthouse") — whichever they picked. The two share
+ * one namespace deliberately (see `eventInCategory`): a tag is just another
+ * name a venue answers to, and a rule does not need to know which kind it got.
  */
 export interface NewsletterCategoryRule {
   category: string;
-  frequency: NewsletterFrequency;
+  cadence: NewsletterRuleCadence;
+  /**
+   * Which issue carries it, when `cadence` is weekly and the newsletter sends
+   * daily (0=Sun … 6=Sat). Meaningless otherwise, and stored as null rather
+   * than as a value that does nothing.
+   */
+  cadenceWeekday: number | null;
   detail: NewsletterDetail;
+  timeFilter: NewsletterTimeFilter;
+  /**
+   * Look further ahead than the derived window. The one thing cadence cannot
+   * express: theatre runs sell out, so a weekly theatre section may want to
+   * name what is on in three weeks even though it will be printed again next
+   * week. Null means "derive it", which is right almost always.
+   */
+  lookaheadDays: number | null;
+  /** Section order within an issue. */
+  sortOrder: number;
 }
 
+/**
+ * The "want to go" reminder queue's settings (GOI-101).
+ *
+ * Not a digest section, which is why it has its own block rather than a rule:
+ * it is a queue of events the reader already chose, escalating as they get
+ * closer, and it inherits neither cadence nor depth nor window from anything.
+ */
+export interface NewsletterWantToGo {
+  enabled: boolean;
+  /** How far ahead a saved event starts being reminded about (1–30). */
+  horizonDays: number;
+  /** Report cancellations, reschedules, moves and sell-outs. */
+  changesEnabled: boolean;
+  /** Allow an off-schedule email for an urgent change. */
+  urgentSend: boolean;
+}
+
+export const DEFAULT_WANT_TO_GO: NewsletterWantToGo = {
+  enabled: true,
+  horizonDays: 7,
+  changesEnabled: true,
+  urgentSend: true,
+};
+
 export interface NewsletterSettings {
+  /** The config's own id. A reader may have one per folder (GOI-100). */
+  id: string;
+  /**
+   * The folder whose venues this newsletter draws on, or null for a config
+   * that predates folders / covers everything the reader follows.
+   *
+   * The folder owns the venue set; `venueIds` only *narrows* it. Two sources
+   * of truth for "which venues" is how they drift, so unchecking a venue here
+   * must never write to the folder.
+   */
+  folderId: string | null;
+  /** User-facing label, so several configs can be told apart. */
+  name: string;
   email: string;
   /** Name the brief greets you by; null greets you without one. */
   recipientName: string | null;
-  frequency: NewsletterFrequency;
-  /** Venues the brief covers; empty = all of the user's venues. */
-  venueIds: string[];
-  /** Only include events starting at/after this hour (0-23), e.g. 18 = after 6 pm. */
-  afterHour: number | null;
-  /** Only include events starting before this hour (0-23). */
-  beforeHour: number | null;
-  /** Warsaw hour the brief is sent at (0-23). */
+  /** When an issue is sent. */
+  sendCadence: NewsletterSendCadence;
+  /** Weekday weekly issues go out on (0=Sun … 6=Sat); null unless weekly. */
+  sendWeekday: number | null;
+  /** Day monthly issues go out on (1–28); null unless monthly. Capped at 28
+   *  so every month has one. */
+  sendDayOfMonth: number | null;
+  /** Hour the issue is sent at (0-23), in `timezone`. */
   sendHour: number;
-  /** Minute past `sendHour` the brief is sent at (0-59). */
+  /** Minute past `sendHour` (0-59). */
   sendMinute: number;
-  /** Weekday weekly briefs go out on (0=Sun … 6=Sat). Ignored when daily. */
-  sendWeekday: number;
-  /** Per-category cadence and detail. Empty = one brief covering everything,
-   *  on the subscription's own `frequency`. */
+  timezone: string;
+  /** Venues within the folder this newsletter covers; empty = all of them. */
+  venueIds: string[];
+  /** Only include events starting before this hour (0-23). No UI; the
+   *  after-hour half of this pair became `NewsletterCategoryRule.timeFilter`. */
+  beforeHour: number | null;
+  /** Skip an issue with nothing in it rather than mailing an empty page. */
+  suppressEmptyIssues: boolean;
+  wantToGo: NewsletterWantToGo;
+  /** Per-category cadence, depth, time filter and lookahead. */
   categoryRules: NewsletterCategoryRule[];
   enabled: boolean;
   lastSentAt: string | null;
+}
+
+/** Days in the span a send cadence covers — the gap between two issues. */
+export function sendCadenceDays(cadence: NewsletterSendCadence): number {
+  if (cadence === 'daily') return 1;
+  return cadence === 'weekly' ? 7 : 30;
+}
+
+/**
+ * How far a category rule may be set relative to the envelope carrying it.
+ *
+ * A category cannot appear more often than an issue is sent, so a weekly
+ * newsletter has no separate "once a week" — that *is* every issue — and a
+ * monthly one offers nothing but `every_issue`. The settings UI shows the
+ * unavailable options disabled rather than absent (GOI-102), so a reader
+ * understands why a choice vanished instead of wondering where it moved.
+ */
+export function allowedRuleCadences(send: NewsletterSendCadence): NewsletterRuleCadence[] {
+  if (send === 'daily') return ['every_issue', 'weekly', 'monthly'];
+  if (send === 'weekly') return ['every_issue', 'monthly'];
+  return ['every_issue'];
+}
+
+/**
+ * The window of events a section covers: from this issue to the next issue
+ * that will carry the same category (GOI-100).
+ *
+ * Derived rather than configured, and that is the point. Anything the reader
+ * could set here they could set wrong — a weekly theatre section looking one
+ * day ahead reports a seventh of the week and silently loses the rest, and a
+ * daily cinema section looking a week ahead repeats itself six times. Deriving
+ * it from the two cadences guarantees the one property that matters: coverage
+ * with no gaps and no repeats.
+ *
+ * `lookaheadDays` is the deliberate exception, and it only moves `to`. When it
+ * exceeds the cadence the windows overlap, and an event will fall in two
+ * issues — that is what the send-state dedup (GOI-101) is for, and not
+ * something this function should try to compensate for by moving `from`.
+ */
+export function deriveWindow(
+  config: Pick<NewsletterSettings, 'sendCadence'>,
+  rule: Pick<NewsletterCategoryRule, 'cadence' | 'lookaheadDays'>,
+  issueDate: Date,
+): { from: Date; to: Date } {
+  const from = new Date(issueDate);
+  const days = rule.lookaheadDays ?? coverageDays(config.sendCadence, rule.cadence);
+  return { from, to: new Date(from.getTime() + days * 86_400_000) };
+}
+
+/** Days between two issues carrying the same category. */
+function coverageDays(send: NewsletterSendCadence, rule: NewsletterRuleCadence): number {
+  // Every issue carries it, so the gap is simply the send gap.
+  if (rule === 'every_issue') return sendCadenceDays(send);
+  if (rule === 'weekly') return 7;
+  // Monthly. In a weekly newsletter the next issue carrying it is four issues
+  // away, which is 28 days rather than a calendar month — using 30 there would
+  // overlap the following month's section by two days every time.
+  return send === 'weekly' ? 28 : 30;
 }
 
 // ─── Festivals ───────────────────────────────────────────────────────────────

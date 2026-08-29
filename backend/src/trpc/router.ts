@@ -680,7 +680,21 @@ const my = router({
   }),
 
   newsletter: router({
-    get: userProcedure.query(({ ctx }) => ctx.newsletter.get(ctx.user.id)),
+    /**
+     * One folder's newsletter, or the folderless default (GOI-100).
+     *
+     * A reader may hold one per folder now, since the venues a newsletter
+     * covers are a folder's venues. Passing no folder asks for the config that
+     * predates folders, which covers everything they follow — which is what
+     * every existing subscription is.
+     */
+    get: userProcedure
+      .input(z.object({ folderId: z.string().uuid().nullable().default(null) }).optional())
+      .query(({ ctx, input }) => ctx.newsletter.get(ctx.user.id, input?.folderId ?? null)),
+
+    /** Every newsletter the reader holds, for a picker across folders. */
+    list: userProcedure.query(({ ctx }) => ctx.newsletter.list(ctx.user.id)),
+
     save: userProcedure
       .input(newsletterSaveInput)
       .mutation(({ ctx, input }) => ctx.newsletter.save(ctx.user.id, input)),

@@ -242,7 +242,7 @@ function sectionHeadingRow(section: BriefSection, top: boolean): string {
       `font-family:${FONT};font-weight:800;font-size:20px;line-height:1.2;` +
       `letter-spacing:-.01em;color:${C.ink}">${escapeHtml(titleCase(section.category))}` +
       `<span style="font-weight:400;font-size:11px;letter-spacing:.06em;text-transform:uppercase;` +
-        `color:${C.meta}"> · ${escapeHtml(cadenceLabel(section.frequency))}</span>` +
+        `color:${C.meta}"> · ${escapeHtml(cadenceLabel(section.windowDays))}</span>` +
     `</td></tr>`
   );
 }
@@ -253,9 +253,12 @@ function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function cadenceLabel(frequency: NewsletterFrequency): string {
-  if (frequency === 'daily') return 'today';
-  return frequency === 'weekly' ? 'this week' : 'this month';
+/** What a section's span is called in the heading. Read from the span itself
+ *  so a lookahead override reads honestly — a cinema section told to look ten
+ *  days ahead says "this month", not "today". */
+function cadenceLabel(windowDays: number): string {
+  if (windowDays <= 1) return 'today';
+  return windowDays <= 7 ? 'this week' : 'this month';
 }
 
 function picksTable(sections: BriefSection[]): string {
@@ -276,7 +279,7 @@ function picksTable(sections: BriefSection[]): string {
       const opensList = rows.length === 0;
       // A section spanning more than a day gets its days labelled; a daily
       // one is a single day by definition.
-      if (section.frequency !== 'daily') {
+      if (section.windowDays > 1) {
         const day = fmtDayKey(pick.startsAt);
         if (day !== lastDay) {
           lastDay = day;
@@ -388,7 +391,17 @@ function footerRow(categories: string[]): string {
 export interface BriefSection {
   /** Empty for an unnamed brief covering everything. */
   category: string;
-  frequency: NewsletterFrequency;
+  /**
+   * How far ahead this section reached, in days (GOI-100).
+   *
+   * A number rather than a cadence, because a section's window is now derived
+   * from the send cadence and the rule's own cadence together, plus an
+   * optional lookahead override — so there is no single word that names it.
+   * "Weekly theatre in a daily newsletter" and "a daily newsletter's cinema
+   * looking ten days ahead" are both real, and only the span distinguishes
+   * them.
+   */
+  windowDays: number;
   detail: NewsletterDetail;
   events: Event[];
 }
@@ -424,11 +437,9 @@ export function renderBriefHtml(content: BriefContent): string {
   // The widest cadence present sets the masthead's wording — a brief carrying
   // a monthly section is not "today in Warsaw". With nothing on, fall back to
   // the cadence the brief *would* have run at.
+  const widest = sections.reduce((acc, s) => Math.max(acc, s.windowDays), 0);
   const frequency: NewsletterFrequency = sections.length
-    ? sections.reduce<NewsletterFrequency>(
-        (acc, s) => (briefWindow(s.frequency) > briefWindow(acc) ? s.frequency : acc),
-        sections[0]!.frequency,
-      )
+    ? (widest > 7 ? 'monthly' : widest > 1 ? 'weekly' : 'daily')
     : content.fallbackFrequency ?? 'daily';
   const date = fmtDay(now.toISOString());
 
@@ -473,10 +484,4 @@ export function renderBriefHtml(content: BriefContent): string {
       `</table>` +
     `</body></html>`
   );
-}
-
-/** Cadence ordering, so the masthead can pick the widest one present. */
-function briefWindow(frequency: NewsletterFrequency): number {
-  if (frequency === 'daily') return 1;
-  return frequency === 'weekly' ? 7 : 30;
 }
