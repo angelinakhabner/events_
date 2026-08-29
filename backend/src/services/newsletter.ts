@@ -362,7 +362,7 @@ export const CHANGE_LOOKBACK_DAYS = 14;
 export async function buildWantToGoSection(
   sub: Pick<NewsletterSubscription, 'id' | 'userId' | 'wantToGo'>,
   store: NewsletterStore,
-  wantToGo: WantToGoStore,
+  wantToGo: Pick<WantToGoStore, 'list'>,
   now: Date,
 ): Promise<WantToGoSection> {
   if (!sub.wantToGo.enabled) return { reminders: [], changes: [] };
@@ -538,8 +538,13 @@ export interface BriefOutcome {
 }
 
 export interface SweepOptions {
-  /** The saved-events store the queue reads (GOI-101). Injected for tests. */
-  wantToGo?: WantToGoStore;
+  /** The venue and event sources, injectable the way `store` already is.
+   *  Without these the sweep reaches for the process-wide stores, which makes
+   *  a test's behaviour depend on whether DATABASE_URL happens to be set. The
+   *  saved-events queue (GOI-101) is the third such source, and fell into
+   *  exactly that trap when it was added — the sweep only failed once the
+   *  suite was run against a real Postgres. */
+  wantToGo?: Pick<WantToGoStore, 'list'>;
   /** Work out every outcome without sending or recording anything. */
   dryRun?: boolean;
   /** Ignore the schedule (due slot + recent-send guard) and brief everyone

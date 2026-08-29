@@ -112,35 +112,61 @@ CREATE INDEX IF NOT EXISTS "newsletter_category_rules_config_id_idx"
 -- The global after-hour lands on every rule *except* museums, which is the
 -- whole reason this filter moved: a reader who wanted evening cinema was
 -- unknowingly hiding every exhibition they follow.
+-- Guarded on *both* old columns, and run through EXECUTE so the statement is
+-- parsed only when they are actually there.
+--
+-- Every migration file re-runs on every deploy, and 0013 still carries
+-- `ADD COLUMN IF NOT EXISTS "category_rules"` — so on the second deploy that
+-- column is back (empty), while `after_hour`, which nothing re-adds, is not.
+-- A plain IF around a statically-parsed query then fails on a column that no
+-- longer exists, even though the branch would never have run. Re-adding an
+-- empty `category_rules` each deploy is harmless: there is nothing in it to
+-- migrate, and the DROP below takes it away again.
 DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'newsletter_subscriptions' AND column_name = 'category_rules'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'newsletter_subscriptions' AND column_name = 'after_hour'
   ) THEN
-    INSERT INTO "newsletter_category_rules"
-      ("config_id", "category", "cadence", "depth", "time_filter", "sort_order")
-    SELECT
-      s."id",
-      r."category",
-      CASE r."frequency" WHEN 'weekly' THEN 'weekly' WHEN 'monthly' THEN 'monthly'
-                         ELSE 'every_issue' END,
-      CASE r."detail" WHEN 'full' THEN 'full' WHEN 'line' THEN 'line' ELSE 'short' END,
-      CASE
-        WHEN lower(r."category") IN ('exhibition', 'museum', 'museums') THEN 'any'
-        WHEN s."after_hour" >= 20 THEN 'after_20'
-        WHEN s."after_hour" >= 19 THEN 'after_19'
-        WHEN s."after_hour" >= 18 THEN 'after_18'
-        WHEN s."after_hour" >= 17 THEN 'after_17'
-        ELSE 'any'
-      END,
-      r."ord"
-    FROM "newsletter_subscriptions" s
-    CROSS JOIN LATERAL jsonb_to_recordset(s."category_rules")
-      AS r("category" text, "frequency" text, "detail" text)
-    WITH ORDINALITY AS t(r, "ord")
-    WHERE jsonb_typeof(s."category_rules") = 'array'
-    ON CONFLICT ("config_id", "category") DO NOTHING;
+    EXECUTE $mig$
+      INSERT INTO "newsletter_category_rules"
+        ("config_id", "category", "cadence", "depth", "time_filter", "sort_order")
+      SELECT
+        s."id",
+        r."category",
+        CASE r."frequency" WHEN 'weekly' THEN 'weekly' WHEN 'monthly' THEN 'monthly'
+                           ELSE 'every_issue' END,
+        CASE r."detail" WHEN 'full' THEN 'full' WHEN 'line' THEN 'line' ELSE 'short' END,
+        CASE
+          WHEN lower(r."category") IN ('exhibition', 'museum', 'museums') THEN 'any'
+          WHEN s."after_hour" >= 20 THEN 'after_20'
+          WHEN s."after_hour" >= 19 THEN 'after_19'
+          WHEN s."after_hour" >= 18 THEN 'after_18'
+          WHEN s."after_hour" >= 17 THEN 'after_17'
+          ELSE 'any'
+        END,
+        (r."ord" - 1)::smallint
+      FROM "newsletter_subscriptions" s
+      -- `jsonb_array_elements ... WITH ORDINALITY` rather than
+      -- `jsonb_to_recordset ... WITH ORDINALITY`: the latter needs the
+      -- ordinality column folded into the function's column definition list,
+      -- and the obvious spelling of that is a syntax error. Reading the fields
+      -- off the element keeps the ordering explicit and the syntax plain.
+      CROSS JOIN LATERAL (
+        SELECT
+          elem->>'category'  AS "category",
+          elem->>'frequency' AS "frequency",
+          elem->>'detail'    AS "detail",
+          ord                AS "ord"
+        FROM jsonb_array_elements(s."category_rules") WITH ORDINALITY AS a(elem, ord)
+        WHERE jsonb_typeof(elem) = 'object' AND elem->>'category' IS NOT NULL
+      ) r
+      WHERE jsonb_typeof(s."category_rules") = 'array'
+      ON CONFLICT ("config_id", "category") DO NOTHING;
+    $mig$;
   END IF;
 END $$;
 

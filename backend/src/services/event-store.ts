@@ -324,6 +324,19 @@ export class EventStore {
   }): Promise<VenueFilterCountRow[]> {
     const db = getDb();
     const now = input.now ?? new Date();
+    /**
+     * The instant as an explicit ISO string, not a `Date`.
+     *
+     * This query goes through `db.execute` with a hand-written `sql` template
+     * rather than the query builder, and postgres.js binds those parameters
+     * itself — where a `Date` is not a value it knows how to serialise. It
+     * threw "The 'string' argument must be of type string... Received an
+     * instance of Date", which tRPC returned as a 500, which React Query
+     * turned into `data: undefined`, which the venue picker rendered as
+     * "0 venues · No venue matches" (GOI-94). Nothing along that path says
+     * "the query failed", which is why it read as an empty venue set.
+     */
+    const nowIso = now.toISOString();
 
     // Both counts come from the same scan: one narrowed by the day/time
     // filters, one not. The second is what tells "nothing on this Tuesday"
@@ -362,7 +375,8 @@ export class EventStore {
         -- (GOI-67): an exhibition that opened in June and closes in September
         -- is on today, and is selected by its closing date.
         AND e.cancelled_at IS NULL
-        AND (e.starts_at >= ${now} OR (e.kind = 'exhibition' AND e.ends_at >= ${now}))
+        AND (e.starts_at >= ${nowIso}::timestamptz
+             OR (e.kind = 'exhibition' AND e.ends_at >= ${nowIso}::timestamptz))
       WHERE ${input.category ? sql`v.category = ${input.category}` : sql`true`}
         AND ${input.city ? sql`v.city = ${input.city}` : sql`true`}
       GROUP BY v.id, v.name, v.url, v.category, v.probe_error_code
