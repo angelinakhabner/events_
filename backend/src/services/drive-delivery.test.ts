@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import type { Event } from '@afisz/shared';
-import { deliverBriefToDrives } from './drive-delivery.js';
+import { deliverBriefToDrives, renameDriveFolder } from './drive-delivery.js';
 import { InMemoryDriveStore } from './drive-store.js';
+import { DriveFolderMissingError } from './cloud-drive.js';
+import { DEFAULT_DRIVE_FOLDER, normalizeDriveFolderName } from '@afisz/shared';
 import type { DriveProvider } from './cloud-drive.js';
 import type { BriefSection } from './newsletter-render.js';
 
@@ -28,6 +30,7 @@ const sections = [
 /** A provider that records what it was asked to do. */
 function fakeProvider(over: Partial<DriveProvider> = {}) {
   const uploads: { folderId: string; filename: string; bytes: number }[] = [];
+  const renames: { folderId: string; name: string }[] = [];
   const provider: DriveProvider = {
     id: 'google',
     label: 'Google Drive',
@@ -38,9 +41,12 @@ function fakeProvider(over: Partial<DriveProvider> = {}) {
       uploads.push({ folderId, filename: file.filename, bytes: file.body.length });
       return { fileId: 'file-1', webUrl: 'https://drive.google.com/file/d/file-1' };
     },
+    async renameFolder({ folderId, name }) {
+      renames.push({ folderId, name });
+    },
     ...over,
   };
-  return { provider, uploads };
+  return { provider, uploads, renames };
 }
 
 async function connectedStore() {
@@ -164,5 +170,136 @@ describe('deliverBriefToDrives', () => {
     const { provider, uploads } = fakeProvider();
     await deliverBriefToDrives(USER, { sections, now: NOW }, 'daily', { store, providers: { google: provider } });
     expect(uploads[0]!.filename).toBe('afisz-2026-09-09-daily.pdf');
+  });
+});
+
+describe('normalizeDriveFolderName', () => {
+  it('trims, and keeps the inner spacing a user typed', () => {
+    expect(normalizeDriveFolderName('  Afisz briefs  ')).toBe('Afisz briefs');
+  });
+
+  it.each([
+    ['empty', '   '],
+    ['too long', 'x'.repeat(101)],
+    ['a control character', 'Afisz\u0007ka'],
+    ['a slash, which reads as a path', 'Afisz/briefs'],
+  ])('rejects %s', (_label, name) => {
+    expect(() => normalizeDriveFolderName(name)).toThrow();
+  });
+
+  it('accepts a name at exactly the limit', () => {
+    expect(normalizeDriveFolderName('x'.repeat(100))).toHaveLength(100);
+  });
+});
+
+describe('renameDriveFolder', () => {
+  /** A connection that has already had its folder created in the drive. */
+  async function withFolder() {
+    const store = await connectedStore();
+    await store.rememberFolder(USER, 'google', 'folder-1');
+    return store;
+  }
+
+  it('renames the folder in the drive, then stores the name', async () => {
+    const store = await withFolder();
+    const { provider, renames } = fakeProvider();
+
+    const out = await renameDriveFolder(USER, 'google', '  Briefs  ', {
+      store, providers: { google: provider },
+    });
+
+    expect(out).toEqual({ folderName: 'Briefs', recreated: false });
+    expect(renames).toEqual([{ folderId: 'folder-1', name: 'Briefs' }]);
+    const view = (await store.view(USER))[0]!;
+    expect(view.folderName).toBe('Briefs');
+    // Same folder, so the cached id still holds — the briefs already in it
+    // must not be stranded behind a second folder.
+    expect(view.folderId).toBe('folder-1');
+  });
+
+  /**
+   * The stored name is a promise about what the user will find in their drive.
+   * If the drive refused the rename, keeping the old name is the honest state.
+   */
+  it('does not store the name when the drive refuses the rename', async () => {
+    const store = await withFolder();
+    const { provider } = fakeProvider({
+      async renameFolder() {
+        throw new Error('Renaming the Google Drive folder failed (HTTP 403)');
+      },
+    });
+
+    await expect(
+      renameDriveFolder(USER, 'google', 'Briefs', { store, providers: { google: provider } }),
+    ).rejects.toThrow('HTTP 403');
+
+    expect((await store.view(USER))[0]!.folderName).toBe(DEFAULT_DRIVE_FOLDER);
+  });
+
+  /**
+   * `ensureFolder` re-verifies that a cached id is live but never that it still
+   * carries the expected name, so a new name against a surviving stale id would
+   * leave the UI promising one folder while briefs landed in another.
+   */
+  it('forgets the folder id when the folder is gone, so the next send recreates it', async () => {
+    const store = await withFolder();
+    const { provider } = fakeProvider({
+      async renameFolder() {
+        throw new DriveFolderMissingError();
+      },
+    });
+
+    const out = await renameDriveFolder(USER, 'google', 'Briefs', {
+      store, providers: { google: provider },
+    });
+
+    expect(out).toEqual({ folderName: 'Briefs', recreated: true });
+    const view = (await store.view(USER))[0]!;
+    expect(view.folderName).toBe('Briefs');
+    expect(view.folderId).toBeNull();
+  });
+
+  it('stores the name without calling the drive when no folder exists yet', async () => {
+    const store = await connectedStore();
+    const { provider, renames } = fakeProvider();
+
+    const out = await renameDriveFolder(USER, 'google', 'Briefs', {
+      store, providers: { google: provider },
+    });
+
+    expect(out).toEqual({ folderName: 'Briefs', recreated: true });
+    expect(renames).toHaveLength(0);
+    expect((await store.view(USER))[0]!.folderName).toBe('Briefs');
+  });
+
+  it('is a no-op when the name is unchanged, so saving twice costs no API call', async () => {
+    const store = await withFolder();
+    const { provider, renames } = fakeProvider();
+
+    const out = await renameDriveFolder(USER, 'google', `  ${DEFAULT_DRIVE_FOLDER}  `, {
+      store, providers: { google: provider },
+    });
+
+    expect(out).toEqual({ folderName: DEFAULT_DRIVE_FOLDER, recreated: false });
+    expect(renames).toHaveLength(0);
+  });
+
+  it('rejects an invalid name before touching the drive', async () => {
+    const store = await withFolder();
+    const { provider, renames } = fakeProvider();
+
+    await expect(
+      renameDriveFolder(USER, 'google', '   ', { store, providers: { google: provider } }),
+    ).rejects.toThrow('cannot be empty');
+    expect(renames).toHaveLength(0);
+  });
+
+  it('refuses when no drive is connected', async () => {
+    const { provider } = fakeProvider();
+    await expect(
+      renameDriveFolder(USER, 'google', 'Briefs', {
+        store: new InMemoryDriveStore(), providers: { google: provider },
+      }),
+    ).rejects.toThrow('No drive is connected.');
   });
 });

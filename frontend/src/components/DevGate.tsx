@@ -1,4 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useLayoutEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { hideLanding } from '../lib/landing';
 
 // Access gate for the dev preview deployment. The dev build bakes in
 // VITE_DEV_GATE_HASH (a SHA-256 hex digest of the dev password); production
@@ -22,6 +23,15 @@ export function DevGate({ children }: { children: ReactNode }) {
     () => !gateHash || localStorage.getItem(STORAGE_KEY) === gateHash,
   );
   const [error, setError] = useState(false);
+
+  // The public landing page ships in index.html and is visible from the first
+  // paint (src/landing/render.ts). On the dev preview the password form is
+  // what should be on screen instead, so draw the curtain before painting —
+  // the landing page's stylesheet keeps `#root` collapsed until it is hidden,
+  // which would otherwise leave the form invisible underneath it.
+  useLayoutEffect(() => {
+    if (!unlocked) hideLanding();
+  }, [unlocked]);
 
   if (unlocked) return <>{children}</>;
 

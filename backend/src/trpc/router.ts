@@ -16,7 +16,8 @@ import { cacheProbe, cachedProbe, consumeQuota } from '../services/probe/limits.
 import { listFestivals } from '../data/festivals.js';
 import {
   festivalsAtVenues, venueSchedule,
-  venueFilterStatus, venueSlug,
+  venueFilterStatus, venueSlug, MAX_DRIVE_FOLDER_NAME,
+  VENUE_SUGGEST_MAX_CANDIDATES, VENUE_SUGGEST_PER_HOUR,
   type Category, type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
   type VenueFilterOption,
 } from '@afisz/shared';
@@ -27,6 +28,7 @@ import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/v
 import { renderBriefHtml } from '../services/newsletter-render.js';
 import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js';
 import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
+import { renameDriveFolder } from '../services/drive-delivery.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
 import { env } from '../config.js';
 
@@ -400,6 +402,24 @@ const my = router({
           language: z.string().trim().toLowerCase().regex(/^[a-z]{2,3}$/).optional(),
           windowDays: z.number().int().min(1).max(90).nullable().optional(),
           listId: z.string().optional(),
+          /** Destination by name rather than id (GOI-92): the Elsewhere flow
+           *  defaults to a folder named after the city, and that folder is
+           *  created here, on commit — never when the form was merely opened.
+           *  Ignored when `listId` is given. */
+          listName: z.string().trim().min(1).max(80).optional(),
+          /** What a probe concluded about this URL (GOI-92). A candidate whose
+           *  site can't be read is still addable; the reason rides along so the
+           *  row can say why it won't populate instead of looking merely
+           *  empty. Only applied to a venue row this call creates. */
+          probe: z
+            .object({
+              sourceUrl: z.string().max(2048).nullable().optional(),
+              sourceMethod: z.string().max(40).nullable().optional(),
+              sourceConfidence: z.string().max(20).nullable().optional(),
+              requiresPaidFetch: z.boolean().optional(),
+              probeErrorCode: z.string().max(60).nullable().optional(),
+            })
+            .optional(),
           /** Personal tags typed in the add form (GOI-74). Same shape and
            *  limits as the update path, so a tag can't arrive by one route
            *  that the other would reject. */
@@ -407,8 +427,14 @@ const my = router({
         }),
       )
       .mutation(async ({ ctx, input }) => {
+        const { listName, ...rest } = input;
         try {
-          return await ctx.userVenues.addCustom(ctx.user.id, input);
+          // Resolve the destination first: an add that fails must not leave a
+          // folder behind, and `ensureList` is idempotent, so several venues
+          // committed to the same new city folder all land in one.
+          const listId =
+            rest.listId ?? (listName ? (await ctx.userVenues.ensureList(ctx.user.id, listName)).id : undefined);
+          return await ctx.userVenues.addCustom(ctx.user.id, { ...rest, listId });
         } catch (e) {
           throw mapStoreError(e);
         }
@@ -534,10 +560,25 @@ const my = router({
           /** Optional narrowing ("Museums"). Free text — the ticket's example
            *  is a phrase, not an enum. */
           type: z.string().trim().max(60).optional(),
-          limit: z.number().int().min(1).max(10).default(6),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(VENUE_SUGGEST_MAX_CANDIDATES)
+            .default(VENUE_SUGGEST_MAX_CANDIDATES),
         }),
       )
       .mutation(async ({ ctx, input }) => {
+        // GOI-92: a search is a model call, and every candidate it returns is
+        // then a probe. Nothing bounded that from the outside — the candidate
+        // cap limits one search, this limits how many searches an hour.
+        if (!consumeQuota(ctx.user.id, 'suggest')) {
+          throw new TRPCError({
+            code: 'TOO_MANY_REQUESTS',
+            message: `You've run ${VENUE_SUGGEST_PER_HOUR} discovery searches this hour — try again shortly.`,
+          });
+        }
+
         const like = await ctx.userVenues.list(ctx.user.id, input.listId);
         if (like.length === 0) {
           throw new TRPCError({
@@ -717,6 +758,32 @@ const my = router({
           url: googleDriveAuthUrl(cfg, makeSignedState(ctx.user.id, cfg.clientSecret)),
         };
       }),
+
+      /**
+       * Rename the folder briefs are filed in.
+       *
+       * The folder is renamed in the drive itself, so briefs already filed stay
+       * with the ones still to come — see `renameDriveFolder`, which is also
+       * where the failure handling lives. Everything it throws is a message
+       * written for the user, so it is surfaced rather than swallowed.
+       */
+      setFolderName: userProcedure
+        .input(z.object({
+          provider: z.literal('google').default('google'),
+          folderName: z.string().min(1).max(MAX_DRIVE_FOLDER_NAME),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          try {
+            return await renameDriveFolder(ctx.user.id, input.provider, input.folderName, {
+              store: ctx.drives,
+            });
+          } catch (e) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: e instanceof Error ? e.message : 'Renaming the folder failed.',
+            });
+          }
+        }),
 
       disconnect: userProcedure
         .input(z.object({ provider: z.literal('google').default('google') }))

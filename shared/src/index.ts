@@ -539,6 +539,23 @@ export type ProbeOutcome = ProbeSuccess | ProbeProblem;
 export const PROBE_FREE_PER_HOUR = 10;
 export const PROBE_PAID_PER_DAY = 3;
 
+/**
+ * The "Elsewhere" discovery search (GOI-92).
+ *
+ * One search costs a model call plus one probe per candidate, so the candidate
+ * cap and the per-hour search cap are the whole spend control. Eight is chosen
+ * against `PROBE_FREE_PER_HOUR`: a full search plus one retry stays inside the
+ * free probe allowance, so a user is never told "rate limited" halfway through
+ * a list they just asked for. The ticket suggests 20; the site is invite-only,
+ * and eight good matches beat twenty guesses.
+ */
+export const VENUE_SUGGEST_MAX_CANDIDATES = 8;
+export const VENUE_SUGGEST_PER_HOUR = 5;
+/** How many candidates are probed at once. The ticket's 3–5 — enough that a
+ *  list of eight resolves quickly, few enough that one search is not a burst
+ *  of fetches at some venue's small server. */
+export const VENUE_SUGGEST_PROBE_CONCURRENCY = 4;
+
 // ─── Venue filter row (GOI-76) ───────────────────────────────────────────────
 
 /**
@@ -796,4 +813,44 @@ export function classifyEvent(input: ClassificationInput): Classification {
 export function keepKnownCategories(values: unknown): ContentCategory[] {
   if (!Array.isArray(values)) return [];
   return values.filter(isContentCategory);
+}
+
+/**
+ * Where briefs are filed on a connected cloud drive (GOI-91): a single folder
+ * at the root of the user's drive, named by them.
+ *
+ * The rules live in `shared` rather than beside the drive code because three
+ * places have to agree on them — the field that edits the name, the procedure
+ * that accepts it, and the provider that writes it to the drive — and a
+ * browser-side bound that is looser than the server's is just a rejected save
+ * the user could have been warned about while typing.
+ */
+export const DEFAULT_DRIVE_FOLDER = 'Afisz.ka';
+
+/** Longest folder name accepted. Drive's own limit is far higher; this is a
+ *  UI-shaped bound, so the name stays readable in the Newsletter tab. */
+export const MAX_DRIVE_FOLDER_NAME = 100;
+
+/**
+ * Trim and validate a user-supplied folder name, or throw with a message the
+ * UI can show verbatim.
+ *
+ * Control characters are rejected because Drive accepts them and then displays
+ * a name nobody can retype or search for; `/` is rejected because a name
+ * carrying one reads as a path, and nested folders are not what it produces.
+ */
+export function normalizeDriveFolderName(raw: string): string {
+  const name = raw.trim();
+  if (!name) throw new Error('Folder name cannot be empty.');
+  if (name.length > MAX_DRIVE_FOLDER_NAME) {
+    throw new Error(`Folder name cannot be longer than ${MAX_DRIVE_FOLDER_NAME} characters.`);
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(name)) {
+    throw new Error('Folder name cannot contain control characters.');
+  }
+  if (name.includes('/')) {
+    throw new Error('Folder name cannot contain "/" \u2014 briefs go in one folder, not a path.');
+  }
+  return name;
 }

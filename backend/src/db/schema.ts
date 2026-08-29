@@ -131,6 +131,11 @@ export const userLists = pgTable(
   },
   (t) => ({
     userIdx: index('user_lists_user_id_idx').on(t.userId),
+    // A second unique key exists that drizzle cannot express here: a unique
+    // index on (user_id, lower(btrim(name))), declared in 0025. It is what
+    // makes "berlin" and "Berlin " the same folder, and what lets the
+    // Elsewhere flow auto-create a city folder with a plain ON CONFLICT
+    // instead of a read-then-write race (GOI-92).
   }),
 );
 

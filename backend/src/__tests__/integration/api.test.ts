@@ -58,9 +58,20 @@ describe('API integration', () => {
   });
 
   it('venues.list returns the default Warsaw seed', async () => {
-    const { body } = await call<TrpcEnvelope<{ city: string }[]>>('/trpc/venues.list');
-    expect(body.result.data.length).toBeGreaterThan(0);
-    expect(body.result.data.every((v) => v.city === 'Warsaw')).toBe(true);
+    // Asked for by city. `venues` is a global table and vitest runs these
+    // files in parallel against the same Postgres, so by the time this runs
+    // the Elsewhere suite (GOI-92) legitimately has Berlin venues in it — an
+    // unfiltered "every venue is Warsaw" would be asserting the absence of
+    // rows another suite is entitled to add.
+    const { body } = await call<TrpcEnvelope<{ name: string; city: string }[]>>(
+      `/trpc/venues.list?input=${trpcInput({ city: 'Warsaw' })}`,
+    );
+    const returned = body.result.data;
+    expect(returned.length).toBeGreaterThan(0);
+    expect(returned.every((v) => v.city === 'Warsaw')).toBe(true);
+    // Names a seeded venue that no migration renames or removes, so this says
+    // "the seed is served" rather than merely "some Warsaw venue exists".
+    expect(returned.some((v) => v.name === 'Kino Muranów')).toBe(true);
   });
 
   /**

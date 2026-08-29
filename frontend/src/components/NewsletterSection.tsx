@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
   NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency, NewsletterSettings,
 } from '@afisz/shared';
@@ -718,8 +719,8 @@ function DriveCard() {
     <div className="mt-10 border-t-3 border-ink pt-6">
       <h3 className="label-form">Save briefs to a drive</h3>
       <p className="mt-2 max-w-prose text-sm text-muted">
-        Every brief also gets filed as a PDF in an <strong>Afisz.ka</strong> folder on your
-        drive, on the same schedule as the email. AFISZ can only see files it puts there
+        Every brief also gets filed as a PDF, on the same schedule as the email, in a folder
+        of your choosing at the root of your drive. AFISZ can only see files it puts there
         itself — nothing else in your drive.
       </p>
 
@@ -729,11 +730,11 @@ function DriveCard() {
             Google Drive connected{google.accountEmail ? ` — ${google.accountEmail}` : ''}
           </p>
           <p className="mt-1 text-sm text-muted">
-            Folder: {google.folderName}
             {google.lastUploadAt
-              ? ` · last brief filed ${new Date(google.lastUploadAt).toLocaleDateString()}`
-              : ' · no brief filed yet'}
+              ? `Last brief filed ${new Date(google.lastUploadAt).toLocaleDateString()}`
+              : 'No brief filed yet'}
           </p>
+          <FolderNameField current={google.folderName} />
           {google.lastError ? (
             <p className="mt-2 text-sm text-accent">
               Last upload failed: {google.lastError}
@@ -771,6 +772,81 @@ function DriveCard() {
 
       {error ? <p className="mt-3 text-sm text-accent">{error}</p> : null}
     </div>
+  );
+}
+
+/**
+ * The name of the drive folder briefs land in, as an editable field.
+ *
+ * Saving renames the folder in the drive rather than pointing at a new one, so
+ * briefs already filed stay with the ones still to come (see
+ * `renameDriveFolder` on the backend). Kept out of the settings form above on
+ * purpose: that form schedules the newsletter, and a folder rename is a write
+ * against Google that should not ride along with it.
+ */
+function FolderNameField({ current }: { current: string }) {
+  const utils = trpc.useUtils();
+  const [draft, setDraft] = useState(current);
+  const [note, setNote] = useState<string | null>(null);
+
+  // The server is the source of truth: once a rename lands, the draft follows
+  // it rather than sitting there looking unsaved.
+  useEffect(() => {
+    setDraft(current);
+  }, [current]);
+
+  const rename = trpc.my.newsletter.drive.setFolderName.useMutation({
+    onSuccess: async (res) => {
+      setNote(
+        res.recreated
+          ? 'Saved — the folder is created with the next brief.'
+          : 'Renamed in your drive.',
+      );
+      await utils.my.newsletter.drive.status.invalidate();
+    },
+    onError: () => setNote(null),
+  });
+
+  const trimmed = draft.trim();
+  const dirty = trimmed !== current;
+
+  return (
+    <form
+      className="mt-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!dirty || !trimmed) return;
+        setNote(null);
+        rename.mutate({ provider: 'google', folderName: trimmed });
+      }}
+    >
+      <label className="label-form mb-1.5" htmlFor="drive-folder">
+        Folder
+      </label>
+      <div className="flex flex-wrap items-start gap-3.5">
+        <input
+          id="drive-folder"
+          type="text"
+          value={draft}
+          maxLength={MAX_DRIVE_FOLDER_NAME}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={DEFAULT_DRIVE_FOLDER}
+          className="field max-w-[16rem]"
+        />
+        <button
+          type="submit"
+          disabled={!dirty || !trimmed || rename.isPending}
+          className="act act-sm"
+        >
+          {rename.isPending ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+      {rename.error ? (
+        <p className="mt-2 text-sm text-accent">{rename.error.message}</p>
+      ) : note ? (
+        <p className="mt-2 text-sm text-muted">{note}</p>
+      ) : null}
+    </form>
   );
 }
 
