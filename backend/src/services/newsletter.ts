@@ -8,7 +8,12 @@ import { renderBriefHtml } from './newsletter-render.js';
 import { defaultEventStore, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
 import { newsletterFromEmail, sendEmail } from './email.js';
-import { defaultNewsletterStore, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
+import { defaultNewsletterStore, SENT_EVENT_RETENTION_DAYS, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
+import { defaultWantToGoStore, type WantToGoStore } from './want-to-go-store.js';
+import {
+  applyChangeDedup, applyQueueDedup, changeState, isEmptySection, isUrgent, queueCandidates,
+  statesToRecord, urgentSendAllowed, type QueuedChange, type WantToGoSection,
+} from './want-to-go-queue.js';
 import { deliverBriefToDrives, type DeliverOptions, type DriveDeliveryOutcome } from './drive-delivery.js';
 import { lastWarsawTimeAtOrBefore, warsawWeekday } from './scheduler.js';
 import { env } from '../config.js';
@@ -336,6 +341,173 @@ export function buildBriefSections(
 }
 
 /**
+ * How far back the changes block looks.
+ *
+ * Long enough that a cancellation noticed on Friday still reaches a weekly
+ * issue on Monday, short enough that a config coming back after a month of
+ * being switched off does not open with a history lesson. Dedup by state
+ * stops anything inside it being reported twice, so the window only has to be
+ * generous, not exact.
+ */
+export const CHANGE_LOOKBACK_DAYS = 14;
+
+/**
+ * The "want to go" block of one issue (GOI-101), already deduplicated.
+ *
+ * Reads the reader's saved events rather than the venue listing: this is a
+ * queue over things they chose, so a saved event at a venue they have since
+ * stopped following still belongs here. Cancelled events are deliberately
+ * among them — a cancelled row is kept precisely so this can mention it.
+ */
+export async function buildWantToGoSection(
+  sub: Pick<NewsletterSubscription, 'id' | 'userId' | 'wantToGo'>,
+  store: NewsletterStore,
+  wantToGo: WantToGoStore,
+  now: Date,
+): Promise<WantToGoSection> {
+  if (!sub.wantToGo.enabled) return { reminders: [], changes: [] };
+
+  const saved = await wantToGo.list(sub.userId);
+  if (saved.length === 0) return { reminders: [], changes: [] };
+  const byId = new Map(saved.map((e) => [e.id, e]));
+
+  // Reminders. A cancelled event has nothing to remind anyone about — the
+  // changes block below is where it belongs.
+  const live = saved.filter((e) => !e.cancelledAt);
+  const candidates = queueCandidates(live, { ...sub.wantToGo, changesEnabled: sub.wantToGo.changesEnabled }, now);
+  const byState = new Map<string, Set<string>>();
+  for (const state of new Set(candidates.map((c) => c.state))) {
+    byState.set(state, await store.sentStates(sub.id, state, candidates.map((c) => c.event.id)));
+  }
+  const reminders = applyQueueDedup(candidates, byState);
+
+  // Changes.
+  let changes: QueuedChange[] = [];
+  if (sub.wantToGo.changesEnabled) {
+    const since = new Date(now.getTime() - CHANGE_LOOKBACK_DAYS * 86_400_000);
+    const rows = await store.changesFor([...byId.keys()], since);
+    const all: QueuedChange[] = rows.flatMap((r) => {
+      const event = byId.get(r.eventId);
+      return event
+        ? [{ event, type: r.changeType, oldValue: r.oldValue, newValue: r.newValue }]
+        : [];
+    });
+    const changeStates = new Map<string, Set<string>>();
+    for (const type of new Set(all.map((c) => c.type))) {
+      changeStates.set(
+        changeState(type),
+        await store.sentStates(
+          sub.id,
+          changeState(type),
+          all.filter((c) => c.type === type).map((c) => c.event.id),
+        ),
+      );
+    }
+    changes = applyChangeDedup(all, changeStates);
+  }
+
+  return { reminders, changes };
+}
+
+/**
+ * Record what an issue said, so the next one does not say it again.
+ *
+ * Called only after a successful send, and that ordering is the point: a
+ * failed send that had already consumed the states would leave the reader
+ * never told, with the system believing they had been.
+ */
+export async function recordWantToGoSent(
+  configId: string,
+  section: WantToGoSection,
+  store: NewsletterStore,
+  now: Date,
+): Promise<void> {
+  for (const [state, ids] of statesToRecord(section.reminders, section.changes)) {
+    await store.recordSent(configId, state, ids, now);
+  }
+}
+
+/**
+ * The off-schedule sweep (GOI-101): mail the readers whose saved event was
+ * cancelled or moved in the next 48 hours, now rather than at their next
+ * scheduled issue.
+ *
+ * This email is *only* the changes block — no category sections, no reminder
+ * list. It exists to say one thing, and padding it with the week's listings
+ * would bury that thing under them.
+ *
+ * Three conditions, and each is there for a reason. `urgentSend` is the
+ * reader's own switch. `isUrgent` narrows to cancellations and reschedules
+ * inside 48 hours, because those are the two that leave someone standing
+ * outside a dark theatre. And the 12-hour rate limit is what keeps a festival
+ * dropping a day's programme from becoming six emails in an afternoon —
+ * anything accumulating inside the window is not lost, it waits and goes out
+ * together.
+ */
+export async function sendUrgentChanges(
+  store: NewsletterStore = defaultNewsletterStore,
+  now: Date = new Date(),
+  opts: Pick<SweepOptions, 'wantToGo' | 'send' | 'dryRun' | 'only'> = {},
+): Promise<{ sent: number; outcomes: { configId: string; email: string; changes: number }[] }> {
+  const wantToGoStore = opts.wantToGo ?? defaultWantToGoStore;
+  const all = await store.listEnabled();
+  const subs = opts.only
+    ? all.filter((s) => s.userId === opts.only || s.email.toLowerCase() === opts.only!.toLowerCase())
+    : all;
+
+  const outcomes: { configId: string; email: string; changes: number }[] = [];
+  for (const sub of subs) {
+    if (!sub.wantToGo.enabled || !sub.wantToGo.changesEnabled || !sub.wantToGo.urgentSend) continue;
+    if (!urgentSendAllowed(await store.lastUrgentAt(sub.id), now)) continue;
+
+    const section = await buildWantToGoSection(sub, store, wantToGoStore, now);
+    const urgent = section.changes.filter((c) => isUrgent(c, now));
+    if (urgent.length === 0) continue;
+    if (opts.dryRun) {
+      outcomes.push({ configId: sub.id, email: sub.email, changes: urgent.length });
+      continue;
+    }
+
+    const brief = {
+      // Only the changes. The reminders and the category sections keep until
+      // the scheduled issue — they are not why this email exists.
+      sections: [],
+      wantToGo: { reminders: [], changes: urgent },
+      fallbackFrequency: sub.sendCadence,
+      recipientName: sub.recipientName,
+      now,
+    };
+    try {
+      await (opts.send ?? sendEmail)({
+        to: sub.email,
+        from: newsletterFromEmail(),
+        subject: urgentSubject(urgent),
+        html: renderBriefHtml(brief),
+      });
+    } catch (e) {
+      console.error(`[newsletter] urgent send failed for ${sub.email}:`, e);
+      continue;
+    }
+    // After the send, and both stamps together: the rate limit and the dedup
+    // states must not diverge, or a failure would either re-send forever or
+    // silently swallow the change.
+    await store.markUrgentSent(sub.id, now);
+    await recordWantToGoSent(sub.id, { reminders: [], changes: urgent }, store, now);
+    outcomes.push({ configId: sub.id, email: sub.email, changes: urgent.length });
+  }
+  return { sent: outcomes.length, outcomes };
+}
+
+/** Names the event rather than the category — an urgent email is about one
+ *  thing, and the subject line is where that thing should be. */
+function urgentSubject(changes: QueuedChange[]): string {
+  const first = changes[0]!;
+  const verb = first.type === 'cancelled' ? 'cancelled' : 'moved';
+  if (changes.length === 1) return `AFISZ — ${first.event.title} has been ${verb}`;
+  return `AFISZ — ${changes.length} events you saved have changed`;
+}
+
+/**
  * Guard against double sends — a restart re-running the tick inside the same
  * hour. Since sections can now carry different cadences, there is no single
  * "period" to measure against; what actually bounds sends is the hourly tick
@@ -366,6 +538,8 @@ export interface BriefOutcome {
 }
 
 export interface SweepOptions {
+  /** The saved-events store the queue reads (GOI-101). Injected for tests. */
+  wantToGo?: WantToGoStore;
   /** Work out every outcome without sending or recording anything. */
   dryRun?: boolean;
   /** Ignore the schedule (due slot + recent-send guard) and brief everyone
@@ -380,6 +554,14 @@ export interface SweepOptions {
   events?: Pick<EventStore, 'listUpcoming'>;
   /** Drive delivery seams (GOI-91), injected in tests. */
   drive?: DeliverOptions;
+  /**
+   * The mail seam. Injected so a test can make a send *fail* — which is the
+   * only way to check that a failed send does not consume the queue's dedup
+   * states (GOI-101). Without it that guarantee is untestable, and it is the
+   * one failure mode nothing can recover from: the reader is never told, and
+   * the next issue skips what it believes it already said.
+   */
+  send?: typeof sendEmail;
   /** Skip filing the PDF copy entirely. The public API's `dryRun` already
    *  returns before this point; this is for a caller that wants the email
    *  and nothing else. */
@@ -449,14 +631,25 @@ export async function sendNewsletterBriefs(
         limit: 500,
       });
       const sections = buildBriefSections(events, sub, venues, now);
-      if (sections.length === 0) {
+
+      // The saved-events queue counts as content (GOI-101). An issue whose
+      // cinema, museums and theatre sections are all empty but which has three
+      // saved events tomorrow *is* worth sending — in August it is likely to
+      // be the only thing carrying the newsletter, and that is the intended
+      // behaviour rather than a degenerate case.
+      const wantToGo = await buildWantToGoSection(sub, store, opts.wantToGo ?? defaultWantToGoStore, now);
+
+      if (sections.length === 0 && isEmptySection(wantToGo)) {
         outcomes.push({
           ...base, status: 'skipped', reason: 'no-events', eventCount: 0,
-          detail: `${events.length} upcoming event(s) at ${venues.length} venue(s) in the window, no section was due with anything in it`,
+          detail: `${events.length} upcoming event(s) at ${venues.length} venue(s) in the window, no section was due with anything in it and nothing saved is coming up`,
         });
         continue;
       }
-      const eventCount = sections.reduce((n, sec) => n + sec.events.length, 0);
+      const eventCount =
+        sections.reduce((n, sec) => n + sec.events.length, 0)
+        + wantToGo.reminders.length
+        + wantToGo.changes.length;
       if (opts.dryRun) {
         outcomes.push({ ...base, status: 'sent', eventCount, detail: 'dry run — not actually sent' });
         continue;
@@ -465,13 +658,14 @@ export async function sendNewsletterBriefs(
       // set of arguments rather than assembled twice.
       const brief = {
         sections,
+        wantToGo,
         fallbackFrequency: plannedFrequency(sub),
         recipientName: sub.recipientName,
         // Scoped to this subscriber's venues (GOI-33).
         festival: currentFestival(venues.map((v) => v.name)),
         now,
       };
-      await sendEmail({
+      await (opts.send ?? sendEmail)({
         to: sub.email,
         from: newsletterFromEmail(),
         subject: briefSubject(sections),
@@ -480,6 +674,10 @@ export async function sendNewsletterBriefs(
       // By config id, not user id: a reader may hold one newsletter per folder
       // since GOI-100, and stamping the user would mark all of them sent.
       await store.markSent(sub.id, now);
+      // After the send, never before (GOI-101): a failed send that had already
+      // consumed the states would leave the reader never told, with the system
+      // believing they had been.
+      await recordWantToGoSent(sub.id, wantToGo, store, now);
 
       // File a PDF copy on any drive this user connected (GOI-91). After the
       // email and after `markSent` on purpose: `deliverBriefToDrives` never
@@ -570,6 +768,27 @@ export function startNewsletterScheduler(): { stop: () => void } {
       }
     } catch (e) {
       console.error(`[newsletter] ${label} failed:`, e);
+    }
+
+    // Off-schedule change emails ride the same tick (GOI-101). Its own rate
+    // limit — one per config per 12 hours — is what makes running it this
+    // often safe; the tick only decides how soon a cancellation can go out,
+    // not how often anyone is mailed.
+    try {
+      const urgent = await sendUrgentChanges();
+      if (urgent.sent > 0) console.log(`[newsletter] ${urgent.sent} urgent change email(s) sent`);
+    } catch (e) {
+      console.error('[newsletter] urgent sweep failed:', e);
+    }
+
+    // Retention (GOI-100): send state older than 120 days refers to events
+    // months past and is telling nobody anything.
+    try {
+      const before = new Date(Date.now() - SENT_EVENT_RETENTION_DAYS * 86_400_000);
+      const dropped = await defaultNewsletterStore.pruneSentEvents(before);
+      if (dropped > 0) console.log(`[newsletter] pruned ${dropped} expired send-state row(s)`);
+    } catch (e) {
+      console.error('[newsletter] send-state prune failed:', e);
     }
   };
 

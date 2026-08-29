@@ -101,6 +101,12 @@ export const events = pgTable(
     scrapedAt: timestamp('scraped_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Set when a successful scrape stopped listing an event that somebody had
+     * saved (GOI-101). The row is kept rather than deleted so their bookmark
+     * survives to be told about; every listing query excludes it.
+     */
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   },
   (t) => ({
     venueIdx: index('events_venue_id_idx').on(t.venueId),

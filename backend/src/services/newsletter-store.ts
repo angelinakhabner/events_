@@ -1,7 +1,7 @@
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type {
-  NewsletterCategoryRule, NewsletterDetail, NewsletterRuleCadence, NewsletterSendCadence,
-  NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+  EventChangeType, NewsletterCategoryRule, NewsletterDetail, NewsletterRuleCadence,
+  NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
 } from '@afisz/shared';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
@@ -62,6 +62,19 @@ export interface NewsletterStore {
   recordSent(configId: string, state: string, eventIds: string[], at: Date): Promise<void>;
   /** Retention: drop send state older than `before`. */
   pruneSentEvents(before: Date): Promise<number>;
+
+  /** Changes noticed to any of `eventIds` since `since` (GOI-101), oldest
+   *  first — a rescheduled-then-cancelled event reports both. */
+  changesFor(eventIds: string[], since: Date): Promise<EventChangeRow[]>;
+}
+
+/** One row of `event_changes`, as the queue reads it. */
+export interface EventChangeRow {
+  eventId: string;
+  changeType: EventChangeType;
+  oldValue: string | null;
+  newValue: string | null;
+  detectedAt: string;
 }
 
 /** Send state older than this is no longer telling anyone anything — the
@@ -304,6 +317,27 @@ export class DbNewsletterStore implements NewsletterStore {
       .returning({ eventId: schema.newsletterSentEvents.eventId });
     return rows.length;
   }
+
+  async changesFor(eventIds: string[], since: Date): Promise<EventChangeRow[]> {
+    if (eventIds.length === 0) return [];
+    const rows = await getDb()
+      .select()
+      .from(schema.eventChanges)
+      .where(
+        and(
+          inArray(schema.eventChanges.eventId, eventIds),
+          gte(schema.eventChanges.detectedAt, since),
+        ),
+      )
+      .orderBy(schema.eventChanges.detectedAt);
+    return rows.map((r) => ({
+      eventId: r.eventId,
+      changeType: r.changeType as EventChangeType,
+      oldValue: r.oldValue,
+      newValue: r.newValue,
+      detectedAt: r.detectedAt.toISOString(),
+    }));
+  }
 }
 
 /** A config as callers outside this process may see it. The internal user id
@@ -407,6 +441,15 @@ export class InMemoryNewsletterStore implements NewsletterStore {
       }
     }
     return dropped;
+  }
+
+  /** Seeded by tests; the DB store reads `event_changes`. */
+  changes: EventChangeRow[] = [];
+
+  async changesFor(eventIds: string[], since: Date): Promise<EventChangeRow[]> {
+    return this.changes
+      .filter((c) => eventIds.includes(c.eventId) && new Date(c.detectedAt) >= since)
+      .sort((a, b) => a.detectedAt.localeCompare(b.detectedAt));
   }
 }
 

@@ -59,6 +59,13 @@ export interface Event {
   sourceUrl: string;
   sourceId: string | null;
   scrapedAt: string;
+  /**
+   * Set when a successful scrape stopped listing an event somebody had saved
+   * (GOI-101). Such a row is kept rather than deleted, so their bookmark
+   * survives to be told about — but it is not on, and every listing excludes
+   * it. Only the reader's own "want to go" list still shows it.
+   */
+  cancelledAt?: string | null;
 }
 
 /** An event's kind, defaulting rows that predate GOI-67 to `timed`. */
@@ -317,6 +324,79 @@ export interface NewsletterSettings {
   categoryRules: NewsletterCategoryRule[];
   enabled: boolean;
   lastSentAt: string | null;
+}
+
+/**
+ * Where a saved event has got to, as the newsletter reports it (GOI-101).
+ *
+ * These are *escalation* states, not categories: one saved play passes through
+ * several of them as its date approaches, and each is a different thing to
+ * tell someone. That is why the state is the dedup key rather than the event —
+ * see `newsletter_sent_events`.
+ */
+export type WantToGoState = 'tomorrow' | 'this_week' | 'last_chance';
+
+/** What a change to a saved event was. */
+export type EventChangeType = 'cancelled' | 'rescheduled' | 'moved' | 'sold_out';
+
+/**
+ * Which state a saved event is in for this issue, or null when it is outside
+ * the reader's horizon and there is nothing to say yet.
+ *
+ * `last_chance` wins over the other two, because "this is the final
+ * performance" is the more urgent fact even on the day before: a reader who is
+ * told only "tomorrow" will assume there is another one next week.
+ *
+ * `siblings` is every other future occurrence of the same production, which is
+ * what "final performance" is measured against.
+ */
+export function wantToGoState(
+  event: { id: string; startsAt: string; endsAt?: string | null; kind?: string | null },
+  siblings: { id: string; startsAt: string }[],
+  now: Date,
+  horizonDays: number,
+): WantToGoState | null {
+  const starts = new Date(event.startsAt);
+  const horizon = new Date(now.getTime() + horizonDays * 86_400_000);
+
+  // An exhibition runs continuously, so its urgency is its closing date
+  // rather than its start — which has usually long passed.
+  const closes = event.kind === 'exhibition' && event.endsAt ? new Date(event.endsAt) : null;
+  if (closes) {
+    if (closes < now) return null;
+    return closes <= horizon ? 'last_chance' : null;
+  }
+
+  if (starts < now || starts > horizon) return null;
+
+  // The final performance of a run. Anything later than this one, for the same
+  // production, means it is not.
+  const isLast = !siblings.some((s) => s.id !== event.id && new Date(s.startsAt) > starts);
+  if (isLast && siblings.length > 1) return 'last_chance';
+
+  return isTomorrow(starts, now) ? 'tomorrow' : 'this_week';
+}
+
+/** Is `at` on the calendar day after `now`, in Warsaw? */
+function isTomorrow(at: Date, now: Date): boolean {
+  const day = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw' }).format(d);
+  return day(at) === day(new Date(now.getTime() + 86_400_000));
+}
+
+/**
+ * Group occurrences into productions (GOI-101).
+ *
+ * There is no production-level grouping in the schema — an event row is one
+ * performance — so a run of the same play is derived from `(venueId, title)`.
+ * That is a heuristic and it has a known failure: two genuinely different
+ * works sharing a title at one venue would be folded together, and a
+ * production that tours between venues would be split. Both are rarer than the
+ * ordinary case it gets right, and the alternative is inventing a productions
+ * table for one caller, which is a schema change that should be made when
+ * something else needs it too.
+ */
+export function productionKey(event: { venueId: string; title: string }): string {
+  return `${event.venueId}::${event.title.trim().toLowerCase()}`;
 }
 
 /** Days in the span a send cadence covers — the gap between two issues. */

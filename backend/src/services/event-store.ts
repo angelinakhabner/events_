@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
 import type { Event, EventKind, EventVenue, Category } from '@afisz/shared';
 
@@ -122,6 +122,9 @@ export class EventStore {
         gte(schema.events.startsAt, now),
         and(eq(schema.events.kind, 'exhibition'), gte(schema.events.endsAt, now)),
       )!,
+      // A cancelled row is kept only so the reader who saved it can be told
+      // (GOI-101); it is not on, so it is not in any listing.
+      isNull(schema.events.cancelledAt),
     ];
     if (input.until) conditions.push(lte(schema.events.startsAt, input.until));
     if (input.fromDay) conditions.push(warsawDayWindow(input.fromDay, input.toDay));
@@ -234,6 +237,7 @@ export class EventStore {
       .from(schema.events)
       .where(
         and(
+          isNull(schema.events.cancelledAt),
           inArray(schema.events.venueId, venueIds),
           // Same reasoning as listUpcoming: a museum running a three-month
           // show is not dark, even though nothing *starts* in the future.
@@ -357,6 +361,7 @@ export class EventStore {
         -- "Upcoming" has to mean the same thing it means in the listing
         -- (GOI-67): an exhibition that opened in June and closes in September
         -- is on today, and is selected by its closing date.
+        AND e.cancelled_at IS NULL
         AND (e.starts_at >= ${now} OR (e.kind = 'exhibition' AND e.ends_at >= ${now}))
       WHERE ${input.category ? sql`v.category = ${input.category}` : sql`true`}
         AND ${input.city ? sql`v.city = ${input.city}` : sql`true`}
@@ -499,5 +504,6 @@ function rowToEvent(
     sourceUrl: row.sourceUrl,
     sourceId: row.sourceId,
     scrapedAt: row.scrapedAt.toISOString(),
+    cancelledAt: row.cancelledAt ? row.cancelledAt.toISOString() : null,
   };
 }
