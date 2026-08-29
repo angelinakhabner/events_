@@ -31,7 +31,11 @@ import {
   POLICY_UPDATED,
   SITE_URL,
   TAGLINE,
+  TERMS_HEADING,
+  TERMS_SECTIONS,
+  TERMS_UPDATED,
   type PolicyBlock,
+  type PolicySection,
 } from './content.js';
 import { LANDING_ID } from './id.js';
 
@@ -65,6 +69,23 @@ function paragraph(text: string): string {
 function block(b: PolicyBlock): string {
   if (b.kind === 'p') return paragraph(b.text);
   return `<ul>${b.items.map((item) => `<li>${prose(item)}</li>`).join('')}</ul>`;
+}
+
+/**
+ * One document's sections as HTML. Both the policy and the terms are the same
+ * shape and get the same treatment; `prefix` keeps their anchors apart, since
+ * both have a section called "Complaints".
+ */
+function documentSections(sections: readonly PolicySection[], prefix: string): string {
+  return sections
+    .map(
+      (section) => `
+        <section class="afisz-policy-section" id="${escapeHtml(prefix)}-${escapeHtml(slug(section.heading))}">
+          <h3>${escapeHtml(section.heading)}</h3>
+          ${section.blocks.map(block).join('\n          ')}
+        </section>`,
+    )
+    .join('');
 }
 
 /**
@@ -124,13 +145,8 @@ export function landingHead({ noindex = false }: { noindex?: boolean } = {}): st
 
 /** The page itself: masthead, what it is, the invitation note, contact, policy. */
 export function landingBody(): string {
-  const policy = POLICY_SECTIONS.map(
-    (section) => `
-        <section class="afisz-policy-section" id="privacy-${escapeHtml(slug(section.heading))}">
-          <h3>${escapeHtml(section.heading)}</h3>
-          ${section.blocks.map(block).join('\n          ')}
-        </section>`,
-  ).join('');
+  const policy = documentSections(POLICY_SECTIONS, 'privacy');
+  const terms = documentSections(TERMS_SECTIONS, 'terms');
 
   return `
     <div class="afisz-landing-inner">
@@ -160,10 +176,20 @@ export function landingBody(): string {
           <p class="afisz-updated">Last updated ${escapeHtml(POLICY_UPDATED)}</p>
           ${policy}
         </section>
+
+        <!-- GOI-95: the regulamin belongs on the page a stranger reads, not
+             only behind the invite. Art. 8(1)(1) UŚUDE requires it to be
+             available *before* the service is used, and for someone who has
+             not been invited yet, this page is before. -->
+        <section class="afisz-section" id="terms">
+          <h2 class="afisz-h2">${escapeHtml(TERMS_HEADING)}</h2>
+          <p class="afisz-updated">Last updated ${escapeHtml(TERMS_UPDATED)}</p>
+          ${terms}
+        </section>
       </main>
 
       <footer class="afisz-footer">
-        <p>${escapeHtml(NAME)} · <a href="mailto:${escapeHtml(CONTACT_EMAIL)}">${escapeHtml(CONTACT_EMAIL)}</a> · <a href="#privacy">Privacy</a></p>
+        <p>${escapeHtml(NAME)} · <a href="mailto:${escapeHtml(CONTACT_EMAIL)}">${escapeHtml(CONTACT_EMAIL)}</a> · <a href="#privacy">Privacy</a> · <a href="#terms">Terms</a></p>
       </footer>
     </div>`;
 }
