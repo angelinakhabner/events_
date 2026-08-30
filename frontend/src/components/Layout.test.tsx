@@ -3,7 +3,7 @@
  * on every page — art. 8(1)(1) UŚUDE requires the regulamin to be *available*,
  * and a document you can only reach by typing its URL is not.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Layout } from './Layout';
@@ -52,5 +52,23 @@ describe('Layout footer', () => {
   it('still renders the page it wraps', () => {
     renderLayout();
     expect(screen.getByText('page body')).toBeInTheDocument();
+  });
+});
+
+describe('Layout wordmark', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('shows the plain AFISZ wordmark outside the dev preview', () => {
+    vi.stubEnv('VITE_APP_VARIANT', '');
+    renderLayout();
+    expect(screen.getByText('AFISZ')).toBeInTheDocument();
+    expect(screen.queryByText('DEV')).not.toBeInTheDocument();
+  });
+
+  it('marks the wordmark with a DEV chip in the dev-preview build', () => {
+    vi.stubEnv('VITE_APP_VARIANT', 'dev');
+    renderLayout();
+    expect(screen.getByText('AFISZ')).toBeInTheDocument();
+    expect(screen.getByText('DEV')).toBeInTheDocument();
   });
 });

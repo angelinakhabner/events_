@@ -39,6 +39,35 @@ export function briefWindowDays(frequency: NewsletterFrequency): number {
   return sendCadenceDays(frequency);
 }
 
+/**
+ * How far ahead the *fetch* has to reach for one config: the widest window any
+ * of its sections can ask for.
+ *
+ * Not `briefWindowDays(plannedFrequency(sub))`, which is what both callers used
+ * to pass. That collapses the config to a cadence first, and a cadence tops out
+ * at 30 days — so a rule with `lookaheadDays` beyond a month (the schema allows
+ * 90) had its section built from a 30-day fetch and silently lost everything
+ * past day 30. The section still claimed the wider window in the subject line
+ * and the PDF, which made the loss invisible: a "next 60 days" theatre section
+ * that stopped at 30 looked like a quiet two months rather than a truncated
+ * query.
+ *
+ * `buildBriefSections` filters by each section's own window afterwards, so
+ * fetching wide costs nothing but the rows.
+ */
+export function briefFetchWindowDays(
+  sub: { sendCadence: NewsletterSendCadence; categoryRules: NewsletterCategoryRule[] },
+  now: Date = new Date(),
+): number {
+  return sub.categoryRules.reduce(
+    (widest, rule) => Math.max(widest, deriveWindowDays(sub.sendCadence, rule, now)),
+    // A config with no rules is one section on the send cadence — the floor
+    // here rather than a special case, so an all-monthly-rules config cannot
+    // come out narrower than the issue it rides in.
+    sendCadenceDays(sub.sendCadence),
+  );
+}
+
 /** Warsaw wall-clock hour of an ISO instant. */
 function warsawHour(iso: string): number {
   const h = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false })
@@ -635,7 +664,7 @@ export async function sendNewsletterBriefs(
       const events = await eventStore.listUpcoming({
         venueIds: venues.map((v) => v.id),
         now,
-        until: new Date(now.getTime() + briefWindowDays(plannedFrequency(sub)) * 24 * 3_600_000),
+        until: new Date(now.getTime() + briefFetchWindowDays(sub, now) * 24 * 3_600_000),
         limit: 500,
       });
       const sections = buildBriefSections(events, sub, venues, now);

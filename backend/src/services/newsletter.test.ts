@@ -3,6 +3,7 @@ import type { Event, NewsletterCategoryRule } from '@afisz/shared';
 import type { BriefScope } from './newsletter.js';
 import {
   briefWindowDays,
+  briefFetchWindowDays,
   selectBriefEvents,
   isDue,
   dueSlot,
@@ -88,6 +89,36 @@ function makeRule(over: Partial<NewsletterCategoryRule> & { category: string }):
 function scope(over: Partial<BriefScope> = {}): BriefScope {
   return { windowDays: 1, venueIds: [], ...over };
 }
+
+describe('briefFetchWindowDays', () => {
+  it('is the send cadence when there are no rules', () => {
+    expect(briefFetchWindowDays(makeSub({ sendCadence: 'weekly' }), NOW)).toBe(7);
+  });
+
+  it('never comes out narrower than the issue carrying it', () => {
+    // A monthly section in a weekly newsletter covers 28 days; the floor only
+    // has to make sure a *narrower* set of rules can't shrink the fetch.
+    const sub = makeSub({
+      sendCadence: 'weekly',
+      categoryRules: [makeRule({ category: 'cinema', cadence: 'every_issue' })],
+    });
+    expect(briefFetchWindowDays(sub, NOW)).toBe(7);
+  });
+
+  it('reaches as far as the widest lookahead override, past a month', () => {
+    // The bug this replaced: the fetch was derived from a *cadence*, which
+    // tops out at 30 days, so a 60-day section was built from 30 days of
+    // events and lost the rest without saying so.
+    const sub = makeSub({
+      sendCadence: 'weekly',
+      categoryRules: [
+        makeRule({ category: 'cinema' }),
+        makeRule({ category: 'theatre', cadence: 'monthly', lookaheadDays: 60, sortOrder: 1 }),
+      ],
+    });
+    expect(briefFetchWindowDays(sub, NOW)).toBe(60);
+  });
+});
 
 describe('briefWindowDays', () => {
   it('is a day, a week or a month', () => {
@@ -487,6 +518,32 @@ describe('sendNewsletterBriefs', () => {
     expect(queries[0]!.now).toEqual(NOW);
     // Weekly → seven days ahead.
     expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 7 * 24 * 3_600_000);
+  });
+
+  it('fetches as far ahead as the widest section reaches, not as far as the cadence', async () => {
+    // A 60-day lookahead on a weekly newsletter: the query has to cover the
+    // section, or the section is silently truncated at the cadence's 30 days
+    // while still claiming the wider window in the subject line and the PDF.
+    const store = await storeWith({
+      email: 'a@b.pl',
+      sendCadence: 'weekly',
+      venueIds: ['v1', 'v2'],
+      sendHour: 8,
+      sendWeekday: 1,
+      enabled: true,
+      categoryRules: [
+        { category: 'cinema', cadence: 'monthly', cadenceWeekday: null, detail: 'short', timeFilter: 'any', lookaheadDays: 60, sortOrder: 0 },
+      ],
+    });
+    const queries: EventListInput[] = [];
+    await sendNewsletterBriefs(store, NOW, {
+      ...deps(await venuesFollowedByU1()),
+      events: { listUpcoming: async (q = {}) => { queries.push(q); return []; } },
+      dryRun: true,
+      force: true,
+    });
+
+    expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 60 * 24 * 3_600_000);
   });
 
   it('only restricts the sweep to one subscriber', async () => {

@@ -43,9 +43,37 @@ function landingPlugin(): Plugin {
   };
 }
 
+/**
+ * The dev-preview build ships a DEV-marked variant of the app icon so the
+ * browser tab, the bookmark and the installed PWA are distinguishable from
+ * production at a glance. Both icon sets are committed under public/icons;
+ * index.html references the production set, and this plugin rewrites those
+ * references when the build is the dev one. Keeping production as the default
+ * means `npm run dev` and any build without VITE_APP_VARIANT set behave
+ * exactly as before.
+ *
+ * It runs after landingPlugin (which is `pre`), so the title it prefixes is
+ * whichever one landingHead generated — matched by shape rather than by text,
+ * so changing the landing copy cannot silently drop the DEV marker.
+ *
+ * VITE_APP_VARIANT is set per build step in .github/workflows/deploy-frontend.yml.
+ */
+function appVariantIcons(variant: string | undefined): Plugin {
+  return {
+    name: 'afisz-app-variant-icons',
+    transformIndexHtml(html) {
+      if (variant !== 'dev') return html;
+      return html
+        .replace(/icons\/afisz-app-icon/g, 'icons/afisz-dev-app-icon')
+        .replace('/manifest.webmanifest', '/manifest.dev.webmanifest')
+        .replace(/<title>(.*?)<\/title>/, '<title>DEV · $1</title>');
+    },
+  };
+}
+
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
-  plugins: [react(), landingPlugin()],
+  plugins: [react(), landingPlugin(), appVariantIcons(process.env.VITE_APP_VARIANT)],
   resolve: {
     alias: {
       '@afisz/shared': path.resolve(__dirname, '../shared/src/index.ts'),

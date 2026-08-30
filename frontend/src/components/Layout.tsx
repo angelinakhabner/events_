@@ -9,6 +9,10 @@ import { clearSessionToken, isLoggedIn } from '../lib/auth';
  *
  * Below `md` the nav moves to a fixed bottom tab bar, which is why `main`
  * carries bottom padding there: the bar sits over the end of the page.
+ *
+ * On the dev preview the wordmark carries a DEV chip, matching the DEV-marked
+ * app icon that build ships — so a screenshot of the staging site is never
+ * mistaken for production.
  */
 export function Layout() {
   return (
@@ -19,6 +23,7 @@ export function Layout() {
             AFISZ
           </span>
           <span aria-hidden className="inline-block h-[7px] w-[7px] md:h-2.5 md:w-2.5 bg-accent" />
+          <DevBadge />
         </NavLink>
 
         <nav className="hidden md:flex items-center gap-10">
@@ -48,6 +53,16 @@ export function Layout() {
         <TabLink to="/my">/my</TabLink>
       </nav>
     </div>
+  );
+}
+
+/** Renders nothing outside the dev-preview build. */
+function DevBadge() {
+  if (import.meta.env.VITE_APP_VARIANT !== 'dev') return null;
+  return (
+    <span className="ml-1 px-1.5 py-0.5 bg-accent text-paper font-display text-[11px] md:text-[15px] leading-none tracking-[1px] self-center">
+      DEV
+    </span>
   );
 }
 
