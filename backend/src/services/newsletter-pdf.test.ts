@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { Event, Festival } from '@afisz/shared';
-import { renderBriefPdf, briefPdfFilename } from './newsletter-pdf.js';
+import { renderBriefPdf, briefPdfFilename, resolveFontDir } from './newsletter-pdf.js';
 import type { BriefSection } from './newsletter-render.js';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * The PDF is checked by reading it back rather than by byte-comparing a
@@ -168,5 +171,32 @@ describe('briefPdfFilename', () => {
     // 23:30Z on the 9th is already 01:30 on the 10th in Warsaw.
     expect(briefPdfFilename(new Date('2026-09-09T23:30:00.000Z'), 'daily'))
       .toBe('afisz-2026-09-10-daily.pdf');
+  });
+});
+
+/**
+ * GOI-96: the fonts were addressed as a fixed `../../assets/fonts` from this
+ * module, which only ever pointed at the right place when the brief ran as
+ * TypeScript. Built, the same path resolved inside `dist`, where the fonts
+ * are not, and generating a brief failed with a bare ENOENT.
+ */
+describe('resolveFontDir', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const backend = path.resolve(here, '../..');
+
+  it('finds the one copy of the fonts from the source layout', () => {
+    expect(resolveFontDir(here)).toBe(path.join(backend, 'assets', 'fonts'));
+    expect(existsSync(path.join(resolveFontDir(here), 'DejaVuSans.subset.ttf'))).toBe(true);
+  });
+
+  // The path `tsc -p tsconfig.build.json` actually emits to. Nothing copies
+  // `assets/` into `dist`, so the fonts have to be found above it.
+  it('finds them from the compiled dist layout too', () => {
+    const fromDist = path.join(backend, 'dist', 'backend', 'src', 'services');
+    expect(resolveFontDir(fromDist)).toBe(path.join(backend, 'assets', 'fonts'));
+  });
+
+  it('says what is missing rather than throwing a bare ENOENT', () => {
+    expect(() => resolveFontDir(path.parse(here).root)).toThrow(/DejaVuSans\.subset\.ttf/);
   });
 });

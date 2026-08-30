@@ -294,7 +294,7 @@ describe('auth + /my flow (in-process)', () => {
     const res = await trpcCall('my.newsletter.preview', {
       body: {
         email: `hana-${RUN}@example.com`,
-        frequency: 'weekly',
+        sendCadence: 'weekly',
         venueIds: [],
         sendHour: 9,
         sendWeekday: 4,

@@ -59,8 +59,38 @@ function WantToGoButton({ event }: { event: Event }) {
       onClick={() => (saved ? remove.mutate({ eventId: event.id }) : add.mutate({ eventId: event.id }))}
       className={`act act-inherit ${saved ? 'act-on' : ''}`}
     >
-      {saved ? '♥ Going' : '♡ Want to go'}
+      <StableLabel widest={WANT_TO_GO}>{saved ? GOING : WANT_TO_GO}</StableLabel>
     </button>
+  );
+}
+
+const WANT_TO_GO = '♡ Want to go';
+const GOING = '♥ Going';
+
+/**
+ * A label that keeps its width when its text changes (GOI-62).
+ *
+ * "♡ Want to go" and "♥ Going" differ by five characters, and this button is
+ * the first item in a `flex flex-wrap` row. On a desktop row with space to
+ * spare, that difference is absorbed by the gap after it. On a phone, where
+ * the row is already wrapping, it is not: pressing the button re-measures
+ * every item after it, so "Nearest screenings", "Add to calendar" and "Share"
+ * hop between lines — and the button itself, having shrunk, is left sitting
+ * away from the buttons it is supposed to sit beside. The reported symptom
+ * was the button moving and losing its alignment; the cause was the row
+ * reflowing underneath it.
+ *
+ * So the wider of the two labels is rendered, invisible, to hold the width,
+ * and the live one is laid over it. The sizer stays in normal flow, which is
+ * what keeps the button's baseline fixed too — `.act-row` aligns on baselines,
+ * and an absolutely-positioned label alone would have none to contribute.
+ */
+function StableLabel({ widest, children }: { widest: string; children: string }) {
+  return (
+    <span className="relative inline-block whitespace-nowrap">
+      <span aria-hidden className="invisible">{widest}</span>
+      <span className="absolute inset-0 text-left">{children}</span>
+    </span>
   );
 }
 

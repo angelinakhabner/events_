@@ -43,14 +43,21 @@ const event = (over: Partial<Event> = {}): Event =>
 async function setup() {
   const store = new InMemoryNewsletterStore();
   await store.save('u1', {
-    email: 'ada@example.com', frequency: 'daily', venueIds: ['v1'],
+    email: 'ada@example.com', sendCadence: 'daily', venueIds: ['v1'],
     sendHour: 8, enabled: true,
   });
   const venues = new InMemoryUserVenueStore([venue('v1', 'Kinoteka')]);
   await venues.ensureSeeded('u1');
   return {
     store,
-    deps: { venues, events: { listUpcoming: async () => [event()] } },
+    deps: {
+      venues,
+      events: { listUpcoming: async () => [event()] },
+      // Injected for the same reason `venues` and `events` are: without it the
+      // sweep reaches for the process-wide store, and the test's behaviour
+      // starts depending on whether DATABASE_URL happens to be set (GOI-101).
+      wantToGo: { list: async () => [] },
+    },
   };
 }
 

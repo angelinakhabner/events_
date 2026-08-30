@@ -38,12 +38,13 @@ const FESTIVAL: Festival = {
   startDate: '2026-06-19',
   endDate: '2026-08-30',
   description: 'Open-air summer screenings on the Vistula boulevards — free entry, films at dusk.',
+  imageUrl: null,
   status: 'ongoing',
 };
 
 /** A one-section brief — the shape most of these assertions care about. */
 function section(over: Partial<BriefSection> = {}): BriefSection {
-  return { category: '', frequency: 'daily', detail: 'short', events: [makeEvent()], ...over };
+  return { category: '', windowDays: 1, detail: 'short', events: [makeEvent()], ...over };
 }
 
 function render(over: Partial<Parameters<typeof renderBriefHtml>[0]> = {}) {
@@ -86,7 +87,7 @@ describe('renderBriefHtml — content', () => {
   });
 
   it('switches the masthead and subject wording for weekly briefs', () => {
-    const html = render({ sections: [section({ frequency: 'weekly' })] });
+    const html = render({ sections: [section({ windowDays: 7 })] });
     expect(html).toContain('AFISZ · WEEKLY');
     expect(html).toContain('This week in<br>Warsaw');
   });
@@ -96,11 +97,11 @@ describe('renderBriefHtml — content', () => {
       makeEvent({ title: 'Film A', startsAt: '2026-07-22T18:00:00+02:00' }),
       makeEvent({ title: 'Film B', startsAt: '2026-07-23T20:00:00+02:00' }),
     ];
-    const weekly = render({ sections: [section({ frequency: 'weekly', events })] });
+    const weekly = render({ sections: [section({ windowDays: 7, events })] });
     expect(dayHeadings(weekly)).toEqual(['WED 22 JUL', 'THU 23 JUL']);
 
     // A daily brief is one day by definition — the design shows no day label.
-    const daily = render({ sections: [section({ frequency: 'daily', events: [events[0]!] })] });
+    const daily = render({ sections: [section({ windowDays: 1, events: [events[0]!] })] });
     expect(dayHeadings(daily)).toEqual([]);
   });
 
@@ -356,7 +357,7 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
   it('keeps the same title on different days as separate cards in a weekly brief', () => {
     const html = render({
       sections: [section({
-        frequency: 'weekly',
+        windowDays: 7,
         events: [
           at('2026-07-22T18:00:00+02:00', 'Kinoteka', { title: 'Chungking Express' }),
           at('2026-07-24T18:00:00+02:00', 'Kinoteka', { title: 'Chungking Express' }),
