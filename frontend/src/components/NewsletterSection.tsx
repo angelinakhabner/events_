@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
   NewsletterCategoryRule, NewsletterDetail, NewsletterRuleCadence, NewsletterSendCadence,
@@ -6,6 +6,7 @@ import type {
 } from '@afisz/shared';
 import { allowedRuleCadences, DEFAULT_WANT_TO_GO, deriveWindow } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
+import { readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
 import { briefSummary } from '../lib/newsletter';
@@ -239,25 +240,31 @@ function NewsletterForm({
   const preview = trpc.my.newsletter.preview.useMutation({
     onSuccess: (data) => downloadPdf(data.pdf),
   });
-  // GOI-102. Answers the one question a preview cannot: does it arrive, and
-  // does it survive my mail client.
-  const sendTest = trpc.my.newsletter.sendTest.useMutation();
+  /** What the last save/generate actually sent — `readableApiError` reads the
+   *  field names off it to tell a bad value apart from a field this build does
+   *  not have (see `api-error.ts`). A ref, not state: it is only ever read
+   *  while rendering an error the request that set it produced. */
+  const lastSent = useRef<unknown>(null);
 
-  const payload = () => ({
-    email: email.trim(),
-    recipientName: recipientName.trim() || null,
-    folderId: null,
-    name: saved?.name ?? 'Newsletter',
-    sendCadence,
-    sendHour,
-    sendMinute,
-    sendWeekday: sendCadence === 'weekly' ? sendWeekday : null,
-    sendDayOfMonth: sendCadence === 'monthly' ? sendDayOfMonth : null,
-    venueIds,
-    categoryRules: rules,
-    wantToGo,
-    enabled,
-  });
+  const payload = () => {
+    const body = {
+      email: email.trim(),
+      recipientName: recipientName.trim() || null,
+      folderId: null,
+      name: saved?.name ?? 'Newsletter',
+      sendCadence,
+      sendHour,
+      sendMinute,
+      sendWeekday: sendCadence === 'weekly' ? sendWeekday : null,
+      sendDayOfMonth: sendCadence === 'monthly' ? sendDayOfMonth : null,
+      venueIds,
+      categoryRules: rules,
+      wantToGo,
+      enabled,
+    };
+    lastSent.current = body;
+    return body;
+  };
 
   /** The heading's one-line description of the brief, from live form state. */
   const summary = briefSummary({
@@ -626,18 +633,14 @@ function NewsletterForm({
             <button
               type="button"
               onClick={() => preview.mutate(payload())}
-              disabled={preview.isPending}
+              // Generating validates the same config saving does, so a
+              // newsletter the form already calls empty by construction can
+              // only come back rejected. Held with the same message beside the
+              // table rather than sent to be told so.
+              disabled={preview.isPending || emptyByConstruction}
               className="btn-fill text-center"
             >
               {preview.isPending ? 'Generating…' : 'Generate now'}
-            </button>
-            <button
-              type="button"
-              onClick={() => sendTest.mutate(payload())}
-              disabled={sendTest.isPending}
-              className="btn-outline text-center"
-            >
-              {sendTest.isPending ? 'Sending…' : 'Send me a test'}
             </button>
           </div>
         </div>
@@ -648,24 +651,15 @@ function NewsletterForm({
           dirty={!justSaved && (save.isIdle || save.isSuccess)}
           pending={save.isPending}
           justSaved={justSaved}
-          error={save.error?.message ?? null}
+          error={readableApiError(save.error?.message, lastSent.current)}
         />
-
-        {sendTest.data ? (
-          <p role="status" className="mt-3 text-sm font-bold text-accent">
-            {sendTest.data.sent
-              ? `Test sent to ${sendTest.data.to} — ${sendTest.data.events} event${sendTest.data.events === 1 ? '' : 's'}.`
-              : 'Email is not configured on this deployment, so nothing was sent.'}
-          </p>
-        ) : null}
-        {sendTest.error ? <p className="mt-3 text-sm text-accent">{sendTest.error.message}</p> : null}
       </form>
 
       <NewsletterPreview
         html={preview.data?.html ?? null}
         pdf={preview.data?.pdf ?? null}
         count={preview.data?.events.length ?? null}
-        error={preview.error?.message ?? null}
+        error={readableApiError(preview.error?.message, lastSent.current)}
       />
 
       <DriveCard />
@@ -877,7 +871,11 @@ function SaveState({
   justSaved: boolean;
   error: string | null;
 }) {
-  if (error) return <p role="alert" className="mt-3 text-sm text-accent">{error}</p>;
+  // `whitespace-pre-line`: a rejection can name several fields, one per line
+  // (see `readableApiError`), and run together they read as one long sentence.
+  if (error) {
+    return <p role="alert" className="mt-3 text-sm text-accent whitespace-pre-line">{error}</p>;
+  }
   if (pending) return <p role="status" className="mt-3 text-sm text-muted">Saving…</p>;
   if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Saved.</p>;
   if (dirty) {
@@ -1004,7 +1002,13 @@ function NewsletterPreview({
   count: number | null;
   error: string | null;
 }) {
-  if (error) return <p className="mt-6 text-sm text-accent">Couldn&rsquo;t generate a preview: {error}</p>;
+  if (error) {
+    return (
+      <p role="alert" className="mt-6 text-sm text-accent whitespace-pre-line">
+        Couldn&rsquo;t generate a preview.{'\n'}{error}
+      </p>
+    );
+  }
   if (html === null) return null;
   return (
     <div className="mt-10">

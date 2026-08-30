@@ -22,10 +22,9 @@ import {
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefSubject, briefWindowDays, buildBriefSections, currentFestival, plannedFrequency,
+  briefFetchWindowDays, buildBriefSections, currentFestival, plannedFrequency,
   resolveBriefVenues,
 } from '../services/newsletter.js';
-import { newsletterFromEmail, sendEmail } from '../services/email.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
 import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js';
@@ -709,13 +708,15 @@ const my = router({
         const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
         // Narrowed in SQL for the same reason the sender is: `limit` cuts the
         // globally earliest rows, so a preview built from "the next 500 events"
-        // showed a short week once the database outgrew that.
+        // showed a short week once the database outgrew that. The window is the
+        // widest any section can ask for — the same call the sweep makes, so
+        // what Generate shows is what would actually be sent.
         const now = new Date();
         const all = env.DATABASE_URL && venues.length > 0
           ? await defaultEventStore.listUpcoming({
             venueIds: venues.map((v) => v.id),
             now,
-            until: new Date(now.getTime() + briefWindowDays(plannedFrequency(input)) * 24 * 3_600_000),
+            until: new Date(now.getTime() + briefFetchWindowDays(input, now) * 24 * 3_600_000),
             limit: 500,
           })
           : [];
@@ -743,55 +744,6 @@ const my = router({
             filename: briefPdfFilename(now, plannedFrequency(input)),
             base64: (await renderBriefPdf(brief)).toString('base64'),
           },
-        };
-      }),
-
-    /**
-     * "Send me a test" (GOI-102): mail the brief these settings would produce,
-     * to the address in the form, right now.
-     *
-     * Deliberately separate from `preview`, which renders and sends nothing.
-     * The two answer different questions — "what will it say" and "will it
-     * actually arrive, and does it survive my mail client" — and the second is
-     * the one nobody could answer before without waiting for a real send.
-     *
-     * It writes no send state and does not stamp `lastSentAt`: a test must not
-     * consume the dedup states (GOI-101) that the real issue depends on, or
-     * testing a newsletter would silently empty the next one.
-     */
-    sendTest: userProcedure
-      .input(newsletterSaveInput)
-      .mutation(async ({ ctx, input }) => {
-        const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
-        const now = new Date();
-        const all = env.DATABASE_URL && venues.length > 0
-          ? await defaultEventStore.listUpcoming({
-            venueIds: venues.map((v) => v.id),
-            now,
-            until: new Date(now.getTime() + briefWindowDays(plannedFrequency(input)) * 24 * 3_600_000),
-            limit: 500,
-          })
-          : [];
-        const sections = buildBriefSections(all, input, venues, now);
-        const brief = {
-          sections,
-          fallbackFrequency: plannedFrequency(input),
-          recipientName: input.recipientName,
-          festival: currentFestival(venues.map((v) => v.name)),
-          now,
-        };
-        const sent = await sendEmail({
-          to: input.email,
-          from: newsletterFromEmail(),
-          // Marked in the subject, so a test landing in an inbox weeks later
-          // is not mistaken for the real thing.
-          subject: `[test] ${briefSubject(sections)}`,
-          html: renderBriefHtml(brief),
-        });
-        return {
-          sent,
-          to: input.email,
-          events: sections.reduce((n, sec) => n + sec.events.length, 0),
         };
       }),
 

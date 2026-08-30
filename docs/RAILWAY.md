@@ -117,6 +117,48 @@ Wait ~1 minute. The Pages site at `https://afisz.cc/` now talks to Railway inste
 
 ---
 
+## 8. A staging backend for the dev preview (recommended)
+
+Every push to `dev` publishes a password-gated preview at `https://afisz.cc/dev/`
+(`.github/workflows/deploy-frontend.yml`). That build ships the **frontend** from
+`dev` — but unless you do this step, it talks to the **production** API, which is
+built from the default branch. The preview then reviews half a change.
+
+While `dev` only touches the UI that is harmless. The moment a change on `dev`
+alters the API it is not: the newsletter rework (GOI-100/102) split the old
+`frequency` field into a send cadence and per-category cadences, so the preview
+sent the new shape to a backend still expecting the old one and every **Schedule
+newsletter**, **Generate now** and test send came back as a wall of validation
+errors naming a field the form no longer had. Nothing was wrong with either
+side — they were different versions.
+
+To give `dev` its own backend:
+
+1. In the same Railway project: **+ Create** → **Database** → **Postgres**. The
+   staging backend needs its own database. Migrations land on `dev` before the
+   default branch, and pointing a `dev` build at the production database would
+   apply them to production ahead of the promotion that is supposed to gate them.
+2. **+ Create** → **GitHub Repo** → the same repo, configured exactly as in
+   step 3 — then **Settings** → **Source** → set the branch to `dev`.
+3. Give it the variables from step 4, with:
+   - `DATABASE_URL` referencing the **new** Postgres plugin, not production's,
+   - `APP_URL` = `https://afisz.cc/dev/`,
+   - `API_PUBLIC_URL` = the staging domain from step 5.
+   Keep the third-party keys pointed at test credentials where the provider has
+   them: this backend sends real email.
+4. Generate a public domain for it (step 5) — `api-dev.afisz.cc` if you want it
+   under the custom domain, or the `…up.railway.app` one Railway gives you.
+5. Add the repo variable `VITE_DEV_API_URL` with that URL:
+   https://github.com/angelinakhabner/events_/settings/variables/actions
+   The dev build picks it up; production keeps using `VITE_API_URL`, and if
+   `VITE_DEV_API_URL` is unset nothing changes.
+6. Re-run **Deploy frontend** so the preview bundle is rebuilt with it.
+
+Until that exists, treat the dev preview as reviewing frontend changes only, and
+verify anything API-shaped locally (`npm run dev`) before promoting `dev`.
+
+---
+
 ## Troubleshooting
 
 ### `Unexpected token '<', "<html>..." is not valid JSON` in the modal alert

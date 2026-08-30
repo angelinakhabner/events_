@@ -186,6 +186,23 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(within(dayOfMonth).queryByRole('option', { name: '31st' })).not.toBeInTheDocument();
   });
 
+  /**
+   * The screen offers two actions, and "Send me a test" is not one of them.
+   * It was removed with the procedure behind it — a button that mailed the
+   * reader a copy of a brief they were about to schedule answered a question
+   * the preview already answers, and the preview costs nobody an inbox.
+   */
+  it('offers scheduling and generating, and nothing that sends mail', async () => {
+    renderPage();
+
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByRole('button', { name: /schedule newsletter/i })).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: /generate now/i })).toBeInTheDocument();
+    expect(within(section).queryByRole('button', { name: /send me a test/i })).not.toBeInTheDocument();
+  });
+
   it('weekly briefs let you pick the weekday, and Generate renders a preview', async () => {
     const user = userEvent.setup();
     renderPage();
