@@ -39,10 +39,17 @@ export interface DeliverOptions {
 /**
  * Render the brief as a PDF and put it in every drive this user has connected.
  *
- * **Never throws.** A drive that is full, revoked or simply down must not turn
- * a brief that was successfully emailed into a failed send — the email is the
- * product, the filed copy is a convenience. Failures are recorded on the
- * connection instead, where the Newsletter tab shows them.
+ * **Never throws**, and the caller decides what that silence means. When the
+ * reader is also being emailed, a drive that is full, revoked or simply down
+ * must not turn a brief they received into a failed send — there, the email is
+ * the product and the filed copy is a convenience.
+ *
+ * For a `drive`-only reader that reasoning does not hold: the filed PDF *is*
+ * the delivery, and returning an outcome of nothing but failures means they
+ * got nothing at all. So the outcomes are returned rather than swallowed, and
+ * the sweep reads them — it marks the issue sent only once at least one upload
+ * succeeded. Failures are also recorded on the connection, where the
+ * Newsletter tab shows them.
  */
 export async function deliverBriefToDrives(
   userId: string,

@@ -2,7 +2,10 @@ import type {
   Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
   NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
-import { deriveWindow, festivalsAtVenues, sendCadenceDays, timeFilterHour } from '@afisz/shared';
+import {
+  deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, sendCadenceDays,
+  timeFilterHour,
+} from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
 import { defaultEventStore, type EventStore } from './event-store.js';
@@ -526,7 +529,7 @@ export interface BriefOutcome {
   frequency: NewsletterFrequency;
   status: 'sent' | 'skipped' | 'failed';
   /** Machine-readable reason for anything other than a plain send. */
-  reason?: 'not-due' | 'recently-sent' | 'no-venues' | 'no-events' | 'send-failed';
+  reason?: 'not-due' | 'recently-sent' | 'no-venues' | 'no-events' | 'send-failed' | 'no-drive';
   /** Human detail — the provider's message for a failure, counts otherwise. */
   detail?: string;
   /** The slot this subscription was last due in, ISO; null before its first. */
@@ -670,12 +673,55 @@ export async function sendNewsletterBriefs(
         festival: currentFestival(venues.map((v) => v.name)),
         now,
       };
-      await (opts.send ?? sendEmail)({
-        to: sub.email,
-        from: newsletterFromEmail(),
-        subject: briefSubject(sections),
-        html: renderBriefHtml(brief),
-      });
+      if (deliversByEmail(sub.delivery)) {
+        await (opts.send ?? sendEmail)({
+          to: sub.email,
+          from: newsletterFromEmail(),
+          subject: briefSubject(sections),
+          html: renderBriefHtml(brief),
+        });
+      }
+
+      // File a PDF on any drive this user connected (GOI-91).
+      //
+      // For `both` this is the copy it has always been, and it runs after the
+      // email for the reason it always did: `deliverBriefToDrives` never
+      // throws, but ordering it here means that even if that changed, a drive
+      // outage could not cost the subscriber the brief they were sent.
+      //
+      // For `drive` it is the delivery itself, so the two lines below are not
+      // interchangeable with the ones above — nothing is marked sent until the
+      // upload is known to have worked.
+      const drives = deliversToDrive(sub.delivery) && !opts.skipDrives
+        ? await deliverBriefToDrives(sub.userId, brief, plannedFrequency(sub), {
+            ...opts.drive,
+            now,
+          })
+        : [];
+
+      if (sub.delivery === 'drive') {
+        // No drive connected. Not a failure — the reader asked for something
+        // that needs a step they have not taken — but emphatically not a send
+        // either, so nothing is stamped and the next sweep will try again.
+        if (drives.length === 0) {
+          outcomes.push({
+            ...base, status: 'skipped', reason: 'no-drive', eventCount,
+            detail: 'set to file to a drive, but no drive is connected',
+          });
+          continue;
+        }
+        // Every drive refused it. With no email to fall back on, the reader
+        // got nothing.
+        if (!drives.some((d) => d.status === 'uploaded')) {
+          outcomes.push({
+            ...base, status: 'failed', reason: 'send-failed', eventCount, drives,
+            detail: drives.map((d) => d.reason).filter(Boolean).join('; ')
+              || 'no drive accepted the brief',
+          });
+          continue;
+        }
+      }
+
       // By config id, not user id: a reader may hold one newsletter per folder
       // since GOI-100, and stamping the user would mark all of them sent.
       await store.markSent(sub.id, now);
@@ -684,17 +730,6 @@ export async function sendNewsletterBriefs(
       // believing they had been.
       await recordWantToGoSent(sub.id, wantToGo, store, now);
 
-      // File a PDF copy on any drive this user connected (GOI-91). After the
-      // email and after `markSent` on purpose: `deliverBriefToDrives` never
-      // throws, but ordering it here means that even if that changed, a drive
-      // outage could not cost the subscriber the brief they were sent — nor
-      // cause a retry to email it twice.
-      const drives = opts.skipDrives
-        ? []
-        : await deliverBriefToDrives(sub.userId, brief, plannedFrequency(sub), {
-            ...opts.drive,
-            now,
-          });
       outcomes.push({
         ...base,
         status: 'sent',

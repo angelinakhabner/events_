@@ -283,6 +283,32 @@ export const DEFAULT_WANT_TO_GO: NewsletterWantToGo = {
   urgentSend: true,
 };
 
+/**
+ * How a reader gets their brief.
+ *
+ * Filing a PDF on a connected drive used to be an *addition* to the email —
+ * everyone got mailed, and a drive, if connected, also got a copy. That made
+ * the email the product and the file a convenience, which is the assumption
+ * `deliverBriefToDrives` was written under: it never throws, because a drive
+ * being full must not turn a brief that was successfully emailed into a failed
+ * send.
+ *
+ * `drive` breaks that assumption on purpose. For a reader who chose it there
+ * is no email, so the filed PDF *is* the delivery, and a drive that is full or
+ * revoked is a failed send rather than a footnote. The sweep says so.
+ */
+export type NewsletterDelivery = 'email' | 'drive' | 'both';
+
+/** Does this delivery choice involve sending an email? */
+export function deliversByEmail(delivery: NewsletterDelivery): boolean {
+  return delivery === 'email' || delivery === 'both';
+}
+
+/** Does it involve filing a PDF on a connected drive? */
+export function deliversToDrive(delivery: NewsletterDelivery): boolean {
+  return delivery === 'drive' || delivery === 'both';
+}
+
 export interface NewsletterSettings {
   /** The config's own id. A reader may have one per folder (GOI-100). */
   id: string;
@@ -297,9 +323,16 @@ export interface NewsletterSettings {
   folderId: string | null;
   /** User-facing label, so several configs can be told apart. */
   name: string;
+  /**
+   * The address the brief is emailed to, and the config's own identity — the
+   * public API (GOI-87) addresses subscriptions by it. Required whatever
+   * `delivery` says, since a drive-only reader still has an account.
+   */
   email: string;
   /** Name the brief greets you by; null greets you without one. */
   recipientName: string | null;
+  /** Email, a PDF filed on a connected drive, or both. */
+  delivery: NewsletterDelivery;
   /** When an issue is sent. */
   sendCadence: NewsletterSendCadence;
   /** Weekday weekly issues go out on (0=Sun … 6=Sat); null unless weekly. */
