@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MyVenuesSection, scrapeRunSummary } from './MyVenuesSection';
+import { MyVenuesSection, probeErrorNote, scrapeRunSummary } from './MyVenuesSection';
 import type { Event, ScrapeRun } from '@afisz/shared';
 
 const venuesMock = vi.fn();
@@ -30,6 +30,7 @@ vi.mock('../lib/trpc', () => {
   return {
     trpc: {
       useUtils: () => ({
+        client: { my: { venues: { checkUrl: { mutate: vi.fn() } } } },
         my: {
           venues: {
             list: { invalidate },
@@ -46,9 +47,9 @@ vi.mock('../lib/trpc', () => {
           listAll: { useQuery: () => venuesMock() },
           activity: { useQuery: () => activityMock() },
           add: stubMutation(),
-          // GOI-86: the per-folder "propose similar venues" panel renders
-          // inside every non-empty folder, so its hooks must exist here even
-          // though this suite is about the venue rows.
+          // GOI-92: the Elsewhere discovery panel renders in the row beneath
+          // the folder bar, so its hooks must exist here even though this
+          // suite is about the venue rows.
           suggestSimilar: stubMutation(),
           checkUrl: stubMutation(),
           update: stubMutation(),
@@ -238,5 +239,58 @@ describe('scrapeRunSummary', () => {
 
   it('names the error even when the run recorded none', () => {
     expect(scrapeRunSummary(run({ status: 'failed' }))).toBe('Scrape failed: unknown error');
+  });
+});
+
+
+/**
+ * GOI-92: discovery is one global action, so there is exactly one "Elsewhere",
+ * and it shares a row with "+ Add venue". A stray second copy is the specific
+ * regression this guards — it used to render once per folder.
+ */
+describe('MyVenuesSection — the Elsewhere row (GOI-92)', () => {
+  it('renders Elsewhere exactly once, beside + Add venue, beneath the folder bar', () => {
+    render(<MyVenuesSection />);
+    const elsewhere = screen.getAllByRole('button', { name: /^elsewhere$/i });
+    expect(elsewhere).toHaveLength(1);
+
+    const row = elsewhere[0]!.parentElement!;
+    expect(row).toContainElement(screen.getByRole('button', { name: /\+ Add venue/i }));
+
+    // Beneath the folder bar: the folder pill comes first in document order.
+    const folderPill = screen.getByRole('button', { name: /Warsaw/ });
+    expect(folderPill.compareDocumentPosition(elsewhere[0]!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it('does not repeat itself per folder', () => {
+    listsMock.mockReturnValue({
+      data: [
+        { id: 'l1', name: 'Warsaw', active: true, venueCount: 1 },
+        { id: 'l2', name: 'Berlin', active: false, venueCount: 0 },
+      ],
+    });
+    render(<MyVenuesSection />);
+    expect(screen.getAllByRole('button', { name: /^elsewhere$/i })).toHaveLength(1);
+  });
+
+  it('says on the row why a venue added despite a failed probe will not populate', () => {
+    venuesMock.mockReturnValue({
+      data: [{ ...venue, probeErrorCode: 'BLOCKED' }],
+      isLoading: false,
+      error: null,
+    });
+    render(<MyVenuesSection />);
+    expect(screen.getByText(/refuses our requests/i)).toBeInTheDocument();
+  });
+
+  it('does not call an empty programme a failure', () => {
+    // Two of the probe codes mean "nothing on", not "we can't read this" —
+    // showing those in red is what makes people delete working venues.
+    expect(probeErrorNote('NO_EVENTS_FOUND')).not.toMatch(/won.t populate/i);
+    expect(probeErrorNote('PAST_EVENTS_ONLY')).not.toMatch(/won.t populate/i);
+    expect(probeErrorNote('JS_RENDERED_NEEDS_PAID')).toMatch(/won.t populate/i);
+    expect(probeErrorNote('SOMETHING_NEW')).toMatch(/won.t populate/i);
   });
 });

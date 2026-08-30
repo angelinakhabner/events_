@@ -96,17 +96,20 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(within(sendMinute).getAllByRole('option')).toHaveLength(60);
     expect(within(sendHour).getByRole('option', { name: '23' })).toBeInTheDocument();
 
-    // Daily at 03:45, after 22:00 — none of the three reachable without the
-    // full ranges.
+    // Daily at 03:45 — neither reachable without the full ranges.
     await user.click(within(section).getByRole('radio', { name: /every day/i }));
     await user.selectOptions(sendHour, '3');
     await user.selectOptions(sendMinute, '45');
-    await user.selectOptions(within(section).getByLabelText(/only events after/i), '22');
+
+    // GOI-100: the global "only events after" is gone. It applied to every
+    // section at once, which silently emptied museums — exhibitions are
+    // daytime. Time of day is per category now, in the table below.
+    expect(within(section).queryByLabelText(/only events after/i)).not.toBeInTheDocument();
 
     // GOI-30: the line under the heading describes the brief you have set up,
     // so it has to follow the controls rather than state a fixed example.
-    expect(within(section).getByText(/as an email brief/i)).toHaveTextContent(
-      'every day at 03:45, everything after 22:00.',
+    expect(within(section).getByText(/emailed to/i)).toHaveTextContent(
+      'every day at 03:45.',
     );
 
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
@@ -116,10 +119,9 @@ describe('MyPage — newsletter end-to-end', () => {
     const saved = await defaultNewsletterStore.get(userId);
     expect(saved).toMatchObject({
       email: USER_EMAIL,
-      frequency: 'daily',
+      sendCadence: 'daily',
       sendHour: 3,
       sendMinute: 45,
-      afterHour: 22,
       categoryRules: [],
       enabled: true,
     });
@@ -144,8 +146,8 @@ describe('MyPage — newsletter end-to-end', () => {
     const daily = within(group).getByRole('radio', { name: /every day/i });
     const weekly = within(group).getByRole('radio', { name: /weekly/i });
 
-    // Both options are on screen — that is the point of the control.
-    expect(within(group).getAllByRole('radio')).toHaveLength(2);
+    // Every option is on screen — that is the point of the control.
+    expect(within(group).getAllByRole('radio')).toHaveLength(3);
 
     await user.click(daily);
     expect(daily).toHaveAttribute('aria-checked', 'true');
@@ -156,9 +158,15 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(daily).toHaveAttribute('aria-checked', 'false');
   });
 
-  // 'monthly' is a per-category rhythm, not a whole-brief one: as the top-level
-  // cadence it would mean eleven silent months.
-  it('does not offer monthly as the whole brief\'s cadence', async () => {
+  /**
+   * GOI-100. Monthly used to be withheld here on the grounds that it meant
+   * eleven silent months — which it did, while a category's own cadence was
+   * the only thing deciding what an issue contained. Now that the envelope and
+   * the contents are separate, a monthly issue is an ordinary choice, and it
+   * brings a day-of-month picker with it because a monthly newsletter with no
+   * send day has no send day at all.
+   */
+  it('offers monthly, with the day of the month it needs', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -167,7 +175,15 @@ describe('MyPage — newsletter end-to-end', () => {
     const section = email.closest('section')!;
 
     const group = within(section).getByRole('radiogroup', { name: /how often/i });
-    expect(within(group).queryByRole('radio', { name: /monthly/i })).not.toBeInTheDocument();
+    const monthly = within(group).getByRole('radio', { name: /monthly/i });
+    expect(within(section).queryByLabelText(/^on$/i)).not.toBeInTheDocument();
+
+    await user.click(monthly);
+    const dayOfMonth = await within(section).findByLabelText(/^on$/i);
+    // 1-28, so February has an issue too.
+    expect(within(dayOfMonth).getAllByRole('option')).toHaveLength(28);
+    expect(within(dayOfMonth).getByRole('option', { name: '1st' })).toBeInTheDocument();
+    expect(within(dayOfMonth).queryByRole('option', { name: '31st' })).not.toBeInTheDocument();
   });
 
   it('weekly briefs let you pick the weekday, and Generate renders a preview', async () => {
@@ -182,15 +198,15 @@ describe('MyPage — newsletter end-to-end', () => {
     // The weekday picker only exists for weekly briefs. Cadence is a segmented
     // control (GOI-60) — a radiogroup, so each option is its own radio.
     await user.click(within(section).getByRole('radio', { name: /every day/i }));
-    expect(within(section).queryByLabelText(/day of the week/i)).not.toBeInTheDocument();
+    expect(within(section).queryByLabelText(/^on$/i)).not.toBeInTheDocument();
 
     await user.click(within(section).getByRole('radio', { name: /weekly/i }));
-    await user.selectOptions(await within(section).findByLabelText(/day of the week/i), '4');
+    await user.selectOptions(await within(section).findByLabelText(/^on$/i), '4');
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 
     expect(await defaultNewsletterStore.get(userId)).toMatchObject({
-      frequency: 'weekly',
+      sendCadence: 'weekly',
       sendWeekday: 4,
     });
 
@@ -283,8 +299,13 @@ describe('MyPage — newsletter end-to-end', () => {
     const picker = await within(section).findByLabelText(/add a category/i);
     await user.selectOptions(picker, 'cinema');
 
-    await user.selectOptions(await within(section).findByLabelText(/how often for cinema/i), 'daily');
+    await user.selectOptions(
+      await within(section).findByLabelText(/how often for cinema/i), 'every_issue',
+    );
     await user.selectOptions(within(section).getByLabelText(/description for cinema/i), 'short');
+    // GOI-100: time of day is per category now. Cinema after 18:00 is the
+    // setting that used to be global — and that used to empty museums.
+    await user.selectOptions(within(section).getByLabelText(/time of day for cinema/i), 'after_18');
     // Save before leaving: switching tabs unmounts the form, so anything not
     // yet saved is gone — the same as for any other section.
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
@@ -305,17 +326,161 @@ describe('MyPage — newsletter end-to-end', () => {
     await within(section).findByLabelText(/how often for cinema/i);
     await user.selectOptions(await within(section).findByLabelText(/add a category/i), 'museums');
 
-    // Museums monthly, with the wide write-up — the example from the brief.
+    // Museums monthly, with the full write-up — the example from the brief.
     await user.selectOptions(await within(section).findByLabelText(/how often for museums/i), 'monthly');
     await user.selectOptions(within(section).getByLabelText(/description for museums/i), 'full');
+    // …and left at "any time", which is the point of the per-row filter: the
+    // one global setting could not say "evenings for cinema, any time for
+    // exhibitions", so it said "evenings" and museums went silent.
+    expect(within(section).getByLabelText(/time of day for museums/i)).toHaveValue('any');
 
     await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
     await within(section).findByText('Saved.');
 
     expect((await defaultNewsletterStore.get(userId))!.categoryRules).toEqual([
-      { category: 'cinema', frequency: 'daily', detail: 'short' },
-      { category: 'museums', frequency: 'monthly', detail: 'full' },
+      {
+        category: 'cinema', cadence: 'every_issue', cadenceWeekday: null,
+        detail: 'short', timeFilter: 'after_18', lookaheadDays: null, sortOrder: 0,
+      },
+      {
+        category: 'museums', cadence: 'monthly', cadenceWeekday: null,
+        detail: 'full', timeFilter: 'any', lookaheadDays: null, sortOrder: 1,
+      },
     ]);
+  });
+
+  /**
+   * GOI-102 §2: the options a schedule makes impossible are **disabled, not
+   * removed**. A vanished dropdown option reads as a bug or a moved control;
+   * a greyed one teaches the rule in the place the rule applies.
+   */
+  it('clamps the category cadences to what the send schedule can carry', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const cadence = await within(section).findByLabelText(/how often for museums/i);
+
+    // Daily: every option is reachable.
+    await user.click(within(section).getByRole('radio', { name: /every day/i }));
+    for (const name of [/every issue/i, /once a week/i, /once a month/i]) {
+      expect(within(cadence).getByRole('option', { name })).not.toBeDisabled();
+    }
+
+    // Weekly: "once a week" *is* every issue, so it is offered but unusable.
+    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
+    expect(within(cadence).getByRole('option', { name: /once a week/i })).toBeDisabled();
+    expect(within(cadence).getByRole('option', { name: /once a month/i })).not.toBeDisabled();
+
+    // Monthly: nothing is finer than the envelope, so nothing else is left.
+    await user.click(within(section).getByRole('radio', { name: /monthly/i }));
+    expect(within(cadence).getByRole('option', { name: /once a week/i })).toBeDisabled();
+    expect(within(cadence).getByRole('option', { name: /once a month/i })).toBeDisabled();
+    expect(within(cadence).getByRole('option', { name: /every issue/i })).not.toBeDisabled();
+  });
+
+  /**
+   * GOI-102: changing the envelope can invalidate the contents. The old
+   * values are reconciled rather than left to fail on save — but *silently*
+   * rewriting a reader's choice is how a form loses their trust, so what
+   * changed is named.
+   */
+  it('says what changing the send cadence did to a category', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    await user.click(within(section).getByRole('radio', { name: /every day/i }));
+    const cadence = await within(section).findByLabelText(/how often for museums/i);
+    await user.selectOptions(cadence, 'weekly');
+
+    // Weekly issues cannot carry a weekly category — that is every issue.
+    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
+    expect(cadence).toHaveValue('every_issue');
+    expect(await within(section).findByRole('status')).toHaveTextContent(/museums moved to/i);
+  });
+
+  /** GOI-102 §2: the derived window is shown, so the override is answerable
+   *  without arithmetic. */
+  it('shows the window a category covers before offering to override it', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    await user.click(within(section).getByRole('radio', { name: /every day/i }));
+    const cadence = await within(section).findByLabelText(/how often for museums/i);
+
+    // Every issue of a daily newsletter covers a day…
+    await user.selectOptions(cadence, 'every_issue');
+    expect(within(section).getByRole('button', { name: /set how far ahead museums looks/i }))
+      .toHaveTextContent('Look ahead: 1 days');
+
+    // …and a monthly section of one covers a month.
+    await user.selectOptions(cadence, 'monthly');
+    expect(within(section).getByRole('button', { name: /set how far ahead museums looks/i }))
+      .toHaveTextContent('Look ahead: 30 days');
+  });
+
+  /**
+   * GOI-102 §3 / GOI-101. Saved events are not a category: they are a queue of
+   * things the reader already chose, and the settings for them sit in their own
+   * block rather than as a row in the table.
+   */
+  it('carries the saved-events block, with the urgent toggle nested under changes', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    const include = within(section).getByLabelText(/include events i saved/i);
+    const changes = within(section).getByLabelText(/cancelled or rescheduled/i);
+    const urgent = within(section).getByLabelText(/send immediately for urgent changes/i);
+    expect(include).toBeChecked();
+    expect(urgent).toBeEnabled();
+
+    // An urgent send is a kind of change report, so offering it while change
+    // reports are off would be offering something that can never happen.
+    await user.click(changes);
+    expect(urgent).toBeDisabled();
+
+    await user.click(changes);
+    await user.click(include);
+    expect(changes).toBeDisabled();
+    expect(urgent).toBeDisabled();
+  });
+
+  /**
+   * GOI-100 rule 4 / GOI-102 §6: a newsletter with no categories and no saved
+   * events can never produce content. Blocked at the table it concerns rather
+   * than as a toast, and blocked *before* the request, since a server error
+   * for something the form can see is a round trip spent saying nothing.
+   */
+  it('blocks a newsletter that would always be empty, against the table', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    // Drop every rule, then switch saved events off. Whatever the previous
+    // tests left saved, the point is the state with nothing in it.
+    await within(section).findByLabelText(/how often for museums/i);
+    // Re-queried each time: removing a row rebuilds the list under us.
+    for (;;) {
+      const [remove] = within(section).queryAllByRole('button', { name: /^remove /i });
+      if (!remove) break;
+      await user.click(remove);
+    }
+    await user.click(within(section).getByLabelText(/include events i saved/i));
+
+    expect(await within(section).findByRole('alert')).toHaveTextContent(/would always be empty/i);
+    expect(within(section).getByRole('button', { name: /schedule newsletter/i })).toBeDisabled();
   });
 
   it('drops a category rule again', async () => {

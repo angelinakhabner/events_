@@ -1,3 +1,4 @@
+import { bannerFestivals } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { formatRange } from './FestivalsSection';
 import { CategorySwatch } from './CategorySwatch';
@@ -15,7 +16,12 @@ import { CategorySwatch } from './CategorySwatch';
 export function MyFestivalsSection() {
   const festivals = trpc.festivals.mine.useQuery();
 
-  if (!festivals.data || festivals.data.length === 0) return null;
+  // Same split as the public listing (GOI-99): the near ones are already the
+  // banner at the top of /my, so this block carries the rest.
+  const banner = bannerFestivals(festivals.data ?? []).map((f) => f.id);
+  const upcoming = (festivals.data ?? []).filter((f) => !banner.includes(f.id));
+
+  if (upcoming.length === 0) return null;
 
   return (
     <section className="mt-12">
@@ -26,7 +32,7 @@ export function MyFestivalsSection() {
       </p>
       <div className="rule-ink" />
       <ul className="list-none m-0 p-0">
-        {festivals.data.map((f) => (
+        {upcoming.map((f) => (
           <li key={f.id} className="rule-soft">
             {/* Same anatomy as an event row (GOI-68) — swatch and dates in the
                 gutter, title and meta beside them. */}

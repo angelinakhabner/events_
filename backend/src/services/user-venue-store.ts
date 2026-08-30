@@ -22,6 +22,30 @@ export interface UserVenue extends Venue {
   listId: string | null;
   /** Free-form personal tags. */
   tags: string[];
+  /** How this venue is read — 'jsonld', 'ical', … — or null if never probed.
+   *  Shown on the row so a venue added from a discovery search says how it
+   *  will be scraped (GOI-92). */
+  sourceMethod: string | null;
+  /** Non-null when the last probe failed: the reason this venue won't
+   *  populate, kept on the venue rather than discarded (GOI-92). */
+  probeErrorCode: string | null;
+}
+
+/**
+ * What a probe concluded about a URL, as the add path stores it (GOI-92).
+ *
+ * A venue whose site can't be read is still a real venue, so it is added with
+ * the verdict attached instead of being dropped — that is the whole reason
+ * these travel with the add rather than being left to the nightly sweep to
+ * rediscover.
+ */
+export interface VenueProbeFacts {
+  sourceUrl?: string | null;
+  sourceMethod?: string | null;
+  sourceConfidence?: string | null;
+  requiresPaidFetch?: boolean;
+  probeErrorCode?: string | null;
+  probeResult?: Record<string, unknown> | null;
 }
 
 export interface AddCustomVenueInput {
@@ -38,6 +62,10 @@ export interface AddCustomVenueInput {
   /** Free-form personal tags, set at add time (GOI-74). Personal like the
    *  name and category overrides — the shared venue row carries none. */
   tags?: string[];
+  /** The discovery probe's verdict for this URL (GOI-92). Written only onto a
+   *  venue row this call *creates*: an existing shared row already has its own
+   *  probe state, and one user's stale check must not overwrite it. */
+  probe?: VenueProbeFacts;
 }
 
 /** A named grouping of a user's venue subscriptions (e.g. "Warsaw", "Poznan").
@@ -54,6 +82,20 @@ export interface UserList {
 
 /** Every fresh account starts with this list, holding the default venues. */
 export const DEFAULT_LIST_NAME = 'Warsaw';
+
+/**
+ * The folder identity key (GOI-92). Two names that differ only by case or by
+ * surrounding whitespace are the same folder — the display form is whatever
+ * the user typed first.
+ *
+ * This must stay byte-for-byte equivalent to `lower(btrim(name))`, the
+ * expression the unique index in 0025 is built on: if the two ever disagree,
+ * the store believes a folder is free while the database rejects the insert.
+ * That is why inner whitespace is deliberately *not* collapsed.
+ */
+export function normalizeListName(name: string): string {
+  return name.trim().toLowerCase();
+}
 
 export interface UpdateUserVenueInput {
   /** New personal display name; null clears the override. */
@@ -83,6 +125,10 @@ export interface UserVenueStore {
   lists(userId: string): Promise<UserList[]>;
   /** Create a list. Becomes active only when the user had none. */
   createList(userId: string, name: string): Promise<UserList>;
+  /** Get the list with this name, creating it if it doesn't exist (GOI-92).
+   *  Matched on the normalised name, so "berlin" finds "Berlin". Idempotent
+   *  and safe to race: two calls for one city end up with one folder. */
+  ensureList(userId: string, name: string): Promise<UserList>;
   renameList(userId: string, listId: string, name: string): Promise<UserList>;
   /** Delete a list and its subscriptions. If it was active, the oldest
    *  remaining list becomes active. */
@@ -131,6 +177,8 @@ function toUserVenue(v: VenueRow, s: SubFields): UserVenue {
     customized: s.nameOverride !== null || s.categoryOverride !== null,
     listId: s.listId,
     tags: s.tags ?? [],
+    sourceMethod: v.sourceMethod,
+    probeErrorCode: v.probeErrorCode,
   };
 }
 
@@ -269,6 +317,49 @@ export class DbUserVenueStore implements UserVenueStore {
     };
   }
 
+  /**
+   * Find-or-create by normalised name, without a read-then-write window.
+   *
+   * The insert goes first and the unique index in 0025 arbitrates: whichever
+   * concurrent commit loses the race gets no row back and reads the winner's
+   * folder instead. Reading first would let two "Berlin" commits both see
+   * nothing and both insert — one of which then fails, taking its venues with
+   * it.
+   */
+  async ensureList(userId: string, name: string): Promise<UserList> {
+    const display = name.trim();
+    if (!display) throw new Error('A folder name is required');
+    const db = getDb();
+
+    const [created] = await db
+      .insert(schema.userLists)
+      .values({ userId, name: display })
+      .onConflictDoNothing()
+      .returning();
+
+    if (created) {
+      // First folder ever → becomes active, same as createList.
+      await db.execute(sql`
+        UPDATE users SET active_list_id = ${created.id}::uuid
+        WHERE id = ${userId}::uuid AND active_list_id IS NULL
+      `);
+      const active = await this.activeListId(userId);
+      return {
+        id: created.id,
+        name: created.name,
+        active: created.id === active,
+        venueCount: 0,
+        createdAt: created.createdAt.toISOString(),
+      };
+    }
+
+    const existing = (await this.lists(userId)).find(
+      (l) => normalizeListName(l.name) === normalizeListName(display),
+    );
+    if (!existing) throw new Error(`Could not resolve a folder named "${display}"`);
+    return existing;
+  }
+
   async renameList(userId: string, listId: string, name: string): Promise<UserList> {
     const db = getDb();
     let rows: (typeof schema.userLists.$inferSelect)[];
@@ -361,6 +452,19 @@ export class DbUserVenueStore implements UserVenueStore {
         category: input.category,
         language: input.language ?? 'pl',
         timezone: input.timezone ?? 'Europe/Warsaw',
+        // Only reaches the table on a fresh insert — the ON CONFLICT below
+        // leaves an existing shared row, and its own probe state, alone.
+        ...(input.probe
+          ? {
+              sourceUrl: input.probe.sourceUrl ?? null,
+              sourceMethod: input.probe.sourceMethod ?? null,
+              sourceConfidence: input.probe.sourceConfidence ?? null,
+              requiresPaidFetch: input.probe.requiresPaidFetch ?? false,
+              probeErrorCode: input.probe.probeErrorCode ?? null,
+              probeResult: input.probe.probeResult ?? null,
+              lastProbedAt: new Date(),
+            }
+          : {}),
       })
       .onConflictDoNothing({ target: schema.venues.url })
       .returning();
@@ -461,6 +565,9 @@ interface MemList {
 
 export class InMemoryUserVenueStore implements UserVenueStore {
   private venues: Map<string, Venue>;
+  /** Probe verdicts per venue id. The shared `Venue` type carries none, so
+   *  they live beside it here the way they live in extra columns in the DB. */
+  private probeFacts = new Map<string, VenueProbeFacts>();
   private subs = new Map<string, Map<string, MemSub>>(); // userId -> venueId -> sub
   private userLists = new Map<string, MemList[]>(); // userId -> lists, oldest first
   private activeList = new Map<string, string | null>(); // userId -> listId
@@ -532,21 +639,34 @@ export class InMemoryUserVenueStore implements UserVenueStore {
 
   async createList(userId: string, name: string): Promise<UserList> {
     const lists = this.listsOf(userId);
-    if (lists.some((l) => l.name === name)) {
+    // Normalised, like the unique index the DB store relies on — otherwise
+    // tests running against this store never see the collision that
+    // production would raise.
+    if (lists.some((l) => normalizeListName(l.name) === normalizeListName(name))) {
       throw new Error(`You already have a list named "${name}"`);
     }
     this.seq += 1;
-    const list: MemList = { id: `list-${this.seq}`, name, createdAt: new Date().toISOString() };
+    const list: MemList = { id: `list-${this.seq}`, name: name.trim(), createdAt: new Date().toISOString() };
     lists.push(list);
     if (!this.activeList.get(userId)) this.activeList.set(userId, list.id);
     return { ...list, active: this.activeList.get(userId) === list.id, venueCount: 0 };
+  }
+
+  async ensureList(userId: string, name: string): Promise<UserList> {
+    const display = name.trim();
+    if (!display) throw new Error('A folder name is required');
+    const existing = this.listsOf(userId).find(
+      (l) => normalizeListName(l.name) === normalizeListName(display),
+    );
+    if (existing) return (await this.lists(userId)).find((l) => l.id === existing.id)!;
+    return this.createList(userId, display);
   }
 
   async renameList(userId: string, listId: string, name: string): Promise<UserList> {
     const lists = this.listsOf(userId);
     const list = lists.find((l) => l.id === listId);
     if (!list) throw new Error('List not found');
-    if (lists.some((l) => l.id !== listId && l.name === name)) {
+    if (lists.some((l) => l.id !== listId && normalizeListName(l.name) === normalizeListName(name))) {
       throw new Error(`You already have a list named "${name}"`);
     }
     list.name = name;
@@ -596,6 +716,7 @@ export class InMemoryUserVenueStore implements UserVenueStore {
         createdAt: new Date().toISOString(),
       };
       this.venues.set(venue.id, venue);
+      if (input.probe) this.probeFacts.set(venue.id, input.probe);
       created = true;
     }
     const subs = this.userSubs(userId);
@@ -652,6 +773,8 @@ export class InMemoryUserVenueStore implements UserVenueStore {
       customized: s.nameOverride !== null || s.categoryOverride !== null,
       listId: s.listId,
       tags: [...s.tags],
+      sourceMethod: this.probeFacts.get(v.id)?.sourceMethod ?? null,
+      probeErrorCode: this.probeFacts.get(v.id)?.probeErrorCode ?? null,
     };
   }
 }

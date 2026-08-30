@@ -20,7 +20,7 @@ const auth = { Authorization: `Bearer ${KEY}` };
  *  should come from the shared schema's defaults. */
 const payload = {
   email: 'Ada@Example.com',
-  frequency: 'daily' as const,
+  sendCadence: 'daily' as const,
 };
 
 function harness(send = vi.fn().mockResolvedValue({ sent: 0, skipped: 0, failed: 0, outcomes: [] })) {
@@ -112,7 +112,7 @@ describe('POST /subscriptions', () => {
     const body = await res.json();
     // The address is normalized, and the internal user id is never exposed.
     expect(body.email).toBe('ada@example.com');
-    expect(body.subscription).toMatchObject({ email: 'ada@example.com', frequency: 'daily', enabled: true });
+    expect(body.subscription).toMatchObject({ email: 'ada@example.com', sendCadence: 'daily', enabled: true });
     expect(body.subscription).not.toHaveProperty('userId');
     expect(await deps.auth.findUserByEmail('ada@example.com')).not.toBeNull();
   });
@@ -120,25 +120,44 @@ describe('POST /subscriptions', () => {
   it('applies the shared schema defaults for omitted fields', async () => {
     const { api } = harness();
     const { subscription } = await (await api.request('/subscriptions', json(payload))).json();
-    expect(subscription).toMatchObject({ sendHour: 8, sendMinute: 0, sendWeekday: 1, venueIds: [], categoryRules: [] });
+    expect(subscription).toMatchObject({ sendHour: 8, sendMinute: 0, venueIds: [], categoryRules: [] });
+  });
+
+  /**
+   * GOI-100 rule 2: a field that decides nothing is stored as null rather
+   * than as a value that does nothing. A daily newsletter used to come back
+   * carrying `sendWeekday: 1`, which a later reader would reasonably take to
+   * mean it goes out on Mondays.
+   */
+  it('leaves out the schedule fields the cadence does not use', async () => {
+    const { api } = harness();
+    const { subscription } = await (await api.request('/subscriptions', json(payload))).json();
+    expect(subscription.sendWeekday).toBeNull();
+    expect(subscription.sendDayOfMonth).toBeNull();
+
+    const weekly = await (
+      await api.request('/subscriptions', json({ ...payload, sendCadence: 'weekly', sendWeekday: 4 }))
+    ).json();
+    expect(weekly.subscription.sendWeekday).toBe(4);
+    expect(weekly.subscription.sendDayOfMonth).toBeNull();
   });
 
   it('updates in place rather than creating a second subscription', async () => {
     const { api, deps } = harness();
     await api.request('/subscriptions', json(payload));
-    await api.request('/subscriptions', json({ ...payload, frequency: 'weekly', sendHour: 19 }));
+    await api.request('/subscriptions', json({ ...payload, sendCadence: 'weekly', sendWeekday: 1, sendHour: 19 }));
     const enabled = await deps.newsletter.listEnabled();
     expect(enabled).toHaveLength(1);
-    expect(enabled[0]).toMatchObject({ frequency: 'weekly', sendHour: 19 });
+    expect(enabled[0]).toMatchObject({ sendCadence: 'weekly', sendHour: 19 });
   });
 
   it('rejects an invalid payload with the offending fields named', async () => {
     const { api } = harness();
-    const res = await api.request('/subscriptions', json({ email: 'not-an-email', frequency: 'hourly' }));
+    const res = await api.request('/subscriptions', json({ email: 'not-an-email', sendCadence: 'hourly' }));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.issues.map((i: { field: string }) => i.field)).toEqual(
-      expect.arrayContaining(['email', 'frequency']),
+      expect.arrayContaining(['email', 'sendCadence']),
     );
   });
 

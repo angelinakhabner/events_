@@ -1,4 +1,4 @@
-import { sql, and, eq, gte, lte, lt } from 'drizzle-orm';
+import { sql, and, eq, gte, inArray, lte, lt } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import type { ValidatedEvent } from './validator.js';
 import { classifyEvent, type Venue } from '@afisz/shared';
@@ -103,6 +103,10 @@ export async function saveEvents(
       contentCategory: sql`${keepLlmClassification()} then ${schema.events.contentCategory} else excluded.content_category end`,
       categorySource: sql`${keepLlmClassification()} then ${schema.events.categorySource} else excluded.category_source end`,
       audience: values.audience,
+      // An event the venue is listing again is not cancelled any more. Left
+      // set, a run that was pulled and reinstated would stay invisible for
+      // good (GOI-101).
+      cancelledAt: null,
       scrapedAt: values.scrapedAt,
       updatedAt: values.updatedAt,
     };
@@ -110,7 +114,14 @@ export async function saveEvents(
     // Drizzle's onConflictDoUpdate accepts a `target` of columns and a
     // `targetWhere` predicate, which matches the partial unique indexes
     // declared in 0001_events.sql.
-    const returning = { id: schema.events.id, isInsert: sql<boolean>`(xmax = 0)` };
+    const returning = {
+      id: schema.events.id,
+      isInsert: sql<boolean>`(xmax = 0)`,
+      // The stored value, read before the update overwrites it, so a moved
+      // showtime can be reported to whoever saved it (GOI-101).
+      previousStartsAt: sql<string | null>`${schema.events.startsAt}`,
+      wasCancelled: sql<string | null>`${schema.events.cancelledAt}`,
+    };
     const result = await (values.sourceId
       ? db
           .insert(schema.events)
@@ -131,11 +142,39 @@ export async function saveEvents(
           })
           .returning(returning));
 
-    if (result[0]?.isInsert) inserted++;
+    const row = result[0];
+    if (row?.isInsert) inserted++;
     else updated++;
+
+    // A reschedule is only observable on the `source_id` key. Keyed on
+    // (venue_id, source_url, starts_at), a moved showtime is a different row
+    // by definition — it arrives as an insert and the old one is pruned — so
+    // there is no before-and-after to compare. Venues with stable ids get the
+    // signal; the rest fall back to the cancellation the prune records.
+    if (row && !row.isInsert && values.sourceId && row.previousStartsAt) {
+      const before = new Date(row.previousStartsAt);
+      if (before.getTime() !== values.startsAt.getTime()) {
+        await recordEventChange(row.id, 'rescheduled', row.previousStartsAt, values.startsAt.toISOString());
+      }
+    }
   }
 
   return { inserted, updated };
+}
+
+/**
+ * Note a change to an event that already existed (GOI-101).
+ *
+ * Append-only: a rescheduled-then-cancelled event has two rows, and the
+ * newsletter reports both, because the second does not make the first untrue.
+ */
+export async function recordEventChange(
+  eventId: string,
+  changeType: 'cancelled' | 'rescheduled' | 'moved' | 'sold_out',
+  oldValue: string | null,
+  newValue: string | null,
+): Promise<void> {
+  await getDb().insert(schema.eventChanges).values({ eventId, changeType, oldValue, newValue });
 }
 
 /**
@@ -153,20 +192,51 @@ export async function pruneStaleEvents(
   args: { windowStart: Date; windowEnd: Date; olderThan: Date },
 ): Promise<number> {
   const db = getDb();
+  const stale = and(
+    eq(schema.events.venueId, venueId),
+    gte(schema.events.startsAt, args.windowStart),
+    lte(schema.events.startsAt, args.windowEnd),
+    lt(schema.events.updatedAt, args.olderThan),
+  );
+
+  /**
+   * Rows somebody saved are cancelled, not deleted (GOI-101).
+   *
+   * `want_to_go.event_id` cascades, so deleting one took the reader's bookmark
+   * with it — and a newsletter cannot tell someone their saved event was
+   * cancelled if cancelling it also erases the record that they saved it. The
+   * row is kept, stamped, and dropped from every listing by `cancelled_at IS
+   * NULL`; the reader's list keeps it, which is where the fact belongs.
+   *
+   * This is the inference GOI-101 warns about, and the caller is what makes it
+   * safe: `pruneStaleEvents` runs only after a scrape that succeeded *and*
+   * returned events for this venue, so a failed fetch or a restructured page
+   * cannot be read as a room full of cancellations. A false cancellation is
+   * far worse than a missed one.
+   */
+  const saved = await db
+    .select({ id: schema.events.id, startsAt: schema.events.startsAt })
+    .from(schema.events)
+    .innerJoin(schema.wantToGo, eq(schema.wantToGo.eventId, schema.events.id))
+    .where(and(stale, sql`${schema.events.cancelledAt} is null`));
+
+  const savedIds = [...new Set(saved.map((r) => r.id))];
+  if (savedIds.length > 0) {
+    await db
+      .update(schema.events)
+      .set({ cancelledAt: new Date() })
+      .where(inArray(schema.events.id, savedIds));
+    for (const row of saved) {
+      await recordEventChange(row.id, 'cancelled', row.startsAt?.toISOString() ?? null, null);
+    }
+  }
+
   const deleted = await db
     .delete(schema.events)
-    .where(
-      and(
-        eq(schema.events.venueId, venueId),
-        gte(schema.events.startsAt, args.windowStart),
-        lte(schema.events.startsAt, args.windowEnd),
-        lt(schema.events.updatedAt, args.olderThan),
-      ),
-    )
+    .where(and(stale, sql`${schema.events.cancelledAt} is null`))
     .returning({ id: schema.events.id });
-  return deleted.length;
+  return deleted.length + savedIds.length;
 }
-
 
 /**
  * One row's classification (GOI-80), decided at save time.

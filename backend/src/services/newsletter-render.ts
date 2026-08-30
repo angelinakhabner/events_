@@ -1,6 +1,7 @@
 import type {
-  Event, Festival, NewsletterDetail, NewsletterFrequency,
+  Event, EventChangeType, Festival, NewsletterDetail, NewsletterFrequency, WantToGoState,
 } from '@afisz/shared';
+import type { QueuedChange, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 
 /**
@@ -38,6 +39,8 @@ const C = {
   onInkSub: '#dddcdc',
   /** --color-divider (35% ink over bg), drawn as a 2px rule. */
   divider: '#aca9a2',
+  /** The app's red, for the one line in a brief that is urgent (GOI-101). */
+  accent: '#c62828',
   /** --color-accent-100, the filled tag. */
   tagFill: '#f0ead0',
   /** 50% / 75% / 45% ink over bg — meta, description, footer. */
@@ -242,7 +245,7 @@ function sectionHeadingRow(section: BriefSection, top: boolean): string {
       `font-family:${FONT};font-weight:800;font-size:20px;line-height:1.2;` +
       `letter-spacing:-.01em;color:${C.ink}">${escapeHtml(titleCase(section.category))}` +
       `<span style="font-weight:400;font-size:11px;letter-spacing:.06em;text-transform:uppercase;` +
-        `color:${C.meta}"> · ${escapeHtml(cadenceLabel(section.frequency))}</span>` +
+        `color:${C.meta}"> · ${escapeHtml(cadenceLabel(section.windowDays))}</span>` +
     `</td></tr>`
   );
 }
@@ -253,9 +256,93 @@ function titleCase(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function cadenceLabel(frequency: NewsletterFrequency): string {
-  if (frequency === 'daily') return 'today';
-  return frequency === 'weekly' ? 'this week' : 'this month';
+/** What a section's span is called in the heading. Read from the span itself
+ *  so a lookahead override reads honestly — a cinema section told to look ten
+ *  days ahead says "this month", not "today". */
+function cadenceLabel(windowDays: number): string {
+  if (windowDays <= 1) return 'today';
+  return windowDays <= 7 ? 'this week' : 'this month';
+}
+
+/**
+ * The saved-events block (GOI-101), at the top of the issue.
+ *
+ * Above every category section, and deliberately: it is the only part of a
+ * brief that asks the reader to do something, and burying it under three
+ * listings of what is on would make it a footnote to the news rather than the
+ * news. Changes come first inside it — a cancelled event is something that
+ * happened, and an upcoming one is only a nudge.
+ */
+function wantToGoBlock(section: WantToGoSection): string {
+  if (section.reminders.length === 0 && section.changes.length === 0) return '';
+
+  const rows: string[] = [];
+  rows.push(
+    `<tr><td colspan="2" style="padding:4px 0 2px;font-family:${FONT};font-weight:800;` +
+      `font-size:20px;line-height:1.2;letter-spacing:-.01em;color:${C.ink}">You wanted to go</td></tr>`,
+  );
+
+  for (const change of section.changes) {
+    rows.push(
+      `<tr><td colspan="2" style="padding:10px 0;border-top:1px solid ${C.divider};` +
+        `font-family:${FONT};font-size:13px;line-height:1.5;color:${C.body}">` +
+        `<span style="font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:11px;` +
+          `color:${C.accent}">${escapeHtml(changeLabel(change.type))}</span> ` +
+        `<span style="font-weight:700;color:${C.ink}">${escapeHtml(change.event.title)}</span>` +
+        `${changeDetail(change)}` +
+      `</td></tr>`,
+    );
+  }
+
+  for (const item of section.reminders) {
+    rows.push(
+      `<tr><td colspan="2" style="padding:10px 0;border-top:1px solid ${C.divider};` +
+        `font-family:${FONT};font-size:13px;line-height:1.5;color:${C.body}">` +
+        `<span style="font-weight:800;text-transform:uppercase;letter-spacing:.06em;font-size:11px;` +
+          `color:${item.state === 'last_chance' ? C.accent : C.meta}">` +
+          `${escapeHtml(stateLabel(item.state))}</span> ` +
+        `<span style="font-weight:700;color:${C.ink}">${escapeHtml(item.event.title)}</span>` +
+        ` — ${escapeHtml(fmtWhen(item.event.startsAt))}` +
+        `${item.event.venue?.name ? `, ${escapeHtml(item.event.venue.name)}` : ''}` +
+      `</td></tr>`,
+    );
+  }
+
+  return (
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
+      `style="border-collapse:collapse;margin-bottom:8px">${rows.join('')}</table>`
+  );
+}
+
+/** How each escalation state is announced. "Last chance" is the one that
+ *  outranks a date, so it is the one set in the accent colour. */
+function stateLabel(state: WantToGoState): string {
+  if (state === 'tomorrow') return 'Tomorrow';
+  return state === 'last_chance' ? 'Last chance' : 'This week';
+}
+
+function changeLabel(type: EventChangeType): string {
+  if (type === 'cancelled') return 'Cancelled';
+  if (type === 'rescheduled') return 'Moved to a new time';
+  if (type === 'moved') return 'Moved';
+  return 'Sold out';
+}
+
+/** The one useful fact about a change, where there is one — a reschedule's
+ *  new time. A cancellation has nothing to add that the word does not say. */
+function changeDetail(change: QueuedChange): string {
+  if (change.type !== 'rescheduled' || !change.newValue) return '';
+  return ` — now ${escapeHtml(fmtWhen(change.newValue))}`;
+}
+
+/** "Fri 12 Sep, 19:00" — a saved event carries no section heading to date it,
+ *  so each row has to say when on its own. */
+function fmtWhen(iso: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Warsaw',
+    weekday: 'short', day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(iso));
 }
 
 function picksTable(sections: BriefSection[]): string {
@@ -276,7 +363,7 @@ function picksTable(sections: BriefSection[]): string {
       const opensList = rows.length === 0;
       // A section spanning more than a day gets its days labelled; a daily
       // one is a single day by definition.
-      if (section.frequency !== 'daily') {
+      if (section.windowDays > 1) {
         const day = fmtDayKey(pick.startsAt);
         if (day !== lastDay) {
           lastDay = day;
@@ -388,13 +475,26 @@ function footerRow(categories: string[]): string {
 export interface BriefSection {
   /** Empty for an unnamed brief covering everything. */
   category: string;
-  frequency: NewsletterFrequency;
+  /**
+   * How far ahead this section reached, in days (GOI-100).
+   *
+   * A number rather than a cadence, because a section's window is now derived
+   * from the send cadence and the rule's own cadence together, plus an
+   * optional lookahead override — so there is no single word that names it.
+   * "Weekly theatre in a daily newsletter" and "a daily newsletter's cinema
+   * looking ten days ahead" are both real, and only the span distinguishes
+   * them.
+   */
+  windowDays: number;
   detail: NewsletterDetail;
   events: Event[];
 }
 
 export interface BriefContent {
   sections: BriefSection[];
+  /** The saved-events queue (GOI-101). Rendered above every category section:
+   *  it is the only part of a brief that asks the reader to do something. */
+  wantToGo?: WantToGoSection;
   /** Cadence to word the masthead by when there are no sections at all —
    *  otherwise an empty weekly brief would announce itself as "Today". */
   fallbackFrequency?: NewsletterFrequency;
@@ -424,14 +524,13 @@ export function renderBriefHtml(content: BriefContent): string {
   // The widest cadence present sets the masthead's wording — a brief carrying
   // a monthly section is not "today in Warsaw". With nothing on, fall back to
   // the cadence the brief *would* have run at.
+  const widest = sections.reduce((acc, s) => Math.max(acc, s.windowDays), 0);
   const frequency: NewsletterFrequency = sections.length
-    ? sections.reduce<NewsletterFrequency>(
-        (acc, s) => (briefWindow(s.frequency) > briefWindow(acc) ? s.frequency : acc),
-        sections[0]!.frequency,
-      )
+    ? (widest > 7 ? 'monthly' : widest > 1 ? 'weekly' : 'daily')
     : content.fallbackFrequency ?? 'daily';
   const date = fmtDay(now.toISOString());
 
+  const queue = content.wantToGo ? wantToGoBlock(content.wantToGo) : '';
   const body = events.length
     ? picksTable(sections)
     : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
@@ -464,7 +563,7 @@ export function renderBriefHtml(content: BriefContent): string {
             }) +
             // 8px below the list, matching the design's gap before the
             // full-width rule that opens the festival block.
-            `<tr><td style="padding:8px 40px">${body}</td></tr>` +
+            `<tr><td style="padding:8px 40px">${queue}${body}</td></tr>` +
             (content.festival ? festivalRow(content.festival) : '') +
             ctaRow() +
             footerRow(categories) +
@@ -473,10 +572,4 @@ export function renderBriefHtml(content: BriefContent): string {
       `</table>` +
     `</body></html>`
   );
-}
-
-/** Cadence ordering, so the masthead can pick the widest one present. */
-function briefWindow(frequency: NewsletterFrequency): number {
-  if (frequency === 'daily') return 1;
-  return frequency === 'weekly' ? 7 : 30;
 }

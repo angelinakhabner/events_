@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
 import type { Event, EventKind, EventVenue, Category } from '@afisz/shared';
 
@@ -122,6 +122,9 @@ export class EventStore {
         gte(schema.events.startsAt, now),
         and(eq(schema.events.kind, 'exhibition'), gte(schema.events.endsAt, now)),
       )!,
+      // A cancelled row is kept only so the reader who saved it can be told
+      // (GOI-101); it is not on, so it is not in any listing.
+      isNull(schema.events.cancelledAt),
     ];
     if (input.until) conditions.push(lte(schema.events.startsAt, input.until));
     if (input.fromDay) conditions.push(warsawDayWindow(input.fromDay, input.toDay));
@@ -234,6 +237,7 @@ export class EventStore {
       .from(schema.events)
       .where(
         and(
+          isNull(schema.events.cancelledAt),
           inArray(schema.events.venueId, venueIds),
           // Same reasoning as listUpcoming: a museum running a three-month
           // show is not dark, even though nothing *starts* in the future.
@@ -320,6 +324,19 @@ export class EventStore {
   }): Promise<VenueFilterCountRow[]> {
     const db = getDb();
     const now = input.now ?? new Date();
+    /**
+     * The instant as an explicit ISO string, not a `Date`.
+     *
+     * This query goes through `db.execute` with a hand-written `sql` template
+     * rather than the query builder, and postgres.js binds those parameters
+     * itself — where a `Date` is not a value it knows how to serialise. It
+     * threw "The 'string' argument must be of type string... Received an
+     * instance of Date", which tRPC returned as a 500, which React Query
+     * turned into `data: undefined`, which the venue picker rendered as
+     * "0 venues · No venue matches" (GOI-94). Nothing along that path says
+     * "the query failed", which is why it read as an empty venue set.
+     */
+    const nowIso = now.toISOString();
 
     // Both counts come from the same scan: one narrowed by the day/time
     // filters, one not. The second is what tells "nothing on this Tuesday"
@@ -357,7 +374,9 @@ export class EventStore {
         -- "Upcoming" has to mean the same thing it means in the listing
         -- (GOI-67): an exhibition that opened in June and closes in September
         -- is on today, and is selected by its closing date.
-        AND (e.starts_at >= ${now} OR (e.kind = 'exhibition' AND e.ends_at >= ${now}))
+        AND e.cancelled_at IS NULL
+        AND (e.starts_at >= ${nowIso}::timestamptz
+             OR (e.kind = 'exhibition' AND e.ends_at >= ${nowIso}::timestamptz))
       WHERE ${input.category ? sql`v.category = ${input.category}` : sql`true`}
         AND ${input.city ? sql`v.city = ${input.city}` : sql`true`}
       GROUP BY v.id, v.name, v.url, v.category, v.probe_error_code
@@ -499,5 +518,6 @@ function rowToEvent(
     sourceUrl: row.sourceUrl,
     sourceId: row.sourceId,
     scrapedAt: row.scrapedAt.toISOString(),
+    cancelledAt: row.cancelledAt ? row.cancelledAt.toISOString() : null,
   };
 }
