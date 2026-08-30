@@ -13,16 +13,30 @@ import { fileURLToPath } from 'node:url';
  * Reading the text out also happens to prove the thing most likely to break —
  * that Polish survives the font embedding.
  */
-async function textOf(pdf: Buffer): Promise<{ pages: number; text: string }> {
+async function textOf(
+  pdf: Buffer,
+): Promise<{ pages: number; text: string; flat: string; links: string[] }> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await pdfjs.getDocument({ data: new Uint8Array(pdf), useSystemFonts: false }).promise;
   let text = '';
+  const links: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
-    const content = await (await doc.getPage(n)).getTextContent();
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
     text += content.items.map((i) => ('str' in i ? i.str : '')).join(' ') + '\n';
+    for (const a of await page.getAnnotations()) {
+      if (typeof (a as { url?: unknown }).url === 'string') links.push((a as { url: string }).url);
+    }
   }
-  return { pages: doc.numPages, text };
+  // The brief's labels are letterspaced, and tracking that wide makes pdf.js
+  // emit one text item per glyph — `CHCĘ IŚĆ` reads back as `C H C Ę   I Ś Ć`.
+  // `flat` drops whitespace so an assertion can ask about the letters, which is
+  // what it means; order is preserved, so `indexOf` still compares positions.
+  return { pages: doc.numPages, text, flat: text.replace(/\s+/g, ''), links };
 }
+
+/** Assert against `flat` without writing the expectation letter by letter. */
+const squash = (s: string) => s.replace(/\s+/g, '');
 
 const event = (over: Partial<Event> = {}): Event =>
   ({
@@ -41,7 +55,7 @@ const event = (over: Partial<Event> = {}): Event =>
   }) as Event;
 
 const section = (over: Partial<BriefSection> = {}): BriefSection =>
-  ({ category: 'cinema', frequency: 'weekly', detail: 'full', events: [event()], ...over }) as BriefSection;
+  ({ category: 'Kino', windowDays: 7, detail: 'full', events: [event()], ...over }) as BriefSection;
 
 describe('renderBriefPdf', () => {
   it('produces a readable PDF carrying the brief', async () => {
@@ -54,9 +68,33 @@ describe('renderBriefPdf', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     const { pages, text } = await textOf(pdf);
     expect(pages).toBe(1);
-    expect(text).toContain('AFISZ');
+    expect(text).toContain('AFISZ.KA');
+    expect(text).toContain('WARSZAWA');
     expect(text).toContain('Zimna wojna');
-    expect(text).toContain('Angelina');
+    // Named, not greeted — Polish would need the vocative, which cannot be
+    // derived from an arbitrary name.
+    expect(text).toContain('Angelina — 1 wydarzenie');
+  });
+
+  /** Polish counts in three forms, and copy that gets it wrong reads as
+   *  generated. 1 / 2-4 / the rest, with the teens taking the third. */
+  it('counts in Polish', async () => {
+    const counted = async (n: number) => {
+      const pdf = await renderBriefPdf({
+        sections: [
+          section({
+            events: Array.from({ length: n }, (_, i) => event({ title: `Film ${i}` })),
+          }),
+        ],
+        now: new Date('2026-09-09T08:00:00.000Z'),
+      });
+      return (await textOf(pdf)).text;
+    };
+
+    expect(await counted(1)).toContain('1 wydarzenie');
+    expect(await counted(3)).toContain('3 wydarzenia');
+    expect(await counted(5)).toContain('5 wydarzeń');
+    expect(await counted(12)).toContain('12 wydarzeń');
   });
 
   /**
@@ -80,10 +118,12 @@ describe('renderBriefPdf', () => {
       now: new Date('2026-09-09T08:00:00.000Z'),
     });
 
-    const { text } = await textOf(pdf);
+    const { text, flat } = await textOf(pdf);
     expect(text).toContain('Zdzisław Beksiński');
     expect(text).toContain('źródła');
-    expect(text).toContain('Kino Muranów');
+    // The venue line is set in caps, so the diacritics have to survive the
+    // uppercasing too — `ó` and `Ó` are separate glyphs in the subset.
+    expect(flat).toContain(squash('KINO MURANÓW'));
     expect(text).toContain('Opowieść o miłości niemożliwej');
     expect(text).toContain('Łukasza Żala');
     expect(text).toContain('reżyseria');
@@ -105,13 +145,12 @@ describe('renderBriefPdf', () => {
       now: new Date('2026-09-09T08:00:00.000Z'),
     });
 
-    const { text } = await textOf(pdf);
-    // One title, both venues, both times.
+    const { text, flat } = await textOf(pdf);
+    // One title, both venues, both times — each venue on its own line, so two
+    // cinemas showing the same film read as two places rather than one string.
     expect(text.match(/Zimna wojna/g)).toHaveLength(1);
-    expect(text).toContain('Kino Muranów');
-    expect(text).toContain('Kinoteka');
-    expect(text).toContain('18:00');
-    expect(text).toContain('20:30');
+    expect(flat).toContain(squash('KINO MURANÓW · 18:00'));
+    expect(flat).toContain(squash('KINOTEKA · 20:30'));
   });
 
   it('says so plainly when there is nothing on', async () => {
@@ -121,8 +160,40 @@ describe('renderBriefPdf', () => {
       now: new Date('2026-09-09T08:00:00.000Z'),
     });
     const { text } = await textOf(pdf);
-    expect(text).toContain('Nothing on at your venues');
-    expect(text).toContain('0 picks');
+    expect(text).toContain('nic nie znaleźliśmy');
+    expect(text).toContain('0 wydarzeń');
+  });
+
+  /**
+   * GOI-67: an exhibition runs for months, so a start time in the gutter says
+   * nothing a reader can act on. What they need is the date it comes down.
+   */
+  it('dates an exhibition by its closing rather than by a showtime', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [
+        section({
+          category: 'Wystawy',
+          events: [
+            event({
+              title: 'Nowa rzeźba polska',
+              kind: 'exhibition',
+              startsAt: '2026-06-01T08:00:00.000Z',
+              endsAt: '2026-09-14T16:00:00.000Z',
+              venue: { id: 'v9', name: 'Zachęta', city: 'Warsaw' } as Event['venue'],
+            }),
+          ],
+        }),
+      ],
+      now: new Date('2026-09-09T08:00:00.000Z'),
+    });
+
+    const { text, flat } = await textOf(pdf);
+    expect(flat).toContain(squash('DO 14 WRZEŚNIA'));
+    expect(flat).toContain(squash('ZACHĘTA'));
+    expect(text).toContain('Nowa rzeźba polska');
+    // No 10:00 gutter beside it, which is what the timed layout would have put
+    // there for an 08:00Z start.
+    expect(flat).not.toContain('10:00');
   });
 
   it('names an ongoing festival', async () => {
@@ -158,6 +229,110 @@ describe('renderBriefPdf', () => {
     expect(pages).toBeGreaterThan(1);
     expect(text).toContain('Film numer 0');
     expect(text).toContain('Film numer 39');
+  });
+});
+
+/**
+ * The saved-events queue in the PDF (GOI-101).
+ *
+ * It was absent from the PDF for as long as the PDF was a filed copy of an
+ * email that carried it. Once a reader can choose the drive *instead* of the
+ * email, that omission means the one part of the brief that asks them to do
+ * something never reaches them at all — so these are regression tests for a
+ * gap the delivery choice opened, not for new formatting.
+ */
+describe('the saved-events queue', () => {
+  const queued = (over: Partial<Event> = {}) => event({ title: 'Hamlet', ...over });
+
+  it('carries reminders and changes, above the category sections', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section()],
+      wantToGo: {
+        changes: [
+          {
+            event: queued({ title: 'Kordian', startsAt: '2026-09-10T17:00:00.000Z' }),
+            type: 'cancelled', oldValue: null, newValue: null,
+          },
+        ],
+        reminders: [
+          { event: queued({ startsAt: '2026-09-10T17:00:00.000Z' }), state: 'tomorrow' },
+        ],
+      },
+      now: new Date('2026-09-09T08:00:00.000Z'),
+    });
+
+    const { text, flat } = await textOf(pdf);
+    expect(flat).toContain(squash('CHCĘ IŚĆ'));
+    expect(text).toContain('Kordian');
+    expect(flat).toContain(squash('ODWOŁANE'));
+    expect(text).toContain('Hamlet');
+    // Above the category section it shares the page with.
+    expect(flat.indexOf(squash('CHCĘ IŚĆ'))).toBeLessThan(flat.indexOf('KINO'));
+  });
+
+  /** The states are three different requests, not degrees of one, so each gets
+   *  its own subheading rather than being listed flat. */
+  it('groups reminders by state, urgent first', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [],
+      fallbackFrequency: 'weekly',
+      wantToGo: {
+        changes: [],
+        reminders: [
+          { event: queued({ title: 'Amator', startsAt: '2026-09-14T17:00:00.000Z' }), state: 'this_week' },
+          { event: queued({ title: 'Persona', startsAt: '2026-09-10T17:00:00.000Z' }), state: 'tomorrow' },
+          { event: queued({ title: 'Wesele', startsAt: '2026-09-11T17:00:00.000Z' }), state: 'last_chance' },
+        ],
+      },
+      now: new Date('2026-09-09T08:00:00.000Z'),
+    });
+
+    const { flat } = await textOf(pdf);
+    const at = (s: string) => flat.indexOf(squash(s));
+    expect(at('OSTATNIA SZANSA')).toBeGreaterThan(-1);
+    expect(at('OSTATNIA SZANSA')).toBeLessThan(at('JUTRO'));
+    expect(at('JUTRO')).toBeLessThan(at('W TYM TYGODNIU'));
+    // Each title sits under its own state, not in the order it was passed in.
+    expect(at('Wesele')).toBeLessThan(at('Persona'));
+    expect(at('Persona')).toBeLessThan(at('Amator'));
+  });
+
+  /** A brief with an empty queue and no events says nothing is on; a brief
+   *  with only a queue is not empty, and must not say so. */
+  it('is enough on its own to make a brief non-empty', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [],
+      fallbackFrequency: 'weekly',
+      wantToGo: {
+        changes: [],
+        reminders: [{ event: queued(), state: 'tomorrow' }],
+      },
+      now: new Date('2026-09-09T08:00:00.000Z'),
+    });
+
+    const { text } = await textOf(pdf);
+    expect(text).toContain('Hamlet');
+    expect(text).not.toContain('nic nie znaleźliśmy');
+  });
+});
+
+/**
+ * A reader who chose `drive` gets no email, so this page is the only place
+ * their newsletter can offer them a way to change it or stop it. Styled text
+ * that says "Wypisz się" is not that; a link annotation is.
+ */
+describe('the footer', () => {
+  it('carries real links to settings and unsubscribe', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section()],
+      now: new Date('2026-09-09T08:00:00.000Z'),
+    });
+
+    const { text, links } = await textOf(pdf);
+    expect(text).toContain('Wypisz się');
+    expect(links).toHaveLength(3);
+    expect(links.filter((l) => l.includes('tab=newsletter'))).toHaveLength(2);
+    expect(links.every((l) => l.startsWith('http'))).toBe(true);
   });
 });
 

@@ -302,6 +302,10 @@ export const newsletterSubscriptions = pgTable(
     email: text('email').notNull(),
     /** What the brief calls the reader; null = greet without a name. */
     recipientName: text('recipient_name'),
+    /** email | drive | both — where the brief goes. A drive-only reader is
+     *  never mailed, so for them the filed PDF is the delivery rather than a
+     *  copy of one, and a failed upload is a failed send. */
+    delivery: text('delivery').notNull().default('email'),
     /** daily | weekly | monthly — when an issue is sent. */
     sendCadence: text('send_cadence').notNull().default('weekly'),
     /** Venues within the folder the brief covers; empty = all of them. It

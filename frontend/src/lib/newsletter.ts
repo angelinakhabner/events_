@@ -1,3 +1,4 @@
+import type { NewsletterDelivery } from '@afisz/shared';
 import { pad } from './format';
 
 /** Weekday names, JS convention (0=Sun … 6=Sat). */
@@ -15,6 +16,9 @@ export interface BriefSummaryInput {
   afterHour: number | null;
   /** Where it is sent. Blank until the reader types one. */
   email?: string;
+  /** Email, a filed PDF, or both. Decides how the line names its destination
+   *  — "emailed to ania@example.com" is a lie to a drive-only reader. */
+  delivery?: NewsletterDelivery;
   /** A saved-but-switched-off brief sends nothing; the line has to say so. */
   enabled?: boolean;
 }
@@ -47,7 +51,7 @@ export function briefSummary(input: BriefSummaryInput): string {
   const when = `${cadence(input)} at ${pad(input.sendHour)}:${pad(input.sendMinute)}`;
   const only = input.afterHour == null ? '' : ` — only what starts after ${pad(input.afterHour)}:00`;
   const line =
-    `${horizon(input.frequency)} at ${where}, emailed to ${recipient(input.email)} ${when}${only}.`;
+    `${horizon(input.frequency)} at ${where}, ${destination(input)} ${when}${only}.`;
   // Capitalised by the horizon phrase, which always leads.
   return input.enabled === false ? `${line} Paused — nothing is being sent.` : line;
 }
@@ -61,6 +65,21 @@ function horizon(frequency: BriefSummaryInput['frequency']): string {
   if (frequency === 'daily') return 'The next 24 hours';
   if (frequency === 'weekly') return 'The next 7 days';
   return 'The next 30 days';
+}
+
+/**
+ * Where the brief actually goes.
+ *
+ * The line named an address unconditionally, which was right while email was
+ * the only delivery there was and false the moment a reader could choose to
+ * have it filed instead. The same reasoning as GOI-30: two statements of one
+ * fact, with one of them fiction, is worse than one statement.
+ */
+function destination(input: BriefSummaryInput): string {
+  const delivery = input.delivery ?? 'email';
+  if (delivery === 'drive') return 'filed to your drive as a PDF';
+  const to = `emailed to ${recipient(input.email)}`;
+  return delivery === 'both' ? `${to} and filed to your drive` : to;
 }
 
 /** The address, or a placeholder while the field is still empty. */
