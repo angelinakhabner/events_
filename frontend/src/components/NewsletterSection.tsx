@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDetail, NewsletterRuleCadence, NewsletterSendCadence,
-  NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
+  NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
 } from '@afisz/shared';
-import { allowedRuleCadences, DEFAULT_WANT_TO_GO, deriveWindow } from '@afisz/shared';
+import {
+  allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
+} from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
@@ -140,6 +142,7 @@ function NewsletterForm({
 }) {
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
   const [recipientName, setRecipientName] = useState(saved?.recipientName ?? '');
+  const [delivery, setDelivery] = useState<NewsletterDelivery>(saved?.delivery ?? 'email');
   const [sendCadence, setSendCadenceRaw] = useState<NewsletterSendCadence>(saved?.sendCadence ?? 'weekly');
   const [sendHour, setSendHour] = useState(saved?.sendHour ?? 8);
   const [sendMinute, setSendMinute] = useState(saved?.sendMinute ?? 0);
@@ -246,6 +249,7 @@ function NewsletterForm({
   const payload = () => ({
     email: email.trim(),
     recipientName: recipientName.trim() || null,
+    delivery,
     folderId: null,
     name: saved?.name ?? 'Newsletter',
     sendCadence,
@@ -268,6 +272,7 @@ function NewsletterForm({
     sendWeekday,
     afterHour: null,
     email,
+    delivery,
     enabled,
   });
 
@@ -314,8 +319,10 @@ function NewsletterForm({
           save.mutate(payload());
         }}
       >
-        <FormSection step={1} label="Contact">
-          <div className="flex flex-wrap gap-5">
+        <FormSection step={1} label="Where it goes">
+          <DeliveryChoice value={delivery} onChange={setDelivery} />
+
+          <div className="mt-5 flex flex-wrap gap-5">
             <div className="flex-1 min-w-[14rem]">
               <label className="label-form mb-1.5" htmlFor="newsletter-email">
                 Email address
@@ -347,6 +354,18 @@ function NewsletterForm({
               </p>
             </div>
           </div>
+
+          {/* The address is the account either way, so the field stays — but
+              saying it is where the brief arrives would be false for someone
+              who chose the drive. */}
+          {!deliversByEmail(delivery) ? (
+            <p className="mt-3 text-xs text-faint">
+              Nothing is emailed with this setting. The address stays as your account&rsquo;s, and
+              the name is still used to open the PDF.
+            </p>
+          ) : null}
+
+          {deliversToDrive(delivery) ? <DriveRequiredNote /> : null}
         </FormSection>
 
         <FormSection
@@ -670,6 +689,125 @@ function NewsletterForm({
 
       <DriveCard />
     </section>
+  );
+}
+
+/**
+ * Email, a filed PDF, or both.
+ *
+ * A radiogroup rather than a set of checkboxes, and rather than a toggle
+ * bolted onto the drive card further down. The three options are mutually
+ * exclusive and one of them is always in force, which is what a radio group
+ * means — and putting the choice at the top of the form, before the address
+ * field, is what makes the address field's role legible: for a drive-only
+ * reader it is an account name rather than a destination.
+ *
+ * Drawn as the same bordered strip the send cadence uses, because it is the
+ * same kind of choice.
+ */
+function DeliveryChoice({
+  value,
+  onChange,
+}: {
+  value: NewsletterDelivery;
+  onChange: (v: NewsletterDelivery) => void;
+}) {
+  const options: { value: NewsletterDelivery; label: string; hint: string }[] = [
+    { value: 'email', label: 'Email', hint: 'The brief arrives in your inbox.' },
+    { value: 'drive', label: 'Drive', hint: 'Filed as a PDF. Nothing is emailed.' },
+    { value: 'both', label: 'Both', hint: 'Emailed, and filed as a PDF as well.' },
+  ];
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <div>
+      <div role="radiogroup" aria-label="How to send it" className="flex border-2 border-ink">
+        {options.map((o, i) => {
+          const active = value === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(o.value)}
+              className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+                i < options.length - 1 ? 'border-r-2 border-ink' : ''
+              } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-xs text-faint">{current?.hint}</p>
+    </div>
+  );
+}
+
+/**
+ * Says so when the reader has asked for a filed PDF and there is nowhere to
+ * file it.
+ *
+ * The server accepts the setting either way — a reader may reasonably choose
+ * it and connect the drive next, and refusing would make the two steps
+ * order-dependent for no reason. What it must not be is silent: a `drive`
+ * newsletter with nothing connected produces no brief at all, and the reader
+ * would have no way to know. The sweep records `no-drive` for the same reason;
+ * this is the half of it they can see.
+ *
+ * **It says something in every state, including "I don't know".** The status
+ * query is not reliably answerable — `defaultDriveStore` is the database store
+ * unconditionally, so on a deployment without one the query fails and retries,
+ * and a component that rendered nothing until it resolved would go quiet
+ * exactly where the warning matters most. Silence here reads as approval.
+ *
+ * It reads the same query the drive card below does, so it costs no extra
+ * request.
+ */
+function DriveRequiredNote() {
+  const status = trpc.my.newsletter.drive.status.useQuery();
+
+  if (status.data) {
+    if (!status.data.available) {
+      return (
+        <Note alert>
+          Drives aren&rsquo;t available on this deployment, so nothing can be filed. Choose
+          &ldquo;Email&rdquo; instead.
+        </Note>
+      );
+    }
+    if (status.data.connections.length === 0) {
+      return (
+        <Note alert>
+          No drive is connected yet, so there is nowhere to file the PDF — connect one under
+          &ldquo;Save briefs to a drive&rdquo; below. Until you do, no brief will be filed.
+        </Note>
+      );
+    }
+    return null;
+  }
+
+  // Status unknown. Not an alarm — it may simply not have arrived yet — but
+  // not nothing either.
+  return (
+    <Note>
+      Briefs are filed to the drive you connect under &ldquo;Save briefs to a drive&rdquo; below.
+      With none connected, nothing is filed.
+    </Note>
+  );
+}
+
+/** A line under the delivery choice. `alert` marks the ones a reader has to
+ *  act on, which is also what puts them in the accessibility tree as such. */
+function Note({ alert, children }: { alert?: boolean; children: React.ReactNode }) {
+  return (
+    <p
+      {...(alert ? { role: 'alert' as const } : {})}
+      className={`mt-3 text-sm ${alert ? 'text-accent' : 'text-faint'}`}
+    >
+      {children}
+    </p>
   );
 }
 
@@ -1107,9 +1245,10 @@ function DriveCard() {
     <div className="mt-10 border-t-3 border-ink pt-6">
       <h3 className="label-form">Save briefs to a drive</h3>
       <p className="mt-2 max-w-prose text-sm text-muted">
-        Every brief also gets filed as a PDF, on the same schedule as the email, in a folder
-        of your choosing at the root of your drive. AFISZ can only see files it puts there
-        itself — nothing else in your drive.
+        Connect a drive and each brief can be filed there as a PDF, on its own schedule, in a
+        folder of your choosing at the root of the drive. Whether that happens instead of the
+        email or as well as it is the choice at the top of this page. AFISZ can only see files
+        it puts there itself — nothing else in your drive.
       </p>
 
       {google ? (

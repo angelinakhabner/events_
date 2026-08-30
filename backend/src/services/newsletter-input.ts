@@ -36,6 +36,15 @@ export const newsletterSaveInput = z
     email: z.string().email(),
     /** Name the brief greets you by; blank greets you without one. */
     recipientName: z.string().trim().max(80).nullable().optional(),
+    /**
+     * Where the brief goes. `drive` and `both` are accepted with no drive
+     * connected on purpose — a reader may reasonably set the preference and
+     * connect the drive next, and refusing here would make the two steps
+     * order-dependent for no reason. What must not happen is silence: the
+     * settings screen warns while nothing is connected, and the sweep reports
+     * `no-drive` rather than treating the issue as sent.
+     */
+    delivery: z.enum(['email', 'drive', 'both']).default('email'),
     /** Which folder's venues this newsletter draws on. */
     folderId: z.string().uuid().nullable().default(null),
     name: z.string().trim().min(1).max(60).default('Newsletter'),

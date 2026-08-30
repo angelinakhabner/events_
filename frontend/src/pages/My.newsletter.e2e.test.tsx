@@ -350,6 +350,103 @@ describe('MyPage — newsletter end-to-end', () => {
   });
 
   /**
+   * The delivery choice: email, a PDF filed on a connected drive, or both.
+   *
+   * Email is the default because it is what every config already was — a
+   * migration that switched anyone's delivery would be a feature that silently
+   * stopped their newsletter arriving.
+   */
+  describe('where the brief goes', () => {
+    it('offers the three destinations, defaulting to email', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+      expect(within(group).getAllByRole('radio')).toHaveLength(3);
+      expect(within(group).getByRole('radio', { name: /^email$/i })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('saves the choice, and the summary line stops claiming an email', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+
+      await user.click(within(group).getByRole('radio', { name: /^drive$/i }));
+      // GOI-30's rule: the line above the controls must not state a fiction.
+      // "Emailed to ada@example.com" is one for a reader who chose the drive.
+      expect(within(section).getByText(/filed to your drive/i)).toBeInTheDocument();
+
+      await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+      await within(section).findByText('Saved.');
+      expect(await defaultNewsletterStore.get(userId)).toMatchObject({ delivery: 'drive' });
+    });
+
+    /**
+     * The setting is accepted with no drive connected — a reader may
+     * reasonably choose it and connect the drive next, and refusing would make
+     * the two steps order-dependent. What it must not be is silent: a
+     * drive-only newsletter with nothing connected produces no brief at all.
+     *
+     * Asserted as "says something" rather than "shows this exact alert",
+     * because the precise wording depends on whether the drive-status query
+     * answered — and the guarantee that matters is that it is never quiet.
+     * This environment is the awkward one: `defaultDriveStore` is the database
+     * store unconditionally, so with no database the query fails and retries,
+     * and a note that waited for it would never appear at all.
+     */
+    it('never goes quiet about needing a drive', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+
+      // Start from a known state: an earlier test in this file saves a
+      // delivery choice, and the form loads whatever is stored.
+      await user.click(within(group).getByRole('radio', { name: /^email$/i }));
+      expect(
+        within(section).queryByText(/nowhere to file|briefs are filed to the drive/i),
+      ).not.toBeInTheDocument();
+
+      for (const choice of [/^drive$/i, /^both$/i]) {
+        await user.click(within(group).getByRole('radio', { name: choice }));
+        expect(
+          within(section).getByText(/nowhere to file|briefs are filed to the drive|aren.t available/i),
+        ).toBeInTheDocument();
+      }
+
+      // …and goes quiet again once no drive is involved.
+      await user.click(within(group).getByRole('radio', { name: /^email$/i }));
+      expect(
+        within(section).queryByText(/nowhere to file|briefs are filed to the drive/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it('says the address is not a destination when only the drive is used', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+
+      await user.click(within(group).getByRole('radio', { name: /^drive$/i }));
+      expect(within(section).getByText(/nothing is emailed with this setting/i)).toBeInTheDocument();
+
+      // …and stops saying it once an email is involved again.
+      await user.click(within(group).getByRole('radio', { name: /^both$/i }));
+      expect(within(section).queryByText(/nothing is emailed with this setting/i)).not.toBeInTheDocument();
+    });
+  });
+
+  /**
    * GOI-102 §2: the options a schedule makes impossible are **disabled, not
    * removed**. A vanished dropdown option reads as a bug or a moved control;
    * a greyed one teaches the rule in the place the rule applies.
@@ -479,7 +576,12 @@ describe('MyPage — newsletter end-to-end', () => {
     }
     await user.click(within(section).getByLabelText(/include events i saved/i));
 
-    expect(await within(section).findByRole('alert')).toHaveTextContent(/would always be empty/i);
+    // Named rather than "the alert": the delivery choice raises one of its own
+    // when a drive is asked for and none is connected, and a previous test in
+    // this file leaves that choice saved.
+    expect(
+      await within(section).findByText(/this newsletter would always be empty/i),
+    ).toBeInTheDocument();
     expect(within(section).getByRole('button', { name: /schedule newsletter/i })).toBeDisabled();
   });
 

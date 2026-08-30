@@ -45,6 +45,11 @@ async function setup() {
   await store.save('u1', {
     email: 'ada@example.com', sendCadence: 'daily', venueIds: ['v1'],
     sendHour: 8, enabled: true,
+    // Every case here is about the filed copy, which since the delivery
+    // choice is something a reader asks for rather than something a connected
+    // drive implies. `both` is what "a subscriber who connected a drive" used
+    // to mean on its own.
+    delivery: 'both',
   });
   const venues = new InMemoryUserVenueStore([venue('v1', 'Kinoteka')]);
   await venues.ensureSeeded('u1');
