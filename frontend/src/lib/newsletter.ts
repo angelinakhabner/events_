@@ -1,6 +1,7 @@
 import type {
   NewsletterCategoryRule, NewsletterDelivery, NewsletterSendCadence, NewsletterWantToGo,
 } from '@afisz/shared';
+import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { pad } from './format';
 
 /**
@@ -75,6 +76,65 @@ export function newsletterPayload(form: NewsletterFormState) {
     wantToGo: form.wantToGo,
     enabled: form.enabled,
   };
+}
+
+/**
+ * Every field name this build's request body can legitimately contain
+ * (GOI-105).
+ *
+ * Derived from `newsletterPayload` itself, so it cannot drift from what the
+ * form actually sends, and *statically* — from a canonical rule rather than
+ * from whatever the form is holding right now. That distinction is the whole
+ * point of it.
+ *
+ * `readableApiError` used to read these names off the live payload, which is
+ * defeated by exactly the situation it exists to detect. An API old enough to
+ * reject this build is also old enough to have *served* the settings the form
+ * loaded: the pre-GOI-100 `newsletter.get` returns category rules shaped
+ * `{category, frequency, detail}`, the form seeds its rows from them, and
+ * sends them back untouched. So the payload contains a `frequency` key —
+ * echoed straight from the stale server — the check sees a field it "knows",
+ * and concludes the rejection is a bad value rather than a version mismatch.
+ * The reader gets two lines naming fields that are not on their screen and no
+ * explanation. A static set cannot be poisoned that way.
+ */
+export const NEWSLETTER_FIELDS: ReadonlySet<string> = collectKeys(
+  newsletterPayload({
+    email: '',
+    recipientName: '',
+    delivery: 'email',
+    sendCadence: 'weekly',
+    sendHour: 0,
+    sendMinute: 0,
+    sendWeekday: 1,
+    sendDayOfMonth: 1,
+    venueIds: [],
+    rules: [{
+      category: '',
+      cadence: 'every_issue',
+      cadenceWeekday: null,
+      detail: 'short',
+      timeFilter: 'any',
+      lookaheadDays: null,
+      sortOrder: 0,
+    }],
+    wantToGo: DEFAULT_WANT_TO_GO,
+    enabled: true,
+  }),
+);
+
+/** Every key anywhere in a value, so a nested field counts too. */
+function collectKeys(value: unknown, into: Set<string> = new Set()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) collectKeys(item, into);
+    return into;
+  }
+  if (typeof value !== 'object' || value === null) return into;
+  for (const [key, child] of Object.entries(value)) {
+    into.add(key);
+    collectKeys(child, into);
+  }
+  return into;
 }
 
 /** Weekday names, JS convention (0=Sun … 6=Sat). */

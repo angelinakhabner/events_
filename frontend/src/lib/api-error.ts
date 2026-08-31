@@ -27,9 +27,18 @@ const NO_PROCEDURE = /^No procedure found on path "([^"]+)"/;
 
 export function readableApiError(
   message: string | null | undefined,
-  /** The payload that was sent, if the caller has it. Field names are read off
-   *  it to tell a bad value apart from a field this build does not know. */
-  sent?: unknown,
+  /**
+   * Every field name this build's request body can contain, to tell a bad
+   * value apart from a field this build does not know.
+   *
+   * A *static* set describing the payload's shape — never the keys of a
+   * payload the caller happens to be holding. An API old enough to reject
+   * this build also served the settings the form loaded, so a live payload
+   * can carry that older API's own field names straight back to it, and
+   * reading the set off one makes the check agree that a stale field is
+   * legitimate precisely when it is not (see `NEWSLETTER_FIELDS`).
+   */
+  known?: ReadonlySet<string>,
 ): string | null {
   if (!message) return null;
 
@@ -42,11 +51,10 @@ export function readableApiError(
   const issues = parseIssues(message);
   if (issues.length === 0) return message;
 
-  const known = fieldNames(sent);
   const lines = issues.map((i) => `${fieldLabel(i.path ?? [])}: ${i.message ?? 'is not valid'}`);
-  // A complaint about a field that is not in the payload at all cannot be
-  // fixed by touching the form — the two sides disagree about the shape.
-  const stale = known.size > 0 && issues.some((i) => {
+  // A complaint about a field this build cannot send at all is not something
+  // touching the form can fix — the two sides disagree about the shape.
+  const stale = known !== undefined && known.size > 0 && issues.some((i) => {
     const leaf = leafName(i.path ?? []);
     return leaf !== null && !known.has(leaf);
   });
@@ -95,24 +103,6 @@ function leafName(path: (string | number)[]): string | null {
     if (typeof segment === 'string') return segment;
   }
   return null;
-}
-
-/** Every key anywhere in the sent payload, so a nested field counts too. */
-function fieldNames(sent: unknown): Set<string> {
-  const names = new Set<string>();
-  const walk = (value: unknown) => {
-    if (Array.isArray(value)) {
-      for (const item of value) walk(item);
-      return;
-    }
-    if (typeof value !== 'object' || value === null) return;
-    for (const [key, child] of Object.entries(value)) {
-      names.add(key);
-      walk(child);
-    }
-  };
-  walk(sent);
-  return names;
 }
 
 /** `categoryRules` → `category rules`, `sendWeekday` → `send weekday`. */
