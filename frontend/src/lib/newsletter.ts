@@ -1,6 +1,28 @@
 import type { NewsletterDelivery } from '@afisz/shared';
 import { pad } from './format';
 
+/**
+ * What the newsletter can do, in one paragraph (GOI-97).
+ *
+ * The tab's standing description used to be an example of somebody's brief —
+ * "Get what's on at Kino Muranów, Muzeum Sztuki Nowoczesnej and 6 more as an
+ * email brief — every day at 08:00, everything after 18:00." Two venues by
+ * name and one fixed timetable, printed above a form that can do far more
+ * than that, is a poor advertisement for the feature and a poor instruction
+ * for the reader: it reads as the only shape a brief comes in.
+ *
+ * So the heading describes the *capability* — the four decisions the form
+ * below actually offers — and names no venue and no hour. What the reader has
+ * set up is a different sentence with a different job, and it is still printed
+ * (see `briefSummary`), live, right under this one.
+ */
+export const NEWSLETTER_BLURB =
+  'A brief of what is coming up at the venues you follow, built the way you want to read it. ' +
+  'Choose when it arrives — every day, once a week or once a month — and give each category its ' +
+  'own rhythm, depth and how far ahead it looks, so cinema can turn up daily in a line each while ' +
+  'museums arrive monthly in full. Events you saved can ride along. It reaches you by email, as a ' +
+  'PDF filed on your drive, or both.';
+
 /** Weekday names, JS convention (0=Sun … 6=Sat). */
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
