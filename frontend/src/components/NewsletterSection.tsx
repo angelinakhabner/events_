@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
   NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
@@ -11,7 +11,7 @@ import { trpc } from '../lib/trpc';
 import { readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
-import { briefSummary, NEWSLETTER_BLURB } from '../lib/newsletter';
+import { briefSummary, newsletterPayload, NEWSLETTER_BLURB } from '../lib/newsletter';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -249,32 +249,38 @@ function NewsletterForm({
   const preview = trpc.my.newsletter.preview.useMutation({
     onSuccess: (data) => downloadPdf(data.pdf),
   });
-  /** What the last save/generate actually sent — `readableApiError` reads the
-   *  field names off it to tell a bad value apart from a field this build does
-   *  not have (see `api-error.ts`). A ref, not state: it is only ever read
-   *  while rendering an error the request that set it produced. */
-  const lastSent = useRef<unknown>(null);
-
-  const payload = () => {
-    const body = {
-      email: email.trim(),
-      recipientName: recipientName.trim() || null,
-      delivery,
-      folderId: null,
-      name: saved?.name ?? 'Newsletter',
-      sendCadence,
-      sendHour,
-      sendMinute,
-      sendWeekday: sendCadence === 'weekly' ? sendWeekday : null,
-      sendDayOfMonth: sendCadence === 'monthly' ? sendDayOfMonth : null,
-      venueIds,
-      categoryRules: rules,
-      wantToGo,
-      enabled,
-    };
-    lastSent.current = body;
-    return body;
-  };
+  /**
+   * What the form sends, from live state.
+   *
+   * Built by `newsletterPayload` so it can be tested against the server's
+   * schema for every combination of settings, rather than only the handful a
+   * rendered test happens to click through (GOI-105).
+   *
+   * This used to be captured into a ref at request time, and `readableApiError`
+   * was handed that ref. It reads *field names* off the payload, though, and
+   * those are fixed by `newsletterPayload` — they do not depend on a single
+   * value in the form. So the capture bought nothing and cost the thing it was
+   * for: until a request had been made the ref was null, and with no payload
+   * to compare against, `readableApiError` cannot tell "you typed a bad value"
+   * from "this API predates the page" and prints the bare Zod lines. That is
+   * the message GOI-105 was filed with — the two-line rejection with the
+   * sentence explaining it missing. Derived from live state, it is never null.
+   */
+  const body = newsletterPayload({
+    email,
+    recipientName,
+    delivery,
+    name: saved?.name ?? 'Newsletter',
+    sendCadence,
+    sendHour,
+    sendMinute,
+    sendWeekday,
+    sendDayOfMonth,
+    venueIds,
+    rules,
+    wantToGo,
+    enabled,
+  });
 
   /** The heading's one-line description of the brief, from live form state. */
   const summary = briefSummary({
@@ -334,7 +340,7 @@ function NewsletterForm({
         onSubmit={(e) => {
           e.preventDefault();
           if (emptyByConstruction) return;
-          save.mutate(payload());
+          save.mutate(body);
         }}
       >
         <FormSection step={1} label="Where it goes">
@@ -634,7 +640,7 @@ function NewsletterForm({
             </button>
             <button
               type="button"
-              onClick={() => preview.mutate(payload())}
+              onClick={() => preview.mutate(body)}
               // Generating validates the same config saving does, so a
               // newsletter the form already calls empty by construction can
               // only come back rejected. Held with the same message beside the
@@ -653,7 +659,7 @@ function NewsletterForm({
           dirty={!justSaved && (save.isIdle || save.isSuccess)}
           pending={save.isPending}
           justSaved={justSaved}
-          error={readableApiError(save.error?.message, lastSent.current)}
+          error={readableApiError(save.error?.message, body)}
         />
       </form>
 
@@ -661,7 +667,7 @@ function NewsletterForm({
         html={preview.data?.html ?? null}
         pdf={preview.data?.pdf ?? null}
         count={preview.data?.events.length ?? null}
-        error={readableApiError(preview.error?.message, lastSent.current)}
+        error={readableApiError(preview.error?.message, body)}
       />
 
       <DriveCard />

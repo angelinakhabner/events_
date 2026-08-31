@@ -1,4 +1,6 @@
-import type { NewsletterDelivery } from '@afisz/shared';
+import type {
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterSendCadence, NewsletterWantToGo,
+} from '@afisz/shared';
 import { pad } from './format';
 
 /**
@@ -22,6 +24,58 @@ export const NEWSLETTER_BLURB =
   'own rhythm, depth and how far ahead it looks, so cinema can turn up daily in a line each while ' +
   'museums arrive monthly in full. Events you saved can ride along. It reaches you by email, as a ' +
   'PDF filed on your drive, or both.';
+
+/**
+ * The form's state, as the request body the API expects (GOI-105).
+ *
+ * Pulled out of `NewsletterSection` because it could not be tested where it
+ * was. It lived as a closure over fourteen `useState` values, so the only way
+ * to ask "what does the form send when the cadence is monthly and the reader
+ * has a weekly cinema rule?" was to render the page and drive the controls —
+ * which is why nobody ever asked it for more than a handful of the
+ * combinations. It is a pure function of the form state now, and
+ * `newsletter-payload.test.ts` walks every combination through the server's
+ * own schema.
+ *
+ * The nulling here mirrors the schema's rule 2 rather than duplicating a
+ * decision: a weekday means nothing to a daily brief, and sending one anyway
+ * would store a value that does nothing. The server nulls it too — this is the
+ * form agreeing in advance, not the form deciding.
+ */
+export interface NewsletterFormState {
+  email: string;
+  recipientName: string;
+  delivery: NewsletterDelivery;
+  name?: string;
+  sendCadence: NewsletterSendCadence;
+  sendHour: number;
+  sendMinute: number;
+  sendWeekday: number;
+  sendDayOfMonth: number;
+  venueIds: string[];
+  rules: NewsletterCategoryRule[];
+  wantToGo: NewsletterWantToGo;
+  enabled: boolean;
+}
+
+export function newsletterPayload(form: NewsletterFormState) {
+  return {
+    email: form.email.trim(),
+    recipientName: form.recipientName.trim() || null,
+    delivery: form.delivery,
+    folderId: null,
+    name: form.name ?? 'Newsletter',
+    sendCadence: form.sendCadence,
+    sendHour: form.sendHour,
+    sendMinute: form.sendMinute,
+    sendWeekday: form.sendCadence === 'weekly' ? form.sendWeekday : null,
+    sendDayOfMonth: form.sendCadence === 'monthly' ? form.sendDayOfMonth : null,
+    venueIds: form.venueIds,
+    categoryRules: form.rules,
+    wantToGo: form.wantToGo,
+    enabled: form.enabled,
+  };
+}
 
 /** Weekday names, JS convention (0=Sun … 6=Sat). */
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
