@@ -18,6 +18,7 @@ import { VenueBar } from '../components/VenueBar';
 import { isLoggedIn } from '../lib/auth';
 import { EmptyState, ErrorState, NextUpNotice, SkeletonList } from '../components/states';
 import { FestivalsSection } from '../components/FestivalsSection';
+import { FestivalBanner } from '../components/FestivalBanner';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -145,9 +146,19 @@ export function HomePage() {
   const fallback = range !== null && selected.length === 0 && nearest.length > 0;
   const events = fallback ? nearest : selected;
 
+  // GOI-99: the banner asks for every festival, not the selected listing's —
+  // it sits above the category bar, so narrowing it to the current tab would
+  // make it appear and vanish as the reader clicks around above it.
+  const allFestivals = trpc.festivals.list.useQuery(undefined);
+
   return (
     <section>
       <Hero />
+
+      {/* Above the filters and directly under the masthead, because a festival
+          in the next fortnight is context for the whole listing rather than a
+          row in it (GOI-99). */}
+      <FestivalBanner festivals={allFestivals.data} />
 
       <div className="page-x">
         <CategoryBar selected={category} onChange={setCategory} />
@@ -195,7 +206,15 @@ export function HomePage() {
           {fallback ? (
             <NextUpNotice scope={dayFilterPhrase(day)} nextIso={nextEventStart(nearest)} />
           ) : null}
-          {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
+          {events.length > 0 ? (
+            <EventBuckets
+              events={events}
+              venues={venueMap}
+              // GOI-104: on the museums tab the runs lead and the schedule
+              // follows. Everywhere else the clock still comes first.
+              exhibitionsFirst={category === 'exhibition'}
+            />
+          ) : null}
         </div>
 
         {/* "Coming soon" sits at the foot of the listing it belongs to, so a

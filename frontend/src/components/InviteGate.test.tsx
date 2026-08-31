@@ -103,3 +103,89 @@ describe('InviteGate', () => {
     await waitFor(() => expect(gateWasOpen()).toBe(false));
   });
 });
+
+/**
+ * GOI-95. The terms and the privacy notice are what someone reads to decide
+ * whether to ask for an invitation, so they cannot sit behind the thing you
+ * get by accepting one. Art. 8(1)(1) UŚUDE requires the regulamin to be
+ * available *before* the contract; RODO art. 12–13 says the same of the notice.
+ *
+ * The exception is exactly two paths, and it must not become a hole: the app
+ * shell stays out of reach on every other path, including ones that merely
+ * look legal.
+ */
+describe('InviteGate — the legal pages are in front of the gate', () => {
+  const original = window.location.pathname;
+
+  function at(path: string) {
+    window.history.replaceState({}, '', path);
+  }
+  afterEach(() => at(original));
+
+  it('serves the privacy policy without an invite', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ open: false }) });
+    at('/policy');
+    render(<InviteGate><App /></InviteGate>);
+
+    expect(await screen.findByRole('heading', { name: 'Privacy policy', level: 1 })).toBeInTheDocument();
+  });
+
+  it('serves the terms without an invite', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ open: false }) });
+    at('/terms');
+    render(<InviteGate><App /></InviteGate>);
+
+    expect(await screen.findByRole('heading', { name: 'Terms of use', level: 1 })).toBeInTheDocument();
+  });
+
+  // The landing page is a full-page document sitting outside `#root`. Left up,
+  // it would cover the very page the visitor navigated to.
+  it('draws the curtain so the document is actually readable', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ open: false }) });
+    at('/policy');
+    render(<InviteGate><App /></InviteGate>);
+
+    await screen.findByRole('heading', { name: 'Privacy policy', level: 1 });
+    expect(landingShown()).toBe(false);
+  });
+
+  // The gate is still the gate. Rendering the legal pages must not drag the
+  // app's own routes along with them.
+  it('still keeps the app shell out of reach on those paths', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ open: false }) });
+    at('/policy');
+    render(<InviteGate><App /></InviteGate>);
+
+    await screen.findByRole('heading', { name: 'Privacy policy', level: 1 });
+    expect(screen.queryByText('SECRET APP SHELL')).not.toBeInTheDocument();
+  });
+
+  // Reading the terms is not being let in, and must not be remembered as it.
+  it('does not record a closed gate as open', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ open: false }) });
+    at('/policy');
+    render(<InviteGate><App /></InviteGate>);
+
+    await screen.findByRole('heading', { name: 'Privacy policy', level: 1 });
+    expect(gateWasOpen()).toBe(false);
+  });
+
+  it('is two exact paths, not a prefix', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ open: false }) });
+    at('/policy-and-everything-else');
+    render(<InviteGate><App /></InviteGate>);
+
+    await waitFor(() => expect(landingShown()).toBe(true));
+    expect(screen.queryByText('SECRET APP SHELL')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Privacy policy', level: 1 })).not.toBeInTheDocument();
+  });
+
+  it('lets the app through on those paths once there is an invite', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ open: true }) });
+    at('/policy');
+    render(<InviteGate><App /></InviteGate>);
+
+    // With an invite the gate is transparent — routing is the app's business.
+    expect(await screen.findByText('SECRET APP SHELL')).toBeInTheDocument();
+  });
+});

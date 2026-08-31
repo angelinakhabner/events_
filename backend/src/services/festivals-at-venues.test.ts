@@ -18,6 +18,7 @@ function fest(over: Partial<Festival> = {}): Festival {
     endDate: '2026-10-18',
     description: 'Premieres and competitions.',
     status: 'upcoming',
+    imageUrl: null,
     ...over,
   };
 }

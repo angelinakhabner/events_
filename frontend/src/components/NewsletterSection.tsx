@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency, NewsletterSettings,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
+  NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+} from '@afisz/shared';
+import {
+  allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
+import { readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
-import { briefSummary } from '../lib/newsletter';
+import {
+  briefSummary, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
+} from '../lib/newsletter';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
-/** "No time filter" sentinel for the after-hour select. */
-const ANY = 'any';
-/** Every hour of the day, for both the send time and the "only after" filter. */
+/** Every hour of the day, for the send time. */
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 /** …and every minute past the hour. The sweep ticks every minute, so all 1440
  *  send times are ones it can actually honour. */
@@ -27,8 +32,35 @@ const WEEKDAYS = [
   { value: 0, label: 'Sunday' },
 ];
 
-function hourLabel(h: number): string {
-  return `${String(h).padStart(2, '0')}:00`;
+/** 1-28. Capped so a monthly newsletter has an issue in February too. */
+const DAYS_OF_MONTH = Array.from({ length: 28 }, (_, i) => i + 1);
+
+/**
+ * The `IN ISSUES` column's options (GOI-102 §2), worded relative to the send
+ * schedule rather than absolutely. "Daily" inside a weekly newsletter was a
+ * promise the sender could not keep.
+ */
+const RULE_CADENCES: { value: NewsletterRuleCadence; label: string }[] = [
+  { value: 'every_issue', label: 'Every issue' },
+  { value: 'weekly', label: 'Once a week' },
+  { value: 'monthly', label: 'Once a month' },
+];
+
+/** "1st", "2nd", "23rd" — for the day-of-month picker. */
+function ordinal(n: number): string {
+  const rest = n % 100;
+  if (rest >= 11 && rest <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
+/** How many days a rule's section will cover, given the envelope carrying it
+ *  — the number the LOOK AHEAD field shows as its placeholder. */
+function deriveWindowDays(
+  sendCadence: NewsletterSendCadence,
+  rule: Pick<NewsletterCategoryRule, 'cadence' | 'lookaheadDays'>,
+): number {
+  const { from, to } = deriveWindow({ sendCadence }, { ...rule, lookaheadDays: null }, new Date());
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
 
 /** Small inline clock, so the send time reads as a time at a glance. */
@@ -109,15 +141,29 @@ function NewsletterForm({
 }) {
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
   const [recipientName, setRecipientName] = useState(saved?.recipientName ?? '');
-  const [frequency, setFrequency] = useState<NewsletterFrequency>(saved?.frequency ?? 'weekly');
+  const [delivery, setDelivery] = useState<NewsletterDelivery>(saved?.delivery ?? 'email');
+  const [sendCadence, setSendCadenceRaw] = useState<NewsletterSendCadence>(saved?.sendCadence ?? 'weekly');
   const [sendHour, setSendHour] = useState(saved?.sendHour ?? 8);
   const [sendMinute, setSendMinute] = useState(saved?.sendMinute ?? 0);
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
+  const [sendDayOfMonth, setSendDayOfMonth] = useState(saved?.sendDayOfMonth ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
   const [rules, setRules] = useState<NewsletterCategoryRule[]>(saved?.categoryRules ?? []);
-  const [afterHour, setAfterHour] = useState<string>(saved?.afterHour != null ? String(saved.afterHour) : ANY);
+  /**
+   * The only thing left to decide about the saved-events queue is whether it
+   * runs (GOI-103). The rest of `NewsletterWantToGo` is still stored and still
+   * honoured by the sweep — it is simply not the reader's to tune any more, so
+   * a record saved under the old form is normalised back to the defaults here
+   * rather than leaving a reader pinned to settings they can no longer see.
+   */
+  const [wantToGo, setWantToGo] = useState<NewsletterWantToGo>({
+    ...DEFAULT_WANT_TO_GO,
+    enabled: saved?.wantToGo?.enabled ?? DEFAULT_WANT_TO_GO.enabled,
+  });
   const [enabled, setEnabled] = useState(saved?.enabled ?? true);
   const [justSaved, setJustSaved] = useState(false);
+  /** What changing the send cadence did to the rules, shown once (GOI-102). */
+  const [reconciled, setReconciled] = useState<string[]>([]);
 
   /** Venues grouped under their folder, mirroring the "My venues" tab. */
   const byFolder = useMemo(() => {
@@ -134,7 +180,8 @@ function NewsletterForm({
   /**
    * Everything a rule can name: the built-in event categories your venues
    * actually cover, plus every tag you have put on one. Both work the same
-   * way, so they share one list.
+   * way and share one namespace, so they share one list — see
+   * `eventInCategory`, which is what decides a match.
    */
   const allCategories = useMemo(() => {
     const seen = new Map<string, string>();
@@ -166,10 +213,34 @@ function NewsletterForm({
     return () => clearTimeout(t);
   }, [justSaved]);
 
+  /**
+   * Changing the envelope can invalidate the contents (GOI-102).
+   *
+   * A category set to "once a week" is unreachable the moment the newsletter
+   * itself becomes weekly — every issue already is. The old values are
+   * reconciled to the nearest legal one rather than left to fail on save, but
+   * *silently* rewriting a reader's choices is how a form loses their trust,
+   * so what changed is named above the table until they touch it again.
+   */
+  const setSendCadence = (next: NewsletterSendCadence) => {
+    const allowed = allowedRuleCadences(next);
+    const changed: string[] = [];
+    setRules((prev) =>
+      prev.map((r) => {
+        if (allowed.includes(r.cadence)) return r;
+        changed.push(categoryOrTagLabel(r.category));
+        return { ...r, cadence: 'every_issue' as const, cadenceWeekday: null };
+      }),
+    );
+    setReconciled(changed);
+    setSendCadenceRaw(next);
+  };
+
   const utils = trpc.useUtils();
   const save = trpc.my.newsletter.save.useMutation({
     onSuccess: async () => {
       setJustSaved(true);
+      setReconciled([]);
       await utils.my.newsletter.get.invalidate();
     },
   });
@@ -180,55 +251,101 @@ function NewsletterForm({
   const preview = trpc.my.newsletter.preview.useMutation({
     onSuccess: (data) => downloadPdf(data.pdf),
   });
-
-  const payload = () => ({
-    email: email.trim(),
-    recipientName: recipientName.trim() || null,
-    frequency,
+  /**
+   * What the form sends, from live state.
+   *
+   * Built by `newsletterPayload` so it can be tested against the server's
+   * schema for every combination of settings, rather than only the handful a
+   * rendered test happens to click through (GOI-105).
+   *
+   * This used to be captured into a ref at request time and handed to
+   * `readableApiError` as the thing to read field names off. It is neither
+   * job's business now: the names that matter are the ones this build *can*
+   * send, which is a static property of the payload's shape
+   * (`NEWSLETTER_FIELDS`), not of whatever the form is holding — a live
+   * payload can carry a stale API's own fields straight back to it.
+   */
+  const body = newsletterPayload({
+    email,
+    recipientName,
+    delivery,
+    name: saved?.name ?? 'Newsletter',
+    sendCadence,
     sendHour,
     sendMinute,
     sendWeekday,
+    sendDayOfMonth,
     venueIds,
-    categoryRules: rules,
-    afterHour: afterHour === ANY ? null : Number(afterHour),
+    rules,
+    wantToGo,
     enabled,
   });
 
   /** The heading's one-line description of the brief, from live form state. */
   const summary = briefSummary({
     venueNames: venues.filter((v) => venueIds.includes(v.id)).map((v) => v.name),
-    frequency,
+    frequency: sendCadence,
     sendHour,
     sendMinute,
     sendWeekday,
-    afterHour: afterHour === ANY ? null : Number(afterHour),
+    afterHour: null,
+    email,
+    delivery,
+    enabled,
   });
 
   const toggleVenue = (id: string) =>
     setVenueIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   const addRule = (category: string) =>
-    setRules((prev) => [...prev, { category, frequency: 'weekly', detail: 'short' }]);
+    setRules((prev) => [
+      ...prev,
+      {
+        category,
+        cadence: 'every_issue',
+        cadenceWeekday: null,
+        detail: 'short',
+        timeFilter: 'any',
+        lookaheadDays: null,
+        sortOrder: prev.length,
+      },
+    ]);
   const patchRule = (i: number, patch: Partial<NewsletterCategoryRule>) =>
     setRules((prev) => prev.map((r, n) => (n === i ? { ...r, ...patch } : r)));
   const removeRule = (i: number) => setRules((prev) => prev.filter((_, n) => n !== i));
 
+  /**
+   * The one rule the server enforces that the controls cannot prevent
+   * (GOI-100 rule 4): a newsletter with no categories and no saved events can
+   * never produce content. Surfaced against the table rather than as a toast,
+   * so it is beside the thing that has to change.
+   */
+  const emptyByConstruction = rules.length === 0 && !wantToGo.enabled;
+
   return (
     <section>
-      {/* Describes the brief you have actually set up, and follows every edit.
-          It used to be a fixed example printed directly above controls that
-          said something else — "every day at 08:00" over a form set to 15:00
-          (GOI-30). */}
-      <PanelHeading title="Newsletter" blurb={summary} rule={false} />
+      {/* Two lines, deliberately: the heading says what a brief *can* be
+          (GOI-97), and the line under it says what yours currently *is*
+          (GOI-30), live, following every edit. The old copy tried to be both
+          at once and was an example of neither — a fixed "Kino Muranów …
+          every day at 08:00" printed over a form set to 15:00. */}
+      <PanelHeading title="Newsletter" blurb={NEWSLETTER_BLURB} rule={false} />
+      <p className="-mt-3 mb-5 md:mb-6 max-w-[520px] text-sm md:text-base font-semibold text-ink">
+        <span className="label-form mr-2 text-faint">Yours</span>
+        {summary}
+      </p>
 
       <form
         className="max-w-[640px] border-t-3 border-ink"
         onSubmit={(e) => {
           e.preventDefault();
-          save.mutate(payload());
+          if (emptyByConstruction) return;
+          save.mutate(body);
         }}
       >
-        <FormSection step={1} label="Contact">
-          <div className="flex flex-wrap gap-5">
+        <FormSection step={1} label="Where it goes">
+          <DeliveryChoice value={delivery} onChange={setDelivery} />
+
+          <div className="mt-5 flex flex-wrap gap-5">
             <div className="flex-1 min-w-[14rem]">
               <label className="label-form mb-1.5" htmlFor="newsletter-email">
                 Email address
@@ -256,79 +373,42 @@ function NewsletterForm({
                 className="field"
               />
               <p className="mt-1.5 text-xs text-faint">
-                The brief opens with &ldquo;Hi {recipientName.trim() || '\u2026'}&rdquo; — leave it empty to skip the name.
+                The brief opens with &ldquo;Hi {recipientName.trim() || '…'}&rdquo; — leave it empty to skip the name.
               </p>
             </div>
           </div>
-        </FormSection>
 
-        <FormSection step={2} label="When it goes out">
-          <div className="flex flex-wrap items-center gap-3.5">
-            <ScheduleToggle value={frequency} onChange={setFrequency} />
+          {/* The address is the account either way, so the field stays — but
+              saying it is where the brief arrives would be false for someone
+              who chose the drive. */}
+          {!deliversByEmail(delivery) ? (
+            <p className="mt-3 text-xs text-faint">
+              Nothing is emailed with this setting. The address stays as your account&rsquo;s, and
+              the name is still used to open the PDF.
+            </p>
+          ) : null}
 
-            {frequency === 'weekly' ? (
-              <>
-                <label className="sr-only" htmlFor="newsletter-weekday">Day of the week</label>
-                <select
-                  id="newsletter-weekday"
-                  value={sendWeekday}
-                  onChange={(e) => setSendWeekday(Number(e.target.value))}
-                  className="select-flat py-[9px]"
-                >
-                  {WEEKDAYS.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-              </>
-            ) : null}
-
-            {/* Clock, hour, minute in one bordered box, divided by the same
-                2px ink rules the rest of the system draws with — so the send
-                time reads as a single control rather than two dropdowns that
-                happen to be adjacent. */}
-            <span className="inline-flex items-stretch border-2 border-ink bg-white">
-              <span className="flex items-center border-r-2 border-ink px-2.5">
-                <ClockIcon />
-              </span>
-              <label className="sr-only" htmlFor="newsletter-send-hour">Hour</label>
-              <select
-                id="newsletter-send-hour"
-                value={sendHour}
-                onChange={(e) => setSendHour(Number(e.target.value))}
-                className="select-flat-bare border-r-2 border-ink"
-              >
-                {HOURS.map((h) => (
-                  <option key={h} value={h}>{pad(h)}</option>
-                ))}
-              </select>
-              <span aria-hidden className="flex items-center px-1 text-xs font-extrabold">:</span>
-              <label className="sr-only" htmlFor="newsletter-send-minute">Minute</label>
-              <select
-                id="newsletter-send-minute"
-                value={sendMinute}
-                onChange={(e) => setSendMinute(Number(e.target.value))}
-                className="select-flat-bare"
-              >
-                {MINUTES.map((m) => (
-                  <option key={m} value={m}>{pad(m)}</option>
-                ))}
-              </select>
-            </span>
-          </div>
-          <p className="mt-2.5 text-xs text-faint">
-            Warsaw time — next brief at {pad(sendHour)}:{pad(sendMinute)}
-            {frequency === 'weekly' ? ` on ${WEEKDAYS.find((d) => d.value === sendWeekday)?.label}` : ', every day'}.
-          </p>
+          {deliversToDrive(delivery) ? <DriveRequiredNote /> : null}
         </FormSection>
 
         <FormSection
-          step={3}
+          step={2}
           label="Venues from my venues"
-          note={venueIds.length === 0 ? 'None picked — the brief covers all of them.' : undefined}
+          note={
+            venueIds.length === 0
+              ? 'None ticked — the newsletter covers every venue in the folders below. Ticking some narrows the newsletter only; your folders are not changed.'
+              : 'Ticking narrows the newsletter only. Your folders are not changed, and a venue removed here is still in the folder.'
+          }
         >
           {byFolder.map((folder) => (
             <div key={folder.id ?? 'unfiled'} className="mb-4 last:mb-0">
-              <p className="mb-2 tag">{folder.name}</p>
+              <p className="mb-2 flex flex-wrap items-baseline gap-2.5">
+                <span className="tag">{folder.name}</span>
+                {/* GOI-102: adding a venue is the folder's job, not this
+                    form's, so the form points at it rather than growing a
+                    second way to do it that could disagree. */}
+                <a href="/my?tab=venues" className="act act-sm">Add venues</a>
+              </p>
               <div className="flex flex-wrap gap-x-5 gap-y-2.5">
                 {folder.venues.map((v) => (
                   <label key={v.id} className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer">
@@ -349,73 +429,137 @@ function NewsletterForm({
           ) : null}
         </FormSection>
 
+        {/* GOI-102 §1. The envelope, stated on its own and before the
+            contents: how often an issue arrives is a different question from
+            what goes in it, and the two used to be one control. */}
+        <FormSection step={3} label="When" note="How often an issue arrives. What goes in it is set below.">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3.5">
+            <span className="flex items-center gap-2.5">
+              <span className="label-caps">Send</span>
+              <ScheduleToggle value={sendCadence} onChange={setSendCadence} />
+            </span>
+
+            {sendCadence === 'weekly' ? (
+              <span className="flex items-center gap-2.5">
+                <label className="label-caps" htmlFor="newsletter-weekday">On</label>
+                <select
+                  id="newsletter-weekday"
+                  value={sendWeekday}
+                  onChange={(e) => setSendWeekday(Number(e.target.value))}
+                  className="select-flat py-[9px]"
+                >
+                  {WEEKDAYS.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </span>
+            ) : null}
+
+            {sendCadence === 'monthly' ? (
+              <span className="flex items-center gap-2.5">
+                <label className="label-caps" htmlFor="newsletter-day-of-month">On</label>
+                <select
+                  id="newsletter-day-of-month"
+                  value={sendDayOfMonth}
+                  onChange={(e) => setSendDayOfMonth(Number(e.target.value))}
+                  className="select-flat py-[9px]"
+                >
+                  {DAYS_OF_MONTH.map((d) => (
+                    <option key={d} value={d}>{ordinal(d)}</option>
+                  ))}
+                </select>
+              </span>
+            ) : null}
+
+            {/* Clock, hour, minute in one bordered box, divided by the same
+                2px ink rules the rest of the system draws with — so the send
+                time reads as a single control rather than two dropdowns that
+                happen to be adjacent. */}
+            <span className="flex items-center gap-2.5">
+              <span className="label-caps">At</span>
+              <span className="inline-flex items-stretch border-2 border-ink bg-white">
+                <span className="flex items-center border-r-2 border-ink px-2.5">
+                  <ClockIcon />
+                </span>
+                <label className="sr-only" htmlFor="newsletter-send-hour">Hour</label>
+                <select
+                  id="newsletter-send-hour"
+                  value={sendHour}
+                  onChange={(e) => setSendHour(Number(e.target.value))}
+                  className="select-flat-bare border-r-2 border-ink"
+                >
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>{pad(h)}</option>
+                  ))}
+                </select>
+                <span aria-hidden className="flex items-center px-1 text-xs font-extrabold">:</span>
+                <label className="sr-only" htmlFor="newsletter-send-minute">Minute</label>
+                <select
+                  id="newsletter-send-minute"
+                  value={sendMinute}
+                  onChange={(e) => setSendMinute(Number(e.target.value))}
+                  className="select-flat-bare"
+                >
+                  {MINUTES.map((m) => (
+                    <option key={m} value={m}>{pad(m)}</option>
+                  ))}
+                </select>
+              </span>
+            </span>
+          </div>
+          <p className="mt-2.5 text-xs text-faint">
+            Warsaw time — next issue at {pad(sendHour)}:{pad(sendMinute)}
+            {sendCadence === 'weekly' ? ` on ${WEEKDAYS.find((d) => d.value === sendWeekday)?.label}` : null}
+            {sendCadence === 'monthly' ? ` on the ${ordinal(sendDayOfMonth)} of the month` : null}
+            {sendCadence === 'daily' ? ', every day' : null}.
+          </p>
+        </FormSection>
+
         <FormSection
           step={4}
-          label="How often, per category"
-          note="Give a category its own rhythm and depth — cinema every day in brief, museums once a month with the full write-up. Categories are your venues' own categories and any tags you added to them."
+          label="What goes in it, per category"
+          note="Give a category its own rhythm, depth and time of day — cinema in every issue in brief, museums once a month with the full write-up. Categories are your venues' own categories and any tags you added to them."
         >
+          {/* Named rather than silent: the reader chose those values, and a
+              form that rewrites a choice without saying so is one they stop
+              trusting (GOI-102). */}
+          {reconciled.length > 0 ? (
+            <p role="status" className="mb-3 border-l-3 border-accent pl-3 text-xs text-body">
+              {reconciled.join(', ')} moved to <strong>every issue</strong> — a{' '}
+              {sendCadence} newsletter cannot carry a category more often than it goes out.
+            </p>
+          ) : null}
+
           {rules.length > 0 ? (
             <>
               {/* Column headings, desktop only: the rows stack below `md`, where
-                  a four-column header would label nothing. */}
-              <div className="hidden md:flex gap-4 label-form border-b-2 border-ink pb-2">
-                <span className="w-[140px] shrink-0">Category</span>
-                <span className="w-[140px] shrink-0">Frequency</span>
+                  a five-column header would label nothing. */}
+              <div className="hidden md:flex gap-3 label-form border-b-2 border-ink pb-2">
+                <span className="w-[110px] shrink-0">Category</span>
+                <span className="w-[130px] shrink-0">In issues</span>
+                <span className="w-[120px] shrink-0">Time</span>
                 <span className="flex-1">Depth</span>
-                <span className="w-[60px] shrink-0" />
+                <span className="w-[54px] shrink-0" />
               </div>
               <ul className="mb-3.5 list-none m-0 p-0">
                 {rules.map((rule, i) => (
-                  <li
+                  <RuleRow
                     key={`${rule.category}-${i}`}
-                    className="flex flex-wrap items-center gap-3 md:gap-4 py-2.5 rule-soft text-[13px]"
-                  >
-                    {/* Caps at the dropdowns' own size and weight — the row is
-                        one line of type, and a sentence-case name beside two
-                        caps selects broke it. */}
-                    <span className="md:w-[140px] md:shrink-0 text-xs font-extrabold uppercase tracking-[0.5px]">
-                      {categoryOrTagLabel(rule.category)}
-                    </span>
-
-                    <label className="sr-only" htmlFor={`rule-freq-${i}`}>
-                      How often for {categoryOrTagLabel(rule.category)}
-                    </label>
-                    <select
-                      id={`rule-freq-${i}`}
-                      value={rule.frequency}
-                      onChange={(e) => patchRule(i, { frequency: e.target.value as NewsletterFrequency })}
-                      className="select-flat md:w-[140px] md:shrink-0"
-                    >
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                    </select>
-
-                    <label className="sr-only" htmlFor={`rule-detail-${i}`}>
-                      Description for {categoryOrTagLabel(rule.category)}
-                    </label>
-                    <select
-                      id={`rule-detail-${i}`}
-                      value={rule.detail}
-                      onChange={(e) => patchRule(i, { detail: e.target.value as NewsletterDetail })}
-                      className="select-flat md:flex-1"
-                    >
-                      <option value="short">Short description</option>
-                      <option value="full">Wide description</option>
-                    </select>
-
-                    <button
-                      type="button"
-                      aria-label={`Remove ${categoryOrTagLabel(rule.category)}`}
-                      onClick={() => removeRule(i)}
-                      className="act act-sm ml-auto md:w-[60px] md:shrink-0 md:text-left"
-                    >
-                      Remove
-                    </button>
-                  </li>
+                    rule={rule}
+                    index={i}
+                    sendCadence={sendCadence}
+                    onPatch={(patch) => patchRule(i, patch)}
+                    onRemove={() => removeRule(i)}
+                  />
                 ))}
               </ul>
             </>
+          ) : null}
+
+          {emptyByConstruction ? (
+            <p role="alert" className="mb-3 text-sm font-bold text-accent">
+              This newsletter would always be empty. Add a category, or turn on saved events below.
+            </p>
           ) : null}
 
           {allCategories.length === 0 ? (
@@ -443,24 +587,37 @@ function NewsletterForm({
           )}
         </FormSection>
 
-        <FormSection step={5} label="Only events after">
-          <select
-            id="newsletter-after"
-            aria-label="Only events after"
-            value={afterHour}
-            onChange={(e) => setAfterHour(e.target.value)}
-            className="select-flat w-[180px] py-[9px] pl-2.5"
-          >
-            <option value={ANY}>Any time</option>
-            {HOURS.map((h) => (
-              <option key={h} value={h}>After {hourLabel(h)}</option>
-            ))}
-          </select>
+        {/* GOI-102 §3 / GOI-101. Not a category, and deliberately not in the
+            table above: this is a queue of events the reader already chose,
+            escalating as they approach, and it inherits no cadence, depth or
+            window from anything. */}
+        <FormSection step={5} label="Events you saved">
+          {/* GOI-103: one decision, not four.
+              GOI-101 shipped this block with a reminder horizon, a
+              change-report switch and an urgent-send switch beneath the
+              include toggle. Every one of them is a question about machinery
+              the reader did not ask to operate — and asked at the point they
+              are trying to answer something much simpler, "do my saved events
+              turn up in this or not". The queue still behaves exactly as
+              GOI-101 built it; it just runs on its defaults now
+              (`DEFAULT_WANT_TO_GO`) rather than making its internals the
+              reader's problem. */}
+          <p className="mb-3.5 max-w-[520px] text-xs text-faint">
+            Saved events appear at the top of every issue, with a reminder the day before and a
+            warning on the last chance to go. You are told if one is cancelled or moved.
+          </p>
+
+          <Check
+            id="wtg-enabled"
+            checked={wantToGo.enabled}
+            onChange={(v) => setWantToGo((w) => ({ ...w, enabled: v }))}
+            label="Include events I saved"
+          />
         </FormSection>
 
         {/* Stacked, both left-aligned (design pack): the enabled/disabled
             state is a statement about the brief, not a third button, so it
-            reads above the two actions rather than across from them. */}
+            reads above the actions rather than across from them. */}
         <div className="flex flex-col items-start gap-3.5 border-t-3 border-ink pt-5">
           <button
             type="button"
@@ -473,33 +630,388 @@ function NewsletterForm({
             {enabled ? '● Newsletter enabled' : 'Enable newsletter'}
           </button>
           <div className="flex w-full flex-col md:w-auto md:flex-row gap-3.5">
-            <button type="submit" disabled={save.isPending} className="btn-outline text-center">
+            <button
+              type="submit"
+              disabled={save.isPending || emptyByConstruction}
+              className="btn-outline text-center"
+            >
               {save.isPending ? 'Scheduling…' : 'Schedule newsletter'}
             </button>
             <button
               type="button"
-              onClick={() => preview.mutate(payload())}
-              disabled={preview.isPending}
+              onClick={() => preview.mutate(body)}
+              // Generating validates the same config saving does, so a
+              // newsletter the form already calls empty by construction can
+              // only come back rejected. Held with the same message beside the
+              // table rather than sent to be told so.
+              disabled={preview.isPending || emptyByConstruction}
               className="btn-fill text-center"
             >
               {preview.isPending ? 'Generating…' : 'Generate now'}
             </button>
           </div>
         </div>
-        {justSaved ? <p className="mt-3 text-sm font-bold text-accent">Saved.</p> : null}
-        {save.error ? <p className="mt-3 text-sm text-accent">{save.error.message}</p> : null}
+
+        {/* GOI-102 §5: the screen used to give no sign that a dropdown change
+            had persisted, so "did that save?" had no answer but reloading. */}
+        <SaveState
+          dirty={!justSaved && (save.isIdle || save.isSuccess)}
+          pending={save.isPending}
+          justSaved={justSaved}
+          error={readableApiError(save.error?.message, NEWSLETTER_FIELDS)}
+        />
       </form>
 
       <NewsletterPreview
         html={preview.data?.html ?? null}
         pdf={preview.data?.pdf ?? null}
         count={preview.data?.events.length ?? null}
-        error={preview.error?.message ?? null}
+        error={readableApiError(preview.error?.message, NEWSLETTER_FIELDS)}
       />
 
       <DriveCard />
     </section>
   );
+}
+
+/**
+ * Email, a filed PDF, or both.
+ *
+ * A radiogroup rather than a set of checkboxes, and rather than a toggle
+ * bolted onto the drive card further down. The three options are mutually
+ * exclusive and one of them is always in force, which is what a radio group
+ * means — and putting the choice at the top of the form, before the address
+ * field, is what makes the address field's role legible: for a drive-only
+ * reader it is an account name rather than a destination.
+ *
+ * Drawn as the same bordered strip the send cadence uses, because it is the
+ * same kind of choice.
+ */
+function DeliveryChoice({
+  value,
+  onChange,
+}: {
+  value: NewsletterDelivery;
+  onChange: (v: NewsletterDelivery) => void;
+}) {
+  const options: { value: NewsletterDelivery; label: string; hint: string }[] = [
+    { value: 'email', label: 'Email', hint: 'The brief arrives in your inbox.' },
+    { value: 'drive', label: 'Drive', hint: 'Filed as a PDF. Nothing is emailed.' },
+    { value: 'both', label: 'Both', hint: 'Emailed, and filed as a PDF as well.' },
+  ];
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <div>
+      <div role="radiogroup" aria-label="How to send it" className="flex border-2 border-ink">
+        {options.map((o, i) => {
+          const active = value === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(o.value)}
+              className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+                i < options.length - 1 ? 'border-r-2 border-ink' : ''
+              } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-xs text-faint">{current?.hint}</p>
+    </div>
+  );
+}
+
+/**
+ * Says so when the reader has asked for a filed PDF and there is nowhere to
+ * file it.
+ *
+ * The server accepts the setting either way — a reader may reasonably choose
+ * it and connect the drive next, and refusing would make the two steps
+ * order-dependent for no reason. What it must not be is silent: a `drive`
+ * newsletter with nothing connected produces no brief at all, and the reader
+ * would have no way to know. The sweep records `no-drive` for the same reason;
+ * this is the half of it they can see.
+ *
+ * **It says something in every state, including "I don't know".** The status
+ * query is not reliably answerable — `defaultDriveStore` is the database store
+ * unconditionally, so on a deployment without one the query fails and retries,
+ * and a component that rendered nothing until it resolved would go quiet
+ * exactly where the warning matters most. Silence here reads as approval.
+ *
+ * It reads the same query the drive card below does, so it costs no extra
+ * request.
+ */
+function DriveRequiredNote() {
+  const status = trpc.my.newsletter.drive.status.useQuery();
+
+  if (status.data) {
+    if (!status.data.available) {
+      return (
+        <Note alert>
+          Drives aren&rsquo;t available on this deployment, so nothing can be filed. Choose
+          &ldquo;Email&rdquo; instead.
+        </Note>
+      );
+    }
+    if (status.data.connections.length === 0) {
+      return (
+        <Note alert>
+          No drive is connected yet, so there is nowhere to file the PDF — connect one under
+          &ldquo;Save briefs to a drive&rdquo; below. Until you do, no brief will be filed.
+        </Note>
+      );
+    }
+    return null;
+  }
+
+  // Status unknown. Not an alarm — it may simply not have arrived yet — but
+  // not nothing either.
+  return (
+    <Note>
+      Briefs are filed to the drive you connect under &ldquo;Save briefs to a drive&rdquo; below.
+      With none connected, nothing is filed.
+    </Note>
+  );
+}
+
+/** A line under the delivery choice. `alert` marks the ones a reader has to
+ *  act on, which is also what puts them in the accessibility tree as such. */
+function Note({ alert, children }: { alert?: boolean; children: React.ReactNode }) {
+  return (
+    <p
+      {...(alert ? { role: 'alert' as const } : {})}
+      className={`mt-3 text-sm ${alert ? 'text-accent' : 'text-faint'}`}
+    >
+      {children}
+    </p>
+  );
+}
+
+/**
+ * One row of the category table (GOI-102 §2).
+ *
+ * The interesting part is the `IN ISSUES` column. Its options are worded
+ * relative to the send schedule — "every issue", not "daily", because "daily"
+ * inside a weekly newsletter was a promise the sender could not keep — and the
+ * ones the schedule makes impossible are **disabled rather than removed**. A
+ * vanished option looks like a bug or a moved control; a greyed one with a
+ * reason attached teaches the rule in the place the rule applies.
+ */
+function RuleRow({
+  rule,
+  index,
+  sendCadence,
+  onPatch,
+  onRemove,
+}: {
+  rule: NewsletterCategoryRule;
+  index: number;
+  sendCadence: NewsletterSendCadence;
+  onPatch: (patch: Partial<NewsletterCategoryRule>) => void;
+  onRemove: () => void;
+}) {
+  const [showLookahead, setShowLookahead] = useState(rule.lookaheadDays != null);
+  const allowed = allowedRuleCadences(sendCadence);
+  const label = categoryOrTagLabel(rule.category);
+  // What the reader would be overriding, shown as placeholder text so the
+  // field is answerable without arithmetic.
+  const derived = deriveWindowDays(sendCadence, rule);
+  const why = `A ${sendCadence} newsletter cannot carry a category more often than it goes out.`;
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 py-2.5 rule-soft text-[13px]">
+      {/* Caps at the dropdowns' own size and weight — the row is one line of
+          type, and a sentence-case name beside caps selects broke it. */}
+      <span className="md:w-[110px] md:shrink-0 text-xs font-extrabold uppercase tracking-[0.5px]">
+        {label}
+      </span>
+
+      <label className="sr-only" htmlFor={`rule-cadence-${index}`}>How often for {label}</label>
+      <select
+        id={`rule-cadence-${index}`}
+        value={rule.cadence}
+        onChange={(e) => onPatch({ cadence: e.target.value as NewsletterRuleCadence })}
+        className="select-flat md:w-[130px] md:shrink-0"
+      >
+        {RULE_CADENCES.map((c) => {
+          const off = !allowed.includes(c.value);
+          return (
+            <option key={c.value} value={c.value} disabled={off} title={off ? why : undefined}>
+              {off ? `${c.label} —` : c.label}
+            </option>
+          );
+        })}
+      </select>
+
+      <label className="sr-only" htmlFor={`rule-time-${index}`}>Time of day for {label}</label>
+      <select
+        id={`rule-time-${index}`}
+        value={rule.timeFilter}
+        onChange={(e) => onPatch({ timeFilter: e.target.value as NewsletterTimeFilter })}
+        className="select-flat md:w-[120px] md:shrink-0"
+      >
+        <option value="any">Any time</option>
+        <option value="after_17">After 17:00</option>
+        <option value="after_18">After 18:00</option>
+        <option value="after_19">After 19:00</option>
+        <option value="after_20">After 20:00</option>
+      </select>
+
+      <label className="sr-only" htmlFor={`rule-detail-${index}`}>Description for {label}</label>
+      <select
+        id={`rule-detail-${index}`}
+        value={rule.detail}
+        onChange={(e) => onPatch({ detail: e.target.value as NewsletterDetail })}
+        className="select-flat md:flex-1"
+      >
+        <option value="line">One line</option>
+        <option value="short">Short description</option>
+        <option value="full">Full description</option>
+      </select>
+
+      <button
+        type="button"
+        aria-label={`Remove ${label}`}
+        onClick={onRemove}
+        className="act act-sm ml-auto md:w-[54px] md:shrink-0 md:text-left"
+      >
+        Remove
+      </button>
+
+      {/* A weekly category inside a daily newsletter is the one case that
+          needs its own day; anywhere else the issue schedule already decides
+          which issue carries it, so the control would be a lie. */}
+      {sendCadence === 'daily' && rule.cadence === 'weekly' ? (
+        <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
+          <label className="text-xs text-faint" htmlFor={`rule-weekday-${index}`}>
+            In the issue on
+          </label>
+          <select
+            id={`rule-weekday-${index}`}
+            value={rule.cadenceWeekday ?? 1}
+            onChange={(e) => onPatch({ cadenceWeekday: Number(e.target.value) })}
+            className="select-flat py-[7px]"
+          >
+            {WEEKDAYS.map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
+          </select>
+        </span>
+      ) : null}
+
+      {/* Collapsed by default: empty is correct almost always, and a field
+          every row carries invites a number nobody needed to choose. */}
+      <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
+        {showLookahead ? (
+          <>
+            <label className="text-xs text-faint" htmlFor={`rule-lookahead-${index}`}>
+              Look ahead
+            </label>
+            <input
+              id={`rule-lookahead-${index}`}
+              type="number"
+              min={1}
+              max={90}
+              value={rule.lookaheadDays ?? ''}
+              placeholder={String(derived)}
+              onChange={(e) =>
+                onPatch({ lookaheadDays: e.target.value === '' ? null : Number(e.target.value) })
+              }
+              className="field w-[92px] py-1.5 text-[13px]"
+            />
+            <span className="text-xs text-faint">
+              days — leave empty for {derived}, which this cadence covers already
+            </span>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowLookahead(true)}
+            className="act act-sm"
+            aria-label={`Set how far ahead ${label} looks`}
+          >
+            Look ahead: {derived} days
+          </button>
+        )}
+      </span>
+    </li>
+  );
+}
+
+/** A checkbox with its label, at the form's own type size. */
+function Check({
+  id,
+  checked,
+  disabled,
+  onChange,
+  label,
+}: {
+  id: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className={`flex items-center gap-2.5 text-[13px] font-semibold ${
+        disabled ? 'cursor-default text-faint' : 'cursor-pointer'
+      }`}
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="checkbox"
+      />
+      {label}
+    </label>
+  );
+}
+
+/**
+ * Whether what is on screen is what is stored (GOI-102 §5).
+ *
+ * The screen used to give no feedback that a dropdown change had persisted,
+ * so "did that save?" had no answer short of reloading the page — and the
+ * honest answer was usually "no", because changing a control here does not
+ * save anything until Schedule is pressed.
+ */
+function SaveState({
+  dirty,
+  pending,
+  justSaved,
+  error,
+}: {
+  dirty: boolean;
+  pending: boolean;
+  justSaved: boolean;
+  error: string | null;
+}) {
+  // `whitespace-pre-line`: a rejection can name several fields, one per line
+  // (see `readableApiError`), and run together they read as one long sentence.
+  if (error) {
+    return <p role="alert" className="mt-3 text-sm text-accent whitespace-pre-line">{error}</p>;
+  }
+  if (pending) return <p role="status" className="mt-3 text-sm text-muted">Saving…</p>;
+  if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Saved.</p>;
+  if (dirty) {
+    return (
+      <p className="mt-3 text-sm text-faint">
+        Changes here are not saved until you press <strong>Schedule newsletter</strong>.
+      </p>
+    );
+  }
+  return null;
 }
 
 /**
@@ -520,16 +1032,18 @@ function ScheduleToggle({
   value,
   onChange,
 }: {
-  value: NewsletterFrequency;
-  onChange: (v: NewsletterFrequency) => void;
+  value: NewsletterSendCadence;
+  onChange: (v: NewsletterSendCadence) => void;
 }) {
-  // Only the cadences the top-level schedule actually supports. 'monthly'
-  // exists in the type for *per-category* rules, where a month is a sensible
-  // rhythm for museums — as the whole brief's cadence it would mean eleven
-  // silent months, so it is deliberately not offered here.
-  const options: { value: NewsletterFrequency; label: string }[] = [
+  // All three since GOI-100. Monthly used to be withheld here on the grounds
+  // that it meant eleven silent months — which it did, while a category's own
+  // cadence was the only thing deciding what an issue contained. Now that the
+  // envelope and the contents are separate, a monthly issue is an ordinary
+  // choice: it carries every category that has anything to say, once a month.
+  const options: { value: NewsletterSendCadence; label: string }[] = [
     { value: 'daily', label: 'Every day' },
     { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
   ];
   return (
     <div role="radiogroup" aria-label="How often" className="flex border-2 border-ink">
@@ -614,7 +1128,13 @@ function NewsletterPreview({
   count: number | null;
   error: string | null;
 }) {
-  if (error) return <p className="mt-6 text-sm text-accent">Couldn&rsquo;t generate a preview: {error}</p>;
+  if (error) {
+    return (
+      <p role="alert" className="mt-6 text-sm text-accent whitespace-pre-line">
+        Couldn&rsquo;t generate a preview.{'\n'}{error}
+      </p>
+    );
+  }
   if (html === null) return null;
   return (
     <div className="mt-10">
@@ -717,9 +1237,10 @@ function DriveCard() {
     <div className="mt-10 border-t-3 border-ink pt-6">
       <h3 className="label-form">Save briefs to a drive</h3>
       <p className="mt-2 max-w-prose text-sm text-muted">
-        Every brief also gets filed as a PDF, on the same schedule as the email, in a folder
-        of your choosing at the root of your drive. AFISZ can only see files it puts there
-        itself — nothing else in your drive.
+        Connect a drive and each brief can be filed there as a PDF, on its own schedule, in a
+        folder of your choosing at the root of the drive. Whether that happens instead of the
+        email or as well as it is the choice at the top of this page. AFISZ can only see files
+        it puts there itself — nothing else in your drive.
       </p>
 
       {google ? (

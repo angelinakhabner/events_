@@ -19,6 +19,14 @@ export interface FestivalSeed {
   startDate: string; // YYYY-MM-DD inclusive
   endDate: string; // YYYY-MM-DD inclusive
   description: string;
+  /**
+   * The festival's own banner, lifted from its site (GOI-99) — the artwork it
+   * announces itself with, which is the one image that says "festival" faster
+   * than any sentence. Omit it rather than substituting a stock photograph or
+   * a venue shot: the banner falls back to setting the name in display type,
+   * which is honest and still looks like the rest of the app.
+   */
+  imageUrl?: string | null;
 }
 
 export const FESTIVAL_SEEDS: FestivalSeed[] = [
@@ -32,6 +40,21 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     startDate: '2026-06-19',
     endDate: '2026-08-30',
     description: 'Open-air summer screenings on the Vistula boulevards — free entry, films at dusk.',
+  },
+  {
+    // GOI-99's own example. It reaches the listing as a run of identically
+    // titled entries in Teatr Dramatyczny's repertoire — six rows saying
+    // "FESTIWAL SKRZYŻOWANIE KULTUR" and nothing about what it is — which is
+    // exactly the case a banner exists to answer.
+    id: 'skrzyzowanie-kultur-2026',
+    name: 'Festiwal Skrzyżowanie Kultur',
+    url: 'https://skrzyzowaniekultur.pl',
+    category: 'theatre',
+    venues: ['Teatr Dramatyczny'],
+    city: 'Warsaw',
+    startDate: '2026-09-11',
+    endDate: '2026-09-13',
+    description: 'Warsaw’s crossroads-of-cultures festival — world music and stage work from across the map, at Teatr Dramatyczny.',
   },
   {
     id: 'wff-2026',
@@ -80,6 +103,10 @@ export function listFestivals(now: Date = new Date(), category?: FestivalCategor
     // Undefined means "every listing" — the unfiltered home view. An explicit
     // category narrows to that listing's own festivals (GOI-68).
     .filter((f) => category === undefined || f.category === category)
-    .map<Festival>((f) => ({ ...f, status: f.startDate <= today ? 'ongoing' : 'upcoming' }))
+    .map<Festival>((f) => ({
+      ...f,
+      imageUrl: f.imageUrl ?? null,
+      status: f.startDate <= today ? 'ongoing' : 'upcoming',
+    }))
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 }

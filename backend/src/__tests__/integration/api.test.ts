@@ -58,9 +58,67 @@ describe('API integration', () => {
   });
 
   it('venues.list returns the default Warsaw seed', async () => {
-    const { body } = await call<TrpcEnvelope<{ city: string }[]>>('/trpc/venues.list');
-    expect(body.result.data.length).toBeGreaterThan(0);
-    expect(body.result.data.every((v) => v.city === 'Warsaw')).toBe(true);
+    // Asked for by city. `venues` is a global table and vitest runs these
+    // files in parallel against the same Postgres, so by the time this runs
+    // the Elsewhere suite (GOI-92) legitimately has Berlin venues in it — an
+    // unfiltered "every venue is Warsaw" would be asserting the absence of
+    // rows another suite is entitled to add.
+    const { body } = await call<TrpcEnvelope<{ name: string; city: string }[]>>(
+      `/trpc/venues.list?input=${trpcInput({ city: 'Warsaw' })}`,
+    );
+    const returned = body.result.data;
+    expect(returned.length).toBeGreaterThan(0);
+    expect(returned.every((v) => v.city === 'Warsaw')).toBe(true);
+    // Names a seeded venue that no migration renames or removes, so this says
+    // "the seed is served" rather than merely "some Warsaw venue exists".
+    expect(returned.some((v) => v.name === 'Kino Muranów')).toBe(true);
+  });
+
+  /**
+   * GOI-94: the "All venues" dialog is how someone who is not logged in picks
+   * which of the app's venues they want in the feed, and it opened on
+   * "0 venues · No venue matches" wherever event counts had nothing to say —
+   * a deployment with no database, or one whose venue rows hadn't landed yet.
+   * The venue set is configuration, not a query result, so it answers instead.
+   */
+  describe('events.filterOptions without event counts', () => {
+    it('still offers the venue set to pick from', async () => {
+      const { body } = await call<TrpcEnvelope<{ venues: { name: string; count: number }[] }>>(
+        `/trpc/events.filterOptions?input=${trpcInput({ category: 'cinema' })}`,
+      );
+      const { venues } = body.result.data;
+      expect(venues.length).toBeGreaterThan(0);
+      expect(venues.map((v) => v.name)).toContain('Kino Muranów');
+    });
+
+    it('scopes them to the category being filtered', async () => {
+      const { body } = await call<TrpcEnvelope<{ venues: { category: string }[] }>>(
+        `/trpc/events.filterOptions?input=${trpcInput({ category: 'theatre' })}`,
+      );
+      const { venues } = body.result.data;
+      expect(venues.length).toBeGreaterThan(0);
+      expect(venues.every((v) => v.category === 'theatre')).toBe(true);
+    });
+
+    // Zero, and dimmed as `empty` — an invented count would be worse than a
+    // missing one, since the number is the whole point of the chip.
+    it('does not invent counts it does not have', async () => {
+      const { body } = await call<TrpcEnvelope<{ venues: { count: number; status: string }[] }>>(
+        `/trpc/events.filterOptions?input=${trpcInput({ category: 'cinema' })}`,
+      );
+      const { venues } = body.result.data;
+      expect(venues.every((v) => v.count === 0 && v.status === 'empty')).toBe(true);
+    });
+
+    // The slug is what a shared ?venues= link is written in, so it has to be
+    // there whichever source answered.
+    it('carries the slug a shared link is written in', async () => {
+      const { body } = await call<TrpcEnvelope<{ venues: { name: string; slug: string }[] }>>(
+        `/trpc/events.filterOptions?input=${trpcInput({ category: 'cinema' })}`,
+      );
+      const muranow = body.result.data.venues.find((v) => v.name === 'Kino Muranów');
+      expect(muranow?.slug).toBe('kino-muranow');
+    });
   });
 
   it('events.listDefault filters by category', async () => {

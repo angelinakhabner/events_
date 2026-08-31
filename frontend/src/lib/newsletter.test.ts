@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { briefSummary, type BriefSummaryInput } from './newsletter';
+import { briefSummary, type BriefSummaryInput, NEWSLETTER_BLURB } from './newsletter';
 
 const base: BriefSummaryInput = {
   venueNames: ['Kino Muranów', 'Kinoteka'],
@@ -16,7 +16,7 @@ const base: BriefSummaryInput = {
 describe('briefSummary', () => {
   it('states the reader\'s own venues, cadence and time', () => {
     expect(briefSummary(base)).toBe(
-      "Get what's on at Kino Muranów and Kinoteka as an email brief — every day at 15:00.",
+      'The next 24 hours at Kino Muranów and Kinoteka, emailed to your inbox every day at 15:00.',
     );
   });
 
@@ -31,24 +31,90 @@ describe('briefSummary', () => {
   });
 
   it('adds the after-hour cutoff only when there is one', () => {
-    expect(briefSummary({ ...base, afterHour: 18 })).toContain(', everything after 18:00.');
-    expect(briefSummary(base)).not.toContain('everything after');
+    expect(briefSummary({ ...base, afterHour: 18 })).toContain(
+      '— only what starts after 18:00.',
+    );
+    expect(briefSummary(base)).not.toContain('only what starts after');
   });
 
   // No venues ticked means the brief covers all of them — the form says so
   // under the venue list, and the summary has to agree.
   it('says "all your venues" when none are picked', () => {
-    expect(briefSummary({ ...base, venueNames: [] })).toContain("at all your venues as");
+    expect(briefSummary({ ...base, venueNames: [] })).toContain('at all your venues,');
   });
 
   it('reads a single venue without a conjunction', () => {
-    expect(briefSummary({ ...base, venueNames: ['Kinoteka'] })).toContain('at Kinoteka as');
+    expect(briefSummary({ ...base, venueNames: ['Kinoteka'] })).toContain('at Kinoteka,');
   });
 
   it('lists three, then counts the rest', () => {
-    expect(briefSummary({ ...base, venueNames: ['A', 'B', 'C'] })).toContain('at A, B and C as');
+    expect(briefSummary({ ...base, venueNames: ['A', 'B', 'C'] })).toContain('at A, B and C,');
     expect(briefSummary({ ...base, venueNames: ['A', 'B', 'C', 'D', 'E'] })).toContain(
-      'at A, B and 3 more as',
+      'at A, B and 3 more,',
     );
+  });
+
+  /**
+   * GOI-97. The cadence used to be the whole of what the line said about
+   * content, and it does not answer "how much is in it" — the sweep turns
+   * daily/weekly/monthly into a 1-, 7- or 30-day horizon, and that is the
+   * difference between one evening's listings and a month of them.
+   */
+  describe('how much the brief covers', () => {
+    it('states the horizon each cadence actually means', () => {
+      expect(briefSummary(base)).toContain('The next 24 hours at');
+      expect(briefSummary({ ...base, frequency: 'weekly' })).toContain('The next 7 days at');
+      expect(briefSummary({ ...base, frequency: 'monthly' })).toContain('The next 30 days at');
+    });
+  });
+
+  /** A typo in the address is the one setting whose failure is silent. */
+  describe('where it goes', () => {
+    it('names the address the brief is sent to', () => {
+      expect(briefSummary({ ...base, email: 'ania@example.com' })).toContain(
+        'emailed to ania@example.com every day',
+      );
+    });
+
+    it('falls back to a placeholder while the field is empty', () => {
+      expect(briefSummary({ ...base, email: '   ' })).toContain('emailed to your inbox');
+    });
+  });
+
+  /** A switched-off brief sends nothing, and the line above the switch is
+   *  where a reader would expect to be told. */
+  describe('when the brief is off', () => {
+    it('says nothing is being sent', () => {
+      expect(briefSummary({ ...base, enabled: false })).toContain('Paused — nothing is being sent.');
+    });
+
+    it('stays quiet about it while the brief is on', () => {
+      expect(briefSummary({ ...base, enabled: true })).not.toContain('Paused');
+      expect(briefSummary(base)).not.toContain('Paused');
+    });
+  });
+});
+
+/**
+ * The standing description of the tab (GOI-97).
+ *
+ * It is prose, so there is nothing to assert about how it reads — but the two
+ * things the issue asked it to stop doing are testable, and they are exactly
+ * the two a later edit would reintroduce without noticing.
+ */
+describe('NEWSLETTER_BLURB', () => {
+  it('names no venue and no clock time', () => {
+    expect(NEWSLETTER_BLURB).not.toMatch(/\d{1,2}:\d{2}/);
+    for (const venue of ['Muranów', 'Muranow', 'Kinoteka', 'Muzeum', 'Iluzjon']) {
+      expect(NEWSLETTER_BLURB).not.toContain(venue);
+    }
+  });
+
+  it('describes what the feature can do — cadence, per-category rules, delivery', () => {
+    expect(NEWSLETTER_BLURB).toMatch(/every day, once a week or once a month/);
+    expect(NEWSLETTER_BLURB).toMatch(/each category/);
+    expect(NEWSLETTER_BLURB).toMatch(/how far ahead/);
+    expect(NEWSLETTER_BLURB).toMatch(/email/);
+    expect(NEWSLETTER_BLURB).toMatch(/PDF/);
   });
 });

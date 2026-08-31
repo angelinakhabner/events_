@@ -6,6 +6,7 @@ import { MyEventsSection } from '../components/MyEventsSection';
 import { MyVenuesSection } from '../components/MyVenuesSection';
 import { WantToGoSection } from '../components/WantToGoSection';
 import { NewsletterSection } from '../components/NewsletterSection';
+import { FestivalBanner } from '../components/FestivalBanner';
 
 /** The left-hand menu (GOI-24). `key` doubles as the ?tab= value. */
 const SECTIONS = [
@@ -41,59 +42,73 @@ export function MyPage() {
     return <LoginSection />;
   }
   return (
-    <div className="md:flex md:gap-14 md:page-x md:pt-12">
-      {/* Two shapes for one menu. From `md` it is the poster sidebar: the page
-          title, the address it belongs to, and four rules with a red marker
-          square on the active row. Below that it becomes a horizontally
-          scrolling tab strip, because a 220px column would leave the listing
-          nothing to live in. */}
-      <div className="md:w-[220px] md:shrink-0">
-        <div className="page-x md:px-0 pt-6 pb-2.5 md:pt-0">
-          <h1 className="font-display text-[30px] md:text-[42px] tracking-[0.5px] m-0">My page</h1>
-          {me.data ? (
-            <p className="mt-1 text-xs md:text-sm text-muted">{me.data.email}</p>
-          ) : null}
+    <>
+      {/* GOI-99: the same banner Home carries, narrowed to the venues this
+          reader actually follows — above the section menu, so it is the first
+          thing on /my whichever tab is open. */}
+      <MyFestivalBanner />
+
+      <div className="md:flex md:gap-14 md:page-x md:pt-12">
+        {/* Two shapes for one menu. From `md` it is the poster sidebar: the page
+            title, the address it belongs to, and four rules with a red marker
+            square on the active row. Below that it becomes a horizontally
+            scrolling tab strip, because a 220px column would leave the listing
+            nothing to live in. */}
+        <div className="md:w-[220px] md:shrink-0">
+          <div className="page-x md:px-0 pt-6 pb-2.5 md:pt-0">
+            <h1 className="font-display text-[30px] md:text-[42px] tracking-[0.5px] m-0">My page</h1>
+            {me.data ? (
+              <p className="mt-1 text-xs md:text-sm text-muted">{me.data.email}</p>
+            ) : null}
+          </div>
+
+          <nav
+            aria-label="My page sections"
+            className="flex scroll-x border-y-2 border-ink md:mt-9 md:flex-col md:border-b-0 md:border-t-0"
+          >
+            {SECTIONS.map((s) => {
+              const active = section === s.key;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => setParams({ tab: s.key })}
+                  className="flex shrink-0 items-center gap-2.5 whitespace-nowrap border-r-2 border-ink px-4 py-3.5 cursor-pointer bg-transparent md:w-full md:border-r-0 md:border-t-2 md:px-0 md:py-3.5 md:last:border-b-2"
+                >
+                  <span
+                    aria-hidden
+                    className={`h-2 w-2 shrink-0 md:h-2.5 md:w-2.5 ${active ? 'bg-accent' : 'bg-transparent'}`}
+                  />
+                  <span
+                    className={`text-[13px] md:text-base tracking-[0.3px] ${
+                      active ? 'font-extrabold text-ink' : 'font-medium text-ink'
+                    }`}
+                  >
+                    {s.label}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        <nav
-          aria-label="My page sections"
-          className="flex scroll-x border-y-2 border-ink md:mt-9 md:flex-col md:border-b-0 md:border-t-0"
-        >
-          {SECTIONS.map((s) => {
-            const active = section === s.key;
-            return (
-              <button
-                key={s.key}
-                type="button"
-                aria-current={active ? 'page' : undefined}
-                onClick={() => setParams({ tab: s.key })}
-                className="flex shrink-0 items-center gap-2.5 whitespace-nowrap border-r-2 border-ink px-4 py-3.5 cursor-pointer bg-transparent md:w-full md:border-r-0 md:border-t-2 md:px-0 md:py-3.5 md:last:border-b-2"
-              >
-                <span
-                  aria-hidden
-                  className={`h-2 w-2 shrink-0 md:h-2.5 md:w-2.5 ${active ? 'bg-accent' : 'bg-transparent'}`}
-                />
-                <span
-                  className={`text-[13px] md:text-base tracking-[0.3px] ${
-                    active ? 'font-extrabold text-ink' : 'font-medium text-ink'
-                  }`}
-                >
-                  {s.label}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
+        <div className="min-w-0 flex-1 page-x md:px-0 pt-8 md:pt-0">
+          {section === 'events' ? <MyEventsSection /> : null}
+          {section === 'venues' ? <MyVenuesSection /> : null}
+          {section === 'want-to-go' ? <WantToGoSection /> : null}
+          {section === 'newsletter' ? <NewsletterSection defaultEmail={me.data?.email ?? ''} /> : null}
+        </div>
       </div>
-
-      <div className="min-w-0 flex-1 page-x md:px-0 pt-8 md:pt-0">
-        {section === 'events' ? <MyEventsSection /> : null}
-        {section === 'venues' ? <MyVenuesSection /> : null}
-        {section === 'want-to-go' ? <WantToGoSection /> : null}
-        {section === 'newsletter' ? <NewsletterSection defaultEmail={me.data?.email ?? ''} /> : null}
-      </div>
-    </div>
+    </>
   );
+}
+
+/** The banner's /my half: `festivals.mine` rather than the public list, so it
+ *  announces only what is on at venues this reader follows (GOI-33, GOI-99). */
+function MyFestivalBanner() {
+  const mine = trpc.festivals.mine.useQuery();
+  return <FestivalBanner festivals={mine.data} label="Festivals at your venues" />;
 }
 
 // ─── Login ───────────────────────────────────────────────────────────────────

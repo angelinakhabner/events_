@@ -76,7 +76,19 @@ jobs:
         if: steps.checkout_dev.outcome == 'success'
         working-directory: dev
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # The staging API when the repo has one, the production API otherwise.
+          #
+          # Falling back is deliberate — a preview against production is better
+          # than a preview against nothing — but it is only safe while `dev` and
+          # the default branch agree about the API. They did not for GOI-100:
+          # the dev build sent the new split newsletter config to a backend
+          # still parsing the old one, and every save, generate and test came
+          # back as a wall of Zod issues about a `frequency` field the form no
+          # longer had. Set the repo variable VITE_DEV_API_URL to a backend
+          # deployed from `dev` (with its own database — the migrations on `dev`
+          # have not reached production yet) and the preview reviews `dev`
+          # end to end, which is what it is for. See docs/RAILWAY.md §8.
+          VITE_API_URL: ${{ vars.VITE_DEV_API_URL || vars.VITE_API_URL }}
           VITE_BASE_PATH: /dev/
           VITE_DEV_GATE_HASH: ${{ env.DEV_GATE_HASH }}
           # Ships the DEV-marked app icon (public/icons/afisz-dev-app-icon-*),

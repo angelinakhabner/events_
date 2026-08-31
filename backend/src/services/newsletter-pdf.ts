@@ -1,10 +1,13 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
-import { groupPicks, listSentence, type BriefSection, type Pick } from './newsletter-render.js';
+import { isExhibition } from '@afisz/shared';
+import { groupPicks, type BriefSection, type Pick } from './newsletter-render.js';
+import { isEmptySection, type QueuedChange, type WantToGoSection } from './want-to-go-queue.js';
+import { env } from '../config.js';
 
 /**
  * The brief as a PDF (GOI-91), for the copy that gets filed on a user's drive.
@@ -39,6 +42,9 @@ const C = {
   onInk: '#f3f2f2',
   onInkEyebrow: '#d2d1d0',
   divider: '#aca9a2',
+  /** --color-accent, the same red the site sets links and the wordmark's
+   *  square in. It carries the times and the state labels here. */
+  accent: '#c62828',
   tagFill: '#f0ead0',
   meta: '#8d8b87',
   body: '#575552',
@@ -49,9 +55,57 @@ const PAGE = { width: 595.28, height: 841.89 }; // A4 in points
 const MARGIN = 48;
 const CONTENT = PAGE.width - MARGIN * 2;
 
-const fontDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/fonts');
-const FONT_REGULAR = path.join(fontDir, 'DejaVuSans.subset.ttf');
-const FONT_BOLD = path.join(fontDir, 'DejaVuSans-Bold.subset.ttf');
+/**
+ * The left column the times and state markers sit in.
+ *
+ * A fixed gutter rather than a time prefixed to each title: it is what lets a
+ * reader run their eye down the times alone to find the evening they are free,
+ * without reading a word of the titles beside them. Wide enough for `18:30` at
+ * 10pt and for `OSTATNIA` — the longest marker — at 8pt, with room to breathe.
+ */
+const GUTTER = 52;
+const BODY_X = MARGIN + GUTTER;
+const BODY_WIDTH = CONTENT - GUTTER;
+
+/** Inset of text inside a black band, which is itself inset by `MARGIN`. */
+const BAND_PAD = 20;
+
+const FONT_REGULAR_FILE = 'DejaVuSans.subset.ttf';
+const FONT_BOLD_FILE = 'DejaVuSans-Bold.subset.ttf';
+
+/**
+ * Where `backend/assets/fonts` actually is, found by walking up (GOI-96).
+ *
+ * It used to be `../../assets/fonts` from this module, which is right when
+ * this file runs as TypeScript out of `backend/src/services` and wrong
+ * everywhere else. `tsc` emits to `backend/dist/backend/src/services`, and
+ * nothing copies `assets/` into `dist`, so in production that same relative
+ * path pointed at `backend/dist/backend/assets/fonts` — a directory that has
+ * never existed. The only symptom was the brief refusing to render, with
+ * "ENOENT: no such file or directory" naming a path deep inside `dist` that
+ * gives no hint the fonts are sitting unbuilt two levels above it.
+ *
+ * Walking up until the directory turns up is indifferent to how deep the
+ * compiler nests its output, so dev, `dist`, and the test runner all resolve
+ * to the one copy of the fonts in the repo instead of three guesses at it.
+ */
+export function resolveFontDir(startDir: string): string {
+  let dir = startDir;
+  // `backend/dist/backend/src/services` is five levels below `backend/`, so
+  // the bound is generous rather than tight; the loop stops at the filesystem
+  // root regardless.
+  for (let i = 0; i < 8; i++) {
+    const candidate = path.join(dir, 'assets', 'fonts');
+    if (existsSync(path.join(candidate, FONT_REGULAR_FILE))) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(
+    `Could not find ${FONT_REGULAR_FILE}: no assets/fonts directory above ` +
+      `${startDir}. The brief needs the embedded DejaVu subset to set Polish text.`,
+  );
+}
 
 /** Read once, not per brief — the sweep renders one of these per subscriber. */
 let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
@@ -72,38 +126,133 @@ let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
  */
 function fonts(): { regular: Uint8Array; bold: Uint8Array } {
   if (!fontCache) {
+    const dir = resolveFontDir(path.dirname(fileURLToPath(import.meta.url)));
     fontCache = {
-      regular: new Uint8Array(readFileSync(FONT_REGULAR)),
-      bold: new Uint8Array(readFileSync(FONT_BOLD)),
+      regular: new Uint8Array(readFileSync(path.join(dir, FONT_REGULAR_FILE))),
+      bold: new Uint8Array(readFileSync(path.join(dir, FONT_BOLD_FILE))),
     };
   }
   return fontCache;
 }
 
+/**
+ * The brief's own words, in Polish.
+ *
+ * The rest of the interface is English on purpose — the wordmark and the home
+ * page's headline are the brand and the chrome around them stays in English
+ * (see `Hero` in `pages/Home.tsx`). The brief is the one surface that breaks
+ * that, and deliberately: everything *in* it is already Polish — the titles,
+ * the venues, the descriptions the venues wrote — so English section headings
+ * over Polish content read as a translation layer nobody asked for.
+ *
+ * Collected here rather than inlined so the decision is one edit to revisit,
+ * and so a reader of this file can see the whole vocabulary at once.
+ */
+const PL = {
+  wordmark: 'AFISZ.KA',
+  city: 'WARSZAWA',
+  wantToGo: 'Chcę iść',
+  changes: 'Zmiany',
+  changed: 'Zmiana',
+  lastChance: 'Ostatnia szansa',
+  tomorrow: 'Jutro',
+  thisWeek: 'W tym tygodniu',
+  festivals: 'Festiwale w tym tygodniu',
+  nothing: 'W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.',
+  settings: 'Zmień ustawienia',
+  unsubscribe: 'Wypisz się',
+  open: 'Otwórz w AFISZ.KA',
+  /** `n` events from `m` of your venues. Polish counts in three forms. */
+  summary: (events: number, venues: number) =>
+    `${events} ${plural(events, 'wydarzenie', 'wydarzenia', 'wydarzeń')} ` +
+    `z Twoich ${venues} ${plural(venues, 'miejsca', 'miejsc', 'miejsc')}.`,
+  /**
+   * The reader's name, ahead of the count.
+   *
+   * A dash rather than a greeting, and that is a language decision, not a
+   * terse one: Polish addresses someone in the vocative — "Angelina" becomes
+   * "Angelino" — and there is no reliable way to decline an arbitrary name,
+   * including names that are not Polish at all. A greeting that gets the case
+   * wrong is more jarring than no greeting, so the name is simply named.
+   */
+  addressed: (name: string, rest: string) => `${name} — ${rest}`,
+  /** What a change says, beside the title. */
+  rescheduled: (at: string) => `seans przeniesiony na ${at}`,
+  cancelled: 'odwołane',
+  movedVenue: 'zmiana miejsca',
+  soldOut: 'brak biletów',
+  until: (date: string) => `do ${date}`,
+} as const;
+
+/**
+ * Polish plurals: one form for 1, another for 2–4, a third for everything else
+ * — with the teens taking the third whatever their last digit says. Getting
+ * this wrong is the sort of thing that makes generated copy read as generated.
+ */
+function plural(n: number, one: string, few: string, many: string): string {
+  if (n === 1) return one;
+  const last = n % 10;
+  const lastTwo = n % 100;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return few;
+  return many;
+}
+
+/** Months as Polish convention writes them in a short date: `11 VIII`. */
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+
 export interface BriefPdfContent {
   sections: BriefSection[];
+  /**
+   * The saved-events queue (GOI-101), at the top of the brief.
+   *
+   * The PDF went without it when the queue was built, because the PDF was a
+   * filed copy of an email that carried it. Once a reader can choose the drive
+   * *instead* of the email, that omission means the one thing in the brief
+   * that asks them to do something never reaches them.
+   */
+  wantToGo?: WantToGoSection;
   fallbackFrequency?: NewsletterFrequency;
   recipientName?: string | null;
   festival?: Festival | null;
   now?: Date;
 }
 
-function fmt(iso: string, opts: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat('en-GB', { timeZone: TZ, ...opts }).format(new Date(iso));
+function fmt(iso: string, opts: Intl.DateTimeFormatOptions, locale = 'pl-PL'): string {
+  return new Intl.DateTimeFormat(locale, { timeZone: TZ, ...opts }).format(new Date(iso));
 }
 
-function cadenceLabel(frequency: NewsletterFrequency): string {
-  if (frequency === 'daily') return 'today';
-  return frequency === 'weekly' ? 'this week' : 'this month';
+/** `19:00` on the Warsaw clock. */
+function time(iso: string): string {
+  return fmt(iso, { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-/** `18:00, 20:30` — every showing of one title at one venue. */
-function timeList(startsAt: string[]): string {
-  return startsAt.map((s) => fmt(s, { hour: '2-digit', minute: '2-digit', hour12: false })).join(', ');
+/** `PT`, `ŚR` — the day, for a gutter that has no time to show. */
+function weekday(iso: string): string {
+  return fmt(iso, { weekday: 'short' }).replace(/\.$/, '').toUpperCase();
 }
 
-function venueLine(pick: Pick): string {
-  return pick.venues.map((v) => `${v.name} · ${timeList(v.startsAt)}`).join('   ');
+/** `WT 11 VIII` — the Polish short date, for a section spanning days. */
+function shortDate(iso: string): string {
+  const day = Number(fmt(iso, { day: 'numeric' }));
+  const month = Number(fmt(iso, { month: 'numeric' })) - 1;
+  return `${weekday(iso)} ${day} ${ROMAN[month]}`;
+}
+
+/** `10–16 SIERPNIA` — the span the brief covers, for the masthead. */
+function dateRange(from: Date, days: number): string {
+  const to = new Date(from.getTime() + Math.max(days - 1, 0) * 86_400_000);
+  const fromDay = fmt(from.toISOString(), { day: 'numeric' });
+  // The month comes off the *end* of the range, and in the genitive Polish
+  // uses with a day number — which is what asking for day+month together
+  // gets, and what asking for the month alone does not.
+  const toLong = fmt(to.toISOString(), { day: 'numeric', month: 'long' });
+  if (days <= 1) return toLong.toUpperCase();
+  return `${fromDay}–${toLong}`.toUpperCase();
+}
+
+/** `DO 14 WRZEŚNIA` — an exhibition is dated by when it closes. */
+function closingDate(iso: string): string {
+  return PL.until(fmt(iso, { day: 'numeric', month: 'long' })).toUpperCase();
 }
 
 /**
@@ -132,14 +281,20 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   const now = content.now ?? new Date();
   const sections = content.sections;
   const events: Event[] = sections.flatMap((s) => s.events);
-  const frequency = sections[0]?.frequency ?? content.fallbackFrequency ?? 'weekly';
+  const queue = content.wantToGo;
+  // The widest section decides how far the masthead's date range reaches, as
+  // it decides the email's wording (GOI-100).
+  const widest = sections.reduce((acc, sec) => Math.max(acc, sec.windowDays), 0);
+  const frequency: NewsletterFrequency = sections.length
+    ? (widest > 7 ? 'monthly' : widest > 1 ? 'weekly' : 'daily')
+    : content.fallbackFrequency ?? 'weekly';
 
   const doc: PDFKit.PDFDocument = new PDFDocument({
     size: [PAGE.width, PAGE.height],
     margin: MARGIN,
     bufferPages: true,
     info: {
-      Title: `AFISZ — what's on ${cadenceLabel(frequency)}`,
+      Title: `${PL.wordmark} — ${PL.city}`,
       Author: 'AFISZ',
       Creator: 'AFISZ',
       CreationDate: now,
@@ -162,20 +317,30 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   // draws nothing, so without this the second page onwards would be white.
   doc.on('pageAdded', () => paintPageBackground(doc));
 
-  drawMasthead(doc, { frequency, count: countPicks(sections), recipientName: content.recipientName, now });
+  drawMasthead(doc, { now, days: widest || (frequency === 'daily' ? 1 : 7) });
+  drawSummary(doc, {
+    picks: countPicks(sections),
+    venues: countVenues(sections),
+    name: content.recipientName?.trim() || null,
+  });
+
+  if (queue) drawWantToGo(doc, queue);
+  // Shaped for a list, given one: the pipeline picks a single ongoing festival
+  // (`currentFestival`), so widening this is a change at the call site rather
+  // than here.
+  if (content.festival) drawFestivals(doc, [content.festival]);
 
   for (const section of sections) {
     drawSection(doc, section);
   }
 
-  if (events.length === 0) {
+  if (events.length === 0 && (!queue || isEmptySection(queue))) {
     doc.moveDown(1);
     doc.font('body').fontSize(10).fillColor(C.meta)
-      .text('Nothing on at your venues in this window.', MARGIN, doc.y, { width: CONTENT });
+      .text(PL.nothing, MARGIN, doc.y, { width: CONTENT });
   }
 
-  if (content.festival) drawFestival(doc, content.festival);
-  drawFooter(doc, sections);
+  drawFooter(doc);
 
   doc.end();
   return done;
@@ -185,121 +350,369 @@ function countPicks(sections: BriefSection[]): number {
   return sections.reduce((n, s) => n + groupPicks(s.events).length, 0);
 }
 
+/** How many of the reader's venues the brief actually drew on. */
+function countVenues(sections: BriefSection[]): number {
+  const seen = new Set<string>();
+  for (const s of sections) for (const e of s.events) seen.add(e.venueId);
+  return seen.size;
+}
+
 function paintPageBackground(doc: PDFKit.PDFDocument): void {
   doc.save().rect(0, 0, PAGE.width, PAGE.height).fill(C.bg).restore();
 }
 
-function drawMasthead(
-  doc: PDFKit.PDFDocument,
-  args: { frequency: NewsletterFrequency; count: number; recipientName?: string | null; now: Date },
-): void {
-  const height = 128;
-  doc.save().rect(0, 0, PAGE.width, height).fill(C.ink).restore();
+// ─── The masthead ────────────────────────────────────────────────────────────
 
-  doc.font('body').fontSize(8).fillColor(C.onInkEyebrow)
-    .text(fmt(args.now.toISOString(), { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase(),
-      MARGIN, 30, { width: CONTENT, characterSpacing: 2 });
+/**
+ * The black band: the wordmark with its red square, the span the brief covers,
+ * and the city.
+ *
+ * Inset by the page margin rather than bled to the paper's edge. A full-bleed
+ * band is the right call on screen and the wrong one on paper: consumer
+ * printers reserve an unprintable margin and scale the page down to fit it, so
+ * a band drawn to the edge either loses a strip or shifts the whole brief. A
+ * filed PDF is the copy people print.
+ */
+function drawMasthead(doc: PDFKit.PDFDocument, args: { now: Date; days: number }): void {
+  const top = MARGIN;
+  const height = 120;
+  const x = MARGIN + BAND_PAD;
+  const width = CONTENT - BAND_PAD * 2;
+  doc.save().rect(MARGIN, top, CONTENT, height).fill(C.ink).restore();
 
-  doc.font('bold').fontSize(38).fillColor(C.onInk)
-    .text('AFISZ', MARGIN, 48, { width: CONTENT, characterSpacing: 1 });
+  doc.font('bold').fontSize(26).fillColor(C.onInk)
+    .text(PL.wordmark, x, top + 22, { width, characterSpacing: 0.5 });
+  // The square is placed off the wordmark's measured width, not a guessed
+  // offset, so it stays put if the mark or its size ever changes.
+  const markWidth = doc.font('bold').fontSize(26).widthOfString(PL.wordmark);
+  doc.save().rect(x + markWidth + 10, top + 30, 9, 9).fill(C.accent).restore();
 
-  const greeting = args.recipientName ? `${args.recipientName}, here's` : "Here's";
-  const picks = args.count === 1 ? '1 pick' : `${args.count} picks`;
-  doc.font('body').fontSize(10).fillColor(C.onInkEyebrow)
-    .text(`${greeting} what's on ${cadenceLabel(args.frequency)} — ${picks}.`,
-      MARGIN, 96, { width: CONTENT });
+  doc.font('bold').fontSize(8).fillColor(C.accent)
+    .text(dateRange(args.now, args.days), x, top + 56, { width, characterSpacing: 2 });
 
-  doc.y = height + 28;
+  doc.font('bold').fontSize(30).fillColor(C.onInk)
+    .text(PL.city, x, top + 72, { width, characterSpacing: 1 });
+
+  doc.y = top + height + 20;
 }
+
+/** One line of arithmetic under the masthead: how much is here, from where.
+ *  Closed by the same heavy rule that closes a section heading, so the header
+ *  block reads as one thing rather than as a stray sentence. */
+function drawSummary(
+  doc: PDFKit.PDFDocument,
+  args: { picks: number; venues: number; name: string | null },
+): void {
+  const count = PL.summary(args.picks, args.venues);
+  doc.font('body').fontSize(10).fillColor(C.body)
+    .text(args.name ? PL.addressed(args.name, count) : count, MARGIN, doc.y, { width: CONTENT });
+  doc.moveDown(0.9);
+  rule(doc, C.ink, 2);
+}
+
+// ─── "Chcę iść" ──────────────────────────────────────────────────────────────
+
+/**
+ * The saved-events queue, above every category section (GOI-101).
+ *
+ * Grouped by state under its own subheading rather than listed flat, because
+ * the states are not degrees of the same thing — "this was cancelled", "this
+ * is your last chance" and "this is tomorrow" are three different requests,
+ * and a reader scanning for the urgent one should not have to read the times.
+ * Changes lead: something that happened outranks something that is coming.
+ */
+function drawWantToGo(doc: PDFKit.PDFDocument, section: WantToGoSection): void {
+  if (isEmptySection(section)) return;
+
+  // A queue row is a fixed shape — one line of title over one of meta — so its
+  // height is a constant here rather than a measurement, unlike a pick's.
+  sectionHeading(doc, PL.wantToGo, 34 + QUEUE_ROW_HEIGHT);
+
+  if (section.changes.length > 0) {
+    subHeading(doc, PL.changes);
+    for (const change of section.changes) {
+      drawQueueRow(doc, {
+        gutter: PL.changed.toUpperCase(),
+        gutterColor: C.accent,
+        title: change.event.title,
+        meta: [change.event.venue?.name, changeNote(change)].filter(Boolean).join(' · '),
+      });
+    }
+  }
+
+  for (const [state, label] of [
+    ['last_chance', PL.lastChance],
+    ['tomorrow', PL.tomorrow],
+    ['this_week', PL.thisWeek],
+  ] as const) {
+    const rows = section.reminders.filter((r) => r.state === state);
+    if (rows.length === 0) continue;
+    subHeading(doc, label);
+    for (const row of rows) {
+      drawQueueRow(doc, {
+        // A reminder for tomorrow is about a time; one for later in the week
+        // is about a day. The gutter shows whichever the reader needs.
+        gutter: state === 'tomorrow' ? time(row.event.startsAt) : weekday(row.event.startsAt),
+        gutterColor: C.accent,
+        title: row.event.title,
+        meta: [row.event.venue?.name, state === 'tomorrow' ? null : time(row.event.startsAt)]
+          .filter(Boolean).join(' · '),
+      });
+    }
+  }
+
+  doc.moveDown(0.5);
+}
+
+/** What a change is, in a phrase that fits beside the venue. */
+function changeNote(change: QueuedChange): string {
+  if (change.type === 'rescheduled') {
+    return change.newValue ? PL.rescheduled(time(change.newValue)) : PL.movedVenue;
+  }
+  if (change.type === 'cancelled') return PL.cancelled;
+  if (change.type === 'moved') return PL.movedVenue;
+  return PL.soldOut;
+}
+
+/** Title, meta and the rule under them, for a queue row of one-line title. */
+const QUEUE_ROW_HEIGHT = 44;
+
+/** A queue row: a short marker in the gutter, title and meta beside it. */
+function drawQueueRow(
+  doc: PDFKit.PDFDocument,
+  args: { gutter: string; gutterColor: string; title: string; meta: string },
+): void {
+  const titleHeight = doc.font('bold').fontSize(12).heightOfString(args.title, { width: BODY_WIDTH });
+  ensureSpace(doc, titleHeight + 26);
+
+  const top = doc.y;
+  doc.font('bold').fontSize(8).fillColor(args.gutterColor)
+    .text(args.gutter, MARGIN, top + 2, { width: GUTTER - 8, characterSpacing: 1 });
+
+  doc.font('bold').fontSize(12).fillColor(C.ink)
+    .text(args.title, BODY_X, top, { width: BODY_WIDTH });
+  if (args.meta) {
+    doc.font('bold').fontSize(7.5).fillColor(C.body)
+      .text(args.meta.toUpperCase(), BODY_X, doc.y + 1, { width: BODY_WIDTH, characterSpacing: 0.8 });
+  }
+
+  doc.moveDown(0.55);
+  rule(doc, C.divider, 0.5);
+  doc.moveDown(0.55);
+}
+
+// ─── Festivals ───────────────────────────────────────────────────────────────
+
+/** The black band of what is running across the city this week. */
+function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
+  if (festivals.length === 0) return;
+  const height = 34 + festivals.length * 20;
+  ensureSpace(doc, height + 22);
+
+  const top = doc.y;
+  const x = MARGIN + BAND_PAD;
+  const width = CONTENT - BAND_PAD * 2;
+  doc.save().rect(MARGIN, top, CONTENT, height).fill(C.ink).restore();
+
+  doc.font('bold').fontSize(7.5).fillColor(C.accent)
+    .text(PL.festivals.toUpperCase(), x, top + 13, { width, characterSpacing: 1.6 });
+
+  let y = top + 32;
+  for (const f of festivals) {
+    doc.font('bold').fontSize(11).fillColor(C.onInk).text(f.name, x, y, { width });
+    const nameWidth = doc.font('bold').fontSize(11).widthOfString(f.name);
+    const span = `${fmt(`${f.startDate}T12:00:00Z`, { day: 'numeric' })}–${
+      fmt(`${f.endDate}T12:00:00Z`, { day: 'numeric' })} ${ROMAN[Number(f.endDate.slice(5, 7)) - 1]}`;
+    doc.font('bold').fontSize(7.5).fillColor(C.onInkEyebrow)
+      .text(span, x + nameWidth + 10, y + 3, { width, characterSpacing: 1 });
+    y += 20;
+  }
+
+  doc.y = top + height + 22;
+}
+
+// ─── Category sections ───────────────────────────────────────────────────────
 
 function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
   const picks = groupPicks(section.events);
   if (picks.length === 0) return;
 
-  if (section.category) {
-    ensureSpace(doc, 44);
-    doc.font('bold').fontSize(9).fillColor(C.ink)
-      .text(section.category.toUpperCase(), MARGIN, doc.y, { width: CONTENT, characterSpacing: 2 });
-    doc.moveDown(0.4);
-    rule(doc);
-    doc.moveDown(0.6);
-  }
+  // The heading is kept with the row it opens. A "TEATR" alone at the foot of
+  // a page, with the first play at the head of the next, is worse than a page
+  // that ends a few centimetres early.
+  if (section.category) sectionHeading(doc, section.category, rowHeight(doc, picks[0]!, section));
 
   for (const pick of picks) {
-    drawPick(doc, pick, section.detail === 'full');
+    // An exhibition has no showtime worth putting in a gutter — it is on all
+    // day for months — so it is dated by when it closes instead (GOI-67).
+    if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail);
+    else drawPick(doc, pick, section);
   }
 }
 
+/** The blurb a section's detail level asks for, or none. */
+function blurbFor(pick: Pick, detail: BriefSection['detail']): string | null {
+  const text = pick.lead.description;
+  if (!text || detail === 'line') return null;
+  return detail === 'full' ? text : firstSentence(text);
+}
+
 /**
- * One pick: day + title, then venues and times, then the blurb on a full brief.
+ * How tall a row will be, measured before anything is drawn.
+ *
+ * Shared by the row itself and by the heading above it, which is the point:
+ * both page-break decisions are then made from the same number, so a heading
+ * can never reserve space its own first row does not fit into.
+ */
+function rowHeight(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): number {
+  const exhibition = isExhibition(pick.lead);
+  const width = exhibition ? CONTENT : BODY_WIDTH;
+  const blurb = blurbFor(pick, section.detail);
+  const title = doc.font('bold').fontSize(13).heightOfString(pick.lead.title, { width });
+  const body = blurb ? doc.font('body').fontSize(9).heightOfString(blurb, { width }) : 0;
+  if (exhibition) return title + body + 34;
+  const dated = section.windowDays > 1 ? 12 : 0;
+  return title + body + pick.venues.length * 12 + dated + 30;
+}
+
+/**
+ * One timed pick: the first showing's time in the gutter, the title beside it,
+ * then a line per venue and the blurb.
  *
  * Height is measured before drawing so a card is never split across a page
  * break — a title stranded at the foot of one page with its times at the head
  * of the next is the sort of thing that makes a generated PDF look generated.
  */
-function drawPick(doc: PDFKit.PDFDocument, pick: Pick, full: boolean): void {
+function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): void {
   const title = pick.lead.title;
-  const day = fmt(pick.startsAt, { weekday: 'short', day: 'numeric', month: 'short' });
-  const venues = venueLine(pick);
-  const blurb = full && pick.lead.description ? pick.lead.description : null;
+  const blurb = blurbFor(pick, section.detail);
+  // A section spanning more than a day has to date each row; a single-day one
+  // would only be repeating its own heading.
+  const dateLine = section.windowDays > 1 ? shortDate(pick.startsAt) : null;
 
-  const titleHeight = doc.font('bold').fontSize(13).heightOfString(title, { width: CONTENT });
-  const venueHeight = doc.font('body').fontSize(9).heightOfString(venues, { width: CONTENT });
-  const blurbHeight = blurb
-    ? doc.font('body').fontSize(9.5).heightOfString(blurb, { width: CONTENT })
-    : 0;
-  ensureSpace(doc, 16 + titleHeight + venueHeight + blurbHeight + 22);
+  ensureSpace(doc, rowHeight(doc, pick, section));
 
-  doc.font('body').fontSize(8).fillColor(C.meta)
-    .text(day.toUpperCase(), MARGIN, doc.y, { width: CONTENT, characterSpacing: 1.4 });
-  doc.moveDown(0.25);
+  const top = doc.y;
+  doc.font('bold').fontSize(10).fillColor(C.accent)
+    .text(time(pick.startsAt), MARGIN, top + 1, { width: GUTTER - 8 });
+
+  if (dateLine) {
+    doc.font('bold').fontSize(7.5).fillColor(C.meta)
+      .text(dateLine, BODY_X, top, { width: BODY_WIDTH, characterSpacing: 1 });
+    doc.moveDown(0.15);
+  }
 
   doc.font('bold').fontSize(13).fillColor(C.ink)
-    .text(title, MARGIN, doc.y, { width: CONTENT });
-  doc.moveDown(0.2);
+    .text(title, BODY_X, dateLine ? doc.y : top, { width: BODY_WIDTH });
 
-  doc.font('body').fontSize(9).fillColor(C.body)
-    .text(venues, MARGIN, doc.y, { width: CONTENT });
-
-  if (pick.count > pick.venues.length) {
-    doc.font('body').fontSize(8).fillColor(C.meta)
-      .text(`${pick.count} showings`, MARGIN, doc.y + 1, { width: CONTENT });
+  // One line per venue, so two cinemas showing the same film read as two
+  // places rather than as one run-on string.
+  for (const v of pick.venues) {
+    doc.font('bold').fontSize(7.5).fillColor(C.body)
+      .text(`${v.name} · ${v.startsAt.map(time).join(', ')}`.toUpperCase(),
+        BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
   }
 
   if (blurb) {
-    doc.moveDown(0.3);
-    doc.font('body').fontSize(9.5).fillColor(C.body).text(blurb, MARGIN, doc.y, { width: CONTENT });
+    doc.font('body').fontSize(9).fillColor(C.body)
+      .text(blurb, BODY_X, doc.y + 4, { width: BODY_WIDTH });
   }
 
-  doc.moveDown(0.5);
+  doc.moveDown(0.55);
   rule(doc, C.divider, 0.5);
-  doc.moveDown(0.6);
+  doc.moveDown(0.55);
 }
 
-function drawFestival(doc: PDFKit.PDFDocument, festival: Festival): void {
-  ensureSpace(doc, 60);
-  doc.moveDown(0.4);
-  doc.save().rect(MARGIN, doc.y, CONTENT, 3).fill(C.tagFill).restore();
-  doc.moveDown(0.6);
+/** An exhibition: dated by its closing, with no gutter time. */
+function drawExhibition(doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail']): void {
+  const title = pick.lead.title;
+  const blurb = blurbFor(pick, detail);
+  const closes = pick.lead.endsAt ? closingDate(pick.lead.endsAt) : null;
+  const eyebrow = [closes, pick.venues[0]?.name.toUpperCase()].filter(Boolean).join(' · ');
 
-  const through = fmt(`${festival.endDate}T12:00:00Z`, { day: 'numeric', month: 'short' });
-  doc.font('bold').fontSize(9).fillColor(C.ink)
-    .text('ALSO ON', MARGIN, doc.y, { width: CONTENT, characterSpacing: 2 });
-  doc.moveDown(0.3);
-  doc.font('body').fontSize(10).fillColor(C.body)
-    .text(`${festival.name} — through ${through}`, MARGIN, doc.y, { width: CONTENT });
+  ensureSpace(doc, rowHeight(doc, pick, { detail, windowDays: 1, category: '', events: [] }));
+
+  doc.font('bold').fontSize(7.5).fillColor(C.accent)
+    .text(eyebrow, MARGIN, doc.y, { width: CONTENT, characterSpacing: 1 });
+  doc.font('bold').fontSize(13).fillColor(C.ink)
+    .text(title, MARGIN, doc.y + 2, { width: CONTENT });
+  if (blurb) {
+    doc.font('body').fontSize(9).fillColor(C.body)
+      .text(blurb, MARGIN, doc.y + 3, { width: CONTENT });
+  }
+
+  doc.moveDown(0.55);
+  rule(doc, C.divider, 0.5);
+  doc.moveDown(0.55);
 }
 
-function drawFooter(doc: PDFKit.PDFDocument, sections: BriefSection[]): void {
-  const categories = sections.map((s) => s.category).filter(Boolean);
+/** The first sentence of a blurb, for a section set to `short`. */
+function firstSentence(text: string): string {
+  const end = text.search(/[.!?](\s|$)/);
+  return end === -1 ? text : text.slice(0, end + 1);
+}
+
+// ─── Chrome ──────────────────────────────────────────────────────────────────
+
+/** A section title over the heavy rule that separates it from what it opens.
+ *  `keepWith` is the height of whatever follows, so the two break together. */
+function sectionHeading(doc: PDFKit.PDFDocument, label: string, keepWith = 0): void {
+  ensureSpace(doc, 52 + keepWith);
+  doc.moveDown(0.5);
+  doc.font('bold').fontSize(9.5).fillColor(C.ink)
+    .text(label.toUpperCase(), MARGIN, doc.y, { width: CONTENT, characterSpacing: 2 });
+  doc.moveDown(0.45);
+  rule(doc, C.ink, 2);
+  doc.moveDown(0.7);
+}
+
+/** A state's name inside the queue — smaller, red, no rule of its own. */
+function subHeading(doc: PDFKit.PDFDocument, label: string): void {
+  ensureSpace(doc, 34);
+  doc.font('bold').fontSize(7.5).fillColor(C.accent)
+    .text(label.toUpperCase(), MARGIN, doc.y, { width: CONTENT, characterSpacing: 1.6 });
+  doc.moveDown(0.45);
+}
+
+/**
+ * The footer, whose three links are real PDF annotations rather than styled
+ * text.
+ *
+ * That is not decoration. A reader who chose `drive` gets no email, so this
+ * page is the only place their newsletter can offer them a way to change its
+ * settings or stop it — and a printed-looking word that happens to say
+ * "Wypisz się" is not one. Drawn link by link so each carries its own target.
+ */
+function drawFooter(doc: PDFKit.PDFDocument): void {
   ensureSpace(doc, 60);
   doc.moveDown(1);
-  rule(doc);
-  doc.moveDown(0.6);
+  rule(doc, C.ink, 2);
+  doc.moveDown(0.7);
 
-  const scope = categories.length ? `Covering ${listSentence(categories)}.` : 'Covering your venues.';
-  doc.font('body').fontSize(8).fillColor(C.footer)
-    .text(`${scope} Change what's in this brief at afisz.cc/my.`, MARGIN, doc.y, { width: CONTENT });
+  const settings = `${env.APP_URL}/my?tab=newsletter`;
+  const links: [string, string][] = [
+    [PL.settings, settings],
+    [PL.unsubscribe, settings],
+    [PL.open, `${env.APP_URL}/my`],
+  ];
+
+  const top = doc.y;
+  let x = MARGIN;
+  doc.font('body').fontSize(8.5);
+  links.forEach(([label, href], i) => {
+    const text = i === links.length - 1 ? label : `${label} · `;
+    // `continued` would reflow the whole run and lose the per-link x, so each
+    // piece is placed at a measured offset instead.
+    doc.fillColor(C.accent).text(label, x, top, { width: CONTENT, link: href, underline: true });
+    x += doc.widthOfString(text);
+    if (i < links.length - 1) {
+      doc.fillColor(C.body)
+        .text(' · ', x - doc.widthOfString(' · '), top, { width: CONTENT, link: null, underline: false });
+    }
+  });
+
+  doc.fillColor(C.footer).font('body').fontSize(8)
+    .text(`${PL.wordmark} · afisz.cc`, MARGIN, top + 13, { width: CONTENT, link: null, underline: false });
 }
 
 function rule(doc: PDFKit.PDFDocument, color: string = C.ink, weight = 1): void {
