@@ -14,6 +14,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { createApp } from '../../../backend/src/app';
 import { defaultAuthStore, requestMagicLink, verifyMagicLink } from '../../../backend/src/services/auth';
 import { defaultNewsletterStore } from '../../../backend/src/services/newsletter-store';
+import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { trpc, makeQueryClient } from '../lib/trpc';
 import { setSessionToken, getSessionToken } from '../lib/auth';
 import { MyPage } from './My';
@@ -542,10 +543,15 @@ describe('MyPage — newsletter end-to-end', () => {
 
   /**
    * GOI-102 §3 / GOI-101. Saved events are not a category: they are a queue of
-   * things the reader already chose, and the settings for them sit in their own
-   * block rather than as a row in the table.
+   * things the reader already chose, and they sit in their own block rather
+   * than as a row in the table.
+   *
+   * GOI-103 cut that block down to the one question worth asking. The queue
+   * still runs the way GOI-101 built it — reminders, change reports, an
+   * urgent send — but on its defaults, so the reader decides whether their
+   * saved events turn up and nothing else.
    */
-  it('carries the saved-events block, with the urgent toggle nested under changes', async () => {
+  it('offers exactly one decision about saved events: in or out', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -553,20 +559,43 @@ describe('MyPage — newsletter end-to-end', () => {
     const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
 
     const include = within(section).getByLabelText(/include events i saved/i);
-    const changes = within(section).getByLabelText(/cancelled or rescheduled/i);
-    const urgent = within(section).getByLabelText(/send immediately for urgent changes/i);
     expect(include).toBeChecked();
-    expect(urgent).toBeEnabled();
 
-    // An urgent send is a kind of change report, so offering it while change
-    // reports are off would be offering something that can never happen.
-    await user.click(changes);
-    expect(urgent).toBeDisabled();
+    // The three knobs GOI-101 put underneath it are gone.
+    expect(within(section).queryByLabelText(/cancelled or rescheduled/i)).toBeNull();
+    expect(within(section).queryByLabelText(/send immediately for urgent changes/i)).toBeNull();
+    expect(within(section).queryByLabelText(/remind me about events within/i)).toBeNull();
 
-    await user.click(changes);
     await user.click(include);
-    expect(changes).toBeDisabled();
-    expect(urgent).toBeDisabled();
+    expect(include).not.toBeChecked();
+  });
+
+  /**
+   * ...and what is saved for the queue stays whole. The reader no longer sets
+   * the horizon or the change reports, so the form has to send the defaults
+   * rather than whatever a record written under the old five-control block
+   * happens to hold.
+   */
+  it('saves the queue on its defaults, with only "enabled" following the box', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    const include = within(section).getByLabelText(/include events i saved/i);
+    await user.click(include);
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    expect((await defaultNewsletterStore.get(userId))!.wantToGo)
+      .toEqual({ ...DEFAULT_WANT_TO_GO, enabled: false });
+
+    // Put it back: the cases after this one share the account.
+    await user.click(include);
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+    expect((await defaultNewsletterStore.get(userId))!.wantToGo).toEqual(DEFAULT_WANT_TO_GO);
   });
 
   /**

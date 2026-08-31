@@ -206,7 +206,15 @@ export function HomePage() {
           {fallback ? (
             <NextUpNotice scope={dayFilterPhrase(day)} nextIso={nextEventStart(nearest)} />
           ) : null}
-          {events.length > 0 ? <EventBuckets events={events} venues={venueMap} /> : null}
+          {events.length > 0 ? (
+            <EventBuckets
+              events={events}
+              venues={venueMap}
+              // GOI-104: on the museums tab the runs lead and the schedule
+              // follows. Everywhere else the clock still comes first.
+              exhibitionsFirst={category === 'exhibition'}
+            />
+          ) : null}
         </div>
 
         {/* "Coming soon" sits at the foot of the listing it belongs to, so a

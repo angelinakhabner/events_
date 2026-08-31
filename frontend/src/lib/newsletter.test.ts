@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { briefSummary, type BriefSummaryInput } from './newsletter';
+import { briefSummary, type BriefSummaryInput, NEWSLETTER_BLURB } from './newsletter';
 
 const base: BriefSummaryInput = {
   venueNames: ['Kino Muranów', 'Kinoteka'],
@@ -92,5 +92,29 @@ describe('briefSummary', () => {
       expect(briefSummary({ ...base, enabled: true })).not.toContain('Paused');
       expect(briefSummary(base)).not.toContain('Paused');
     });
+  });
+});
+
+/**
+ * The standing description of the tab (GOI-97).
+ *
+ * It is prose, so there is nothing to assert about how it reads — but the two
+ * things the issue asked it to stop doing are testable, and they are exactly
+ * the two a later edit would reintroduce without noticing.
+ */
+describe('NEWSLETTER_BLURB', () => {
+  it('names no venue and no clock time', () => {
+    expect(NEWSLETTER_BLURB).not.toMatch(/\d{1,2}:\d{2}/);
+    for (const venue of ['Muranów', 'Muranow', 'Kinoteka', 'Muzeum', 'Iluzjon']) {
+      expect(NEWSLETTER_BLURB).not.toContain(venue);
+    }
+  });
+
+  it('describes what the feature can do — cadence, per-category rules, delivery', () => {
+    expect(NEWSLETTER_BLURB).toMatch(/every day, once a week or once a month/);
+    expect(NEWSLETTER_BLURB).toMatch(/each category/);
+    expect(NEWSLETTER_BLURB).toMatch(/how far ahead/);
+    expect(NEWSLETTER_BLURB).toMatch(/email/);
+    expect(NEWSLETTER_BLURB).toMatch(/PDF/);
   });
 });

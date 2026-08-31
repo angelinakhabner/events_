@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
   NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
@@ -11,7 +11,7 @@ import { trpc } from '../lib/trpc';
 import { readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
-import { briefSummary } from '../lib/newsletter';
+import { briefSummary, newsletterPayload, NEWSLETTER_BLURB } from '../lib/newsletter';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -32,10 +32,6 @@ const WEEKDAYS = [
 
 /** 1-28. Capped so a monthly newsletter has an issue in February too. */
 const DAYS_OF_MONTH = Array.from({ length: 28 }, (_, i) => i + 1);
-
-/** What "remind me within N days" offers. A month is the outer bound the
- *  server accepts; past that it is not a reminder. */
-const HORIZON_DAYS = [1, 2, 3, 5, 7, 10, 14, 21, 30];
 
 /**
  * The `IN ISSUES` column's options (GOI-102 §2), worded relative to the send
@@ -151,7 +147,17 @@ function NewsletterForm({
   const [sendDayOfMonth, setSendDayOfMonth] = useState(saved?.sendDayOfMonth ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
   const [rules, setRules] = useState<NewsletterCategoryRule[]>(saved?.categoryRules ?? []);
-  const [wantToGo, setWantToGo] = useState<NewsletterWantToGo>(saved?.wantToGo ?? DEFAULT_WANT_TO_GO);
+  /**
+   * The only thing left to decide about the saved-events queue is whether it
+   * runs (GOI-103). The rest of `NewsletterWantToGo` is still stored and still
+   * honoured by the sweep — it is simply not the reader's to tune any more, so
+   * a record saved under the old form is normalised back to the defaults here
+   * rather than leaving a reader pinned to settings they can no longer see.
+   */
+  const [wantToGo, setWantToGo] = useState<NewsletterWantToGo>({
+    ...DEFAULT_WANT_TO_GO,
+    enabled: saved?.wantToGo?.enabled ?? DEFAULT_WANT_TO_GO.enabled,
+  });
   const [enabled, setEnabled] = useState(saved?.enabled ?? true);
   const [justSaved, setJustSaved] = useState(false);
   /** What changing the send cadence did to the rules, shown once (GOI-102). */
@@ -243,32 +249,38 @@ function NewsletterForm({
   const preview = trpc.my.newsletter.preview.useMutation({
     onSuccess: (data) => downloadPdf(data.pdf),
   });
-  /** What the last save/generate actually sent — `readableApiError` reads the
-   *  field names off it to tell a bad value apart from a field this build does
-   *  not have (see `api-error.ts`). A ref, not state: it is only ever read
-   *  while rendering an error the request that set it produced. */
-  const lastSent = useRef<unknown>(null);
-
-  const payload = () => {
-    const body = {
-      email: email.trim(),
-      recipientName: recipientName.trim() || null,
-      delivery,
-      folderId: null,
-      name: saved?.name ?? 'Newsletter',
-      sendCadence,
-      sendHour,
-      sendMinute,
-      sendWeekday: sendCadence === 'weekly' ? sendWeekday : null,
-      sendDayOfMonth: sendCadence === 'monthly' ? sendDayOfMonth : null,
-      venueIds,
-      categoryRules: rules,
-      wantToGo,
-      enabled,
-    };
-    lastSent.current = body;
-    return body;
-  };
+  /**
+   * What the form sends, from live state.
+   *
+   * Built by `newsletterPayload` so it can be tested against the server's
+   * schema for every combination of settings, rather than only the handful a
+   * rendered test happens to click through (GOI-105).
+   *
+   * This used to be captured into a ref at request time, and `readableApiError`
+   * was handed that ref. It reads *field names* off the payload, though, and
+   * those are fixed by `newsletterPayload` — they do not depend on a single
+   * value in the form. So the capture bought nothing and cost the thing it was
+   * for: until a request had been made the ref was null, and with no payload
+   * to compare against, `readableApiError` cannot tell "you typed a bad value"
+   * from "this API predates the page" and prints the bare Zod lines. That is
+   * the message GOI-105 was filed with — the two-line rejection with the
+   * sentence explaining it missing. Derived from live state, it is never null.
+   */
+  const body = newsletterPayload({
+    email,
+    recipientName,
+    delivery,
+    name: saved?.name ?? 'Newsletter',
+    sendCadence,
+    sendHour,
+    sendMinute,
+    sendWeekday,
+    sendDayOfMonth,
+    venueIds,
+    rules,
+    wantToGo,
+    enabled,
+  });
 
   /** The heading's one-line description of the brief, from live form state. */
   const summary = briefSummary({
@@ -312,18 +324,23 @@ function NewsletterForm({
 
   return (
     <section>
-      {/* Describes the brief you have actually set up, and follows every edit.
-          It used to be a fixed example printed directly above controls that
-          said something else — "every day at 08:00" over a form set to 15:00
-          (GOI-30). */}
-      <PanelHeading title="Newsletter" blurb={summary} rule={false} />
+      {/* Two lines, deliberately: the heading says what a brief *can* be
+          (GOI-97), and the line under it says what yours currently *is*
+          (GOI-30), live, following every edit. The old copy tried to be both
+          at once and was an example of neither — a fixed "Kino Muranów …
+          every day at 08:00" printed over a form set to 15:00. */}
+      <PanelHeading title="Newsletter" blurb={NEWSLETTER_BLURB} rule={false} />
+      <p className="-mt-3 mb-5 md:mb-6 max-w-[520px] text-sm md:text-base font-semibold text-ink">
+        <span className="label-form mr-2 text-faint">Yours</span>
+        {summary}
+      </p>
 
       <form
         className="max-w-[640px] border-t-3 border-ink"
         onSubmit={(e) => {
           e.preventDefault();
           if (emptyByConstruction) return;
-          save.mutate(payload());
+          save.mutate(body);
         }}
       >
         <FormSection step={1} label="Where it goes">
@@ -576,9 +593,19 @@ function NewsletterForm({
             escalating as they approach, and it inherits no cadence, depth or
             window from anything. */}
         <FormSection step={5} label="Events you saved">
+          {/* GOI-103: one decision, not four.
+              GOI-101 shipped this block with a reminder horizon, a
+              change-report switch and an urgent-send switch beneath the
+              include toggle. Every one of them is a question about machinery
+              the reader did not ask to operate — and asked at the point they
+              are trying to answer something much simpler, "do my saved events
+              turn up in this or not". The queue still behaves exactly as
+              GOI-101 built it; it just runs on its defaults now
+              (`DEFAULT_WANT_TO_GO`) rather than making its internals the
+              reader's problem. */}
           <p className="mb-3.5 max-w-[520px] text-xs text-faint">
             Saved events appear at the top of every issue, with a reminder the day before and a
-            warning on the last chance to go.
+            warning on the last chance to go. You are told if one is cancelled or moved.
           </p>
 
           <Check
@@ -587,44 +614,6 @@ function NewsletterForm({
             onChange={(v) => setWantToGo((w) => ({ ...w, enabled: v }))}
             label="Include events I saved"
           />
-
-          <div className="mt-3.5 flex flex-wrap items-center gap-2.5 text-[13px] font-semibold">
-            <label htmlFor="wtg-horizon">Remind me about events within</label>
-            <select
-              id="wtg-horizon"
-              value={wantToGo.horizonDays}
-              disabled={!wantToGo.enabled}
-              onChange={(e) => setWantToGo((w) => ({ ...w, horizonDays: Number(e.target.value) }))}
-              className="select-flat py-[7px] disabled:opacity-50"
-            >
-              {HORIZON_DAYS.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-            <span>days</span>
-          </div>
-
-          <div className="mt-3.5">
-            <Check
-              id="wtg-changes"
-              checked={wantToGo.changesEnabled}
-              disabled={!wantToGo.enabled}
-              onChange={(v) => setWantToGo((w) => ({ ...w, changesEnabled: v }))}
-              label="Tell me when a saved event is cancelled or rescheduled"
-            />
-            {/* Nested, and disabled with its parent: an urgent send is a kind
-                of change report, so offering it while change reports are off
-                would be offering something that can never happen. */}
-            <div className="mt-2.5 pl-6">
-              <Check
-                id="wtg-urgent"
-                checked={wantToGo.urgentSend}
-                disabled={!wantToGo.enabled || !wantToGo.changesEnabled}
-                onChange={(v) => setWantToGo((w) => ({ ...w, urgentSend: v }))}
-                label="Send immediately for urgent changes"
-              />
-            </div>
-          </div>
         </FormSection>
 
         {/* Stacked, both left-aligned (design pack): the enabled/disabled
@@ -651,7 +640,7 @@ function NewsletterForm({
             </button>
             <button
               type="button"
-              onClick={() => preview.mutate(payload())}
+              onClick={() => preview.mutate(body)}
               // Generating validates the same config saving does, so a
               // newsletter the form already calls empty by construction can
               // only come back rejected. Held with the same message beside the
@@ -670,7 +659,7 @@ function NewsletterForm({
           dirty={!justSaved && (save.isIdle || save.isSuccess)}
           pending={save.isPending}
           justSaved={justSaved}
-          error={readableApiError(save.error?.message, lastSent.current)}
+          error={readableApiError(save.error?.message, body)}
         />
       </form>
 
@@ -678,7 +667,7 @@ function NewsletterForm({
         html={preview.data?.html ?? null}
         pdf={preview.data?.pdf ?? null}
         count={preview.data?.events.length ?? null}
-        error={readableApiError(preview.error?.message, lastSent.current)}
+        error={readableApiError(preview.error?.message, body)}
       />
 
       <DriveCard />
