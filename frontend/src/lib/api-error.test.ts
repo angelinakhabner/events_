@@ -1,17 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readableApiError } from './api-error';
-import { newsletterPayload } from './newsletter';
+import { newsletterPayload, NEWSLETTER_FIELDS } from './newsletter';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 
-/** The payload the newsletter form sends today, trimmed to the shape that
- *  matters here: which field names exist, and where. */
-const sent = {
-  email: 'a@b.com',
-  sendCadence: 'weekly',
-  sendWeekday: 1,
-  categoryRules: [{ category: 'cinema', cadence: 'every_issue', detail: 'short' }],
-  wantToGo: { enabled: true, horizonDays: 7 },
-};
 
 describe('readableApiError', () => {
   it('passes a plain message through', () => {
@@ -29,7 +20,7 @@ describe('readableApiError', () => {
       { path: ['sendWeekday'], message: 'A weekly newsletter needs a day of the week to go out on.' },
       { path: ['categoryRules', 1, 'cadence'], message: 'A weekly newsletter cannot carry a category once a week.' },
     ]);
-    const out = readableApiError(message, sent);
+    const out = readableApiError(message, NEWSLETTER_FIELDS);
     expect(out).toContain('Send weekday: A weekly newsletter needs a day of the week to go out on.');
     // One-based, so the index reads as the position a reader can count to.
     expect(out).toContain('Category rules 2 — cadence: A weekly newsletter cannot carry a category once a week.');
@@ -42,7 +33,7 @@ describe('readableApiError', () => {
       { path: ['frequency'], message: 'Required' },
       { path: ['categoryRules', 1, 'frequency'], message: 'Required' },
     ]);
-    const out = readableApiError(message, sent);
+    const out = readableApiError(message, NEWSLETTER_FIELDS);
     expect(out).toContain('Frequency: Required');
     expect(out).toContain('older build than this page');
   });
@@ -53,13 +44,13 @@ describe('readableApiError', () => {
     expect(out).toContain('older build than this page');
   });
 
-  it('does not cry version mismatch when it has no payload to compare against', () => {
+  it('does not cry version mismatch with no field set to compare against', () => {
     const message = JSON.stringify([{ path: ['frequency'], message: 'Required' }]);
     expect(readableApiError(message)).toBe('Frequency: Required');
   });
 
   it('keeps a message that only looks like JSON', () => {
-    expect(readableApiError('[not json', sent)).toBe('[not json');
+    expect(readableApiError('[not json', NEWSLETTER_FIELDS)).toBe('[not json');
   });
 });
 
@@ -76,10 +67,14 @@ describe('readableApiError', () => {
  * and nothing else — two fields that are not on their screen, no hint that
  * this is a deployment problem rather than something they filled in wrong.
  *
- * The explanation was already written; it just never rendered, because it is
- * conditional on knowing what the page sent, and the page passed a ref that
- * was still null. So the case that matters is the one below: this exact
- * rejection, against the payload the form actually builds.
+ * The explanation was already written; it just never rendered. Twice, for two
+ * different reasons — first because the page passed a ref that was still null,
+ * and then, once that was live state, because the check read field names off
+ * that live payload. An API old enough to reject this build also *served* the
+ * settings the form loaded, so the form was carrying that API's own
+ * `frequency` key back to it and the check agreed `frequency` was legitimate.
+ * It compares against a static set now (`NEWSLETTER_FIELDS`), and the echo
+ * case below is the one that would have caught it.
  */
 describe('a backend older than the page (GOI-105)', () => {
   /** Verbatim from the production schema rejecting a current payload. */
@@ -94,15 +89,8 @@ describe('a backend older than the page (GOI-105)', () => {
     },
   ]);
 
-  const sent = newsletterPayload({
-    email: 'ania@example.com', recipientName: '', delivery: 'email',
-    sendCadence: 'daily', sendHour: 8, sendMinute: 0, sendWeekday: 1,
-    sendDayOfMonth: 1, venueIds: [], rules: [], wantToGo: DEFAULT_WANT_TO_GO,
-    enabled: true,
-  });
-
   it('names the fields, then says the API is the older half', () => {
-    const text = readableApiError(STALE_API, sent)!;
+    const text = readableApiError(STALE_API, NEWSLETTER_FIELDS)!;
     expect(text).toContain('Frequency: Required');
     expect(text).toContain('Send weekday: Expected number, received null');
     expect(text).toContain('the API is running an older build than this page');
@@ -115,9 +103,9 @@ describe('a backend older than the page (GOI-105)', () => {
    * would have left this very report unexplained.
    */
   it('explains it even when only one of the named fields is unknown', () => {
-    expect(Object.keys(sent)).toContain('sendWeekday');
-    expect(Object.keys(sent)).not.toContain('frequency');
-    expect(readableApiError(STALE_API, sent)).toContain('older build');
+    expect(NEWSLETTER_FIELDS.has('sendWeekday')).toBe(true);
+    expect(NEWSLETTER_FIELDS.has('frequency')).toBe(false);
+    expect(readableApiError(STALE_API, NEWSLETTER_FIELDS)).toContain('older build');
   });
 
   /**
@@ -127,10 +115,36 @@ describe('a backend older than the page (GOI-105)', () => {
    * derived from live state, never captured — and this is here to say why the
    * argument is not optional.
    */
-  it('cannot explain it with no payload to compare against', () => {
-    const text = readableApiError(STALE_API, null)!;
+  it('cannot explain it with no field set to compare against', () => {
+    const text = readableApiError(STALE_API, undefined)!;
     expect(text).toContain('Frequency: Required');
     expect(text).not.toContain('older build');
+  });
+
+  /**
+   * The way this went on being invisible after the first fix.
+   *
+   * The stale API's `newsletter.get` answers with the old rule shape, the form
+   * seeds its rows from it, and sends it back — so a *live* payload contains
+   * `frequency`, echoed straight from the server that is about to reject it.
+   * Read the known-field set off that payload and the check concludes the
+   * field is one this build sends, which is exactly backwards. The static set
+   * is not reachable from any server response, so it stays right.
+   */
+  it('is not fooled by a stale field the stale API itself sent back', () => {
+    const echoed = newsletterPayload({
+      email: 'ania@example.com', recipientName: '', delivery: 'email',
+      sendCadence: 'weekly', sendHour: 8, sendMinute: 0, sendWeekday: 1,
+      sendDayOfMonth: 1, venueIds: [],
+      // What the pre-GOI-100 API returns, passed through untouched.
+      rules: [{ category: 'cinema', frequency: 'daily', detail: 'short' }] as never,
+      wantToGo: DEFAULT_WANT_TO_GO, enabled: true,
+    });
+    // The poison: the payload really does carry the field.
+    expect(JSON.stringify(echoed)).toContain('frequency');
+    // The static set does not, so the rejection is still read as a mismatch.
+    expect(NEWSLETTER_FIELDS.has('frequency')).toBe(false);
+    expect(readableApiError(STALE_API, NEWSLETTER_FIELDS)).toContain('older build');
   });
 
   /** A genuine bad value is still the reader's to fix, not a deploy. */
@@ -138,7 +152,7 @@ describe('a backend older than the page (GOI-105)', () => {
     const badHour = JSON.stringify([
       { code: 'too_big', path: ['sendHour'], message: 'Number must be less than or equal to 23' },
     ]);
-    const text = readableApiError(badHour, sent)!;
+    const text = readableApiError(badHour, NEWSLETTER_FIELDS)!;
     expect(text).toContain('Send hour: Number must be less than or equal to 23');
     expect(text).not.toContain('older build');
   });

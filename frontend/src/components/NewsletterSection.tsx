@@ -11,7 +11,9 @@ import { trpc } from '../lib/trpc';
 import { readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
-import { briefSummary, newsletterPayload, NEWSLETTER_BLURB } from '../lib/newsletter';
+import {
+  briefSummary, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
+} from '../lib/newsletter';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -256,15 +258,12 @@ function NewsletterForm({
    * schema for every combination of settings, rather than only the handful a
    * rendered test happens to click through (GOI-105).
    *
-   * This used to be captured into a ref at request time, and `readableApiError`
-   * was handed that ref. It reads *field names* off the payload, though, and
-   * those are fixed by `newsletterPayload` — they do not depend on a single
-   * value in the form. So the capture bought nothing and cost the thing it was
-   * for: until a request had been made the ref was null, and with no payload
-   * to compare against, `readableApiError` cannot tell "you typed a bad value"
-   * from "this API predates the page" and prints the bare Zod lines. That is
-   * the message GOI-105 was filed with — the two-line rejection with the
-   * sentence explaining it missing. Derived from live state, it is never null.
+   * This used to be captured into a ref at request time and handed to
+   * `readableApiError` as the thing to read field names off. It is neither
+   * job's business now: the names that matter are the ones this build *can*
+   * send, which is a static property of the payload's shape
+   * (`NEWSLETTER_FIELDS`), not of whatever the form is holding — a live
+   * payload can carry a stale API's own fields straight back to it.
    */
   const body = newsletterPayload({
     email,
@@ -659,7 +658,7 @@ function NewsletterForm({
           dirty={!justSaved && (save.isIdle || save.isSuccess)}
           pending={save.isPending}
           justSaved={justSaved}
-          error={readableApiError(save.error?.message, body)}
+          error={readableApiError(save.error?.message, NEWSLETTER_FIELDS)}
         />
       </form>
 
@@ -667,7 +666,7 @@ function NewsletterForm({
         html={preview.data?.html ?? null}
         pdf={preview.data?.pdf ?? null}
         count={preview.data?.events.length ?? null}
-        error={readableApiError(preview.error?.message, body)}
+        error={readableApiError(preview.error?.message, NEWSLETTER_FIELDS)}
       />
 
       <DriveCard />
