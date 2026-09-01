@@ -14,7 +14,7 @@ function fest(over: Partial<Festival> = {}): Festival {
   return {
     id: 'f1',
     name: 'Festiwal Skrzyżowanie Kultur',
-    url: 'https://skrzyzowaniekultur.pl',
+    url: 'https://estrada.com.pl/skrzyzowanie_kultur/',
     category: 'theatre',
     venues: ['Teatr Dramatyczny'],
     city: 'Warsaw',

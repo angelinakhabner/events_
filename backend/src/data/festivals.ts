@@ -8,7 +8,18 @@ import type { Festival, FestivalCategory } from '@afisz/shared';
 export interface FestivalSeed {
   id: string;
   name: string;
-  url: string;
+  /**
+   * The festival's official page — checked against the live web, not guessed
+   * from the name (GOI-109). Omit it, or set it to null, rather than filing a
+   * domain that merely looks right: `skrzyzowaniekultur.pl` was one of those
+   * and resolved to nothing, so the banner's "Festival site →" led to a DNS
+   * error. `npm run festivals:check-links` (backend) re-checks every URL here
+   * from a machine that can reach the outside world.
+   *
+   * Prefer the festival's evergreen page over this year's edition page: an
+   * edition URL is correct for eleven months and a 404 for the twelfth.
+   */
+  url?: string | null;
   /** Which listing it belongs under (GOI-68). Every seed here is a film
    *  festival; a theatre or music one files itself by saying so. */
   category: FestivalCategory;
@@ -31,9 +42,14 @@ export interface FestivalSeed {
 
 export const FESTIVAL_SEEDS: FestivalSeed[] = [
   {
+    // No link on purpose (GOI-109). The Vistula's open-air summer screenings
+    // are programmed by the city and the individual beaches, not by one
+    // festival with one site; `kinoletnie.pl` — which this used to point at —
+    // belongs to the unrelated BNP Paribas Kino Letnie in Sopot and Zakopane,
+    // which is a worse answer than no answer.
     id: 'kino-letnie-2026',
     name: 'Kino Letnie nad Wisłą',
-    url: 'https://kinoletnie.pl',
+    url: null,
     category: 'cinema',
     venues: ['Plac Zabaw', 'Boulevards of the Vistula'],
     city: 'Warsaw',
@@ -48,7 +64,9 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     // exactly the case a banner exists to answer.
     id: 'skrzyzowanie-kultur-2026',
     name: 'Festiwal Skrzyżowanie Kultur',
-    url: 'https://skrzyzowaniekultur.pl',
+    // Stołeczna Estrada's own festival page. The obvious guess,
+    // skrzyzowaniekultur.pl, is a lapsed domain parked for sale (GOI-109).
+    url: 'https://estrada.com.pl/skrzyzowanie_kultur/',
     category: 'theatre',
     venues: ['Teatr Dramatyczny'],
     city: 'Warsaw',
@@ -74,8 +92,8 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     category: 'cinema',
     venues: ['Kino Muranów', 'Kinoteka'],
     city: 'Warsaw',
-    startDate: '2026-11-11',
-    endDate: '2026-11-18',
+    startDate: '2026-11-10',
+    endDate: '2026-11-17',
     description: 'The largest showcase of Asian cinema in Poland, from festival hits to genre discoveries.',
   },
   {
@@ -86,7 +104,7 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     venues: ['Kino Muranów', 'Kinoteka'],
     city: 'Warsaw',
     startDate: '2026-12-04',
-    endDate: '2026-12-10',
+    endDate: '2026-12-13',
     description: 'International documentary festival on human rights, with post-screening debates.',
   },
 ];
@@ -105,6 +123,7 @@ export function listFestivals(now: Date = new Date(), category?: FestivalCategor
     .filter((f) => category === undefined || f.category === category)
     .map<Festival>((f) => ({
       ...f,
+      url: f.url ?? null,
       imageUrl: f.imageUrl ?? null,
       status: f.startDate <= today ? 'ongoing' : 'upcoming',
     }))
