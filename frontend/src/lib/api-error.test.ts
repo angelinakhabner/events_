@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readableApiError } from './api-error';
+import { newsletterApiIsStale, readableApiError } from './api-error';
 import { newsletterPayload, NEWSLETTER_FIELDS } from './newsletter';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 
@@ -155,5 +155,61 @@ describe('a backend older than the page (GOI-105)', () => {
     const text = readableApiError(badHour, NEWSLETTER_FIELDS)!;
     expect(text).toContain('Send hour: Number must be less than or equal to 23');
     expect(text).not.toContain('older build');
+  });
+});
+
+/**
+ * The same mismatch, caught before the reader presses anything.
+ *
+ * `readableApiError` can only speak once a request has failed, which means
+ * the reader's first news of a stale deployment is a button that does not
+ * work. `newsletter.get` answered long before that, and it answered in the
+ * shape its own build has — so the page can say so on arrival instead.
+ */
+describe('newsletterApiIsStale', () => {
+  /** What the pre-GOI-100 API returns: a `frequency`, and no send cadence. */
+  const OLD_SETTINGS = {
+    email: 'ania@example.com',
+    frequency: 'weekly',
+    sendHour: 8,
+    sendMinute: 0,
+    sendWeekday: 1,
+    venueIds: [],
+    categoryRules: [{ category: 'cinema', frequency: 'daily', detail: 'short' }],
+    enabled: true,
+  };
+
+  const CURRENT_SETTINGS = {
+    email: 'ania@example.com',
+    sendCadence: 'weekly',
+    sendHour: 8,
+    sendMinute: 0,
+    sendWeekday: 1,
+    sendDayOfMonth: null,
+    venueIds: [],
+    categoryRules: [],
+    wantToGo: DEFAULT_WANT_TO_GO,
+    enabled: true,
+  };
+
+  it('spots a config served by an API that predates the cadence split', () => {
+    expect(newsletterApiIsStale(OLD_SETTINGS)).toBe(true);
+  });
+
+  it('leaves a current config alone, on every cadence', () => {
+    for (const sendCadence of ['daily', 'weekly', 'monthly']) {
+      expect(newsletterApiIsStale({ ...CURRENT_SETTINGS, sendCadence })).toBe(false);
+    }
+  });
+
+  /**
+   * Nobody's first visit is a deployment problem. `newsletter.get` answers
+   * null for a reader who has never saved one, from both versions of the API,
+   * so null is not evidence either way — and treating it as stale would put
+   * the banner in front of every new reader.
+   */
+  it('says nothing about a reader who has never saved a newsletter', () => {
+    expect(newsletterApiIsStale(null)).toBe(false);
+    expect(newsletterApiIsStale(undefined)).toBe(false);
   });
 });

@@ -157,6 +157,12 @@ To give `dev` its own backend:
 Until that exists, treat the dev preview as reviewing frontend changes only, and
 verify anything API-shaped locally (`npm run dev`) before promoting `dev`.
 
+The Newsletter tab now says so itself rather than leaving it to be discovered:
+`newsletter.get` answers in the shape its own build has, so when the API
+predates the page the tab opens with a banner naming the mismatch — before
+either button is pressed — and both buttons' errors end with the same sentence.
+The fix is still this section, or the promotion that redeploys the backend.
+
 ---
 
 ## Troubleshooting

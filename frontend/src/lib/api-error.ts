@@ -25,6 +25,33 @@ interface ZodIssueLike {
 /** `my.newsletter.sendTest` in the message tRPC uses for an unknown route. */
 const NO_PROCEDURE = /^No procedure found on path "([^"]+)"/;
 
+/** What a version mismatch means and what fixes it, in one clause. Shared so
+ *  the banner and the two button errors cannot word it differently. */
+export const OLDER_API =
+  'the API is running an older build than this page — deploy the backend and retry.';
+
+/**
+ * Does the newsletter this API served predate this build? (GOI-105)
+ *
+ * The mismatch is knowable before the reader touches anything. `newsletter.get`
+ * answers first, and an API old enough to reject what this form sends is old
+ * enough to answer in the shape it had *before* GOI-100 split `frequency` into
+ * a send cadence and per-category cadences. So the settings themselves say
+ * which side of that split the server is on — and waiting for a button to fail
+ * to say so means the reader's first news of it is two lines of validation
+ * errors naming fields that are not on their screen, which is exactly the bug
+ * this was reported as.
+ *
+ * `sendCadence` is the test because it is the field the split created and the
+ * one every current build returns on every config. A null settings object is
+ * not evidence of anything — a reader who has never saved one gets null from
+ * both versions — so it is not treated as stale.
+ */
+export function newsletterApiIsStale(settings: unknown): boolean {
+  if (typeof settings !== 'object' || settings === null) return false;
+  return typeof (settings as { sendCadence?: unknown }).sendCadence !== 'string';
+}
+
 export function readableApiError(
   message: string | null | undefined,
   /**
@@ -44,8 +71,8 @@ export function readableApiError(
 
   const route = NO_PROCEDURE.exec(message);
   if (route) {
-    return `This page asked the server for “${route[1]}”, which it does not have. `
-      + 'The API is running an older build than this page — deploy the backend and retry.';
+    return `This page asked the server for “${route[1]}”, which it does not have, so `
+      + OLDER_API;
   }
 
   const issues = parseIssues(message);
@@ -60,8 +87,8 @@ export function readableApiError(
   });
 
   return stale
-    ? `${lines.join('\n')}\n\nThose fields are not part of this version of the form, `
-      + 'so the API is running an older build than this page — deploy the backend and retry.'
+    ? `${lines.join('\n')}\n\nThose fields are not part of this version of the form, so `
+      + OLDER_API
     : lines.join('\n');
 }
 
