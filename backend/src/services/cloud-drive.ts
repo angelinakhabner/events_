@@ -3,22 +3,26 @@
  *
  * The ticket asks for Google Drive "and some other popular drives", so this
  * file is the provider-independent half: a small interface, the connection
- * record, and the upload the newsletter sweep calls. Adding Dropbox or OneDrive
- * later means writing one more object that satisfies `DriveProvider` and adding
- * its id to the union — no change to the sweep, the store, or the UI's shape.
+ * record, and the upload the newsletter sweep calls. Adding a provider means
+ * writing one more object that satisfies `DriveProvider` and adding its id to
+ * the union — no change to the sweep, the store, or the UI's shape.
  *
- * Only Google is implemented today; see the note on `DriveProviderId`.
+ * Google and Dropbox are implemented (GOI-93). Dropbox was the second one
+ * precisely because it is the least like Google of the popular drives — it
+ * addresses files by path where Google uses opaque ids — so making it fit
+ * without bending the interface is evidence the interface is the right shape.
+ * OneDrive would be a third object here and nothing else.
  */
 
 /**
- * Providers this build can talk to.
- *
- * Kept as a union rather than a bare string so the store, the router and the
- * frontend all fail to compile against a provider nobody wrote a client for —
- * the alternative is a runtime "unknown provider" branch nobody ever hits until
- * a typo in a config reaches production.
+ * Providers this build can talk to. Defined in `shared` (the settings card
+ * renders from the same list) and re-exported here so the drive code can go on
+ * importing it from its own module.
  */
-export type DriveProviderId = 'google';
+import type { DriveProviderId } from '@afisz/shared';
+
+export type { DriveProviderId } from '@afisz/shared';
+export { DRIVE_PROVIDER_IDS } from '@afisz/shared';
 
 export interface DriveUpload {
   filename: string;
@@ -48,6 +52,13 @@ export interface DriveProvider {
   /**
    * Find the app's folder, creating it when it isn't there. Returns the id to
    * store, so the common case costs one lookup rather than a search.
+   *
+   * Whatever a provider returns here it must still accept after the folder has
+   * been renamed or moved — `renameFolder` does not hand back a new one, and
+   * the store deliberately keeps the old one on a rename. For Google that is
+   * free (ids are opaque and stable). A path-addressed provider must therefore
+   * return something stable too and resolve it to a path itself, rather than
+   * returning the path: see `dropbox-drive.ts`.
    */
   ensureFolder(args: {
     refreshToken: string;

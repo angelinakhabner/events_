@@ -28,7 +28,11 @@ import {
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
 import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js';
-import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
+import { DRIVE_OAUTH, availableDriveProviders } from '../services/drive-oauth.js';
+import { DRIVE_PROVIDER_IDS } from '../services/cloud-drive.js';
+
+/** Which drive a procedure is about (GOI-93). */
+const driveProvider = z.enum(DRIVE_PROVIDER_IDS);
 import { renameDriveFolder } from '../services/drive-delivery.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
 import { env } from '../config.js';
@@ -755,26 +759,37 @@ const my = router({
      * quietly mint states nobody asked for.
      */
     drive: router({
-      status: userProcedure.query(async ({ ctx }) => ({
-        available: googleDriveConfig() !== null,
-        connections: await ctx.drives.view(ctx.user.id),
-      })),
-
-      connectUrl: userProcedure.mutation(({ ctx }) => {
-        const cfg = googleDriveConfig();
-        if (!cfg) {
-          throw new TRPCError({
-            code: 'PRECONDITION_FAILED',
-            message: 'Google Drive is not configured on this deployment',
-          });
-        }
-        // The user id travels in the signed state: Google's callback is a
-        // top-level redirect carrying no Authorization header, so it has no
-        // other way to know whose drive it is completing.
+      status: userProcedure.query(async ({ ctx }) => {
+        // GOI-93: which providers this deployment can offer, rather than one
+        // boolean about Google. `available` stays so a deployment with no
+        // drive credentials at all still reads the same to the settings card.
+        const providers = availableDriveProviders();
         return {
-          url: googleDriveAuthUrl(cfg, makeSignedState(ctx.user.id, cfg.clientSecret)),
+          available: providers.length > 0,
+          providers,
+          connections: await ctx.drives.view(ctx.user.id),
         };
       }),
+
+      connectUrl: userProcedure
+        .input(z.object({ provider: driveProvider.default('google') }))
+        .mutation(({ ctx, input }) => {
+          const client = DRIVE_OAUTH[input.provider];
+          const secret = client.stateSecret();
+          const url = secret === null ? null : client.authUrl(
+            // The user id travels in the signed state: the provider's callback
+            // is a top-level redirect carrying no Authorization header, so it
+            // has no other way to know whose drive it is completing.
+            makeSignedState(ctx.user.id, secret),
+          );
+          if (!url) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: `${client.label} is not configured on this deployment`,
+            });
+          }
+          return { url };
+        }),
 
       /**
        * Rename the folder briefs are filed in.
@@ -786,7 +801,7 @@ const my = router({
        */
       setFolderName: userProcedure
         .input(z.object({
-          provider: z.literal('google').default('google'),
+          provider: driveProvider.default('google'),
           folderName: z.string().min(1).max(MAX_DRIVE_FOLDER_NAME),
         }))
         .mutation(async ({ ctx, input }) => {
@@ -803,7 +818,7 @@ const my = router({
         }),
 
       disconnect: userProcedure
-        .input(z.object({ provider: z.literal('google').default('google') }))
+        .input(z.object({ provider: driveProvider.default('google') }))
         .mutation(async ({ ctx, input }) => {
           await ctx.drives.disconnect(ctx.user.id, input.provider);
           return { ok: true };

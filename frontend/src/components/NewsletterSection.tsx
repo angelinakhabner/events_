@@ -3,6 +3,7 @@ import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
   NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
   NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+  DriveProviderId,
 } from '@afisz/shared';
 import {
   allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
@@ -1185,7 +1186,7 @@ function downloadPdf(pdf: { filename: string; base64: string }): void {
  * subscription being edited, and a half-filled form must not be lost to an
  * OAuth redirect. Nothing here is submitted with the rest of the settings.
  */
-function DriveCard() {
+export function DriveCard() {
   const utils = trpc.useUtils();
   const status = trpc.my.newsletter.drive.status.useQuery();
   const [error, setError] = useState<string | null>(null);
@@ -1218,20 +1219,33 @@ function DriveCard() {
 
   if (status.isLoading || !status.data) return null;
 
-  // Nothing to offer on a deployment with no Google credentials — say so
+  // Nothing to offer on a deployment with no drive credentials at all — say so
   // rather than showing a button that can only fail.
   if (!status.data.available) {
     return (
       <div className="mt-10 border-t-3 border-ink pt-6">
         <h3 className="label-form">Save briefs to a drive</h3>
         <p className="mt-2 text-sm text-muted">
-          Not available on this deployment — Google isn&rsquo;t configured.
+          Not available on this deployment — no drive is configured.
         </p>
       </div>
     );
   }
 
-  const google = status.data.connections.find((c) => c.provider === 'google') ?? null;
+  /**
+   * Which providers to draw a block for.
+   *
+   * `providers` arrived with GOI-93; an API built before it sends `available`
+   * and `connections` and nothing else. Falling back to Google — the only
+   * provider such a build could possibly have — keeps this card working
+   * against an older backend instead of rendering a heading with nothing
+   * under it. GOI-105 was that failure mode in a different place, and the
+   * lesson is the same: assume the two halves can be different versions.
+   */
+  const offered = status.data.providers?.length
+    ? status.data.providers
+    : [{ id: 'google' as DriveProviderId, label: 'Google Drive' }];
+  const byProvider = new Map(status.data.connections.map((c) => [c.provider, c]));
 
   return (
     <div className="mt-10 border-t-3 border-ink pt-6">
@@ -1243,51 +1257,59 @@ function DriveCard() {
         it puts there itself — nothing else in your drive.
       </p>
 
-      {google ? (
-        <div className="mt-4 border-3 border-ink p-4">
-          <p className="text-sm font-bold">
-            Google Drive connected{google.accountEmail ? ` — ${google.accountEmail}` : ''}
-          </p>
-          <p className="mt-1 text-sm text-muted">
-            {google.lastUploadAt
-              ? `Last brief filed ${new Date(google.lastUploadAt).toLocaleDateString()}`
-              : 'No brief filed yet'}
-          </p>
-          <FolderNameField current={google.folderName} />
-          {google.lastError ? (
-            <p className="mt-2 text-sm text-accent">
-              Last upload failed: {google.lastError}
+      {/* GOI-93: one block per provider this deployment offers, connected or
+          not. Listing them rather than offering a picker is the honest shape —
+          a reader can file briefs to both at once, and the sweep already
+          uploads to every connection it finds. */}
+      {offered.map((p) => {
+        const connection = byProvider.get(p.id) ?? null;
+        return connection ? (
+          <div key={p.id} className="mt-4 border-3 border-ink p-4">
+            <p className="text-sm font-bold">
+              {p.label} connected{connection.accountEmail ? ` — ${connection.accountEmail}` : ''}
             </p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-3.5">
-            <button
-              type="button"
-              onClick={() => connect.mutate()}
-              disabled={connect.isPending}
-              className="act act-sm"
-            >
-              Reconnect
-            </button>
-            <button
-              type="button"
-              onClick={() => disconnect.mutate({ provider: 'google' })}
-              disabled={disconnect.isPending}
-              className="act act-sm"
-            >
-              {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
-            </button>
+            <p className="mt-1 text-sm text-muted">
+              {connection.lastUploadAt
+                ? `Last brief filed ${new Date(connection.lastUploadAt).toLocaleDateString()}`
+                : 'No brief filed yet'}
+            </p>
+            <FolderNameField provider={p.id} current={connection.folderName} />
+            {connection.lastError ? (
+              <p className="mt-2 text-sm text-accent">
+                Last upload failed: {connection.lastError}
+              </p>
+            ) : null}
+            <div className="mt-3 flex flex-wrap gap-3.5">
+              <button
+                type="button"
+                onClick={() => connect.mutate({ provider: p.id })}
+                disabled={connect.isPending}
+                className="act act-sm"
+              >
+                Reconnect
+              </button>
+              <button
+                type="button"
+                onClick={() => disconnect.mutate({ provider: p.id })}
+                disabled={disconnect.isPending}
+                className="act act-sm"
+              >
+                {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => connect.mutate()}
-          disabled={connect.isPending}
-          className="btn-outline mt-4 text-center"
-        >
-          {connect.isPending ? 'Opening Google…' : 'Connect Google Drive'}
-        </button>
-      )}
+        ) : (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => connect.mutate({ provider: p.id })}
+            disabled={connect.isPending}
+            className="btn-outline mt-4 mr-3.5 text-center"
+          >
+            {connect.isPending ? 'Opening…' : `Connect ${p.label}`}
+          </button>
+        );
+      })}
 
       {error ? <p className="mt-3 text-sm text-accent">{error}</p> : null}
     </div>
@@ -1301,9 +1323,11 @@ function DriveCard() {
  * briefs already filed stay with the ones still to come (see
  * `renameDriveFolder` on the backend). Kept out of the settings form above on
  * purpose: that form schedules the newsletter, and a folder rename is a write
- * against Google that should not ride along with it.
+ * against the drive that should not ride along with it.
  */
-function FolderNameField({ current }: { current: string }) {
+function FolderNameField(
+  { provider, current }: { provider: DriveProviderId; current: string },
+) {
   const utils = trpc.useUtils();
   const [draft, setDraft] = useState(current);
   const [note, setNote] = useState<string | null>(null);
@@ -1328,6 +1352,7 @@ function FolderNameField({ current }: { current: string }) {
 
   const trimmed = draft.trim();
   const dirty = trimmed !== current;
+  const fieldId = `drive-folder-${provider}`;
 
   return (
     <form
@@ -1336,15 +1361,18 @@ function FolderNameField({ current }: { current: string }) {
         e.preventDefault();
         if (!dirty || !trimmed) return;
         setNote(null);
-        rename.mutate({ provider: 'google', folderName: trimmed });
+        rename.mutate({ provider, folderName: trimmed });
       }}
     >
-      <label className="label-form mb-1.5" htmlFor="drive-folder">
+      {/* The id is per provider: with both drives connected this field is on
+          screen twice, and a shared id would point both labels at the first
+          input — clicking Dropbox's "Folder" would focus Google's box. */}
+      <label className="label-form mb-1.5" htmlFor={fieldId}>
         Folder
       </label>
       <div className="flex flex-wrap items-start gap-3.5">
         <input
-          id="drive-folder"
+          id={fieldId}
           type="text"
           value={draft}
           maxLength={MAX_DRIVE_FOLDER_NAME}

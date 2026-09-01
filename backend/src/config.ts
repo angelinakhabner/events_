@@ -49,6 +49,12 @@ const Env = z.object({
   // Google console. Unset → the Google button simply doesn't render.
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** Dropbox as a second drive for filed briefs (GOI-93). Unset ⇒ the option
+   *  reports itself unavailable rather than offering a button that can only
+   *  fail. Independent of Google's: a deployment can have either, both or
+   *  neither. */
+  DROPBOX_CLIENT_ID: z.string().optional(),
+  DROPBOX_CLIENT_SECRET: z.string().optional(),
   API_PUBLIC_URL: z.string().optional(),
   // Model behind "propose similar venues" (GOI-86). Separate from
   // EXTRACTOR_MODEL: that one transcribes messy HTML, this one needs world

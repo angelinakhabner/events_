@@ -1,4 +1,5 @@
 import { googleDriveProvider } from './google-drive.js';
+import { dropboxDriveProvider } from './dropbox-drive.js';
 import { defaultDriveStore, type DriveStore } from './drive-store.js';
 import { briefPdfFilename, renderBriefPdf, type BriefPdfContent } from './newsletter-pdf.js';
 import { DriveFolderMissingError } from './cloud-drive.js';
@@ -13,8 +14,11 @@ import { normalizeDriveFolderName, type NewsletterFrequency } from '@afisz/share
  * just emailed and gets back an outcome it can report.
  */
 
-const PROVIDERS: Record<DriveProviderId, DriveProvider> = {
+/** The provider clients, by id. Exported so the OAuth callback can create the
+ *  folder right after a connection without re-deriving the table (GOI-93). */
+export const driveProviders: Record<DriveProviderId, DriveProvider> = {
   google: googleDriveProvider,
+  dropbox: dropboxDriveProvider,
 };
 
 export type DriveDeliveryStatus = 'uploaded' | 'skipped' | 'failed';
@@ -58,7 +62,7 @@ export async function deliverBriefToDrives(
   opts: DeliverOptions = {},
 ): Promise<DriveDeliveryOutcome[]> {
   const store = opts.store ?? defaultDriveStore;
-  const providers = { ...PROVIDERS, ...opts.providers };
+  const providers = { ...driveProviders, ...opts.providers };
   const now = opts.now ?? brief.now ?? new Date();
 
   let connections: Awaited<ReturnType<DriveStore['view']>>;
@@ -114,7 +118,7 @@ export async function renameDriveFolder(
   opts: DeliverOptions = {},
 ): Promise<{ folderName: string; recreated: boolean }> {
   const store = opts.store ?? defaultDriveStore;
-  const providers = { ...PROVIDERS, ...opts.providers };
+  const providers = { ...driveProviders, ...opts.providers };
   const name = normalizeDriveFolderName(rawName);
 
   const provider = providers[providerId];

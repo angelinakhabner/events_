@@ -19,12 +19,9 @@ import {
   readSignedState,
   verifyState,
 } from './services/google-auth.js';
-import {
-  driveAccountEmail,
-  exchangeDriveCode,
-  googleDriveConfig,
-  googleDriveProvider,
-} from './services/google-drive.js';
+import { DRIVE_OAUTH } from './services/drive-oauth.js';
+import { DRIVE_PROVIDER_IDS } from './services/cloud-drive.js';
+import { driveProviders } from './services/drive-delivery.js';
 import { defaultDriveStore } from './services/drive-store.js';
 import {
   NOINDEX,
@@ -123,49 +120,66 @@ export function createApp() {
    * start route here would have to take the session in a query string, putting
    * a live bearer token into browser history, referrers and access logs.
    */
-  app.get('/auth/google/drive/callback', async (c) => {
-    const cfg = googleDriveConfig();
-    const appUrl = env.APP_URL.replace(/\/$/, '');
-    const back = (params: string) => c.redirect(`${appUrl}/my?section=newsletter#${params}`);
-    const fail = (msg: string) => back(`drive=error&message=${encodeURIComponent(msg)}`);
+  /**
+   * Completing a drive connection, for every provider (GOI-91, GOI-93).
+   *
+   * One handler, mounted once per provider, rather than a copy each: the parts
+   * that differ are the consent exchange and the account lookup, which
+   * `DRIVE_OAUTH` already abstracts, while the parts that must not drift —
+   * verifying the signed state, never trusting the provider's `error`, storing
+   * the refresh token — are security-relevant and now exist once.
+   *
+   * The paths keep each provider's own prefix rather than becoming
+   * `/auth/drive/:provider/callback`: a redirect URI is registered by hand in
+   * the provider's console, and changing Google's would break every existing
+   * connection the moment this deployed.
+   */
+  for (const id of DRIVE_PROVIDER_IDS) {
+    const client = DRIVE_OAUTH[id];
+    app.get(`/auth/${id}/drive/callback`, async (c) => {
+      const appUrl = env.APP_URL.replace(/\/$/, '');
+      const back = (params: string) => c.redirect(`${appUrl}/my?section=newsletter#${params}`);
+      const fail = (msg: string) => back(`drive=error&message=${encodeURIComponent(msg)}`);
 
-    if (!cfg) return fail('Google Drive is not configured on this deployment.');
+      const secret = client.stateSecret();
+      if (!secret) return fail(`${client.label} is not configured on this deployment.`);
 
-    const state = c.req.query('state') ?? '';
-    const userId = readSignedState(state, cfg.clientSecret);
-    if (!userId) return fail('That connection attempt expired — please try again.');
-    if (c.req.query('error')) return fail('Connecting Google Drive was cancelled.');
-    const code = c.req.query('code');
-    if (!code) return fail('Connecting Google Drive failed (missing code).');
+      const state = c.req.query('state') ?? '';
+      const userId = readSignedState(state, secret);
+      if (!userId) return fail('That connection attempt expired — please try again.');
+      if (c.req.query('error')) return fail(`Connecting ${client.label} was cancelled.`);
+      const code = c.req.query('code');
+      if (!code) return fail(`Connecting ${client.label} failed (missing code).`);
 
-    try {
-      const tokens = await exchangeDriveCode(cfg, code);
-      await defaultDriveStore.connect(userId, {
-        provider: 'google',
-        refreshToken: tokens.refreshToken,
-        accountEmail: tokens.email ?? (await driveAccountEmail(tokens.accessToken)),
-      });
-      // The folder is created now rather than on the first send, so the user
-      // can see it exists before waiting a day for a brief to prove it.
       try {
-        const credentials = await defaultDriveStore.credentials(userId, 'google');
-        if (credentials) {
-          const folder = await googleDriveProvider.ensureFolder({
-            refreshToken: credentials.refreshToken,
-            folderName: credentials.folderName,
-            knownFolderId: credentials.folderId,
-          });
-          await defaultDriveStore.rememberFolder(userId, 'google', folder.folderId);
+        const tokens = await client.exchange(code);
+        await defaultDriveStore.connect(userId, {
+          provider: id,
+          refreshToken: tokens.refreshToken,
+          accountEmail: tokens.email ?? (await client.accountEmail(tokens.accessToken)),
+        });
+        // The folder is created now rather than on the first send, so the user
+        // can see it exists before waiting a day for a brief to prove it.
+        try {
+          const credentials = await defaultDriveStore.credentials(userId, id);
+          if (credentials) {
+            const folder = await driveProviders[id].ensureFolder({
+              refreshToken: credentials.refreshToken,
+              folderName: credentials.folderName,
+              knownFolderId: credentials.folderId,
+            });
+            await defaultDriveStore.rememberFolder(userId, id, folder.folderId);
+          }
+        } catch (e) {
+          // The connection itself is good; the folder is retried on first send.
+          console.warn('[drive] folder setup after connect failed:', e instanceof Error ? e.message : e);
         }
+        return back('drive=connected');
       } catch (e) {
-        // The connection itself is good; the folder is retried on first send.
-        console.warn('[drive] folder setup after connect failed:', e instanceof Error ? e.message : e);
+        return fail(e instanceof Error ? e.message : `Connecting ${client.label} failed.`);
       }
-      return back('drive=connected');
-    } catch (e) {
-      return fail(e instanceof Error ? e.message : 'Connecting Google Drive failed.');
-    }
-  });
+    });
+  }
 
   // ─── Admin debug endpoints ────────────────────────────────────────────────
   // Browser-checkable, no script needed. Disabled unless ADMIN_TOKEN is set;

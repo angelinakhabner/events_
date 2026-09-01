@@ -1113,6 +1113,18 @@ export function keepKnownCategories(values: unknown): ContentCategory[] {
  */
 export const DEFAULT_DRIVE_FOLDER = 'Afisz.ka';
 
+/**
+ * The drives a brief can be filed on (GOI-91, GOI-93).
+ *
+ * Here rather than beside the backend's provider clients for the same reason
+ * as the folder rules above: the settings card renders one block per provider
+ * and the router validates the id it is given, so both sides have to agree on
+ * the list. A union rather than a bare string means adding a provider is a
+ * compile error everywhere that has to handle it, not a runtime surprise.
+ */
+export const DRIVE_PROVIDER_IDS = ['google', 'dropbox'] as const;
+export type DriveProviderId = (typeof DRIVE_PROVIDER_IDS)[number];
+
 /** Longest folder name accepted. Drive's own limit is far higher; this is a
  *  UI-shaped bound, so the name stays readable in the Newsletter tab. */
 export const MAX_DRIVE_FOLDER_NAME = 100;

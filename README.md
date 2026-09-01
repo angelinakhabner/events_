@@ -86,7 +86,8 @@ npm run lint
 | `NEWSLETTER_FROM_EMAIL` | unset | `newsletter@afisz.cc` | From-address for newsletter briefs. Unset ⇒ falls back to `RESEND_FROM_EMAIL`. Same verified domain, so a second address needs no extra DNS |
 | `APP_URL` | `http://localhost:5173` | `https://afisz.cc` | Public frontend origin. Magic-link emails link to `<APP_URL>/auth?token=…` |
 | `API_PUBLIC_URL` | unset | `https://api.afisz.cc` | Public backend origin. Builds the Google OAuth redirect URI `<API_PUBLIC_URL>/auth/google/callback`, which must be registered verbatim in the Google console |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset (optional) | from the Google console | Google sign-in **and** ["save briefs to a drive"](#saving-briefs-to-a-drive-goi-91). Unset ⇒ both features report themselves unavailable rather than failing |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | unset (optional) | from the Google console | Google sign-in **and** ["save briefs to a drive"](#saving-briefs-to-a-drive-goi-91-goi-93). Unset ⇒ both features report themselves unavailable rather than failing |
+| `DROPBOX_CLIENT_ID` / `DROPBOX_CLIENT_SECRET` | unset (optional) | from the Dropbox App Console | Dropbox as a second drive for filed briefs ([GOI-93](#saving-briefs-to-a-drive-goi-91-goi-93)). Independent of Google's — a deployment can offer either, both or neither |
 | `NEWSLETTER_CRON_ENABLED` | unset | `true` | **Required for newsletter briefs to go out at all.** Unset ⇒ the send sweep never starts and no brief is ever mailed, however subscriptions are configured |
 | `ADMIN_TOKEN` | unset (optional) | a long random string | Enables the `/admin/*` debug endpoints, including the newsletter diagnostics below. Callers pass `?token=<value>` |
 | `NEWSLETTER_API_KEY` | unset (optional) | a long random string | Enables the [public newsletter API](#public-newsletter-api-goi-87). Unset ⇒ every `/api/v1/newsletter/*` route answers 503. Keep it distinct from `ADMIN_TOKEN`: this one is handed to third parties |
@@ -176,7 +177,7 @@ own form posts through (`services/newsletter-input.ts`), so the two front doors
 cannot drift: a field added for the app is accepted here on the same commit,
 with the same bounds and defaults.
 
-## Saving briefs to a drive (GOI-91)
+## Saving briefs to a drive (GOI-91, GOI-93)
 
 Each brief is also filed as a **PDF** in a folder at the root of the user's own
 cloud drive, on the same schedule as the email. Connect it under
@@ -210,12 +211,44 @@ Setup, beyond the sign-in credentials that already exist:
 2. Register the extra redirect URI `<API_PUBLIC_URL>/auth/google/drive/callback`
    verbatim, alongside the sign-in one.
 
-No new environment variable: the flow reuses `GOOGLE_CLIENT_ID`,
+No new environment variable for Google: the flow reuses `GOOGLE_CLIENT_ID`,
 `GOOGLE_CLIENT_SECRET` and `API_PUBLIC_URL`. Without them the panel reports
 that it isn't available instead of offering a button that can only fail.
 
 The folder is created with no `parents`, which is how Drive is told "the root of
 My Drive" — adding a parent would nest it somewhere the user didn't ask for.
+
+### Dropbox (GOI-93)
+
+The ticket asked for Google Drive "and some other popular drives". Dropbox is
+the second, and the settings card lists every provider the deployment has
+credentials for — a reader can connect both, and the sweep files a brief to
+every connection it finds.
+
+1. In the [Dropbox App Console](https://www.dropbox.com/developers/apps),
+   create an app with **App folder** access, not Full Dropbox. That confines
+   AFISZ to one folder Dropbox makes for it: the app can neither see nor touch
+   anything else. It is the closest analogue to Google's `drive.file` scope,
+   and it is why the paths in `dropbox-drive.ts` look absolute yet are
+   harmless — for an app-folder app, `/` *is* the app's own folder.
+2. Tick the scopes `files.content.write`, `files.content.read` and
+   `account_info.read`.
+3. Register the redirect URI `<API_PUBLIC_URL>/auth/dropbox/drive/callback`
+   verbatim.
+4. Set `DROPBOX_CLIENT_ID` and `DROPBOX_CLIENT_SECRET`.
+
+Two Dropbox-specific things worth keeping if `dropbox-drive.ts` is edited:
+
+- **The stored folder id is an `id:…`, never a path.** Dropbox addresses files
+  by path, but a `DriveProvider` must accept the same folder id after a rename
+  — `renameFolder` hands no new one back and the store keeps the old one. Ids
+  survive a rename or a move; paths do not. The client pays one metadata
+  lookup per upload to resolve the id, and that buys "the user dragged the
+  folder somewhere else and briefs kept arriving" as well.
+- **`Dropbox-API-Arg` is an HTTP header, so it must be ASCII.** Folder names
+  are user-supplied, and a Polish one would otherwise fail the upload with a
+  header parse error a day after it was set. Non-ASCII is escaped as `\uXXXX`,
+  which Dropbox's parser reads back.
 
 Two properties worth keeping if this is edited:
 
