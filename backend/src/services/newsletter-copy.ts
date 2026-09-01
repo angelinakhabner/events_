@@ -39,6 +39,9 @@ export const PL = {
   settings: 'Zmień ustawienia',
   unsubscribe: 'Wypisz się',
   open: 'Otwórz w AFISZ.KA',
+  /** Who the brief is from, under the footer links — a commercial email has
+   *  to name its sender, and the design prints it there. */
+  sender: 'AFISZ.KA · ul. Przykładowa 12, 00-001 Warszawa',
   /** `n` events from `m` of your venues. Polish counts in three forms. */
   summary: (events: number, venues: number) =>
     `${events} ${plural(events, 'wydarzenie', 'wydarzenia', 'wydarzeń')} ` +

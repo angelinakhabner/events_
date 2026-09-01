@@ -279,7 +279,7 @@ function wantToGoBlock(section: WantToGoSection): string {
   const rows: string[] = [blockTitleRow(PL.wantToGo)];
 
   if (section.changes.length > 0) {
-    rows.push(subHeadingRow(PL.changes));
+    rows.push(subHeadingRow(PL.changes, true));
     for (const change of section.changes) {
       rows.push(queueRow({
         gutter: PL.changed,
@@ -289,14 +289,14 @@ function wantToGoBlock(section: WantToGoSection): string {
     }
   }
 
-  for (const [state, label] of [
-    ['last_chance', PL.lastChance],
-    ['tomorrow', PL.tomorrow],
-    ['this_week', PL.thisWeek],
+  for (const [state, label, urgent] of [
+    ['last_chance', PL.lastChance, true],
+    ['tomorrow', PL.tomorrow, false],
+    ['this_week', PL.thisWeek, false],
   ] as const) {
     const items = section.reminders.filter((r) => r.state === state);
     if (items.length === 0) continue;
-    rows.push(subHeadingRow(label));
+    rows.push(subHeadingRow(label, urgent));
     for (const item of items) {
       rows.push(queueRow({
         // A reminder for tomorrow is about a time; one for later in the week
@@ -328,12 +328,19 @@ function blockTitleRow(label: string): string {
   );
 }
 
-/** A state's subheading inside the queue. */
-function subHeadingRow(label: string): string {
+/**
+ * A state's subheading inside the queue.
+ *
+ * Red for the two that are about something going wrong or running out, ink
+ * for the two that are only telling you when — the design's own split, and
+ * the reason the block is grouped at all: a reader scanning for the urgent
+ * one should be able to find it by colour rather than by reading.
+ */
+function subHeadingRow(label: string, urgent: boolean): string {
   return (
-    `<tr><td colspan="2" style="padding:14px 0 4px;font-family:${FONT};font-weight:800;` +
+    `<tr><td colspan="2" style="padding:16px 0 4px;font-family:${FONT};font-weight:800;` +
       `font-size:10px;line-height:1.2;letter-spacing:.18em;text-transform:uppercase;` +
-      `color:${C.meta}">${escapeHtml(label.toUpperCase())}</td></tr>`
+      `color:${urgent ? C.accent : C.ink}">${escapeHtml(label.toUpperCase())}</td></tr>`
   );
 }
 
@@ -419,7 +426,13 @@ function picksTable(sections: BriefSection[]): string {
 
 function mastheadRow(opts: { now: Date; days: number }): string {
   return (
-    `<tr><td style="background-color:${C.ink};padding:32px 40px 30px">` +
+    `<tr><td style="padding:24px 40px 0">` +
+      // The band is inset by the card gutter rather than bled to its edge —
+      // as in the design, and because a full-bleed dark block is the first
+      // thing a client's dark-mode filter inverts.
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
+        `style="border-collapse:collapse;background-color:${C.ink}">` +
+      `<tr><td style="padding:26px 26px 24px">` +
       `<div style="font-family:${FONT};font-weight:800;font-size:26px;line-height:1.1;` +
         `letter-spacing:.5px;color:${C.onInk}">${PL.wordmark}` +
         // The square is the design's mark beside the wordmark. A styled span
@@ -432,6 +445,7 @@ function mastheadRow(opts: { now: Date; days: number }): string {
         `${escapeHtml(dateRange(opts.now, opts.days))}</div>` +
       `<div style="font-family:${FONT};font-weight:800;font-size:30px;line-height:1.1;` +
         `letter-spacing:1px;color:${C.onInk};margin-top:6px">${PL.city}</div>` +
+      `</td></tr></table>` +
     `</td></tr>`
   );
 }
@@ -486,12 +500,16 @@ function festivalsRow(festivals: Festival[]): string {
     `</td></tr>`).join('');
 
   return (
-    `<tr><td style="background-color:${C.ink};padding:20px 40px 22px">` +
+    `<tr><td style="padding:14px 40px 0">` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
+        `style="border-collapse:collapse;background-color:${C.ink}">` +
+      `<tr><td style="padding:18px 26px 20px">` +
       `<div style="font-family:${FONT};font-weight:800;font-size:10px;line-height:1.2;` +
         `letter-spacing:.18em;text-transform:uppercase;color:${C.accent}">` +
         `${escapeHtml(PL.festivals.toUpperCase())}</div>` +
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
         `style="border-collapse:collapse">${items}</table>` +
+      `</td></tr></table>` +
     `</td></tr>`
   );
 }
@@ -507,11 +525,14 @@ function footerRow(): string {
   const open = `${env.APP_URL}/my`;
   const link = `color:${C.footer};text-decoration:underline`;
   return (
-    `<tr><td style="border-top:2px solid ${C.divider};padding:22px 40px 32px;text-align:center;` +
+    `<tr><td style="padding:26px 40px 0"><div style="border-top:2px solid ${C.ink};` +
+      `font-size:0;line-height:0">&nbsp;</div></td></tr>` +
+    `<tr><td style="padding:14px 40px 34px;` +
       `font-family:${FONT};font-size:11px;line-height:1.7;color:${C.footer}">` +
       `<a href="${escapeHtml(manage)}" style="${link}">${escapeHtml(PL.settings)}</a> \u00b7 ` +
       `<a href="${escapeHtml(manage)}" style="${link}">${escapeHtml(PL.unsubscribe)}</a> \u00b7 ` +
       `<a href="${escapeHtml(open)}" style="${link}">${escapeHtml(PL.open)}</a>` +
+      `<div style="margin-top:2px">${escapeHtml(PL.sender)}</div>` +
     `</td></tr>`
   );
 }
@@ -557,6 +578,11 @@ function preheader(text: string): string {
   );
 }
 
+/** The span a cadence covers, in days. */
+function cadenceDays(frequency: NewsletterFrequency): number {
+  return frequency === 'daily' ? 1 : frequency === 'weekly' ? 7 : 30;
+}
+
 export function renderBriefHtml(content: BriefContent): string {
   const sections = content.sections;
   const now = content.now ?? new Date();
@@ -572,7 +598,17 @@ export function renderBriefHtml(content: BriefContent): string {
   const frequency: NewsletterFrequency = sections.length
     ? (widest > 7 ? 'monthly' : widest > 1 ? 'weekly' : 'daily')
     : content.fallbackFrequency ?? 'daily';
-  const days = widest || (frequency === 'daily' ? 1 : frequency === 'weekly' ? 7 : 30);
+  /**
+   * How many days the masthead names.
+   *
+   * The *send* cadence, not the widest section — those are different numbers
+   * and only one of them is the issue. A weekly brief carrying a monthly
+   * museums rule has a section reaching 30 days into the future, and taking
+   * that as the span made the band read "10–8 WRZEŚNIA": a range whose month
+   * comes off an end date five weeks out, for an issue that covers a week.
+   * `fallbackFrequency` is the send cadence at every call site.
+   */
+  const sendDays = cadenceDays(content.fallbackFrequency ?? frequency);
 
   const queue = content.wantToGo ? wantToGoBlock(content.wantToGo) : '';
   const body = events.length
@@ -602,7 +638,7 @@ export function renderBriefHtml(content: BriefContent): string {
         `<tr><td align="center" style="padding:0">` +
           `<table role="presentation" width="${WIDTH}" cellpadding="0" cellspacing="0" border="0" ` +
             `style="border-collapse:collapse;width:${WIDTH}px;max-width:${WIDTH}px;background-color:${C.bg}">` +
-            mastheadRow({ now, days }) +
+            mastheadRow({ now, days: sendDays }) +
             summaryRow({
               picks: pickCount,
               venues: venueCount,

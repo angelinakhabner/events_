@@ -176,7 +176,9 @@ describe('renderBriefHtml — email safety', () => {
    *  same offer twice. What has to stay bulletproof is the ink band, which is
    *  a background colour on a `<td>` rather than a styled block. */
   it('paints the masthead band on a td, which every client fills', () => {
-    expect(html).toMatch(/<td style="background-color:#1a1712/);
+    // The band is a nested table inset by the card gutter rather than bled to
+    // its edge, so the fill is on that table, not on the outer cell.
+    expect(html).toMatch(/style="border-collapse:collapse;background-color:#1a1712"/);
     expect(html).not.toContain('See all events in AFISZ');
   });
 
@@ -496,5 +498,36 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
 
     expect(html).toContain('MUZEUM NARODOWE');
     expect(html).not.toContain('DO ');
+  });
+});
+
+/**
+ * The masthead names the *issue's* span, not the widest section's (GOI-110).
+ *
+ * These are different numbers and only one of them is the issue. A weekly
+ * brief carrying a monthly museums rule has a section reaching thirty days
+ * out, and taking that as the span made the band read "10–8 WRZEŚNIA" — a
+ * range whose month comes off an end date five weeks away, over an issue
+ * covering a week. Caught by rendering the thing and looking at it.
+ */
+describe('renderBriefHtml — the span the masthead names (GOI-110)', () => {
+  const monthly = section({ category: 'exhibition', windowDays: 30, events: [makeEvent({})] });
+  const now = new Date('2026-08-10T09:00:00+02:00');
+
+  it('follows the send cadence, not the longest section in the issue', () => {
+    const html = render({ now, fallbackFrequency: 'weekly', sections: [monthly] });
+    expect(html).toContain('10–16 SIERPNIA');
+    expect(html).not.toContain('WRZEŚNIA');
+  });
+
+  it('names a single day outright for a daily brief', () => {
+    const html = render({ now, fallbackFrequency: 'daily', sections: [monthly] });
+    expect(html).toContain('10 SIERPNIA');
+    expect(html).not.toContain('–');
+  });
+
+  it('reaches a month when the issue itself is monthly', () => {
+    const html = render({ now, fallbackFrequency: 'monthly', sections: [monthly] });
+    expect(html).toContain('10–8 WRZEŚNIA');
   });
 });
