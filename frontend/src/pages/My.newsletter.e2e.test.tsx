@@ -236,9 +236,11 @@ describe('MyPage — newsletter end-to-end', () => {
     // An email document, sandboxed — not markup spliced into the page.
     expect(preview.tagName).toBe('IFRAME');
     expect(preview.getAttribute('sandbox')).toBe('');
-    expect(preview.srcdoc).toContain('AFISZ · WEEKLY');
-    expect(preview.srcdoc).toContain('This week in<br>Warsaw');
-    expect(preview.srcdoc).toContain('Nothing on in this window.');
+    // GOI-110: the brief is drawn to the design and speaks Polish — the band
+    // names the city and the span it covers, not the cadence.
+    expect(preview.srcdoc).toContain('AFISZ.KA');
+    expect(preview.srcdoc).toContain('WARSZAWA');
+    expect(preview.srcdoc).toContain('W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.');
   });
 
   // GOI-45: generating also drops the brief on disk, ready to send by hand.

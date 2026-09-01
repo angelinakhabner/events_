@@ -8,6 +8,9 @@ import { isExhibition } from '@afisz/shared';
 import { groupPicks, type BriefSection, type Pick } from './newsletter-render.js';
 import { isEmptySection, type QueuedChange, type WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
+import {
+  PL, closingDate, dateRange, festivalSpan, shortDate, time, weekday,
+} from './newsletter-copy.js';
 
 /**
  * The brief as a PDF (GOI-91), for the copy that gets filed on a user's drive.
@@ -135,70 +138,6 @@ function fonts(): { regular: Uint8Array; bold: Uint8Array } {
   return fontCache;
 }
 
-/**
- * The brief's own words, in Polish.
- *
- * The rest of the interface is English on purpose — the wordmark and the home
- * page's headline are the brand and the chrome around them stays in English
- * (see `Hero` in `pages/Home.tsx`). The brief is the one surface that breaks
- * that, and deliberately: everything *in* it is already Polish — the titles,
- * the venues, the descriptions the venues wrote — so English section headings
- * over Polish content read as a translation layer nobody asked for.
- *
- * Collected here rather than inlined so the decision is one edit to revisit,
- * and so a reader of this file can see the whole vocabulary at once.
- */
-const PL = {
-  wordmark: 'AFISZ.KA',
-  city: 'WARSZAWA',
-  wantToGo: 'Chcę iść',
-  changes: 'Zmiany',
-  changed: 'Zmiana',
-  lastChance: 'Ostatnia szansa',
-  tomorrow: 'Jutro',
-  thisWeek: 'W tym tygodniu',
-  festivals: 'Festiwale w tym tygodniu',
-  nothing: 'W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.',
-  settings: 'Zmień ustawienia',
-  unsubscribe: 'Wypisz się',
-  open: 'Otwórz w AFISZ.KA',
-  /** `n` events from `m` of your venues. Polish counts in three forms. */
-  summary: (events: number, venues: number) =>
-    `${events} ${plural(events, 'wydarzenie', 'wydarzenia', 'wydarzeń')} ` +
-    `z Twoich ${venues} ${plural(venues, 'miejsca', 'miejsc', 'miejsc')}.`,
-  /**
-   * The reader's name, ahead of the count.
-   *
-   * A dash rather than a greeting, and that is a language decision, not a
-   * terse one: Polish addresses someone in the vocative — "Angelina" becomes
-   * "Angelino" — and there is no reliable way to decline an arbitrary name,
-   * including names that are not Polish at all. A greeting that gets the case
-   * wrong is more jarring than no greeting, so the name is simply named.
-   */
-  addressed: (name: string, rest: string) => `${name} — ${rest}`,
-  /** What a change says, beside the title. */
-  rescheduled: (at: string) => `seans przeniesiony na ${at}`,
-  cancelled: 'odwołane',
-  movedVenue: 'zmiana miejsca',
-  soldOut: 'brak biletów',
-  until: (date: string) => `do ${date}`,
-} as const;
-
-/**
- * Polish plurals: one form for 1, another for 2–4, a third for everything else
- * — with the teens taking the third whatever their last digit says. Getting
- * this wrong is the sort of thing that makes generated copy read as generated.
- */
-function plural(n: number, one: string, few: string, many: string): string {
-  if (n === 1) return one;
-  const last = n % 10;
-  const lastTwo = n % 100;
-  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return few;
-  return many;
-}
-
-/** Months as Polish convention writes them in a short date: `11 VIII`. */
-const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
 export interface BriefPdfContent {
   sections: BriefSection[];
@@ -215,44 +154,6 @@ export interface BriefPdfContent {
   recipientName?: string | null;
   festival?: Festival | null;
   now?: Date;
-}
-
-function fmt(iso: string, opts: Intl.DateTimeFormatOptions, locale = 'pl-PL'): string {
-  return new Intl.DateTimeFormat(locale, { timeZone: TZ, ...opts }).format(new Date(iso));
-}
-
-/** `19:00` on the Warsaw clock. */
-function time(iso: string): string {
-  return fmt(iso, { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-/** `PT`, `ŚR` — the day, for a gutter that has no time to show. */
-function weekday(iso: string): string {
-  return fmt(iso, { weekday: 'short' }).replace(/\.$/, '').toUpperCase();
-}
-
-/** `WT 11 VIII` — the Polish short date, for a section spanning days. */
-function shortDate(iso: string): string {
-  const day = Number(fmt(iso, { day: 'numeric' }));
-  const month = Number(fmt(iso, { month: 'numeric' })) - 1;
-  return `${weekday(iso)} ${day} ${ROMAN[month]}`;
-}
-
-/** `10–16 SIERPNIA` — the span the brief covers, for the masthead. */
-function dateRange(from: Date, days: number): string {
-  const to = new Date(from.getTime() + Math.max(days - 1, 0) * 86_400_000);
-  const fromDay = fmt(from.toISOString(), { day: 'numeric' });
-  // The month comes off the *end* of the range, and in the genitive Polish
-  // uses with a day number — which is what asking for day+month together
-  // gets, and what asking for the month alone does not.
-  const toLong = fmt(to.toISOString(), { day: 'numeric', month: 'long' });
-  if (days <= 1) return toLong.toUpperCase();
-  return `${fromDay}–${toLong}`.toUpperCase();
-}
-
-/** `DO 14 WRZEŚNIA` — an exhibition is dated by when it closes. */
-function closingDate(iso: string): string {
-  return PL.until(fmt(iso, { day: 'numeric', month: 'long' })).toUpperCase();
 }
 
 /**
@@ -521,10 +422,8 @@ function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
   for (const f of festivals) {
     doc.font('bold').fontSize(11).fillColor(C.onInk).text(f.name, x, y, { width });
     const nameWidth = doc.font('bold').fontSize(11).widthOfString(f.name);
-    const span = `${fmt(`${f.startDate}T12:00:00Z`, { day: 'numeric' })}–${
-      fmt(`${f.endDate}T12:00:00Z`, { day: 'numeric' })} ${ROMAN[Number(f.endDate.slice(5, 7)) - 1]}`;
     doc.font('bold').fontSize(7.5).fillColor(C.onInkEyebrow)
-      .text(span, x + nameWidth + 10, y + 3, { width, characterSpacing: 1 });
+      .text(festivalSpan(f), x + nameWidth + 10, y + 3, { width, characterSpacing: 1 });
     y += 20;
   }
 

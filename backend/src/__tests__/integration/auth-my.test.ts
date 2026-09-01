@@ -305,8 +305,9 @@ describe('auth + /my flow (in-process)', () => {
     });
     expect(res.status).toBe(200);
     const { html, events } = res.data as { html: string; events: unknown[] };
-    expect(html).toContain('This week in<br>Warsaw');
-    expect(html).toContain('AFISZ · WEEKLY');
+    // GOI-110: the band names the city and the span, not the cadence.
+    expect(html).toContain('WARSZAWA');
+    expect(html).toContain('AFISZ.KA');
     expect(Array.isArray(events)).toBe(true);
     // Preview must not create a subscription.
     expect((await trpcCall('my.newsletter.get', { token: hana })).data).toBeNull();
