@@ -423,13 +423,41 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
       } as never,
     });
 
-    expect(html).toContain('CHCĘ IŚĆ');
+    expect(html).toContain('WANT TO GO');
     expect(html).toContain('OSTATNIA SZANSA');
     expect(html).toContain('JUTRO');
     // The queue is the reader's own list, so it outranks the listing.
-    expect(html.indexOf('CHCĘ IŚĆ')).toBeLessThan(html.indexOf('A Film'));
+    expect(html.indexOf('WANT TO GO')).toBeLessThan(html.indexOf('A Film'));
     // And the states are separated rather than run together.
     expect(html.indexOf('OSTATNIA SZANSA')).toBeLessThan(html.indexOf('JUTRO'));
+  });
+
+  /**
+   * The gutter no longer repeats the subheading.
+   *
+   * "ZMIANY" already labels the group, so a "ZMIANA" marker on every row under
+   * it spent the one column that could say something the reader does not
+   * already know. It carries the day the affected event falls on instead.
+   */
+  it('does not repeat the changes subheading in every row of the group', () => {
+    const html = render({
+      sections: [section({ category: 'cinema', events: [makeEvent({})] })],
+      wantToGo: {
+        reminders: [],
+        changes: [{
+          type: 'rescheduled',
+          newValue: '2026-07-22T20:15:00+02:00',
+          event: makeEvent({ title: 'Anatomia upadku', startsAt: '2026-07-22T17:30:00+02:00' }),
+        }],
+      } as never,
+    });
+
+    expect(html).toContain('ZMIANY');
+    expect(html).not.toContain('>ZMIANA<');
+    // The day is what the gutter says now, and the change itself still reads
+    // in the meta line beside the venue.
+    expect(html).toContain('ŚR');
+    expect(html).toMatch(/PRZENIESIONY NA 20:15/);
   });
 
   it('raises festivals above the listings instead of trailing them', () => {

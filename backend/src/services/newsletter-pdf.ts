@@ -333,7 +333,9 @@ function drawWantToGo(doc: PDFKit.PDFDocument, section: WantToGoSection): void {
     subHeading(doc, PL.changes);
     for (const change of section.changes) {
       drawQueueRow(doc, {
-        gutter: PL.changed.toUpperCase(),
+        // See the note in `newsletter-render.ts`: the subheading above
+        // already says these are changes, so the gutter carries the day.
+        gutter: weekday(change.event.startsAt),
         gutterColor: C.accent,
         title: change.event.title,
         meta: [change.event.venue?.name, changeNote(change)].filter(Boolean).join(' · '),

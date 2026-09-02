@@ -282,7 +282,11 @@ function wantToGoBlock(section: WantToGoSection): string {
     rows.push(subHeadingRow(PL.changes, true));
     for (const change of section.changes) {
       rows.push(queueRow({
-        gutter: PL.changed,
+        // No "ZMIANA" marker: the subheading directly above already says
+        // these are changes, and repeating it in the gutter of every row
+        // spent the one column that could say something the reader does not
+        // already know. The day the affected event falls on is that.
+        gutter: weekday(change.event.startsAt),
         title: change.event.title,
         meta: [change.event.venue?.name, changeNote(change)].filter(Boolean).join(' \u00b7 '),
       }));

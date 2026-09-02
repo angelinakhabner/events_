@@ -28,9 +28,8 @@ const TZ = 'Europe/Warsaw';
 export const PL = {
   wordmark: 'AFISZ.KA',
   city: 'WARSZAWA',
-  wantToGo: 'Chcę iść',
+  wantToGo: 'Want to go',
   changes: 'Zmiany',
-  changed: 'Zmiana',
   lastChance: 'Ostatnia szansa',
   tomorrow: 'Jutro',
   thisWeek: 'W tym tygodniu',
