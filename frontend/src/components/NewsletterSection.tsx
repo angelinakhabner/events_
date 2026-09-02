@@ -8,7 +8,7 @@ import {
   allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import { readableApiError } from '../lib/api-error';
+import { newsletterApiIsStale, OLDER_API, readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
 import {
@@ -114,9 +114,36 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
     <NewsletterForm
       defaultEmail={defaultEmail}
       saved={settings.data ?? null}
+      staleApi={newsletterApiIsStale(settings.data)}
       venues={venues.data ?? []}
       folders={folders.data ?? []}
     />
+  );
+}
+
+/**
+ * The API predates this page, said before anything is clicked (GOI-105).
+ *
+ * Both buttons post the shape this build sends, so against an API that
+ * predates GOI-100 both are certain to fail — and the only account of it the
+ * reader used to get was two lines of validation errors, after the click,
+ * naming fields their screen does not have. The settings the page loaded
+ * already carry the answer (`newsletterApiIsStale`), so it is said up front,
+ * at the top, where a reader looks before pressing anything.
+ *
+ * The form is still rendered below it, and both buttons still work: this is a
+ * deployment fact about the server, not a reason to take the reader's settings
+ * away from them.
+ */
+function StaleApiBanner() {
+  return (
+    <div role="alert" className="mb-6 border-3 border-accent bg-panel p-4">
+      <p className="label-form text-accent">Newsletter unavailable right now</p>
+      <p className="mt-2 max-w-prose text-sm font-semibold">
+        Saving and generating will both fail: {OLDER_API} Until then the settings below are
+        shown as this page reads them, and may not match what is stored.
+      </p>
+    </div>
   );
 }
 
@@ -131,11 +158,14 @@ interface PickableVenue {
 function NewsletterForm({
   defaultEmail,
   saved,
+  staleApi,
   venues,
   folders,
 }: {
   defaultEmail: string;
   saved: NewsletterSettings | null;
+  /** The API that served `saved` predates this build — see `StaleApiBanner`. */
+  staleApi: boolean;
   venues: PickableVenue[];
   folders: { id: string; name: string }[];
 }) {
@@ -323,6 +353,7 @@ function NewsletterForm({
 
   return (
     <section>
+      {staleApi ? <StaleApiBanner /> : null}
       {/* Two lines, deliberately: the heading says what a brief *can* be
           (GOI-97), and the line under it says what yours currently *is*
           (GOI-30), live, following every edit. The old copy tried to be both
