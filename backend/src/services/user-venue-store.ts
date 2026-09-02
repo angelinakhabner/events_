@@ -283,6 +283,10 @@ export class DbUserVenueStore implements UserVenueStore {
     //    venues, into the active list. Scoped to `seedVenueUrls()` rather than
     //    the whole `venues` table (GOI-106) — see that function for why.
     //
+    //    `sql.param` is load-bearing: interpolating the array bare expands it
+    //    into one bind per element, which postgres reads as a record — "cannot
+    //    cast type record to text[]" — rather than as the array `ANY` wants.
+    //
     //    DISTINCT ON collapses any venue rows that normalise to the same
     //    listing, keeping the oldest, so a duplicate that has already reached
     //    the table cannot become two rows in a new user's /my. `venues.url` is
@@ -294,7 +298,7 @@ export class DbUserVenueStore implements UserVenueStore {
       FROM (
         SELECT DISTINCT ON (coalesce(normalized_url, url)) id, created_at
         FROM venues
-        WHERE url = ANY(${seedVenueUrls()}::text[])
+        WHERE url = ANY(${sql.param(seedVenueUrls())}::text[])
         ORDER BY coalesce(normalized_url, url), created_at ASC
       ) v
       JOIN users u ON u.id = ${userId}::uuid
