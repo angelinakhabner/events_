@@ -17,7 +17,7 @@ function fest(over: Partial<Festival> = {}): Festival {
   return {
     id: 'skrzyzowanie',
     name: 'Festiwal Skrzyżowanie Kultur',
-    url: 'https://skrzyzowaniekultur.pl',
+    url: 'https://estrada.com.pl/skrzyzowanie_kultur/',
     category: 'theatre',
     venues: ['Teatr Dramatyczny'],
     city: 'Warsaw',
@@ -53,9 +53,43 @@ describe('FestivalBanner', () => {
   it('links to the festival\'s own site, opened away from the listing', () => {
     render(<FestivalBanner festivals={[fest()]} now={NOW} />);
     const link = screen.getByRole('link', { name: /skrzyżowanie kultur/i });
-    expect(link).toHaveAttribute('href', 'https://skrzyzowaniekultur.pl');
+    expect(link).toHaveAttribute('href', 'https://estrada.com.pl/skrzyzowanie_kultur/');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noreferrer');
+  });
+
+  /**
+   * GOI-109. This banner shipped pointing at `skrzyzowaniekultur.pl`, which
+   * has no DNS record — the obvious domain for the festival, and not its
+   * site. Clicking the masthead got "Safari can't find the server". So a
+   * festival whose site we haven't verified carries no link at all: the
+   * announcement is still worth making, and a dead link is not part of it.
+   */
+  describe('a festival with no verified site', () => {
+    it('still announces it, in full', () => {
+      render(<FestivalBanner festivals={[fest({ url: null })]} now={NOW} />);
+      expect(screen.getByRole('heading', { name: /skrzyżowanie kultur/i })).toBeInTheDocument();
+      expect(screen.getByText('Coming soon')).toBeInTheDocument();
+      expect(screen.getByText('Teatr Dramatyczny')).toBeInTheDocument();
+      expect(screen.getByText(/world music and stage work/i)).toBeInTheDocument();
+    });
+
+    it('offers nothing to click, and no "Festival site" to click it with', () => {
+      render(<FestivalBanner festivals={[fest({ url: null })]} now={NOW} />);
+      expect(screen.queryByRole('link')).toBeNull();
+      expect(screen.queryByText(/festival site/i)).toBeNull();
+    });
+
+    it('keeps the artwork when there is some — only the link goes', () => {
+      render(
+        <FestivalBanner
+          festivals={[fest({ url: null, imageUrl: 'https://example.com/poster.jpg' })]}
+          now={NOW}
+        />,
+      );
+      expect(document.querySelector('img')).toHaveAttribute('src', 'https://example.com/poster.jpg');
+      expect(screen.queryByRole('link')).toBeNull();
+    });
   });
 
   // Nothing to announce is not an empty banner — it is no banner. An empty
@@ -79,12 +113,12 @@ describe('FestivalBanner', () => {
     it('shows the festival\'s own banner when there is one', () => {
       render(
         <FestivalBanner
-          festivals={[fest({ imageUrl: 'https://skrzyzowaniekultur.pl/banner.jpg' })]}
+          festivals={[fest({ imageUrl: 'https://example.com/banner.jpg' })]}
           now={NOW}
         />,
       );
       const img = document.querySelector('img')!;
-      expect(img).toHaveAttribute('src', 'https://skrzyzowaniekultur.pl/banner.jpg');
+      expect(img).toHaveAttribute('src', 'https://example.com/banner.jpg');
       // Decorative: the name is set beside it in text, so an alt would be the
       // same sentence read twice.
       expect(img).toHaveAttribute('alt', '');

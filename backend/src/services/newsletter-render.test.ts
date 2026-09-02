@@ -31,7 +31,7 @@ function makeEvent(over: Partial<Event> = {}): Event {
 const FESTIVAL: Festival = {
   id: 'kino-letnie',
   name: 'Kino Letnie nad Wisłą',
-  url: 'https://kinoletnie.pl',
+  url: null,
   category: 'cinema',
   venues: ['Boulevards of the Vistula'],
   city: 'Warsaw',

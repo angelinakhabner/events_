@@ -11,8 +11,36 @@ describe('festival seeds', () => {
       expect(f.endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(f.startDate <= f.endDate).toBe(true);
       expect(f.venues.length).toBeGreaterThan(0);
-      expect(f.url).toMatch(/^https:\/\//);
     }
+  });
+
+  /**
+   * GOI-109. The seed's link used to be required, so every entry got one
+   * whether or not one had been verified, and `skrzyzowaniekultur.pl` — a
+   * domain with no DNS record — sat behind the home page's banner. A missing
+   * link is now sayable; what is *not* sayable is a link that isn't an
+   * absolute https URL, which is the shape a copied-out-of-a-search-result
+   * mistake takes.
+   *
+   * Whether the URL resolves is a question only a request can answer, and the
+   * dev sandbox can't make one: `npm run festivals:check-links` does that from
+   * somewhere that can.
+   */
+  it('links are absolute https URLs, or absent', () => {
+    for (const f of FESTIVAL_SEEDS) {
+      if (f.url === undefined || f.url === null) continue;
+      expect(f.url).toMatch(/^https:\/\/[^/]+\./);
+    }
+  });
+
+  it('carries no link for a festival whose site we have not verified', () => {
+    // The seed says null and `listFestivals` must hand that null through
+    // rather than substituting the calendar or an empty string, which the
+    // components would both treat as a link.
+    const summer = listFestivals(new Date('2026-07-23T12:00:00Z')).find(
+      (f) => f.id === 'kino-letnie-2026',
+    );
+    expect(summer?.url).toBeNull();
   });
 });
 

@@ -25,6 +25,14 @@ import { formatRange } from './FestivalsSection';
  * — or where the URL has since died, which is why `onError` matters — the
  * banner sets the name in the app's display type over the ink band instead.
  * That is a poster too, and it is one that cannot break.
+ *
+ * The whole card used to be an `<a>`, unconditionally. That made the banner
+ * only as good as the link behind it, and one of the links was
+ * `skrzyzowaniekultur.pl` — a domain with no DNS record — so the masthead
+ * announcing the festival handed the reader "Safari can't find the server"
+ * (GOI-109). A festival we can't link is still worth announcing, so the card
+ * becomes a plain block when `url` is null: same type, same dates, same
+ * venues, minus a promise we can't keep.
  */
 export function FestivalBanner({
   festivals,
@@ -54,14 +62,16 @@ function FestivalBannerCard({ festival }: { festival: Festival }) {
   const [artworkFailed, setArtworkFailed] = useState(false);
   const artwork = festival.imageUrl && !artworkFailed ? festival.imageUrl : null;
   const on = festival.status === 'ongoing';
+  // `group` still applies without the anchor so the hover styling below has
+  // one rule rather than two; on a linkless card nothing changes on hover,
+  // which is the honest signal that there is nothing to click.
+  const Shell = festival.url ? 'a' : 'div';
+  const shellProps = festival.url
+    ? ({ href: festival.url, target: '_blank', rel: 'noreferrer' } as const)
+    : {};
 
   return (
-    <a
-      href={festival.url}
-      target="_blank"
-      rel="noreferrer"
-      className="group block bg-ink text-white no-underline"
-    >
+    <Shell {...shellProps} className="group block bg-ink text-white no-underline">
       <div className="md:flex md:items-stretch">
         {artwork ? (
           <div className="md:w-[38%] md:shrink-0">
@@ -101,11 +111,13 @@ function FestivalBannerCard({ festival }: { festival: Festival }) {
 
           <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 m-0 text-[11px] md:text-xs font-extrabold uppercase tracking-[1px]">
             <span className="text-[#8d8b87]">{venueLine(festival)}</span>
-            <span className="text-accent group-hover:underline">Festival site →</span>
+            {festival.url ? (
+              <span className="text-accent group-hover:underline">Festival site →</span>
+            ) : null}
           </p>
         </div>
       </div>
-    </a>
+    </Shell>
   );
 }
 

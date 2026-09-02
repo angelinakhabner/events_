@@ -515,7 +515,18 @@ export function isFestivalCategory(category: string): category is FestivalCatego
 export interface Festival {
   id: string;
   name: string;
-  url: string;
+  /**
+   * The festival's own site, or null where we have not verified one (GOI-109).
+   *
+   * Null exists because the alternative turned out to be worse. Every seed
+   * used to carry a plausible-looking domain, and a plausible-looking domain
+   * is not a site: `skrzyzowaniekultur.pl` had no DNS record at all, so the
+   * banner announcing the festival at the top of the page was one click from
+   * "Safari can't find the server". A festival with no link still belongs on
+   * the page — it is on either way — so the link is the optional part, and the
+   * banner and the listing render the name as plain text when it is absent.
+   */
+  url: string | null;
   /** The listing this festival belongs under. */
   category: FestivalCategory;
   /** Venue names hosting the festival. */

@@ -1,4 +1,2 @@
-200  30193  https://krolikarnia.mnw.art.pl/wystawy/
-200  30213  https://krolikarnia.mnw.art.pl/wystawy/obecne.html
-200  29496  https://krolikarnia.mnw.art.pl/wystawy/planowane.html
+200  309477  https://kinomuranow.pl/repertuar
 --- done ---

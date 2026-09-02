@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import * as cheerio from 'cheerio';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,8 +12,13 @@ const TZ = 'Europe/Warsaw';
 const BASE_URL = 'https://kinomuranow.pl/repertuar';
 
 let html = '';
+/** A second capture of the same page, taken from a runner a few months later
+ *  (GOI-107). Kept alongside the first so a markup change has to break two
+ *  differently-shaped months to slip through. */
+let liveHtml = '';
 beforeAll(async () => {
   html = await fs.readFile(path.join(fixtureDir, 'muranow.html'), 'utf-8');
+  liveHtml = await fs.readFile(path.join(fixtureDir, 'kinomuranow.pl-repertuar.html'), 'utf-8');
 });
 
 /** A Drupal AJAX reply shaped like the one the month pager returns. */
@@ -40,6 +46,52 @@ describe('parseMonthLabel', () => {
 describe('parseMuranowCalendar', () => {
   it('extracts every screening in the month', () => {
     expect(parseMuranowCalendar(html, TZ)).toHaveLength(143);
+  });
+
+  /**
+   * GOI-107 asked why Muranów screenings were missing from the app, and this
+   * is the assertion that answers "not here". Counted against the page's own
+   * markup rather than a number typed into the test: every `.movie-calendar-
+   * info` block is one screening, so parsing fewer rows than the page has
+   * blocks means the parser is dropping some — which is the only shape a
+   * missing-films bug can take in this file, and the shape a selector drift
+   * would take when the cinema next rebuilds its calendar.
+   *
+   * Run over both captures, five months apart. The answer both times is that
+   * the parser takes all of them: what the app can show is bounded by what the
+   * cinema has published, not by what we can read.
+   */
+  it.each([
+    ['the June capture', () => html],
+    ['the September capture', () => liveHtml],
+  ])('takes every screening the page carries — %s', (_label, get) => {
+    const page = get();
+    const blocks = cheerio.load(page)('.calendar-seance-full__day .movie-calendar-info').length;
+    expect(blocks).toBeGreaterThan(0);
+    expect(parseMuranowCalendar(page, TZ)).toHaveLength(blocks);
+  });
+
+  /**
+   * The other half of GOI-107's answer: the cinema publishes a week at a time.
+   * On the September capture the three days from the capture date carry 4, 16
+   * and 14 screenings and the rest of the month carries a handful of
+   * advance-sale specials each. A thin day four days out is the source, not
+   * the scraper — and it is why the sweep has to look daily (see
+   * `needsDailySweep`), since a weekly one never sees the new week arrive.
+   */
+  it('shows the cinema publishing one week at a time', () => {
+    const byDay = new Map<string, number>();
+    for (const e of parseMuranowCalendar(liveHtml, TZ)) {
+      const day = e.starts_at.slice(0, 10);
+      byDay.set(day, (byDay.get(day) ?? 0) + 1);
+    }
+    const days = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const busiest = Math.max(...days.map(([, n]) => n));
+    expect(busiest).toBeGreaterThanOrEqual(14);
+    // Past the current cinema week it thins out to the specials on sale.
+    const tail = days.slice(7).map(([, n]) => n);
+    expect(tail.length).toBeGreaterThan(0);
+    expect(Math.max(...tail)).toBeLessThan(busiest);
   });
 
   it('stamps showtimes with the cell date and the real Warsaw offset', () => {
