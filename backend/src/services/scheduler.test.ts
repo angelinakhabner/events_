@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { msUntilNextWarsawHour, msUntilNextWarsawTime, isRetryableScrapeError, readVenueGapMs } from './scheduler.js';
+import { msUntilNextWarsawHour, msUntilNextWarsawTime, isRetryableScrapeError, readVenueGapMs, warsawWeekday } from './scheduler.js';
+import { needsDailySweep } from './scraper/extractor.js';
 
 describe('isRetryableScrapeError', () => {
   it('retries on out-of-credits (the message the SDK surfaces for a 400)', () => {
@@ -126,5 +127,57 @@ describe('msUntilNextWarsawTime (weekly cadence)', () => {
     // From 2026-01-15T20:00Z to 2026-01-19T06:00Z = 3 days + 10h = 82h.
     const now = new Date('2026-01-15T20:00:00.000Z');
     expect(msUntilNextWarsawTime(7, 1, now)).toBe(82 * 3_600_000);
+  });
+});
+
+/**
+ * GOI-107: "why are we missing Kino Muranów movies".
+ *
+ * The parser was not the problem — run as production runs it, it takes every
+ * screening the calendar carries. The sweep was: a Warsaw cinema publishes one
+ * week at a time and posts the next week mid-week, so a *weekly* sweep never
+ * overlaps the listing it is reading. Whatever the cinema announces the day
+ * after the sweep stays invisible until the sweep's next turn, by which point
+ * that week is half gone — which on the page looks like two or three
+ * screenings on a day the cinema is showing a dozen on.
+ */
+describe('needsDailySweep (GOI-107)', () => {
+  it('is true for cinema, whose listing is only ever a week long', () => {
+    expect(needsDailySweep('cinema')).toBe(true);
+  });
+
+  it('is false for the categories that publish months ahead', () => {
+    for (const category of ['theatre', 'exhibition', 'music', 'comedy']) {
+      expect(needsDailySweep(category)).toBe(false);
+    }
+  });
+
+  it('reads the venue\'s own horizon, so an unknown category takes the long default', () => {
+    // 30 days — the sweep does not need to visit it daily, and paying to is
+    // the cost the weekly cadence exists to avoid.
+    expect(needsDailySweep(undefined)).toBe(false);
+    expect(needsDailySweep('something-new')).toBe(false);
+  });
+});
+
+describe('the weekly cadence still fires daily (GOI-107)', () => {
+  /**
+   * The timer is armed for the next `hour` every day under both settings; what
+   * `dayOfWeek` selects is who gets swept. Arming it weekly instead — which is
+   * what it used to do — is what left the cinemas a week behind, because there
+   * was no off-day pass to put them back in front.
+   */
+  it('arms for tomorrow, not next week, on a weekly setting', () => {
+    // Wednesday 2026-09-02 08:00 Warsaw, weekly sweep pinned to Monday.
+    const now = new Date('2026-09-02T06:00:00Z');
+    expect(msUntilNextWarsawTime(7, 1, now)).toBe(119 * 3_600_000); // the old, weekly arm
+    expect(msUntilNextWarsawTime(7, undefined, now)).toBe(23 * 3_600_000); // what it arms for now
+  });
+
+  it('knows which Warsaw weekday it is, so the full sweep lands on the right day', () => {
+    // 2026-09-07 is a Monday; 23:30 UTC is already Tuesday in Warsaw (UTC+2),
+    // which is the case a UTC weekday would get wrong.
+    expect(warsawWeekday(new Date('2026-09-07T12:00:00Z'))).toBe(1);
+    expect(warsawWeekday(new Date('2026-09-07T23:30:00Z'))).toBe(2);
   });
 });

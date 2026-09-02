@@ -33,6 +33,10 @@ on:
         description: Pipe-separated URLs to load in headless Chromium and commit (for sites behind a JS challenge)
         default: ''
         required: false
+      festival_links:
+        description: Set to "true" to check every curated festival URL resolves (GOI-109)
+        default: ''
+        required: false
   # Registration-only: a dispatch-only workflow on a non-default branch never
   # gets registered with the Actions API. The job below skips push events.
   push:
@@ -70,6 +74,27 @@ jobs:
           DIAG_ANALYZE: ${{ github.event.inputs.analyze }}
           DIAG_PROBE: ${{ github.event.inputs.probe }}
         run: npx tsx src/scripts/diagnose-venues.ts
+
+  # The curated festival links can only be verified from somewhere with plain
+  # outbound HTTPS, which the dev sandbox is not (GOI-109). Cheap and
+  # network-only — no API key, no tokens, no production writes.
+  festival-links:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.festival_links != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check festival links
+        run: npm --prefix backend run festivals:check-links
 
   # Same pattern as the retired fetch-fixture.yml: the dev sandbox can't reach
   # the venue sites, so live pages are captured on a runner and committed as

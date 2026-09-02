@@ -31,7 +31,7 @@ function makeEvent(over: Partial<Event> = {}): Event {
 const FESTIVAL: Festival = {
   id: 'kino-letnie',
   name: 'Kino Letnie nad Wisłą',
-  url: 'https://kinoletnie.pl',
+  url: null,
   category: 'cinema',
   venues: ['Boulevards of the Vistula'],
   city: 'Warsaw',
@@ -51,13 +51,6 @@ function render(over: Partial<Parameters<typeof renderBriefHtml>[0]> = {}) {
   return renderBriefHtml({ sections: [section()], now: NOW, ...over });
 }
 
-/** The day-label rows only — the date also appears in the masthead and the
- *  preheader, so a bare string search can't tell those apart. `18px 0 0` is
- *  the day heading's own padding. */
-function dayHeadings(html: string): string[] {
-  return [...html.matchAll(/padding:18px 0 0;[^"]*">([^<]+)</g)].map((m) => m[1]!);
-}
-
 describe('renderBriefHtml — content', () => {
   it('renders the masthead, picks, festival and CTA', () => {
     const html = render({
@@ -69,49 +62,58 @@ describe('renderBriefHtml — content', () => {
       festival: FESTIVAL,
     });
 
-    expect(html).toContain('AFISZ · DAILY');
-    expect(html).toContain('Today in<br>Warsaw');
-    expect(html).toContain('Hi Ania — 2 picks from Cinema &amp; Comedy');
+    // The band names who it is from and what it covers; the arithmetic is the
+    // line under it (GOI-110).
+    expect(html).toContain('AFISZ.KA');
+    expect(html).toContain('WARSZAWA');
+    expect(html).toContain('Ania — 2 wydarzenia z Twoich 1 miejsca.');
     expect(html).toContain('Chungking Express');
     expect(html).toContain('https://x.pl/a');
     expect(html).toContain('KINOTEKA');
     expect(html).toContain('Kino Letnie nad Wisłą');
-    expect(html).toContain('See all events in AFISZ →');
-    expect(html).toContain('Manage preferences');
+    expect(html).toContain('Zmień ustawienia');
+    expect(html).toContain('Wypisz się');
   });
 
   it('greets without a name when none is saved', () => {
     const html = render({ recipientName: null, sections: [section({ category: 'cinema' })] });
-    expect(html).not.toContain('Hi ');
-    expect(html).toContain('1 pick from Cinema');
+    // Polish addresses someone in the vocative and an arbitrary name cannot be
+    // declined reliably, so an unnamed brief simply states the count.
+    expect(html).not.toContain(' — 1 wydarzenie');
+    expect(html).toContain('1 wydarzenie z Twoich 1 miejsca.');
   });
 
-  it('switches the masthead and subject wording for weekly briefs', () => {
-    const html = render({ sections: [section({ windowDays: 7 })] });
-    expect(html).toContain('AFISZ · WEEKLY');
-    expect(html).toContain('This week in<br>Warsaw');
+  it('names the span the issue covers, not the cadence', () => {
+    const daily = render({ sections: [section({ windowDays: 1 })] });
+    const weekly = render({ sections: [section({ windowDays: 7 })] });
+    // A single day is named outright; a span is written from–to.
+    expect(daily).toMatch(/\d+ [A-ZŚŹŻĄĘŁÓŃĆ]+</i);
+    expect(weekly).toMatch(/\d+–\d+ /);
   });
 
-  it('labels each day in a weekly brief but not a daily one', () => {
+  /** GOI-110: the design dates the row, not the group — the day-heading rows
+   *  the list used to be broken into are gone. */
+  it('dates each row in a weekly brief but not in a daily one', () => {
     const events = [
       makeEvent({ title: 'Film A', startsAt: '2026-07-22T18:00:00+02:00' }),
       makeEvent({ title: 'Film B', startsAt: '2026-07-23T20:00:00+02:00' }),
     ];
     const weekly = render({ sections: [section({ windowDays: 7, events })] });
-    expect(dayHeadings(weekly)).toEqual(['WED 22 JUL', 'THU 23 JUL']);
+    expect(weekly).toContain('ŚR 22 VII');
+    expect(weekly).toContain('CZW 23 VII');
 
-    // A daily brief is one day by definition — the design shows no day label.
+    // A daily brief is one day by definition — the masthead already says which.
     const daily = render({ sections: [section({ windowDays: 1, events: [events[0]!] })] });
-    expect(dayHeadings(daily)).toEqual([]);
+    expect(daily).not.toContain('ŚR 22 VII');
   });
 
   it('says so rather than sending an empty card when nothing is on', () => {
     const html = render({ sections: [] });
-    expect(html).toContain('Nothing on in this window.');
+    expect(html).toContain('W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.');
   });
 
   it('omits the festival line when none is running', () => {
-    expect(render({ festival: null })).not.toContain('Also on:');
+    expect(render({ festival: null })).not.toContain('FESTIWALE');
   });
 
   it('escapes event text, including in the description and venue name', () => {
@@ -169,8 +171,15 @@ describe('renderBriefHtml — email safety', () => {
     expect(html).not.toContain('rgba(');
   });
 
-  it('gives the CTA a bgcolor attribute, not just a styled anchor', () => {
-    expect(html).toMatch(/<td bgcolor="#1a1712"[^>]*>\s*<a /);
+  /** GOI-110 dropped the CTA button: the footer already offers "open in
+   *  AFISZ", and a full-width button saying the same thing above it was the
+   *  same offer twice. What has to stay bulletproof is the ink band, which is
+   *  a background colour on a `<td>` rather than a styled block. */
+  it('paints the masthead band on a td, which every client fills', () => {
+    // The band is a nested table inset by the card gutter rather than bled to
+    // its edge, so the fill is on that table, not on the outer cell.
+    expect(html).toMatch(/style="border-collapse:collapse;background-color:#1a1712"/);
+    expect(html).not.toContain('See all events in AFISZ');
   });
 
   it('carries a hidden preheader and a color-scheme hint', () => {
@@ -324,8 +333,11 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
     });
     // The title appears once, not once per venue.
     expect(html.match(/Chungking Express/g)).toHaveLength(1);
-    expect(html).toContain('KINOTEKA 18:00 · MURANÓW 20:30');
-    expect(html).toContain('2 shows');
+    // One line per venue, each with its own times — not one run-on string
+    // that reads as a single place with four showings (GOI-110).
+    expect(html).toContain('KINOTEKA · 18:00');
+    expect(html).toContain('MURANÓW · 20:30');
+    expect(html).not.toContain('KINOTEKA · 18:00 · MURANÓW');
   });
 
   it('counts cards, not showings, in the masthead', () => {
@@ -338,20 +350,19 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
         ],
       })],
     });
-    // Three screenings, two cards — saying "3 picks" would contradict the list.
-    expect(html).toContain('2 picks');
-    expect(html).not.toContain('3 picks');
+    // Three screenings, two cards — saying "3" would contradict the list.
+    expect(html).toContain('2 wydarzenia z Twoich');
+    expect(html).not.toContain('3 wydarzenia z Twoich');
   });
 
-  it('leaves a single-venue pick reading exactly as before', () => {
+  it('gives a single-venue pick the same one line as any other', () => {
     const html = render({
       sections: [section({ events: [at('2026-07-22T18:00:00+02:00', 'Kinoteka')] })],
     });
-    expect(html).toContain('KINOTEKA');
-    // No time repeated in the venue line, no count line.
-    expect(html).not.toContain('KINOTEKA 18:00');
-    expect(html).not.toContain('shows</div>');
-    expect(html).toContain('1 pick');
+    // One venue, one line — the same shape an aggregated pick uses, so the
+    // two do not read as different kinds of thing (GOI-110).
+    expect(html).toContain('KINOTEKA · 18:00');
+    expect(html).toContain('1 wydarzenie z Twoich');
   });
 
   it('keeps the same title on different days as separate cards in a weekly brief', () => {
@@ -365,7 +376,9 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
       })],
     });
     expect(html.match(/Chungking Express/g)).toHaveLength(2);
-    expect(dayHeadings(html)).toEqual(['WED 22 JUL', 'FRI 24 JUL']);
+    // Each card carries its own date now that the day headings are gone.
+    expect(html).toContain('ŚR 22 VII');
+    expect(html).toContain('PT 24 VII');
   });
 
   it('escapes venue names in the aggregated line', () => {
@@ -379,5 +392,170 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
     });
     expect(html).not.toContain('<script>x</script>');
     expect(html).toContain('&lt;SCRIPT&gt;');
+  });
+});
+
+/**
+ * The email redrawn to the design the PDF already carried (GOI-110).
+ *
+ * The cases below are the four things the ticket asked for by name, and each
+ * is a thing the email did *not* do before: the saved queue grouped by state
+ * at the top, festivals above the listings rather than at the foot, one line
+ * per cinema, and a run dated by when it closes.
+ */
+describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
+  const cinema = (iso: string, venue: string, title: string) =>
+    makeEvent({
+      title,
+      startsAt: iso,
+      venue: { id: venue, name: venue, category: 'cinema', city: 'Warsaw', country: 'PL' },
+    });
+
+  it('puts the saved queue above the listings, grouped by state', () => {
+    const html = render({
+      sections: [section({ category: 'cinema', events: [cinema('2026-07-22T18:00:00+02:00', 'Kinoteka', 'A Film')] })],
+      wantToGo: {
+        changes: [],
+        reminders: [
+          { state: 'last_chance', event: makeEvent({ title: 'Closing Soon' }) },
+          { state: 'tomorrow', event: makeEvent({ title: 'On Tomorrow' }) },
+        ],
+      } as never,
+    });
+
+    expect(html).toContain('WANT TO GO');
+    expect(html).toContain('OSTATNIA SZANSA');
+    expect(html).toContain('JUTRO');
+    // The queue is the reader's own list, so it outranks the listing.
+    expect(html.indexOf('WANT TO GO')).toBeLessThan(html.indexOf('A Film'));
+    // And the states are separated rather than run together.
+    expect(html.indexOf('OSTATNIA SZANSA')).toBeLessThan(html.indexOf('JUTRO'));
+  });
+
+  /**
+   * The gutter no longer repeats the subheading.
+   *
+   * "ZMIANY" already labels the group, so a "ZMIANA" marker on every row under
+   * it spent the one column that could say something the reader does not
+   * already know. It carries the day the affected event falls on instead.
+   */
+  it('does not repeat the changes subheading in every row of the group', () => {
+    const html = render({
+      sections: [section({ category: 'cinema', events: [makeEvent({})] })],
+      wantToGo: {
+        reminders: [],
+        changes: [{
+          type: 'rescheduled',
+          newValue: '2026-07-22T20:15:00+02:00',
+          event: makeEvent({ title: 'Anatomia upadku', startsAt: '2026-07-22T17:30:00+02:00' }),
+        }],
+      } as never,
+    });
+
+    expect(html).toContain('ZMIANY');
+    expect(html).not.toContain('>ZMIANA<');
+    // The day is what the gutter says now, and the change itself still reads
+    // in the meta line beside the venue.
+    expect(html).toContain('ŚR');
+    expect(html).toMatch(/PRZENIESIONY NA 20:15/);
+  });
+
+  it('raises festivals above the listings instead of trailing them', () => {
+    const html = render({
+      sections: [section({ category: 'cinema', events: [cinema('2026-07-22T18:00:00+02:00', 'Kinoteka', 'A Film')] })],
+      festival: FESTIVAL,
+    });
+
+    expect(html).toContain('FESTIWALE W TYM TYGODNIU');
+    expect(html.indexOf('FESTIWALE W TYM TYGODNIU')).toBeLessThan(html.indexOf('A Film'));
+    // It used to be the last thing in the issue, under the button.
+    expect(html).not.toContain('Also on:');
+  });
+
+  it('gives a film one line per cinema, each with that cinema’s own times', () => {
+    const html = render({
+      sections: [section({
+        events: [
+          cinema('2026-07-22T18:00:00+02:00', 'Kinoteka', 'Anatomia upadku'),
+          cinema('2026-07-22T20:15:00+02:00', 'Muranów', 'Anatomia upadku'),
+          cinema('2026-07-22T21:00:00+02:00', 'Muranów', 'Anatomia upadku'),
+        ],
+      })],
+    });
+
+    expect(html).toContain('KINOTEKA · 18:00');
+    // Both of one venue's showings collapse onto that venue's own line.
+    expect(html).toContain('MURANÓW · 20:15, 21:00');
+    expect(html.match(/Anatomia upadku/g)).toHaveLength(1);
+  });
+
+  /** The gap the ticket names: the email printed an opening time for a run on
+   *  until October, which is the one fact about it that does not matter. */
+  it('dates an exhibition by when it closes, with no showtime', () => {
+    const html = render({
+      sections: [section({
+        category: 'exhibition',
+        events: [makeEvent({
+          title: 'Formy nowoczesne',
+          kind: 'exhibition',
+          startsAt: '2026-07-01T10:00:00+02:00',
+          endsAt: '2026-09-14T18:00:00+02:00',
+          venue: { id: 'z', name: 'Zachęta', category: 'exhibition', city: 'Warsaw', country: 'PL' },
+        })],
+      })],
+    });
+
+    expect(html).toContain('DO 14 WRZEŚNIA · ZACHĘTA');
+    expect(html).toContain('Formy nowoczesne');
+    // No gutter time, and no venue-and-times line of the timed kind.
+    expect(html).not.toContain('ZACHĘTA · 10:00');
+  });
+
+  it('falls back to the venue alone for a run with no closing date', () => {
+    const html = render({
+      sections: [section({
+        category: 'exhibition',
+        events: [makeEvent({
+          title: 'Wystawa stała',
+          kind: 'exhibition',
+          endsAt: null,
+          venue: { id: 'm', name: 'Muzeum Narodowe', category: 'exhibition', city: 'Warsaw', country: 'PL' },
+        })],
+      })],
+    });
+
+    expect(html).toContain('MUZEUM NARODOWE');
+    expect(html).not.toContain('DO ');
+  });
+});
+
+/**
+ * The masthead names the *issue's* span, not the widest section's (GOI-110).
+ *
+ * These are different numbers and only one of them is the issue. A weekly
+ * brief carrying a monthly museums rule has a section reaching thirty days
+ * out, and taking that as the span made the band read "10–8 WRZEŚNIA" — a
+ * range whose month comes off an end date five weeks away, over an issue
+ * covering a week. Caught by rendering the thing and looking at it.
+ */
+describe('renderBriefHtml — the span the masthead names (GOI-110)', () => {
+  const monthly = section({ category: 'exhibition', windowDays: 30, events: [makeEvent({})] });
+  const now = new Date('2026-08-10T09:00:00+02:00');
+
+  it('follows the send cadence, not the longest section in the issue', () => {
+    const html = render({ now, fallbackFrequency: 'weekly', sections: [monthly] });
+    expect(html).toContain('10–16 SIERPNIA');
+    expect(html).not.toContain('WRZEŚNIA');
+  });
+
+  it('names a single day outright for a daily brief', () => {
+    const html = render({ now, fallbackFrequency: 'daily', sections: [monthly] });
+    expect(html).toContain('10 SIERPNIA');
+    expect(html).not.toContain('–');
+  });
+
+  it('reaches a month when the issue itself is monthly', () => {
+    const html = render({ now, fallbackFrequency: 'monthly', sections: [monthly] });
+    expect(html).toContain('10–8 WRZEŚNIA');
   });
 });

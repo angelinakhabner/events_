@@ -465,7 +465,8 @@ describe('urgent change emails', () => {
     expect(result.sent).toBe(1);
     expect(sent[0]!.subject).toMatch(/has been cancelled/i);
     // Only the change. No category sections rode along.
-    expect(sent[0]!.html).toContain('Cancelled');
+    // The brief speaks Polish (GOI-110); the marker beside the title does too.
+    expect(sent[0]!.html).toContain('ODWO\u0141ANE');
     expect(sent[0]!.html).toContain('Dziady');
   });
 

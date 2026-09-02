@@ -29,7 +29,7 @@ async function textOf(
     }
   }
   // The brief's labels are letterspaced, and tracking that wide makes pdf.js
-  // emit one text item per glyph — `CHCĘ IŚĆ` reads back as `C H C Ę   I Ś Ć`.
+  // emit one text item per glyph — `WANT TO GO` reads back as `W A N T   T O   G O`.
   // `flat` drops whitespace so an assertion can ask about the letters, which is
   // what it means; order is preserved, so `indexOf` still compares positions.
   return { pages: doc.numPages, text, flat: text.replace(/\s+/g, ''), links };
@@ -262,12 +262,12 @@ describe('the saved-events queue', () => {
     });
 
     const { text, flat } = await textOf(pdf);
-    expect(flat).toContain(squash('CHCĘ IŚĆ'));
+    expect(flat).toContain(squash('WANT TO GO'));
     expect(text).toContain('Kordian');
     expect(flat).toContain(squash('ODWOŁANE'));
     expect(text).toContain('Hamlet');
     // Above the category section it shares the page with.
-    expect(flat.indexOf(squash('CHCĘ IŚĆ'))).toBeLessThan(flat.indexOf('KINO'));
+    expect(flat.indexOf(squash('WANT TO GO'))).toBeLessThan(flat.indexOf('KINO'));
   });
 
   /** The states are three different requests, not degrees of one, so each gets

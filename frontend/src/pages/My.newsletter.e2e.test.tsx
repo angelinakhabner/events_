@@ -236,9 +236,11 @@ describe('MyPage — newsletter end-to-end', () => {
     // An email document, sandboxed — not markup spliced into the page.
     expect(preview.tagName).toBe('IFRAME');
     expect(preview.getAttribute('sandbox')).toBe('');
-    expect(preview.srcdoc).toContain('AFISZ · WEEKLY');
-    expect(preview.srcdoc).toContain('This week in<br>Warsaw');
-    expect(preview.srcdoc).toContain('Nothing on in this window.');
+    // GOI-110: the brief is drawn to the design and speaks Polish — the band
+    // names the city and the span it covers, not the cadence.
+    expect(preview.srcdoc).toContain('AFISZ.KA');
+    expect(preview.srcdoc).toContain('WARSZAWA');
+    expect(preview.srcdoc).toContain('W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.');
   });
 
   // GOI-45: generating also drops the brief on disk, ready to send by hand.
@@ -646,5 +648,149 @@ describe('MyPage — newsletter end-to-end', () => {
 
     expect((await defaultNewsletterStore.get(userId))!.categoryRules.map((r) => r.category))
       .toEqual(['museums']);
+  });
+});
+
+/**
+ * The bug GOI-105 was reported as, reproduced end to end: this page, talking
+ * to an API that predates it.
+ *
+ * The dev preview serves the `dev` frontend against the production API
+ * (docs/RAILWAY.md §8), so between a merge to `dev` and the promotion that
+ * redeploys the backend the two halves disagree about the newsletter's shape.
+ * The reader pressed "Schedule newsletter" and got `Frequency: Required` /
+ * `Send weekday: Expected number, received null` — two fields their screen
+ * does not have — and pressing "Generate now" said the same thing again.
+ *
+ * The real backend cannot be made to answer that way, so the transport does:
+ * `newsletter.get` comes back in the pre-GOI-100 shape, and the two mutations
+ * come back as the rejection the pre-GOI-100 schema actually returns. What is
+ * under test is everything above the wire — that the page recognises the
+ * mismatch on arrival, and that neither button leaves the reader hunting for
+ * a control that does not exist.
+ */
+describe('MyPage — newsletter against an API older than the page (GOI-105)', () => {
+  /** Verbatim from the pre-GOI-100 schema rejecting a current payload. */
+  const STALE_REJECTION = JSON.stringify([
+    {
+      code: 'invalid_type', expected: "'daily' | 'weekly' | 'monthly'",
+      received: 'undefined', path: ['frequency'], message: 'Required',
+    },
+    {
+      code: 'invalid_type', expected: 'number', received: 'null',
+      path: ['sendWeekday'], message: 'Expected number, received null',
+    },
+  ]);
+
+  /** What `newsletter.get` returned before the cadence split. */
+  const STALE_SETTINGS = {
+    id: 'cfg-old', folderId: null, name: 'Newsletter',
+    email: USER_EMAIL, recipientName: null,
+    frequency: 'weekly',
+    sendHour: 8, sendMinute: 0, sendWeekday: 1,
+    venueIds: [], afterHour: null, beforeHour: null,
+    categoryRules: [{ category: 'cinema', frequency: 'daily', detail: 'short' }],
+    enabled: true, lastSentAt: null,
+  };
+
+  /** The real app, with every newsletter call answered as the old API would. */
+  function staleApiFetch(app: ReturnType<typeof createApp>): typeof fetch {
+    const inner = inProcessFetch(app);
+    return (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' || input instanceof URL ? input.toString() : input.url;
+      if (/my\.newsletter\.(save|preview)/.test(url)) {
+        return new Response(
+          JSON.stringify([{ error: { message: STALE_REJECTION, code: -32600, data: { code: 'BAD_REQUEST', httpStatus: 400 } } }]),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      const res = await inner(input, init);
+      // `newsletter.get` is batched with the other queries the tab makes, so
+      // the one entry is rewritten in place rather than the whole response.
+      if (/my\.newsletter\.get/.test(url)) {
+        const procedures = new URL(url.startsWith('http') ? url : `http://local${url}`)
+          .pathname.replace('/trpc/', '').split(',');
+        const at = procedures.indexOf('my.newsletter.get');
+        const body: unknown = await res.json();
+        if (at >= 0 && Array.isArray(body)) {
+          body[at] = { result: { data: STALE_SETTINGS } };
+        }
+        return new Response(JSON.stringify(body), {
+          status: res.status, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return res;
+    }) as typeof fetch;
+  }
+
+  function renderAgainstStaleApi() {
+    const app = createApp();
+    const queryClient = makeQueryClient();
+    const trpcClient = trpc.createClient({
+      links: [
+        httpBatchLink({
+          url: 'http://local/trpc',
+          fetch: staleApiFetch(app),
+          headers() {
+            const token = getSessionToken();
+            return {
+              'x-device-id': DEVICE,
+              ...(token ? { authorization: `Bearer ${token}` } : {}),
+            };
+          },
+        }),
+      ],
+    });
+    return render(
+      <MemoryRouter>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <MyPage />
+          </QueryClientProvider>
+        </trpc.Provider>
+      </MemoryRouter>,
+    );
+  }
+
+  it('says the API is the older half on arrival, before anything is pressed', async () => {
+    const user = userEvent.setup();
+    renderAgainstStaleApi();
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+
+    const banner = await screen.findByRole('alert');
+    expect(banner).toHaveTextContent(/older build than this page/i);
+    expect(banner).toHaveTextContent(/deploy the backend/i);
+    // The form is still there: a stale server is not a reason to hide the
+    // reader's own settings from them.
+    expect(await screen.findByLabelText(/email address/i)).toBeInTheDocument();
+  });
+
+  /**
+   * Both buttons, because the report named both. The field lines stay — they
+   * are the server's actual complaint — but they are no longer the whole
+   * message, which is what sent the reader looking for a "Frequency" control.
+   */
+  it('explains both buttons rather than naming fields the form does not have', async () => {
+    const user = userEvent.setup();
+    renderAgainstStaleApi();
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const email = await screen.findByLabelText(/email address/i);
+    const section = email.closest('section')!;
+
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await waitFor(() => {
+      expect(within(section).getByText(/Frequency: Required/)).toBeInTheDocument();
+    });
+    expect(within(section).getAllByText(/older build than this page/i).length).toBeGreaterThan(0);
+
+    // "Generate now" fails the same way and says so in its own line, beside
+    // the preview it could not produce — so the save error above is now one
+    // of two on screen.
+    await user.click(within(section).getByRole('button', { name: /generate now/i }));
+    await waitFor(() => {
+      expect(within(section).getAllByText(/Send weekday: Expected number, received null/))
+        .toHaveLength(2);
+    });
+    expect(within(section).getByText(/couldn.t generate a preview/i)).toBeInTheDocument();
   });
 });

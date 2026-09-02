@@ -4,6 +4,7 @@ import {
   normalizeListName,
   normalizeTags,
   normalizeVenueUrl,
+  seedVenueUrls,
 } from './user-venue-store.js';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 
@@ -16,6 +17,74 @@ describe('InMemoryUserVenueStore', () => {
     await s.ensureSeeded('u1'); // idempotent
     const venues = await s.list('u1');
     expect(venues).toHaveLength(DEFAULT_VENUES.length);
+  });
+
+  /**
+   * GOI-106. The venue table is shared and grows with every venue anybody
+   * adds; the curated list does not. Seeding from the former handed a
+   * brand-new account a stranger's venues, and — because `url` is unique but
+   * venues are not — a second copy of a cinema it was already subscribed to
+   * under a slightly different URL.
+   */
+  describe('what a brand-new account starts with (GOI-106)', () => {
+    it('is the curated venues only, not whatever other users have added', async () => {
+      const s = new InMemoryUserVenueStore();
+      // Someone else adds their own venue first. It joins the shared table,
+      // which is exactly right — it must not join the next user's /my.
+      await s.addCustom('u1', {
+        name: 'Kino Atlantic',
+        url: 'https://kinoatlantic.pl/repertuar',
+        city: 'Warsaw',
+        country: 'PL',
+        category: 'cinema',
+      });
+
+      await s.ensureSeeded('u2');
+      const names = (await s.list('u2')).map((v) => v.name);
+      expect(names).not.toContain('Kino Atlantic');
+      expect(names).toHaveLength(DEFAULT_VENUES.length);
+      expect([...names].sort()).toEqual([...DEFAULT_VENUES.map((v) => v.name)].sort());
+    });
+
+    it('lists no venue twice, even when the table holds two spellings of one', async () => {
+      const s = new InMemoryUserVenueStore();
+      // The same cinema as the curated `kino-muranow`, pasted without the
+      // path. `venues.url` is unique so this is a second row, and both used
+      // to be seeded — two "Kino Muranów" rows in a new user's /my.
+      await s.addCustom('u1', {
+        name: 'Kino Muranów',
+        url: 'https://kinomuranow.pl',
+        city: 'Warsaw',
+        country: 'PL',
+        category: 'cinema',
+      });
+
+      await s.ensureSeeded('u2');
+      const venues = await s.list('u2');
+      expect(venues.filter((v) => v.name === 'Kino Muranów')).toHaveLength(1);
+      expect(new Set(venues.map((v) => v.id)).size).toBe(venues.length);
+    });
+
+    it('still leaves a user free to add their own afterwards', async () => {
+      const s = new InMemoryUserVenueStore();
+      await s.ensureSeeded('u1');
+      await s.addCustom('u1', { ...KINOTEKA, name: 'Kinoteka (mine)', url: 'https://kinoteka.pl/en/' });
+      expect((await s.list('u1')).map((v) => v.name)).toContain('Kinoteka (mine)');
+    });
+  });
+
+  describe('seedVenueUrls', () => {
+    it('is every curated venue, in the file\'s own order', () => {
+      expect(seedVenueUrls()).toEqual(DEFAULT_VENUES.map((v) => v.url));
+    });
+
+    it('collapses entries that normalise to the same listing', () => {
+      const dupes = [
+        { ...DEFAULT_VENUES[0]!, id: 'a', url: 'https://kinomuranow.pl/repertuar' },
+        { ...DEFAULT_VENUES[0]!, id: 'b', url: 'https://kinomuranow.pl/repertuar#top' },
+      ];
+      expect(seedVenueUrls(dupes)).toEqual(['https://kinomuranow.pl/repertuar']);
+    });
   });
 
   it('two users adding the same URL share ONE venue row (scrape-once)', async () => {
