@@ -11,26 +11,54 @@ interface Props {
   now?: Date;
   /** Denser variant used inside /my, where the column is narrower. */
   compact?: boolean;
+  /**
+   * Lead with the runs rather than the clock (GOI-104).
+   *
+   * Set by the museums tab, and only by it — see the section's own note.
+   */
+  exhibitionsFirst?: boolean;
 }
 
-export function EventBuckets({ events, venues, now, compact = false }: Props) {
+export function EventBuckets({
+  events, venues, now, compact = false, exhibitionsFirst = false,
+}: Props) {
   // Exhibitions are pulled out here rather than by each caller, so every view
   // that renders a listing gets the same treatment (GOI-67).
   const { timed, exhibitions } = splitExhibitions(events);
   const buckets = bucketEvents(timed, now);
   if (buckets.length === 0 && exhibitions.length === 0) return null;
+
+  /**
+   * Where the runs go, and why it depends on the tab (GOI-67 → GOI-104).
+   *
+   * On a mixed listing the original placement is still right: exhibitions run
+   * for months, so putting them first would answer "what's on tonight?" with
+   * three things that are on every night, and push tonight's cinema below the
+   * fold. They stay under the clock there.
+   *
+   * The museums tab is the one place that reasoning inverts. Everything in it
+   * is at a museum, and the runs *are* the listing — what the reader came for
+   * is "what can I go and see, and how long have I got", which is a closing
+   * date, not a start time. Underneath them the schedule keeps its usual
+   * shape, so the museums' talks, tours and film shows are still all there;
+   * they are just no longer what the reader has to scroll past to find the
+   * exhibitions.
+   */
+  const runs =
+    exhibitions.length > 0 ? (
+      <ExhibitionsSection items={exhibitions} venues={venues} now={now} compact={compact} />
+    ) : null;
+
   return (
     <div>
+      {exhibitionsFirst ? runs : null}
       {buckets.map((b) => (
         <BucketSection key={b.key} bucket={b} venues={venues} compact={compact} />
       ))}
-      {/* Below the timed buckets: a run is context for the week, not an
-          answer to "what's on tonight". A category with only exhibitions
-          renders this section alone — no empty time-bucket headings, because
-          `bucketEvents` returns nothing to head. */}
-      {exhibitions.length > 0 ? (
-        <ExhibitionsSection items={exhibitions} venues={venues} now={now} compact={compact} />
-      ) : null}
+      {/* A category with only exhibitions renders that section alone — no
+          empty time-bucket headings, because `bucketEvents` returns nothing
+          to head. */}
+      {exhibitionsFirst ? null : runs}
     </div>
   );
 }

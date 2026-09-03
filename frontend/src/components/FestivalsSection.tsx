@@ -1,4 +1,4 @@
-import { isFestivalCategory, type Category, type FestivalCategory } from '@afisz/shared';
+import { bannerFestivals, isFestivalCategory, type Category, type FestivalCategory } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { CategorySwatch } from './CategorySwatch';
 
@@ -28,14 +28,21 @@ export function FestivalsSection({ category }: { category: Category | null }) {
 
   const festivals = trpc.festivals.list.useQuery(scope ? { category: scope } : undefined, { enabled });
 
-  if (!enabled || !festivals.data || festivals.data.length === 0) return null;
+  // GOI-99: whatever the banner at the top of the page is already announcing
+  // is dropped here. Saying it twice on one screen is not twice as clear — the
+  // second telling reads as a different festival until you look closely, and
+  // this block's job is the ones the banner is deliberately too early for.
+  const inBanner = bannerFestivals(festivals.data ?? []).map((f) => f.id);
+  const upcoming = (festivals.data ?? []).filter((f) => !inBanner.includes(f.id));
+
+  if (!enabled || upcoming.length === 0) return null;
 
   return (
     <section className="mt-12">
       <h2 className="font-display text-[28px] md:text-[36px] m-0 mb-3">Coming soon</h2>
       <div className="rule-ink" />
       <ul className="list-none m-0 p-0">
-        {festivals.data.map((f) => (
+        {upcoming.map((f) => (
           <li key={f.id} className="rule-soft">
             {/* Same anatomy as an event row: the meta group collapses to one
                 line below `md` and dissolves into columns above it. */}
@@ -53,9 +60,16 @@ export function FestivalsSection({ category }: { category: Category | null }) {
 
               <div className="flex-1 min-w-0 md:order-3">
                 <h3 className="m-0 text-[19px] md:text-[21px] font-bold leading-[1.2]">
-                  <a href={f.url} target="_blank" rel="noreferrer" className="text-ink hover:text-accent">
-                    {f.name}
-                  </a>
+                  {/* Linked only where we have a verified site (GOI-109) — a
+                      title that looks clickable and lands on a DNS error is
+                      worse than a title that doesn't. */}
+                  {f.url ? (
+                    <a href={f.url} target="_blank" rel="noreferrer" className="text-ink hover:text-accent">
+                      {f.name}
+                    </a>
+                  ) : (
+                    f.name
+                  )}
                 </h3>
                 <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] md:text-[13px] font-bold uppercase tracking-[1px]">
                   <span className={f.status === 'ongoing' ? 'text-accent' : 'text-muted'}>

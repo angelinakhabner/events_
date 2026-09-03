@@ -118,8 +118,10 @@ export interface UserVenueStore {
    *  "My venues" tab groups by folder. */
   listAll(userId: string): Promise<UserVenue[]>;
   /** First-login seeding: create the default list, make it active, and
-   *  subscribe the user to every default venue so /my starts populated.
-   *  No-op when the user already has lists/subscriptions. */
+   *  subscribe the user to the curated venues the home page is built from
+   *  (`DEFAULT_VENUES`) so /my starts populated. No-op when the user already
+   *  has lists/subscriptions. See {@link seedVenueUrls} for why the set is
+   *  the curated one rather than "every venue we know of". */
   ensureSeeded(userId: string): Promise<void>;
   /** The user's lists, oldest first, with venue counts + the active flag. */
   lists(userId: string): Promise<UserList[]>;
@@ -143,6 +145,40 @@ export interface UserVenueStore {
   remove(userId: string, venueId: string): Promise<boolean>;
   /** Max windowDays over a venue's subscribers, or null when none set one. */
   maxWindowDays(venueId: string): Promise<number | null>;
+}
+
+/**
+ * The venues a brand-new account is subscribed to (GOI-106).
+ *
+ * It is `DEFAULT_VENUES`, and the distinction that matters is what it is
+ * *not*: the `venues` table. That table is shared — it accumulates a row for
+ * every URL any user has ever added through "add a venue", because a venue
+ * added twice by two people must stay one row the scraper visits once. Seeding
+ * from it meant a new account woke up subscribed to strangers' venues, and to
+ * near-duplicates of the curated ones: `venues.url` is unique, so a second
+ * spelling of a cinema someone already follows (kinomuranow.pl vs
+ * kinomuranow.pl/repertuar) is a second row, and both landed in /my under the
+ * same name. That is the duplication the ticket reports, and it can only get
+ * worse as the venue table grows.
+ *
+ * So the seed set is the curated list the home page itself is built from —
+ * which is also the only set we can promise is actually scraped and populated.
+ * Matched by URL because the DB assigns its own uuids (see `seed.ts`, which
+ * upserts these same rows `ON CONFLICT (url)`).
+ */
+export function seedVenueUrls(seed: Venue[] = DEFAULT_VENUES): string[] {
+  // Deduped on the normalised URL rather than the raw one, so two curated
+  // entries that differ only in a trailing slash or a #fragment can never
+  // subscribe a new user to the same venue twice.
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const v of seed) {
+    const key = normalizeVenueUrl(v.url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(v.url);
+  }
+  return urls;
 }
 
 export function normalizeVenueUrl(url: string): string {
@@ -243,12 +279,29 @@ export class DbUserVenueStore implements UserVenueStore {
       )
       WHERE id = ${userId}::uuid AND active_list_id IS NULL
     `);
-    // 3. Subscribe a fresh account (no subscriptions at all) to every venue,
-    //    into the active list.
+    // 3. Subscribe a fresh account (no subscriptions at all) to the curated
+    //    venues, into the active list. Scoped to `seedVenueUrls()` rather than
+    //    the whole `venues` table (GOI-106) — see that function for why.
+    //
+    //    `sql.param` is load-bearing: interpolating the array bare expands it
+    //    into one bind per element, which postgres reads as a record — "cannot
+    //    cast type record to text[]" — rather than as the array `ANY` wants.
+    //
+    //    DISTINCT ON collapses any venue rows that normalise to the same
+    //    listing, keeping the oldest, so a duplicate that has already reached
+    //    the table cannot become two rows in a new user's /my. `venues.url` is
+    //    unique, so this is normally a no-op; it is here because the case it
+    //    guards is exactly the one the ticket reports and it costs nothing.
     await db.execute(sql`
       INSERT INTO user_venues (user_id, venue_id, list_id)
       SELECT ${userId}::uuid, v.id, u.active_list_id
-      FROM venues v JOIN users u ON u.id = ${userId}::uuid
+      FROM (
+        SELECT DISTINCT ON (coalesce(normalized_url, url)) id, created_at
+        FROM venues
+        WHERE url = ANY(${sql.param(seedVenueUrls())}::text[])
+        ORDER BY coalesce(normalized_url, url), created_at ASC
+      ) v
+      JOIN users u ON u.id = ${userId}::uuid
       WHERE NOT EXISTS (SELECT 1 FROM user_venues uv WHERE uv.user_id = ${userId}::uuid)
       ON CONFLICT DO NOTHING
     `);
@@ -573,7 +626,13 @@ export class InMemoryUserVenueStore implements UserVenueStore {
   private activeList = new Map<string, string | null>(); // userId -> listId
   private seq = 0;
 
+  /** The curated set this store was built with — what `ensureSeeded`
+   *  subscribes a new user to, as distinct from `this.venues`, which also
+   *  collects everything users add later (GOI-106). */
+  private readonly seedVenues: Venue[];
+
   constructor(seedVenues: Venue[] = DEFAULT_VENUES) {
+    this.seedVenues = seedVenues;
     this.venues = new Map(seedVenues.map((v) => [v.id, v]));
   }
 
@@ -616,7 +675,17 @@ export class InMemoryUserVenueStore implements UserVenueStore {
     const active = this.activeList.get(userId) ?? null;
     const subs = this.userSubs(userId);
     if (subs.size === 0) {
-      for (const id of this.venues.keys()) {
+      // The curated venues only, deduped — the same rule as the DB store
+      // (GOI-106). `this.venues` grows as users add their own, so iterating it
+      // subscribed each new account to everyone else's, which is the bug; and
+      // tests running against this store must see the production behaviour or
+      // they are testing something nobody ships.
+      const wanted = new Set(seedVenueUrls(this.seedVenues).map(normalizeVenueUrl));
+      const claimed = new Set<string>();
+      for (const [id, venue] of this.venues) {
+        const key = normalizeVenueUrl(venue.url);
+        if (!wanted.has(key) || claimed.has(key)) continue;
+        claimed.add(key);
         subs.set(id, { listId: active, nameOverride: null, categoryOverride: null, windowDays: null, tags: [] });
       }
     }

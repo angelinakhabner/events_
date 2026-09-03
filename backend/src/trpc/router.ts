@@ -6,6 +6,7 @@ import { googleAuthEnabled, makeSignedState } from '../services/google-auth.js';
 import { generateDefaultEvents } from '../data/default-events.js';
 import { filterEvents } from '../services/filters.js';
 import { defaultEventStore } from '../services/event-store.js';
+import type { IVenueStore } from '../services/venue-store.js';
 import { scrapeVenue } from '../services/scraper/runner.js';
 import { probeVenueUrl, problem as probeProblem } from '../services/probe/index.js';
 import { normalizeVenueUrl } from '../services/probe/normalize.js';
@@ -17,11 +18,12 @@ import {
   festivalsAtVenues, venueSchedule,
   venueFilterStatus, venueSlug, MAX_DRIVE_FOLDER_NAME,
   VENUE_SUGGEST_MAX_CANDIDATES, VENUE_SUGGEST_PER_HOUR,
-  type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
+  type Category, type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefWindowDays, buildBriefSections, currentFestival, plannedFrequency, resolveBriefVenues,
+  briefFetchWindowDays, buildBriefSections, currentFestival, plannedFrequency,
+  resolveBriefVenues,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
@@ -89,6 +91,29 @@ const dayRangeSchema = z.object({ fromDay: dayKeySchema, toDay: dayKeySchema });
  *  alone outruns the feed's own 100, and a window the caller asked for should
  *  come back whole. */
 const FROM_DAY_LIMIT = 300;
+
+/**
+ * The configured venue set as filter options, for when event counts can't
+ * answer (GOI-94). Same shape, same sort — only the counts are unknown.
+ */
+async function predefinedVenueOptions(
+  ctx: { venues: { list: IVenueStore['list'] } },
+  category: Category | undefined,
+): Promise<VenueFilterOption[]> {
+  const known = await ctx.venues.list({ category, city: 'Warsaw' });
+  return known
+    .map<VenueFilterOption>((v) => ({
+      id: v.id,
+      slug: venueSlug(v.name),
+      name: v.name,
+      url: v.url,
+      category: v.category,
+      count: 0,
+      status: venueFilterStatus({ count: 0, upcomingTotal: 0 }),
+      lastScrapedAt: null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 const events = router({
   listDefault: publicProcedure
@@ -170,17 +195,18 @@ const events = router({
         fromHour: z.number().int().min(0).max(23).optional(),
       }).optional(),
     )
-    .query(async ({ input }): Promise<{ venues: VenueFilterOption[] }> => {
-      if (!env.DATABASE_URL) return { venues: [] };
+    .query(async ({ ctx, input }): Promise<{ venues: VenueFilterOption[] }> => {
       const now = new Date();
-      const rows = await defaultEventStore.venueFilterCounts({
-        category: input?.category,
-        city: 'Warsaw',
-        fromDay: input?.range?.fromDay,
-        toDay: input?.range?.toDay,
-        fromHour: input?.fromHour,
-        now,
-      });
+      const rows = env.DATABASE_URL
+        ? await defaultEventStore.venueFilterCounts({
+            category: input?.category,
+            city: 'Warsaw',
+            fromDay: input?.range?.fromDay,
+            toDay: input?.range?.toDay,
+            fromHour: input?.fromHour,
+            now,
+          })
+        : [];
 
       const venues = rows.map((r) => ({
         id: r.id,
@@ -196,7 +222,25 @@ const events = router({
       // Sorted here so every caller gets the same order for the same inputs.
       // The frontend still freezes it per category session — see GOI-76 §3.
       venues.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-      return { venues };
+      if (venues.length > 0) return { venues };
+
+      // GOI-94: counts are what this procedure is *for*, but they are not what
+      // it is *good* for when there are none. The event table is the only
+      // thing that ever answered it, so a deployment without a database — and
+      // a database whose venue rows haven't landed yet — sent back an empty
+      // list, and the "All venues" dialog opened on "0 venues · No venue
+      // matches". Which reads as "this app has no venues", when the venue set
+      // is sitting right there in the configuration and is the very thing the
+      // reader opened the dialog to choose from.
+      //
+      // So the venue store answers instead. It is the same list the rest of
+      // the app is built on (`DEFAULT_VENUES` without a database, the venues
+      // table with one), and picking from it works whether or not anyone is
+      // logged in — which is the whole of what GOI-94 asks for. The counts are
+      // honestly zero rather than invented: nothing is known to be on, and
+      // `venueFilterStatus` reads that as `empty`, which the chip already dims
+      // and the row already explains.
+      return { venues: await predefinedVenueOptions(ctx, input?.category) };
     }),
 
   /** Upcoming screenings of one title across every venue, soonest first —
@@ -637,7 +681,21 @@ const my = router({
   }),
 
   newsletter: router({
-    get: userProcedure.query(({ ctx }) => ctx.newsletter.get(ctx.user.id)),
+    /**
+     * One folder's newsletter, or the folderless default (GOI-100).
+     *
+     * A reader may hold one per folder now, since the venues a newsletter
+     * covers are a folder's venues. Passing no folder asks for the config that
+     * predates folders, which covers everything they follow — which is what
+     * every existing subscription is.
+     */
+    get: userProcedure
+      .input(z.object({ folderId: z.string().uuid().nullable().default(null) }).optional())
+      .query(({ ctx, input }) => ctx.newsletter.get(ctx.user.id, input?.folderId ?? null)),
+
+    /** Every newsletter the reader holds, for a picker across folders. */
+    list: userProcedure.query(({ ctx }) => ctx.newsletter.list(ctx.user.id)),
+
     save: userProcedure
       .input(newsletterSaveInput)
       .mutation(({ ctx, input }) => ctx.newsletter.save(ctx.user.id, input)),
@@ -650,13 +708,15 @@ const my = router({
         const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
         // Narrowed in SQL for the same reason the sender is: `limit` cuts the
         // globally earliest rows, so a preview built from "the next 500 events"
-        // showed a short week once the database outgrew that.
+        // showed a short week once the database outgrew that. The window is the
+        // widest any section can ask for — the same call the sweep makes, so
+        // what Generate shows is what would actually be sent.
         const now = new Date();
         const all = env.DATABASE_URL && venues.length > 0
           ? await defaultEventStore.listUpcoming({
             venueIds: venues.map((v) => v.id),
             now,
-            until: new Date(now.getTime() + briefWindowDays(plannedFrequency(input)) * 24 * 3_600_000),
+            until: new Date(now.getTime() + briefFetchWindowDays(input, now) * 24 * 3_600_000),
             limit: 500,
           })
           : [];

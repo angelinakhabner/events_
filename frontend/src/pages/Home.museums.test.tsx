@@ -147,3 +147,40 @@ describe('museums view (GOI-67)', () => {
     expect(screen.queryByText(/No upcoming events/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * GOI-104: on the museums tab, the runs lead.
+ *
+ * The section itself is unchanged — same heading, same closing-date gutter.
+ * What changes is where it sits, and only on this one tab, so both orders are
+ * asserted here: the mixed listing keeps GOI-67's placement, and the museums
+ * listing inverts it.
+ */
+describe('museums view: ongoing exhibitions lead the tab (GOI-104)', () => {
+  /** Section headings in the order they appear in the document. */
+  function sectionOrder(): string[] {
+    return screen
+      .getAllByRole('heading', { level: 2 })
+      .map((h) => h.textContent ?? '');
+  }
+
+  it('puts the exhibitions under the timed buckets on the ALL tab', () => {
+    render(<HomePage />);
+    expect(sectionOrder()).toEqual(['Later today', 'Ongoing exhibitions']);
+  });
+
+  it('puts them above the schedule once Museums is selected', async () => {
+    const user = userEvent.setup();
+    render(<HomePage />);
+
+    await user.click(screen.getByRole('button', { name: 'Museums' }));
+
+    // The runs first, with the closing date and nothing else…
+    expect(sectionOrder()).toEqual(['Ongoing exhibitions', 'Later today']);
+    const section = exhibitionsSection()!;
+    expect(within(section).getByText('UNTIL 14 SEPT')).toBeInTheDocument();
+
+    // …and the museum's other events still below, in the ordinary schedule.
+    expect(screen.getByRole('heading', { name: 'Warsztaty rysunku' })).toBeInTheDocument();
+  });
+});

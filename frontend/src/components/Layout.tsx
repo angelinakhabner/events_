@@ -9,6 +9,10 @@ import { clearSessionToken, isLoggedIn } from '../lib/auth';
  *
  * Below `md` the nav moves to a fixed bottom tab bar, which is why `main`
  * carries bottom padding there: the bar sits over the end of the page.
+ *
+ * On the dev preview the wordmark carries a DEV chip, matching the DEV-marked
+ * app icon that build ships — so a screenshot of the staging site is never
+ * mistaken for production.
  */
 export function Layout() {
   return (
@@ -19,6 +23,7 @@ export function Layout() {
             AFISZ
           </span>
           <span aria-hidden className="inline-block h-[7px] w-[7px] md:h-2.5 md:w-2.5 bg-accent" />
+          <DevBadge />
         </NavLink>
 
         <nav className="hidden md:flex items-center gap-10">
@@ -34,9 +39,11 @@ export function Layout() {
         </div>
       </header>
 
-      <main className="flex-1 pb-24 md:pb-20">
+      <main className="flex-1">
         <Outlet />
       </main>
+
+      <Footer />
 
       <nav
         aria-label="Sections"
@@ -46,6 +53,53 @@ export function Layout() {
         <TabLink to="/my">/my</TabLink>
       </nav>
     </div>
+  );
+}
+
+/** Renders nothing outside the dev-preview build. */
+function DevBadge() {
+  if (import.meta.env.VITE_APP_VARIANT !== 'dev') return null;
+  return (
+    <span className="ml-1 px-1.5 py-0.5 bg-accent text-paper font-display text-[11px] md:text-[15px] leading-none tracking-[1px] self-center">
+      DEV
+    </span>
+  );
+}
+
+/**
+ * The footer, which exists to carry the two legal links (GOI-95).
+ *
+ * They have to be reachable from every page — art. 8(1)(1) of the ustawa o
+ * świadczeniu usług drogą elektroniczną requires the terms to be available to
+ * the user before they use the service, and a document you can only find by
+ * typing its URL is not available in any useful sense.
+ *
+ * Its bottom padding is what used to sit on `main`: below `md` the tab bar is
+ * fixed over the end of the page, so the last thing in the document needs room
+ * to clear it. On `main` that padding was a permanent gap above the footer.
+ */
+function Footer() {
+  return (
+    <footer className="mt-16 border-t-3 border-ink page-x py-7 pb-24 md:pb-9">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <span className="tag">
+          AFISZ &middot; Warsaw
+        </span>
+        <FooterLink to="/policy">Privacy policy</FooterLink>
+        <FooterLink to="/terms">Terms of use</FooterLink>
+      </div>
+    </footer>
+  );
+}
+
+function FooterLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <NavLink
+      to={to}
+      className="text-[11px] font-bold uppercase tracking-[1px] text-ink hover:text-accent"
+    >
+      {children}
+    </NavLink>
   );
 }
 
