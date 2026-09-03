@@ -144,7 +144,7 @@ export function landingHead({ noindex = false }: { noindex?: boolean } = {}): st
   ];
 }
 
-/** The page itself: masthead, what it is, the invitation note, contact, policy. */
+/** The page itself: masthead, what it is, how to get in, contact, policy, terms. */
 export function landingBody(): string {
   const policy = documentSections(POLICY_SECTIONS, 'privacy');
   const terms = documentSections(TERMS_SECTIONS, 'terms');
