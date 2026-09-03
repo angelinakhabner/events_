@@ -4,6 +4,8 @@ import type { BriefScope } from './newsletter.js';
 import {
   briefWindowDays,
   briefFetchWindowDays,
+  BRIEF_FETCH_LIMIT,
+  fetchBriefEvents,
   selectBriefEvents,
   isDue,
   dueSlot,
@@ -197,6 +199,135 @@ describe('selectBriefEvents', () => {
     expect(picked.map((e) => e.id)).toEqual(['matinee']);
   });
 
+  // GOI-110: "Museums are missed". They were, structurally — every one of them,
+  // from the morning after it opened.
+  it('keeps an exhibition that is running, though it opened before today', () => {
+    const open = makeEvent({
+      id: 'open', kind: 'exhibition', category: 'exhibition',
+      startsAt: '2026-06-01T00:00:00+02:00', endsAt: '2026-09-14T00:00:00+02:00',
+    });
+    const closed = makeEvent({
+      id: 'closed', kind: 'exhibition', category: 'exhibition',
+      startsAt: '2026-05-01T00:00:00+02:00', endsAt: '2026-07-01T00:00:00+02:00',
+    });
+    const openEnded = makeEvent({
+      id: 'open-ended', kind: 'exhibition', category: 'exhibition',
+      startsAt: '2026-06-01T00:00:00+02:00', endsAt: null,
+    });
+
+    const picked = selectBriefEvents([open, closed, openEnded], scope({ windowDays: 7 }), NOW);
+    expect(picked.map((e) => e.id)).toEqual(['open', 'open-ended']);
+  });
+
+  it('does not apply a time filter to an exhibition, which has no showtime', () => {
+    // A run is stored at local midnight, so "only after 6 pm" — a rule about
+    // when you would go *out* — used to empty the museums section by itself.
+    const show = makeEvent({
+      id: 'show', kind: 'exhibition', category: 'exhibition',
+      startsAt: '2026-07-01T00:00:00+02:00', endsAt: '2026-09-14T00:00:00+02:00',
+    });
+    expect(selectBriefEvents([show], scope({ afterHour: 18 }), NOW).map((e) => e.id)).toEqual(['show']);
+    expect(selectBriefEvents([show], scope({ beforeHour: 18 }), NOW).map((e) => e.id)).toEqual(['show']);
+  });
+
+  it('still drops an exhibition that opens after the window', () => {
+    const later = makeEvent({
+      id: 'later', kind: 'exhibition', category: 'exhibition',
+      startsAt: '2026-08-20T00:00:00+02:00', endsAt: '2026-11-01T00:00:00+02:00',
+    });
+    expect(selectBriefEvents([later], scope({ windowDays: 7 }), NOW)).toEqual([]);
+  });
+});
+
+// GOI-110: "Theatre is missed". One flat query capped at 500 rows, ordered by
+// start time, is spent on whichever category publishes most — so the sparse
+// sections were empty because their events were never fetched.
+describe('fetchBriefEvents', () => {
+  const VENUES = [
+    { id: 'v1', name: 'Kinoteka', tags: ['arthouse'] },
+    { id: 'v2', name: 'Teatr Polski', tags: [] },
+  ] as Parameters<typeof fetchBriefEvents>[1];
+
+  function rule(over: Partial<NewsletterCategoryRule>): NewsletterCategoryRule {
+    return {
+      category: 'cinema', cadence: 'every_issue', cadenceWeekday: null,
+      detail: 'short', timeFilter: 'any', lookaheadDays: null, sortOrder: 0, ...over,
+    };
+  }
+
+  /** A store returning `count` cinema screenings to every unnarrowed query, and
+   *  the category's own rows to a narrowed one. */
+  function storeOf(count: number, byCategory: Record<string, Event[]> = {}) {
+    const queries: EventListInput[] = [];
+    const filler = Array.from({ length: count }, (_, i) =>
+      makeEvent({ id: `film-${i}`, category: 'cinema' }));
+    return {
+      queries,
+      listUpcoming: async (q: EventListInput = {}) => {
+        queries.push(q);
+        const wanted = q.categories?.[0];
+        if (wanted) return byCategory[wanted] ?? [];
+        if (q.venueIds && q.venueIds.length === 1) return byCategory[q.venueIds[0]!] ?? [];
+        return filler.slice(0, q.limit ?? count);
+      },
+    };
+  }
+
+  it('asks once when the row cap did not bite', async () => {
+    const store = storeOf(3);
+    const out = await fetchBriefEvents(
+      { sendCadence: 'weekly', categoryRules: [rule({}), rule({ category: 'theatre', sortOrder: 1 })] },
+      VENUES, NOW, store,
+    );
+
+    expect(store.queries).toHaveLength(1);
+    expect(out).toHaveLength(3);
+  });
+
+  it('fetches each due rule on its own once the cap is reached', async () => {
+    const play = makeEvent({ id: 'play', category: 'theatre', venueId: 'v2' });
+    const store = storeOf(BRIEF_FETCH_LIMIT, { theatre: [play] });
+
+    const out = await fetchBriefEvents(
+      { sendCadence: 'weekly', categoryRules: [rule({}), rule({ category: 'theatre', sortOrder: 1 })] },
+      VENUES, NOW, store,
+    );
+
+    expect(store.queries.map((q) => q.categories?.[0])).toEqual([undefined, 'cinema', 'theatre']);
+    expect(out.map((e) => e.id)).toContain('play');
+    // Merged, not appended twice: the wide fetch already held the cinema rows.
+    expect(new Set(out.map((e) => e.id)).size).toBe(out.length);
+  });
+
+  it('narrows a tag rule by the venues carrying the tag, not by category', async () => {
+    const store = storeOf(BRIEF_FETCH_LIMIT, { v1: [makeEvent({ id: 'tagged' })] });
+
+    const out = await fetchBriefEvents(
+      { sendCadence: 'weekly', categoryRules: [rule({ category: 'arthouse' })] },
+      VENUES, NOW, store,
+    );
+
+    expect(store.queries[1]!.venueIds).toEqual(['v1']);
+    expect(store.queries[1]!.categories).toBeUndefined();
+    expect(out.map((e) => e.id)).toContain('tagged');
+  });
+
+  it('leaves out a rule this issue does not carry', async () => {
+    const store = storeOf(BRIEF_FETCH_LIMIT);
+    // Monthly rule, on a weekly newsletter, in the last week of the month.
+    await fetchBriefEvents(
+      { sendCadence: 'weekly', categoryRules: [rule({ category: 'theatre', cadence: 'monthly' })] },
+      VENUES, NOW, store,
+    );
+
+    expect(store.queries).toHaveLength(1);
+  });
+
+  it('asks for nothing at all when the reader follows no venue', async () => {
+    const store = storeOf(10);
+    expect(await fetchBriefEvents({ sendCadence: 'daily', categoryRules: [] }, [], NOW, store)).toEqual([]);
+    expect(store.queries).toHaveLength(0);
+  });
 });
 
 // The heart of per-category briefs: which sections turn up today, what each
