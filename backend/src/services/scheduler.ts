@@ -3,7 +3,7 @@ import { getDb, schema } from '../db/index.js';
 import { env } from '../config.js';
 import { scrapeVenue } from './scraper/runner.js';
 import { scrapeVenuesBatched, DEFAULT_BATCH_CONCURRENCY } from './scraper/batch.js';
-import { defaultBatchClient } from './scraper/extractor.js';
+import { defaultBatchClient, needsDailySweep } from './scraper/extractor.js';
 
 const TZ = 'Europe/Warsaw';
 
@@ -34,6 +34,18 @@ const RETRY_BACKOFFS_MIN = [30, 60, 120];
  *   - 0–6 (Sun–Sat) → weekly, only on that weekday. Most venues publish
  *     schedules weeks/months out, so a daily sweep mostly re-bills tokens for
  *     unchanged listings; weekly cuts that cost ~7×.
+ *
+ * "Most venues" is doing real work in that sentence, and it excludes the
+ * cinemas (GOI-107). A cinema's listing *is* a week — Muranów publishes Friday
+ * to Thursday and posts the next week mid-week — so a weekly sweep never
+ * overlaps it: whatever the cinema announces after the sweep stays invisible
+ * for up to seven days, and the app shows two or three screenings for a day
+ * the cinema is showing a dozen on. So on the days the weekly sweep is not
+ * running, the short-horizon venues (`needsDailySweep`) are swept anyway. The
+ * timer therefore fires daily under both settings; what changes is who is in
+ * the sweep. Warsaw's cinemas are two deterministic scrapers and one LLM one,
+ * so the extra daily pass costs a single extraction.
+ *
  * Skips silently when DATABASE_URL is unset.
  *
  * After each sweep, venues that failed on a retryable error (out of credits /
@@ -62,12 +74,18 @@ export function startScrapeScheduler(opts: { hour?: number; dayOfWeek?: number }
 
   const arm = () => {
     if (stopped) return;
-    const delay = msUntilNextWarsawTime(hour, dayOfWeek);
-    const cadence = dayOfWeek === undefined ? 'daily' : `weekly on ${WEEKDAY_NAME[dayOfWeek]}`;
+    // Always daily: on a weekly cadence the off-day fires still sweep the
+    // short-horizon venues (GOI-107). `dayOfWeek` decides who is swept, not
+    // whether the timer fires.
+    const delay = msUntilNextWarsawTime(hour);
+    const cadence = dayOfWeek === undefined
+      ? 'daily'
+      : `weekly on ${WEEKDAY_NAME[dayOfWeek]}, short-horizon venues daily`;
     console.log(`[scheduler] next scrape in ${(delay / 3_600_000).toFixed(1)}h (${cadence} at ${String(hour).padStart(2, '0')}:00 ${TZ})`);
     dailyTimer = setTimeout(async () => {
       try {
-        await scrapeAllVenues();
+        const full = dayOfWeek === undefined || warsawWeekday(new Date()) === dayOfWeek;
+        await scrapeAllVenues({ shortHorizonOnly: !full });
         await runRetryPasses();
       } catch (e) {
         console.error('[scheduler] scrape sweep failed:', e);
@@ -133,13 +151,17 @@ export function readVenueGapMs(): number {
   return n;
 }
 
-export async function scrapeAllVenues(): Promise<void> {
+export async function scrapeAllVenues(opts: { shortHorizonOnly?: boolean } = {}): Promise<void> {
   const db = getDb();
   const total = await db.select({ id: schema.venues.id }).from(schema.venues);
-  const targets = await scrapeTargetVenues();
-  const skipped = total.length - targets.length;
+  const all = await scrapeTargetVenues();
+  // The off-day pass of a weekly cadence: only the venues whose listings turn
+  // over faster than a week (GOI-107).
+  const targets = opts.shortHorizonOnly ? all.filter((v) => needsDailySweep(v.category)) : all;
+  const skipped = total.length - all.length;
   console.log(
     `[scheduler] scraping ${targets.length}/${total.length} venue(s)` +
+    (opts.shortHorizonOnly ? ' (short-horizon pass)' : '') +
     (skipped > 0 ? ` (${skipped} only in inactive lists — skipped)` : '') + '...',
   );
   await scrapeVenues(targets);
@@ -154,10 +176,10 @@ export async function scrapeAllVenues(): Promise<void> {
  * don't scrape". They catch up as soon as their owner switches back
  * (list_id IS NULL legacy rows count as active until adopted into a list).
  */
-export async function scrapeTargetVenues(): Promise<Pick<VenueRow, 'id' | 'name'>[]> {
+export async function scrapeTargetVenues(): Promise<Pick<VenueRow, 'id' | 'name' | 'category'>[]> {
   const db = getDb();
   const result = await db.execute(sql`
-    SELECT v.id, v.name FROM venues v
+    SELECT v.id, v.name, v.category FROM venues v
     WHERE NOT EXISTS (SELECT 1 FROM user_venues uv WHERE uv.venue_id = v.id)
        OR EXISTS (
          SELECT 1 FROM user_venues uv
@@ -167,7 +189,7 @@ export async function scrapeTargetVenues(): Promise<Pick<VenueRow, 'id' | 'name'
        )
     ORDER BY v.created_at ASC
   `);
-  return unwrapRows<{ id: string; name: string }>(result);
+  return unwrapRows<{ id: string; name: string; category: string }>(result);
 }
 
 type VenueRow = typeof schema.venues.$inferSelect;

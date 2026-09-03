@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import type { Event } from '@afisz/shared';
+import type { Event, NewsletterCategoryRule } from '@afisz/shared';
+import type { BriefScope } from './newsletter.js';
 import {
   briefWindowDays,
+  briefFetchWindowDays,
   selectBriefEvents,
   isDue,
   dueSlot,
   resolveBriefVenues,
   sendNewsletterBriefs,
   buildBriefSections,
-  isRuleDue,
   eventInCategory,
   briefSubject,
   wasRecentlySent,
@@ -44,24 +45,80 @@ function makeEvent(over: Partial<Event>): Event {
   };
 }
 
-function makeSub(over: Partial<NewsletterSubscription>): NewsletterSubscription {
+function makeSub(over: Partial<NewsletterSubscription> = {}): NewsletterSubscription {
   return {
     userId: 'u1',
+    id: 'cfg-1',
+    folderId: null,
+    name: 'Newsletter',
     email: 'user@example.com',
     recipientName: null,
-    frequency: 'daily',
+    delivery: 'email',
+    sendCadence: 'daily',
     venueIds: [],
-    afterHour: null,
     beforeHour: null,
     sendHour: 8,
     sendMinute: 0,
-    sendWeekday: 1,
+    sendWeekday: null,
+    sendDayOfMonth: null,
+    timezone: 'Europe/Warsaw',
+    suppressEmptyIssues: true,
+    wantToGo: { enabled: true, horizonDays: 7, changesEnabled: true, urgentSend: true },
     categoryRules: [],
     enabled: true,
     lastSentAt: null,
     ...over,
   };
 }
+
+/** A rule with the fields a caller isn't asserting on filled in. */
+function makeRule(over: Partial<NewsletterCategoryRule> & { category: string }): NewsletterCategoryRule {
+  return {
+    cadence: 'every_issue',
+    cadenceWeekday: null,
+    detail: 'short',
+    timeFilter: 'any',
+    lookaheadDays: null,
+    sortOrder: 0,
+    ...over,
+  };
+}
+
+/** What `selectBriefEvents` takes since GOI-100: a span in days rather than a
+ *  cadence, because a section's window is derived from two cadences at once. */
+function scope(over: Partial<BriefScope> = {}): BriefScope {
+  return { windowDays: 1, venueIds: [], ...over };
+}
+
+describe('briefFetchWindowDays', () => {
+  it('is the send cadence when there are no rules', () => {
+    expect(briefFetchWindowDays(makeSub({ sendCadence: 'weekly' }), NOW)).toBe(7);
+  });
+
+  it('never comes out narrower than the issue carrying it', () => {
+    // A monthly section in a weekly newsletter covers 28 days; the floor only
+    // has to make sure a *narrower* set of rules can't shrink the fetch.
+    const sub = makeSub({
+      sendCadence: 'weekly',
+      categoryRules: [makeRule({ category: 'cinema', cadence: 'every_issue' })],
+    });
+    expect(briefFetchWindowDays(sub, NOW)).toBe(7);
+  });
+
+  it('reaches as far as the widest lookahead override, past a month', () => {
+    // The bug this replaced: the fetch was derived from a *cadence*, which
+    // tops out at 30 days, so a 60-day section was built from 30 days of
+    // events and lost the rest without saying so.
+    const sub = makeSub({
+      sendCadence: 'weekly',
+      categoryRules: [
+        makeRule({ category: 'cinema' }),
+        makeRule({ category: 'theatre', cadence: 'monthly', lookaheadDays: 60, sortOrder: 1 }),
+      ],
+    });
+    expect(briefFetchWindowDays(sub, NOW)).toBe(60);
+  });
+});
 
 describe('briefWindowDays', () => {
   it('is a day, a week or a month', () => {
@@ -92,35 +149,14 @@ describe('eventInCategory', () => {
   });
 });
 
-describe('isRuleDue', () => {
-  const monday = new Date('2026-07-20T06:00:00Z');
-  const wednesday = new Date('2026-07-22T06:00:00Z');
-  const firstOfMonth = new Date('2026-08-01T06:00:00Z');
-
-  it('is always due when daily', () => {
-    expect(isRuleDue('daily', wednesday, 1)).toBe(true);
-  });
-
-  it('is due weekly only on the subscription\'s send weekday', () => {
-    expect(isRuleDue('weekly', monday, 1)).toBe(true);
-    expect(isRuleDue('weekly', wednesday, 1)).toBe(false);
-    expect(isRuleDue('weekly', wednesday, 3)).toBe(true);
-  });
-
-  it('is due monthly only on the 1st', () => {
-    expect(isRuleDue('monthly', firstOfMonth, 1)).toBe(true);
-    expect(isRuleDue('monthly', wednesday, 1)).toBe(false);
-  });
-});
-
 describe('briefSubject', () => {
-  const s = (frequency: 'daily' | 'weekly' | 'monthly') =>
-    ({ category: 'x', frequency, detail: 'short' as const, events: [] });
+  const s = (windowDays: number) =>
+    ({ category: 'x', windowDays, detail: 'short' as const, events: [] });
 
-  it('reads to the widest cadence in the email', () => {
-    expect(briefSubject([s('daily')])).toMatch(/today/i);
-    expect(briefSubject([s('daily'), s('weekly')])).toMatch(/week/i);
-    expect(briefSubject([s('daily'), s('monthly')])).toMatch(/month/i);
+  it('reads to the widest window in the email', () => {
+    expect(briefSubject([s(1)])).toMatch(/today/i);
+    expect(briefSubject([s(1), s(7)])).toMatch(/week/i);
+    expect(briefSubject([s(1), s(30)])).toMatch(/month/i);
   });
 });
 
@@ -130,10 +166,10 @@ describe('selectBriefEvents', () => {
     const nextWeek = makeEvent({ id: 'next-week', startsAt: '2026-07-27T20:00:00+02:00' });
     const past = makeEvent({ id: 'past', startsAt: '2026-07-21T20:00:00+02:00' });
 
-    const daily = selectBriefEvents([today, nextWeek, past], makeSub({ frequency: 'daily' }), NOW);
+    const daily = selectBriefEvents([today, nextWeek, past], scope({ windowDays: 1 }), NOW);
     expect(daily.map((e) => e.id)).toEqual(['today']);
 
-    const weekly = selectBriefEvents([today, nextWeek, past], makeSub({ frequency: 'weekly' }), NOW);
+    const weekly = selectBriefEvents([today, nextWeek, past], scope({ windowDays: 7 }), NOW);
     expect(weekly.map((e) => e.id)).toEqual(['today', 'next-week']);
   });
 
@@ -141,15 +177,15 @@ describe('selectBriefEvents', () => {
     const a = makeEvent({ id: 'a', venueId: 'v1' });
     const b = makeEvent({ id: 'b', venueId: 'v2' });
 
-    expect(selectBriefEvents([a, b], makeSub({ venueIds: ['v2'] }), NOW).map((e) => e.id)).toEqual(['b']);
-    expect(selectBriefEvents([a, b], makeSub({ venueIds: [] }), NOW)).toHaveLength(2);
+    expect(selectBriefEvents([a, b], scope({ venueIds: ['v2'] }), NOW).map((e) => e.id)).toEqual(['b']);
+    expect(selectBriefEvents([a, b], scope({ venueIds: [] }), NOW)).toHaveLength(2);
   });
 
   it('applies the after-hour filter on the Warsaw clock ("after 6 pm")', () => {
     const matinee = makeEvent({ id: 'matinee', startsAt: '2026-07-22T15:00:00+02:00' });
     const evening = makeEvent({ id: 'evening', startsAt: '2026-07-22T18:30:00+02:00' });
 
-    const picked = selectBriefEvents([matinee, evening], makeSub({ afterHour: 18 }), NOW);
+    const picked = selectBriefEvents([matinee, evening], scope({ afterHour: 18 }), NOW);
     expect(picked.map((e) => e.id)).toEqual(['evening']);
   });
 
@@ -157,7 +193,7 @@ describe('selectBriefEvents', () => {
     const matinee = makeEvent({ id: 'matinee', startsAt: '2026-07-22T15:00:00+02:00' });
     const evening = makeEvent({ id: 'evening', startsAt: '2026-07-22T20:00:00+02:00' });
 
-    const picked = selectBriefEvents([matinee, evening], makeSub({ beforeHour: 18 }), NOW);
+    const picked = selectBriefEvents([matinee, evening], scope({ beforeHour: 18 }), NOW);
     expect(picked.map((e) => e.id)).toEqual(['matinee']);
   });
 
@@ -181,7 +217,7 @@ describe('buildBriefSections', () => {
   }
 
   it('with no rules, returns one unnamed section on the subscription cadence', () => {
-    const sections = buildBriefSections(week(), makeSub({ frequency: 'daily' }), VENUES, NOW);
+    const sections = buildBriefSections(week(), makeSub({ sendCadence: 'daily' }), VENUES, NOW);
     expect(sections).toHaveLength(1);
     expect(sections[0]!.category).toBe('');
     expect(sections[0]!.events.map((e) => e.id).sort()).toEqual(['comedy-today', 'film-today']);
@@ -192,8 +228,8 @@ describe('buildBriefSections', () => {
       week(),
       makeSub({
         categoryRules: [
-          { category: 'cinema', frequency: 'weekly', detail: 'short' },
-          { category: 'comedy', frequency: 'daily', detail: 'full' },
+          makeRule({ category: 'cinema', cadence: 'weekly', cadenceWeekday: 3, detail: 'short' }),
+          makeRule({ category: 'comedy', cadence: 'every_issue', detail: 'full' }),
         ],
         sendWeekday: 3, // Wednesday — the weekly rule is due today
       }),
@@ -214,8 +250,8 @@ describe('buildBriefSections', () => {
       week(),
       makeSub({
         categoryRules: [
-          { category: 'cinema', frequency: 'daily', detail: 'short' },
-          { category: 'comedy', frequency: 'monthly', detail: 'full' },
+          makeRule({ category: 'cinema', cadence: 'every_issue', detail: 'short' }),
+          makeRule({ category: 'comedy', cadence: 'monthly', detail: 'full' }),
         ],
       }),
       VENUES,
@@ -234,8 +270,8 @@ describe('buildBriefSections', () => {
       events,
       makeSub({
         categoryRules: [
-          { category: 'cinema', frequency: 'daily', detail: 'short' },
-          { category: 'comedy', frequency: 'monthly', detail: 'full' },
+          makeRule({ category: 'cinema', cadence: 'every_issue', detail: 'short' }),
+          makeRule({ category: 'comedy', cadence: 'monthly', detail: 'full' }),
         ],
       }),
       VENUES,
@@ -249,7 +285,7 @@ describe('buildBriefSections', () => {
   it('matches a rule naming one of the reader\'s venue tags', () => {
     const sections = buildBriefSections(
       week(),
-      makeSub({ categoryRules: [{ category: 'arthouse', frequency: 'daily', detail: 'short' }] }),
+      makeSub({ categoryRules: [makeRule({ category: 'arthouse', cadence: 'every_issue', detail: 'short' })] }),
       VENUES,
       NOW,
     );
@@ -262,8 +298,8 @@ describe('buildBriefSections', () => {
       week(),
       makeSub({
         categoryRules: [
-          { category: 'cinema', frequency: 'daily', detail: 'short' },
-          { category: 'arthouse', frequency: 'daily', detail: 'full' },
+          makeRule({ category: 'cinema', cadence: 'every_issue', detail: 'short' }),
+          makeRule({ category: 'arthouse', cadence: 'every_issue', detail: 'full' }),
         ],
       }),
       VENUES,
@@ -277,7 +313,7 @@ describe('buildBriefSections', () => {
   it('drops a rule that caught nothing rather than showing an empty section', () => {
     const sections = buildBriefSections(
       week(),
-      makeSub({ categoryRules: [{ category: 'opera', frequency: 'daily', detail: 'short' }] }),
+      makeSub({ categoryRules: [makeRule({ category: 'opera', cadence: 'every_issue', detail: 'short' })] }),
       VENUES,
       NOW,
     );
@@ -342,7 +378,7 @@ describe('dueSlot', () => {
 
   it('for weekly subs lands on the chosen weekday', () => {
     // Weekly Monday brief, asked for on a Wednesday → last Monday 08:00 Warsaw.
-    const sub = makeSub({ frequency: 'weekly', sendWeekday: 1, sendHour: 8 });
+    const sub = makeSub({ sendCadence: 'weekly', sendWeekday: 1, sendHour: 8 });
     expect(dueSlot(sub, NOW)?.toISOString()).toBe('2026-07-20T06:00:00.000Z');
   });
 
@@ -400,7 +436,7 @@ describe('isDue', () => {
   });
 
   it('holds a weekly brief until its weekday', () => {
-    const sub = makeSub({ frequency: 'weekly', sendWeekday: 1, sendHour: 8, lastSentAt: '2026-07-20T06:00:00Z' });
+    const sub = makeSub({ sendCadence: 'weekly', sendWeekday: 1, sendHour: 8, lastSentAt: '2026-07-20T06:00:00Z' });
     expect(isDue(sub, new Date('2026-07-22T06:00:00Z'))).toBe(false); // Wednesday
     expect(isDue(sub, new Date('2026-07-27T06:00:00Z'))).toBe(true); // next Monday
   });
@@ -437,7 +473,7 @@ describe('sendNewsletterBriefs', () => {
 
   it('reports why nothing was sent instead of skipping silently', async () => {
     const store = await storeWith({
-      email: 'a@b.pl', frequency: 'daily', venueIds: [], sendHour: 8, enabled: true,
+      email: 'a@b.pl', sendCadence: 'daily', venueIds: [], sendHour: 8, enabled: true,
     });
     // 03:00 Warsaw — no slot in the catch-up window.
     const res = await sendNewsletterBriefs(store, new Date('2026-07-22T01:00:00Z'), { ...deps(), dryRun: true });
@@ -449,7 +485,7 @@ describe('sendNewsletterBriefs', () => {
 
   it('force ignores the schedule but still needs venues', async () => {
     const store = await storeWith({
-      email: 'a@b.pl', frequency: 'daily', venueIds: [], sendHour: 8, enabled: true,
+      email: 'a@b.pl', sendCadence: 'daily', venueIds: [], sendHour: 8, enabled: true,
     });
     // 03:00 Warsaw — nowhere near the 08:00 slot, so this would be 'not-due'
     // without force. Past that gate it reports the real obstacle: an empty
@@ -467,7 +503,7 @@ describe('sendNewsletterBriefs', () => {
     // brief once the database holds more than that. The venues and the window
     // have to reach SQL.
     const store = await storeWith({
-      email: 'a@b.pl', frequency: 'weekly', venueIds: ['v1', 'v2'], sendHour: 8, sendWeekday: 1, enabled: true,
+      email: 'a@b.pl', sendCadence: 'weekly', venueIds: ['v1', 'v2'], sendHour: 8, sendWeekday: 1, enabled: true,
     });
     const queries: EventListInput[] = [];
     await sendNewsletterBriefs(store, NOW, {
@@ -484,10 +520,36 @@ describe('sendNewsletterBriefs', () => {
     expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 7 * 24 * 3_600_000);
   });
 
+  it('fetches as far ahead as the widest section reaches, not as far as the cadence', async () => {
+    // A 60-day lookahead on a weekly newsletter: the query has to cover the
+    // section, or the section is silently truncated at the cadence's 30 days
+    // while still claiming the wider window in the subject line and the PDF.
+    const store = await storeWith({
+      email: 'a@b.pl',
+      sendCadence: 'weekly',
+      venueIds: ['v1', 'v2'],
+      sendHour: 8,
+      sendWeekday: 1,
+      enabled: true,
+      categoryRules: [
+        { category: 'cinema', cadence: 'monthly', cadenceWeekday: null, detail: 'short', timeFilter: 'any', lookaheadDays: 60, sortOrder: 0 },
+      ],
+    });
+    const queries: EventListInput[] = [];
+    await sendNewsletterBriefs(store, NOW, {
+      ...deps(await venuesFollowedByU1()),
+      events: { listUpcoming: async (q = {}) => { queries.push(q); return []; } },
+      dryRun: true,
+      force: true,
+    });
+
+    expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 60 * 24 * 3_600_000);
+  });
+
   it('only restricts the sweep to one subscriber', async () => {
     const store = new InMemoryNewsletterStore();
-    await store.save('u1', { email: 'a@b.pl', frequency: 'daily', venueIds: [], enabled: true });
-    await store.save('u2', { email: 'c@d.pl', frequency: 'daily', venueIds: [], enabled: true });
+    await store.save('u1', { email: 'a@b.pl', sendCadence: 'daily', venueIds: [], enabled: true });
+    await store.save('u2', { email: 'c@d.pl', sendCadence: 'daily', venueIds: [], enabled: true });
 
     const res = await sendNewsletterBriefs(store, NOW, { ...deps(), dryRun: true, only: 'c@d.pl' });
     expect(res.outcomes.map((o) => o.email)).toEqual(['c@d.pl']);
@@ -497,29 +559,30 @@ describe('sendNewsletterBriefs', () => {
 describe('InMemoryNewsletterStore', () => {
   it('saves and reads back settings, preserving lastSentAt across saves', async () => {
     const store = new InMemoryNewsletterStore();
-    await store.save('u1', {
+    const saved = await store.save('u1', {
       email: 'a@b.pl',
-      frequency: 'daily',
+      sendCadence: 'daily',
       venueIds: ['v1'],
-      afterHour: 18,
       enabled: true,
     });
-    await store.markSent('u1', new Date('2026-07-22T06:00:00Z'));
+    // Addressed by config id since GOI-100 — a reader may hold one per folder.
+    await store.markSent(saved.id, new Date('2026-07-22T06:00:00Z'));
     const updated = await store.save('u1', {
       email: 'a@b.pl',
-      frequency: 'weekly',
+      sendCadence: 'weekly',
+      sendWeekday: 1,
       venueIds: ['v1', 'v2'],
       enabled: true,
     });
 
-    expect(updated.frequency).toBe('weekly');
+    expect(updated.sendCadence).toBe('weekly');
     expect(updated.lastSentAt).toBe('2026-07-22T06:00:00.000Z');
   });
 
   it('listEnabled returns only enabled subscriptions', async () => {
     const store = new InMemoryNewsletterStore();
-    await store.save('on', { email: 'on@x.pl', frequency: 'daily', venueIds: [], enabled: true });
-    await store.save('off', { email: 'off@x.pl', frequency: 'daily', venueIds: [], enabled: false });
+    await store.save('on', { email: 'on@x.pl', sendCadence: 'daily', venueIds: [], enabled: true });
+    await store.save('off', { email: 'off@x.pl', sendCadence: 'daily', venueIds: [], enabled: false });
 
     const subs = await store.listEnabled();
     expect(subs.map((s) => s.userId)).toEqual(['on']);

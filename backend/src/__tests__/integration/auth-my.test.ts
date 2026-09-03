@@ -294,7 +294,7 @@ describe('auth + /my flow (in-process)', () => {
     const res = await trpcCall('my.newsletter.preview', {
       body: {
         email: `hana-${RUN}@example.com`,
-        frequency: 'weekly',
+        sendCadence: 'weekly',
         venueIds: [],
         sendHour: 9,
         sendWeekday: 4,
@@ -305,8 +305,9 @@ describe('auth + /my flow (in-process)', () => {
     });
     expect(res.status).toBe(200);
     const { html, events } = res.data as { html: string; events: unknown[] };
-    expect(html).toContain('This week in<br>Warsaw');
-    expect(html).toContain('AFISZ · WEEKLY');
+    // GOI-110: the band names the city and the span, not the cadence.
+    expect(html).toContain('WARSZAWA');
+    expect(html).toContain('AFISZ.KA');
     expect(Array.isArray(events)).toBe(true);
     // Preview must not create a subscription.
     expect((await trpcCall('my.newsletter.get', { token: hana })).data).toBeNull();
@@ -509,5 +510,161 @@ describe('my.venues.activity (GOI-13)', () => {
 
   it('is unauthorized without a session', async () => {
     expect((await trpcCall('my.venues.activity')).status).toBe(401);
+  });
+});
+
+/**
+ * GOI-92 — the Elsewhere flow's folder handling, through the real router.
+ *
+ * In CI this runs against Postgres, where the unique index from 0025 is the
+ * thing actually being tested: the store's own normalisation and the index's
+ * `lower(btrim(name))` have to agree, and no unit test can prove that.
+ */
+describe('Elsewhere: the destination city folder (GOI-92)', () => {
+  const venue = (n: number) => ({
+    name: `Elsewhere venue ${n} ${RUN}`,
+    url: `https://elsewhere-${RUN}-${n}.example/programm`,
+    city: 'Berlin',
+    country: 'DE',
+    category: 'theatre' as const,
+  });
+
+  it('creates the city folder on the first add and reuses it however it is spelled', async () => {
+    const token = await login(`elsewhere-${RUN}@example.com`);
+    const city = `Berlin ${RUN}`;
+
+    // Nothing yet — the search itself creates no folder, so an abandoned one
+    // leaves nothing behind.
+    const before = (await trpcCall('my.lists.list', { token })).data as Array<{ name: string }>;
+    expect(before.some((l) => l.name === city)).toBe(false);
+
+    for (const [i, spelling] of [city, city.toLowerCase(), `  ${city.toUpperCase()} `].entries()) {
+      const res = await trpcCall('my.venues.add', {
+        body: { ...venue(i), listName: spelling },
+        token,
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const after = (await trpcCall('my.lists.list', { token })).data as Array<{
+      id: string; name: string; venueCount: number;
+    }>;
+    const matching = after.filter((l) => l.name.trim().toLowerCase() === city.toLowerCase());
+    expect(matching).toHaveLength(1);
+    // The display form is the first spelling, not the normalised key.
+    expect(matching[0]!.name).toBe(city);
+    expect(matching[0]!.venueCount).toBe(3);
+  });
+
+  it('keeps the probe verdict on a venue added despite a failed check', async () => {
+    const token = await login(`elsewhere-probe-${RUN}@example.com`);
+    const res = await trpcCall('my.venues.add', {
+      body: {
+        ...venue(99),
+        listName: `Berlin probe ${RUN}`,
+        probe: { probeErrorCode: 'BLOCKED', requiresPaidFetch: false },
+      },
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect((res.data as { probeErrorCode: string | null }).probeErrorCode).toBe('BLOCKED');
+
+    const listed = (await trpcCall('my.venues.listAll', { token })).data as Array<{
+      url: string; probeErrorCode: string | null;
+    }>;
+    expect(listed.find((v) => v.url === venue(99).url)?.probeErrorCode).toBe('BLOCKED');
+  });
+
+  it('refuses two folders differing only by case', async () => {
+    const token = await login(`elsewhere-case-${RUN}@example.com`);
+    const name = `Poznan ${RUN}`;
+    expect((await trpcCall('my.lists.create', { body: { name }, token })).status).toBe(200);
+    const dup = await trpcCall('my.lists.create', { body: { name: name.toUpperCase() }, token });
+    expect(dup.status).not.toBe(200);
+    expect(dup.error).toMatch(/already have a list/i);
+  });
+});
+
+/**
+ * GOI-106: what a brand-new account is subscribed to on first login.
+ *
+ * These run against the real Postgres in CI, which is the only place the bug
+ * and its fix actually live — `ensureSeeded`'s DB path is raw SQL, so the
+ * in-memory unit tests can agree with it and still both be wrong. (They were:
+ * the first cut of this fix passed every unit test and failed here, because
+ * interpolating a JS array into drizzle's `sql` template binds one parameter
+ * per element rather than an array.)
+ *
+ * Deliberately written to survive the shared CI database: other test files add
+ * their own venues to the same `venues` table in parallel, and the assertion
+ * is that none of them can reach a new account — which is the whole ticket.
+ */
+describe('new-account venue seeding (GOI-106)', () => {
+  it('seeds only the curated venues, whatever else is in the shared table', async () => {
+    // A venue somebody else added. It belongs in the shared table — the
+    // scraper visits one row per URL — and must not reach the next account.
+    const intruderUrl = `https://intruder-${RUN}.example/program`;
+    const owner = await login(`venue-owner-${RUN}@example.com`);
+    expect(
+      (await trpcCall('my.venues.add', {
+        body: { name: `Klub Intruder ${RUN}`, url: intruderUrl, category: 'music' },
+        token: owner,
+      })).status,
+    ).toBe(200);
+
+    // A *later* first login. Before the fix this account was subscribed to
+    // every row in `venues`, the line above included.
+    const newcomer = await login(`newcomer-${RUN}@example.com`);
+    const seeded = (await trpcCall('my.venues.list', { token: newcomer })).data as Array<{
+      id: string; url: string; name: string;
+    }>;
+
+    expect(seeded.map((v) => v.url)).not.toContain(intruderUrl);
+    // Stated as the rule rather than as a count: every venue a new account
+    // gets is one of the curated ones. An exact count would be wrong here
+    // even when the code is right — scraper.test.ts deletes curated rows
+    // (Klub Komediowy, Muzeum Narodowe, Królikarnia) to exercise migrations,
+    // and a venue with no row is a venue nobody can be subscribed to.
+    const curated = new Set(DEFAULT_VENUES.map((v) => v.url));
+    expect(seeded.filter((v) => !curated.has(v.url))).toEqual([]);
+    // …and it is still a real seeding, not an empty list passing by default.
+    expect(seeded.length).toBeGreaterThan(DEFAULT_VENUES.length / 2);
+    expect(seeded.map((v) => v.url)).toContain(
+      DEFAULT_VENUES.find((v) => v.id === 'kinoteka')!.url,
+    );
+  });
+
+  it('lists no venue twice, even when the table holds two spellings of one', async () => {
+    // The same cinema as the curated `kino-muranow`, pasted without the path.
+    // `venues.url` is unique, so this is a genuinely separate row — and both
+    // used to be seeded, which is the duplication the ticket reports.
+    const muranow = DEFAULT_VENUES.find((v) => v.id === 'kino-muranow')!;
+    const owner = await login(`dupe-owner-${RUN}@example.com`);
+    await trpcCall('my.venues.add', {
+      body: { name: 'Kino Muranów', url: `https://kinomuranow.pl/?ref=${RUN}`, category: 'cinema' },
+      token: owner,
+    });
+
+    const newcomer = await login(`dupe-newcomer-${RUN}@example.com`);
+    const seeded = (await trpcCall('my.venues.list', { token: newcomer })).data as Array<{
+      id: string; url: string; name: string;
+    }>;
+
+    expect(seeded.filter((v) => v.url === muranow.url)).toHaveLength(1);
+    expect(seeded.filter((v) => v.name === 'Kino Muranów')).toHaveLength(1);
+    expect(new Set(seeded.map((v) => v.id)).size).toBe(seeded.length);
+  });
+
+  it('still lets the newcomer add venues of their own afterwards', async () => {
+    const token = await login(`newcomer-adds-${RUN}@example.com`);
+    const url = `https://mine-${RUN}.example/program`;
+    expect(
+      (await trpcCall('my.venues.add', {
+        body: { name: 'Moje miejsce', url, category: 'music' },
+        token,
+      })).status,
+    ).toBe(200);
+    const listed = (await trpcCall('my.venues.list', { token })).data as Array<{ url: string }>;
+    expect(listed.map((v) => v.url)).toContain(url);
   });
 });

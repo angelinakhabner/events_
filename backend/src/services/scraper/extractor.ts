@@ -378,6 +378,36 @@ export function windowDaysForCategory(category: string | undefined): number {
   return (category && WINDOW_DAYS_BY_CATEGORY[category]) || DEFAULT_WINDOW_DAYS;
 }
 
+/**
+ * Whether a category's listings go stale faster than a weekly sweep can keep
+ * up (GOI-107).
+ *
+ * The window above is not just how far ahead we *look* — it is how far ahead
+ * the source can be read at all. A Warsaw cinema publishes one week at a time,
+ * Friday to Thursday, and puts the next week up mid-week: Kino Muranów's
+ * calendar, read on a Tuesday, carries a full sixteen screenings for Wednesday
+ * and two for the Friday after. Everything past the current week is the
+ * handful of advance-sale specials.
+ *
+ * A weekly sweep therefore cannot see a cinema's new week at all until its
+ * next turn comes round, and by then that week is half over. The app spends
+ * days showing two or three screenings for a day the cinema is showing a dozen
+ * on, which is exactly what GOI-107 reports. It is not an extraction failure —
+ * the parser takes every row the page carries — it is a sweep that looks once
+ * a week at a page that is only ever a week long.
+ *
+ * So a category whose horizon does not comfortably outlast the gap between
+ * sweeps is swept daily regardless of the weekly setting. Stated against the
+ * window rather than as a list of categories: the rule is about the shape of
+ * the source, and a new short-horizon category should inherit it without
+ * anyone remembering to.
+ */
+export function needsDailySweep(category: string | undefined): boolean {
+  return windowDaysForCategory(category) <= DAYS_PER_WEEK;
+}
+
+const DAYS_PER_WEEK = 7;
+
 export interface ExtractOptions {
   client?: ExtractorClient;
   hint?: string | null;

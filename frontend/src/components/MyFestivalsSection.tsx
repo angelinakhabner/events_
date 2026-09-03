@@ -1,3 +1,4 @@
+import { bannerFestivals } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { formatRange } from './FestivalsSection';
 import { CategorySwatch } from './CategorySwatch';
@@ -15,7 +16,12 @@ import { CategorySwatch } from './CategorySwatch';
 export function MyFestivalsSection() {
   const festivals = trpc.festivals.mine.useQuery();
 
-  if (!festivals.data || festivals.data.length === 0) return null;
+  // Same split as the public listing (GOI-99): the near ones are already the
+  // banner at the top of /my, so this block carries the rest.
+  const banner = bannerFestivals(festivals.data ?? []).map((f) => f.id);
+  const upcoming = (festivals.data ?? []).filter((f) => !banner.includes(f.id));
+
+  if (upcoming.length === 0) return null;
 
   return (
     <section className="mt-12">
@@ -26,7 +32,7 @@ export function MyFestivalsSection() {
       </p>
       <div className="rule-ink" />
       <ul className="list-none m-0 p-0">
-        {festivals.data.map((f) => (
+        {upcoming.map((f) => (
           <li key={f.id} className="rule-soft">
             {/* Same anatomy as an event row (GOI-68) — swatch and dates in the
                 gutter, title and meta beside them. */}
@@ -42,9 +48,16 @@ export function MyFestivalsSection() {
 
               <div className="flex-1 min-w-0 md:order-3">
                 <h3 className="m-0 text-[19px] md:text-[21px] font-bold leading-[1.2]">
-                  <a href={f.url} target="_blank" rel="noreferrer" className="text-ink hover:text-accent">
-                    {f.name}
-                  </a>
+                  {/* Linked only where we have a verified site (GOI-109) — a
+                      title that looks clickable and lands on a DNS error is
+                      worse than a title that doesn't. */}
+                  {f.url ? (
+                    <a href={f.url} target="_blank" rel="noreferrer" className="text-ink hover:text-accent">
+                      {f.name}
+                    </a>
+                  ) : (
+                    f.name
+                  )}
                 </h3>
                 <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] md:text-[13px] font-bold uppercase tracking-[1px]">
                   <span className={f.status === 'ongoing' ? 'text-accent' : 'text-muted'}>

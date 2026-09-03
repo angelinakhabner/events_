@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { isFestivalCategory } from '@afisz/shared';
 import { FESTIVAL_SEEDS, listFestivals } from './festivals.js';
 
 describe('festival seeds', () => {
@@ -10,8 +11,36 @@ describe('festival seeds', () => {
       expect(f.endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(f.startDate <= f.endDate).toBe(true);
       expect(f.venues.length).toBeGreaterThan(0);
-      expect(f.url).toMatch(/^https:\/\//);
     }
+  });
+
+  /**
+   * GOI-109. The seed's link used to be required, so every entry got one
+   * whether or not one had been verified, and `skrzyzowaniekultur.pl` — a
+   * domain with no DNS record — sat behind the home page's banner. A missing
+   * link is now sayable; what is *not* sayable is a link that isn't an
+   * absolute https URL, which is the shape a copied-out-of-a-search-result
+   * mistake takes.
+   *
+   * Whether the URL resolves is a question only a request can answer, and the
+   * dev sandbox can't make one: `npm run festivals:check-links` does that from
+   * somewhere that can.
+   */
+  it('links are absolute https URLs, or absent', () => {
+    for (const f of FESTIVAL_SEEDS) {
+      if (f.url === undefined || f.url === null) continue;
+      expect(f.url).toMatch(/^https:\/\/[^/]+\./);
+    }
+  });
+
+  it('carries no link for a festival whose site we have not verified', () => {
+    // The seed says null and `listFestivals` must hand that null through
+    // rather than substituting the calendar or an empty string, which the
+    // components would both treat as a link.
+    const summer = listFestivals(new Date('2026-07-23T12:00:00Z')).find(
+      (f) => f.id === 'kino-letnie-2026',
+    );
+    expect(summer?.url).toBeNull();
   });
 });
 
@@ -38,31 +67,44 @@ describe('listFestivals', () => {
   });
 
   /**
-   * GOI-68: festivals belong to a listing, and every seed here is a film
-   * festival. The ticket's point is that they must not turn up under Theatre.
+   * GOI-68: a festival belongs to a listing, and must not turn up under
+   * another one.
+   *
+   * This used to read "every seed is filed under cinema", which was true of
+   * the data and not of the rule — the seeds were all film festivals at the
+   * time. GOI-99 added a theatre one and the assertion failed, having caught
+   * a correct entry rather than a wrong one. Stated as the guarantee it is
+   * meant to be, it holds for whatever mix the file happens to carry.
    */
-  it('files every seeded festival under cinema', () => {
-    for (const f of FESTIVAL_SEEDS) expect(f.category).toBe('cinema');
+  it('files every seed under a listing that has festivals', () => {
+    for (const f of FESTIVAL_SEEDS) expect(isFestivalCategory(f.category)).toBe(true);
   });
 
   it('narrows to one listing when asked', () => {
     const now = new Date('2026-07-23T12:00:00Z');
-    const cinema = listFestivals(now, 'cinema');
-    expect(cinema.length).toBeGreaterThan(0);
-    expect(cinema.every((f) => f.category === 'cinema')).toBe(true);
+    for (const category of ['cinema', 'theatre'] as const) {
+      const only = listFestivals(now, category);
+      expect(only.length).toBeGreaterThan(0);
+      expect(only.every((f) => f.category === category)).toBe(true);
+    }
   });
 
   it('returns nothing for a listing with no festivals of its own', () => {
     const now = new Date('2026-07-23T12:00:00Z');
-    expect(listFestivals(now, 'theatre')).toEqual([]);
+    // Nothing is seeded under music; the point is that an empty listing comes
+    // back empty rather than falling through to everything.
     expect(listFestivals(now, 'music')).toEqual([]);
   });
 
   // No category means the unfiltered home view, which shows all of them —
-  // never "none".
+  // never "none", and never just one listing's.
   it('returns every listing when no category is given', () => {
     const now = new Date('2026-07-23T12:00:00Z');
-    expect(listFestivals(now).length).toBe(listFestivals(now, 'cinema').length);
+    const all = listFestivals(now);
+    const perCategory = (['cinema', 'theatre', 'music'] as const)
+      .flatMap((c) => listFestivals(now, c));
+    expect(all.map((f) => f.id).sort()).toEqual(perCategory.map((f) => f.id).sort());
+    expect(all.length).toBeGreaterThan(listFestivals(now, 'cinema').length);
   });
 
   it('counts the festival last day as ongoing on the Warsaw calendar', () => {

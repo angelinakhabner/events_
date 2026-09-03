@@ -1,10 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
-import {
-  DEFAULT_DRIVE_FOLDER,
-  type DriveConnectionView,
-  type DriveProviderId,
-} from './cloud-drive.js';
+import { DEFAULT_DRIVE_FOLDER } from '@afisz/shared';
+import type { DriveConnectionView, DriveProviderId } from './cloud-drive.js';
 
 /**
  * Storage for drive connections (GOI-91).
@@ -39,6 +36,23 @@ export interface DriveStore {
   disconnect(userId: string, provider: DriveProviderId): Promise<void>;
   /** Remember the folder so the next upload skips the search. */
   rememberFolder(userId: string, provider: DriveProviderId, folderId: string): Promise<void>;
+  /**
+   * Change the folder briefs are filed in.
+   *
+   * `folderId` is tri-state on purpose: omitted leaves the cached id alone
+   * (the caller renamed the same folder in Drive, so the id still holds),
+   * while `null` forgets it, which makes the next send find-or-create a folder
+   * under the new name. Storing a new name against a stale id is the one
+   * combination that must not happen — `ensureFolder` verifies that a cached
+   * id is still live but never that it still carries the expected name, so the
+   * UI would promise one folder while briefs kept landing in another.
+   */
+  setFolderName(
+    userId: string,
+    provider: DriveProviderId,
+    folderName: string,
+    folderId?: string | null,
+  ): Promise<void>;
   /** Record the outcome of an upload attempt; success clears `lastError`. */
   recordUpload(
     userId: string,
@@ -137,6 +151,25 @@ export class DbDriveStore implements DriveStore {
       ));
   }
 
+  async setFolderName(
+    userId: string,
+    provider: DriveProviderId,
+    folderName: string,
+    folderId?: string | null,
+  ): Promise<void> {
+    await getDb()
+      .update(schema.driveConnections)
+      .set({
+        folderName,
+        ...(folderId === undefined ? {} : { folderId }),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(schema.driveConnections.userId, userId),
+        eq(schema.driveConnections.provider, provider),
+      ));
+  }
+
   async recordUpload(
     userId: string,
     provider: DriveProviderId,
@@ -209,6 +242,22 @@ export class InMemoryDriveStore implements DriveStore {
   async rememberFolder(userId: string, provider: DriveProviderId, folderId: string): Promise<void> {
     const row = this.rows.get(this.key(userId, provider));
     if (row) this.rows.set(this.key(userId, provider), { ...row, folderId, updatedAt: new Date() });
+  }
+
+  async setFolderName(
+    userId: string,
+    provider: DriveProviderId,
+    folderName: string,
+    folderId?: string | null,
+  ): Promise<void> {
+    const row = this.rows.get(this.key(userId, provider));
+    if (!row) return;
+    this.rows.set(this.key(userId, provider), {
+      ...row,
+      folderName,
+      ...(folderId === undefined ? {} : { folderId }),
+      updatedAt: new Date(),
+    });
   }
 
   async recordUpload(

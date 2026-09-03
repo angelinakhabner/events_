@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey, boolean, unique } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const venues = pgTable('venues', {
@@ -101,6 +101,12 @@ export const events = pgTable(
     scrapedAt: timestamp('scraped_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Set when a successful scrape stopped listing an event that somebody had
+     * saved (GOI-101). The row is kept rather than deleted so their bookmark
+     * survives to be told about; every listing query excludes it.
+     */
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   },
   (t) => ({
     venueIdx: index('events_venue_id_idx').on(t.venueId),
@@ -131,6 +137,11 @@ export const userLists = pgTable(
   },
   (t) => ({
     userIdx: index('user_lists_user_id_idx').on(t.userId),
+    // A second unique key exists that drizzle cannot express here: a unique
+    // index on (user_id, lower(btrim(name))), declared in 0025. It is what
+    // makes "berlin" and "Berlin " the same folder, and what lets the
+    // Elsewhere flow auto-create a city folder with a plain ON CONFLICT
+    // instead of a read-then-write race (GOI-92).
   }),
 );
 
@@ -264,35 +275,174 @@ export const films = pgTable(
   }),
 );
 
-// Newsletter briefs: one subscription per user. venue_ids scope the brief;
-// after/before hour narrow it to e.g. "everything after 6 pm". last_sent_at
-// lets the sender skip users already briefed in the current cadence window.
-export const newsletterSubscriptions = pgTable('newsletter_subscriptions', {
-  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
-  email: text('email').notNull(),
-  /** What the brief calls the reader; null = greet without a name. */
-  recipientName: text('recipient_name'),
-  frequency: text('frequency').notNull().default('weekly'),
-  venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
-  afterHour: integer('after_hour'),
-  beforeHour: integer('before_hour'),
-  /** Warsaw hour the brief goes out at (0-23). */
-  sendHour: integer('send_hour').notNull().default(8),
-  /** Minute past that hour (0-59). */
-  sendMinute: integer('send_minute').notNull().default(0),
-  /** Weekday weekly briefs go out on, JS convention (0=Sun … 6=Sat). */
-  sendWeekday: integer('send_weekday').notNull().default(1),
-  /** Per-category cadence + detail; see NewsletterCategoryRule. Empty = one
-   *  brief covering everything on the subscription's own frequency. */
-  categoryRules: jsonb('category_rules')
-    .$type<{ category: string; frequency: string; detail: string }[]>()
-    .notNull()
-    .default([]),
-  enabled: boolean('enabled').notNull().default(true),
-  lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * A newsletter config (GOI-100). Was `newsletter_subscriptions`, one row per
+ * user; now one row per user *per folder*, because the venues a newsletter
+ * covers are a folder's venues and a reader has more than one folder.
+ *
+ * The table keeps its name and its lineage — 0026 gives it a surrogate key and
+ * the new columns rather than starting a fresh table, so every existing
+ * subscription carries forward with its email, schedule and history intact.
+ *
+ * `send_*` is the envelope: when an issue leaves. What goes *in* an issue is
+ * `newsletter_category_rules` plus the want-to-go queue. Those were one field
+ * before, which is why the scheduler had to infer a send rhythm from the
+ * busiest section.
+ */
+export const newsletterSubscriptions = pgTable(
+  'newsletter_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** The folder whose venues this newsletter draws on. Null for a config
+     *  that predates folders, which covers everything the reader follows. */
+    folderId: uuid('folder_id').references(() => userLists.id, { onDelete: 'cascade' }),
+    /** User-facing label, so several configs can be told apart. */
+    name: text('name').notNull().default('Newsletter'),
+    email: text('email').notNull(),
+    /** What the brief calls the reader; null = greet without a name. */
+    recipientName: text('recipient_name'),
+    /** email | drive | both — where the brief goes. A drive-only reader is
+     *  never mailed, so for them the filed PDF is the delivery rather than a
+     *  copy of one, and a failed upload is a failed send. */
+    delivery: text('delivery').notNull().default('email'),
+    /** daily | weekly | monthly — when an issue is sent. */
+    sendCadence: text('send_cadence').notNull().default('weekly'),
+    /** Venues within the folder the brief covers; empty = all of them. It
+     *  narrows the folder and never writes back to it. */
+    venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+    /** The after-hour half of this pair moved onto each category rule in 0026
+     *  — see NewsletterTimeFilter for why. This half has no UI and stays. */
+    beforeHour: integer('before_hour'),
+    /** Hour the brief goes out at (0-23), in `timezone`. */
+    sendHour: integer('send_hour').notNull().default(8),
+    /** Minute past that hour (0-59). */
+    sendMinute: integer('send_minute').notNull().default(0),
+    /** Weekday weekly issues go out on, JS convention (0=Sun … 6=Sat). */
+    sendWeekday: integer('send_weekday'),
+    /** Day monthly issues go out on. Capped at 28 so every month has one. */
+    sendDayOfMonth: integer('send_day_of_month'),
+    timezone: text('timezone').notNull().default('Europe/Warsaw'),
+    /** Skip an issue with nothing in it rather than mailing an empty page. */
+    suppressEmptyIssues: boolean('suppress_empty_issues').notNull().default(true),
+    /** The want-to-go queue's settings; see NewsletterWantToGo (GOI-101). */
+    wantToGo: jsonb('want_to_go')
+      .$type<{
+        enabled: boolean;
+        horizonDays: number;
+        changesEnabled: boolean;
+        urgentSend: boolean;
+      }>()
+      .notNull()
+      .default({ enabled: true, horizonDays: 7, changesEnabled: true, urgentSend: true }),
+    enabled: boolean('enabled').notNull().default(true),
+    lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+    /** When an urgent, off-schedule change email last went out (GOI-101).
+     *  Separate from `last_sent_at` so an urgent send neither counts as the
+     *  scheduled issue nor suppresses the next one. */
+    lastUrgentAt: timestamp('last_urgent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index('newsletter_subscriptions_user_id_idx').on(t.userId),
+    // One newsletter per folder. Declared in 0026 as a partial unique index
+    // (folder_id IS NOT NULL) plus a second one for the null case, which
+    // drizzle cannot express here — a plain unique would let a user hold any
+    // number of folderless configs, since NULL never equals NULL.
+  }),
+);
+
+/**
+ * One category's place inside a newsletter (GOI-100).
+ *
+ * A child table rather than the JSONB column it replaces (0013). The rules
+ * gained a per-row time filter, a lookahead override and an order, the sweep
+ * now reads them per issue rather than whole, and GOI-102's UI validates them
+ * one row at a time — at which point "always read and written whole" had
+ * stopped being true, which was the reason for the JSONB in the first place.
+ */
+export const newsletterCategoryRules = pgTable(
+  'newsletter_category_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    configId: uuid('config_id')
+      .notNull()
+      .references(() => newsletterSubscriptions.id, { onDelete: 'cascade' }),
+    /** An event category ("cinema") or one of the reader's venue tags. */
+    category: text('category').notNull(),
+    /** every_issue | weekly | monthly — how often it appears in an issue. */
+    cadence: text('cadence').notNull().default('every_issue'),
+    /** Which issue carries it, when cadence=weekly on a daily newsletter. */
+    cadenceWeekday: integer('cadence_weekday'),
+    /** line | short | full */
+    depth: text('depth').notNull().default('short'),
+    /** any | after_17 | after_18 | after_19 | after_20 */
+    timeFilter: text('time_filter').notNull().default('any'),
+    /** Overrides the derived coverage window when set. */
+    lookaheadDays: integer('lookahead_days'),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => ({
+    configIdx: index('newsletter_category_rules_config_id_idx').on(t.configId),
+    uniqueCategory: unique('newsletter_category_rules_config_category_key')
+      .on(t.configId, t.category),
+  }),
+);
+
+/**
+ * What has already been said, and in what state (GOI-100, GOI-101).
+ *
+ * The key includes `state` rather than being `(config_id, event_id)`, and that
+ * is the whole design. A saved play should be mentioned once as "this week",
+ * again as "tomorrow", and again as "last chance" — three different things to
+ * tell someone about one event — while never being mentioned twice in the same
+ * state however many issues fall inside its horizon. A per-event flag cannot
+ * express that; it can only choose between saying everything repeatedly and
+ * saying each thing once.
+ *
+ * Ordinary digest sections use the literal state `'digest'`.
+ */
+export const newsletterSentEvents = pgTable(
+  'newsletter_sent_events',
+  {
+    configId: uuid('config_id')
+      .notNull()
+      .references(() => newsletterSubscriptions.id, { onDelete: 'cascade' }),
+    eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+    state: text('state').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.configId, t.eventId, t.state] }),
+    // Retention sweep reads this: rows older than 120 days are dropped.
+    sentAtIdx: index('newsletter_sent_events_sent_at_idx').on(t.sentAt),
+  }),
+);
+
+/**
+ * Changes the scraper noticed to an event that already existed (GOI-101).
+ *
+ * Written when a re-scrape finds a stored event whose time, venue or
+ * availability has moved, so the want-to-go queue can tell a reader that
+ * something they saved is no longer what they saved.
+ */
+export const eventChanges = pgTable(
+  'event_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+    /** cancelled | rescheduled | moved | sold_out */
+    changeType: text('change_type').notNull(),
+    oldValue: text('old_value'),
+    newValue: text('new_value'),
+    detectedAt: timestamp('detected_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    eventIdx: index('event_changes_event_id_idx').on(t.eventId),
+    detectedIdx: index('event_changes_detected_at_idx').on(t.detectedAt),
+  }),
+);
 
 /**
  * Invite tokens for the pre-auth access gate (GOI-83).

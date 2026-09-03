@@ -1,8 +1,9 @@
 import { googleDriveProvider } from './google-drive.js';
 import { defaultDriveStore, type DriveStore } from './drive-store.js';
 import { briefPdfFilename, renderBriefPdf, type BriefPdfContent } from './newsletter-pdf.js';
+import { DriveFolderMissingError } from './cloud-drive.js';
 import type { DriveProvider, DriveProviderId } from './cloud-drive.js';
-import type { NewsletterFrequency } from '@afisz/shared';
+import { normalizeDriveFolderName, type NewsletterFrequency } from '@afisz/shared';
 
 /**
  * Filing one brief on a user's drive (GOI-91).
@@ -38,10 +39,17 @@ export interface DeliverOptions {
 /**
  * Render the brief as a PDF and put it in every drive this user has connected.
  *
- * **Never throws.** A drive that is full, revoked or simply down must not turn
- * a brief that was successfully emailed into a failed send — the email is the
- * product, the filed copy is a convenience. Failures are recorded on the
- * connection instead, where the Newsletter tab shows them.
+ * **Never throws**, and the caller decides what that silence means. When the
+ * reader is also being emailed, a drive that is full, revoked or simply down
+ * must not turn a brief they received into a failed send — there, the email is
+ * the product and the filed copy is a convenience.
+ *
+ * For a `drive`-only reader that reasoning does not hold: the filed PDF *is*
+ * the delivery, and returning an outcome of nothing but failures means they
+ * got nothing at all. So the outcomes are returned rather than swallowed, and
+ * the sweep reads them — it marks the issue sent only once at least one upload
+ * succeeded. Failures are also recorded on the connection, where the
+ * Newsletter tab shows them.
  */
 export async function deliverBriefToDrives(
   userId: string,
@@ -89,6 +97,61 @@ export async function deliverBriefToDrives(
     );
   }
   return outcomes;
+}
+
+/**
+ * Change the folder a user's briefs are filed in, renaming it in the drive.
+ *
+ * **Throws**, unlike `deliverBriefToDrives`. The difference is who is waiting:
+ * a scheduled upload must never turn a sent brief into a failed send, but this
+ * runs from a button with someone watching, and a rename that silently did
+ * nothing would leave the UI showing a name the drive does not have.
+ */
+export async function renameDriveFolder(
+  userId: string,
+  providerId: DriveProviderId,
+  rawName: string,
+  opts: DeliverOptions = {},
+): Promise<{ folderName: string; recreated: boolean }> {
+  const store = opts.store ?? defaultDriveStore;
+  const providers = { ...PROVIDERS, ...opts.providers };
+  const name = normalizeDriveFolderName(rawName);
+
+  const provider = providers[providerId];
+  if (!provider) throw new Error(`No client for provider "${providerId}".`);
+
+  const credentials = await store.credentials(userId, providerId);
+  if (!credentials) throw new Error('No drive is connected.');
+  if (credentials.folderName === name) return { folderName: name, recreated: false };
+
+  // Connected but the folder was never created (the post-connect attempt can
+  // fail). Nothing to rename — the next send creates it under the new name.
+  if (!credentials.folderId) {
+    await store.setFolderName(userId, providerId, name);
+    return { folderName: name, recreated: true };
+  }
+
+  try {
+    await provider.renameFolder({
+      refreshToken: credentials.refreshToken,
+      folderId: credentials.folderId,
+      name,
+      fetcher: opts.fetcher,
+    });
+  } catch (e) {
+    // The folder is gone, so there is nothing to rename and nothing to strand:
+    // take the new name and forget the id so the next send recreates it.
+    if (e instanceof DriveFolderMissingError) {
+      await store.setFolderName(userId, providerId, name, null);
+      return { folderName: name, recreated: true };
+    }
+    throw e;
+  }
+
+  // Only after the drive agrees: the stored name is a promise about what the
+  // user will find in their drive, not a preference.
+  await store.setFolderName(userId, providerId, name);
+  return { folderName: name, recreated: false };
 }
 
 async function deliverOne(

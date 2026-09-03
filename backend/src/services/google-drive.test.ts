@@ -221,3 +221,57 @@ describe('googleDriveConfig', () => {
     expect(googleDriveConfig()).toBeNull();
   });
 });
+
+describe('googleDriveProvider.renameFolder', () => {
+  it('PATCHes the folder name and nothing else', async () => {
+    const { googleDriveProvider } = await import('./google-drive.js');
+    const { fetcher, calls } = stubFetch([
+      TOKEN_OK,
+      { match: /drive\/v3\/files\/folder-1/, reply: () => json({ id: 'folder-1' }) },
+    ]);
+
+    await googleDriveProvider.renameFolder({
+      refreshToken: 'rt', folderId: 'folder-1', name: 'Briefs', fetcher,
+    });
+
+    const patch = calls.find((c) => c.init?.method === 'PATCH')!;
+    expect(patch.url).toContain('/drive/v3/files/folder-1');
+    // Only the name: a PATCH that also sent `parents` would silently move the
+    // folder, and one that sent `trashed` could bin it.
+    expect(JSON.parse(String(patch.init!.body))).toEqual({ name: 'Briefs' });
+  });
+
+  /**
+   * A 404 is the one failure with a different recovery — there is no folder to
+   * rename, so the caller takes the name and lets the next send recreate it.
+   * It has to be distinguishable without matching on error text.
+   */
+  it('reports a vanished folder as DriveFolderMissingError', async () => {
+    const { googleDriveProvider } = await import('./google-drive.js');
+    const { DriveFolderMissingError } = await import('./cloud-drive.js');
+    const { fetcher } = stubFetch([
+      TOKEN_OK,
+      { match: /drive\/v3\/files\/folder-1/, reply: () => json({}, 404) },
+    ]);
+
+    await expect(
+      googleDriveProvider.renameFolder({
+        refreshToken: 'rt', folderId: 'folder-1', name: 'Briefs', fetcher,
+      }),
+    ).rejects.toBeInstanceOf(DriveFolderMissingError);
+  });
+
+  it('surfaces any other refusal with its status', async () => {
+    const { googleDriveProvider } = await import('./google-drive.js');
+    const { fetcher } = stubFetch([
+      TOKEN_OK,
+      { match: /drive\/v3\/files\/folder-1/, reply: () => json({}, 403) },
+    ]);
+
+    await expect(
+      googleDriveProvider.renameFolder({
+        refreshToken: 'rt', folderId: 'folder-1', name: 'Briefs', fetcher,
+      }),
+    ).rejects.toThrow('HTTP 403');
+  });
+});

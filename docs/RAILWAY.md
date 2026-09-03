@@ -61,7 +61,7 @@ In the backend service → **Variables** tab → **+ New Variable**, add the fol
 | `NEWSLETTER_CRON_ENABLED` | `true` | **Required for newsletter briefs.** Unset (the default) means the send sweep never starts — users can subscribe on `/my` and nothing is ever mailed. Also needs `DATABASE_URL` and `RESEND_API_KEY`; on boot the backend logs a `[newsletter]` warning naming whichever is missing. |
 | `SCRAPE_CRON_ENABLED` | `true` | Enables the scheduled scrape. Without events in the database, briefs have nothing to report and are skipped as empty. |
 | `ADMIN_TOKEN` | long random string | Enables `/admin/*`, including the newsletter diagnostics in §"Newsletter isn't arriving" of [`RUNBOOK.md`](RUNBOOK.md). |
-| `INVITE_GATE_ENABLED` | leave unset | The access gate. **Unset or blank keeps the site closed** — only an explicit `false`/`0`/`no`/`off` opens it. Set it to `false` only when the site goes public. See §8. |
+| `INVITE_GATE_ENABLED` | leave unset | The access gate. **Unset or blank keeps the site closed** — only an explicit `false`/`0`/`no`/`off` opens it. Set it to `false` only when the site goes public. See §9. |
 
 Do **not** set `PORT` — Railway injects it automatically and the backend reads it via `process.env.PORT`.
 
@@ -118,7 +118,55 @@ Wait ~1 minute. The Pages site at `https://afisz.cc/` now talks to Railway inste
 
 ---
 
-## 8. Invite someone through the access gate
+## 8. A staging backend for the dev preview (recommended)
+
+Every push to `dev` publishes a password-gated preview at `https://afisz.cc/dev/`
+(`.github/workflows/deploy-frontend.yml`). That build ships the **frontend** from
+`dev` — but unless you do this step, it talks to the **production** API, which is
+built from the default branch. The preview then reviews half a change.
+
+While `dev` only touches the UI that is harmless. The moment a change on `dev`
+alters the API it is not: the newsletter rework (GOI-100/102) split the old
+`frequency` field into a send cadence and per-category cadences, so the preview
+sent the new shape to a backend still expecting the old one and every **Schedule
+newsletter**, **Generate now** and test send came back as a wall of validation
+errors naming a field the form no longer had. Nothing was wrong with either
+side — they were different versions.
+
+To give `dev` its own backend:
+
+1. In the same Railway project: **+ Create** → **Database** → **Postgres**. The
+   staging backend needs its own database. Migrations land on `dev` before the
+   default branch, and pointing a `dev` build at the production database would
+   apply them to production ahead of the promotion that is supposed to gate them.
+2. **+ Create** → **GitHub Repo** → the same repo, configured exactly as in
+   step 3 — then **Settings** → **Source** → set the branch to `dev`.
+3. Give it the variables from step 4, with:
+   - `DATABASE_URL` referencing the **new** Postgres plugin, not production's,
+   - `APP_URL` = `https://afisz.cc/dev/`,
+   - `API_PUBLIC_URL` = the staging domain from step 5.
+   Keep the third-party keys pointed at test credentials where the provider has
+   them: this backend sends real email.
+4. Generate a public domain for it (step 5) — `api-dev.afisz.cc` if you want it
+   under the custom domain, or the `…up.railway.app` one Railway gives you.
+5. Add the repo variable `VITE_DEV_API_URL` with that URL:
+   https://github.com/angelinakhabner/events_/settings/variables/actions
+   The dev build picks it up; production keeps using `VITE_API_URL`, and if
+   `VITE_DEV_API_URL` is unset nothing changes.
+6. Re-run **Deploy frontend** so the preview bundle is rebuilt with it.
+
+Until that exists, treat the dev preview as reviewing frontend changes only, and
+verify anything API-shaped locally (`npm run dev`) before promoting `dev`.
+
+The Newsletter tab now says so itself rather than leaving it to be discovered:
+`newsletter.get` answers in the shape its own build has, so when the API
+predates the page the tab opens with a banner naming the mismatch — before
+either button is pressed — and both buttons' errors end with the same sentence.
+The fix is still this section, or the promotion that redeploys the backend.
+
+---
+
+## 9. Invite someone through the access gate
 
 While `INVITE_GATE_ENABLED` is on (the default), every route except `/health`,
 `/gate`, `/robots.txt` and `/i/*` answers `401 {"error":"not available"}` — the

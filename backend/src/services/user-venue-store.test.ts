@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { InMemoryUserVenueStore, normalizeTags, normalizeVenueUrl } from './user-venue-store.js';
+import {
+  InMemoryUserVenueStore,
+  normalizeListName,
+  normalizeTags,
+  normalizeVenueUrl,
+  seedVenueUrls,
+} from './user-venue-store.js';
 import { DEFAULT_VENUES } from '../data/default-venues.js';
 
 const KINOTEKA = { name: 'Kinoteka', url: 'https://kinoteka.pl/repertuar/', category: 'cinema' as const, city: 'Warsaw', country: 'PL' };
@@ -11,6 +17,74 @@ describe('InMemoryUserVenueStore', () => {
     await s.ensureSeeded('u1'); // idempotent
     const venues = await s.list('u1');
     expect(venues).toHaveLength(DEFAULT_VENUES.length);
+  });
+
+  /**
+   * GOI-106. The venue table is shared and grows with every venue anybody
+   * adds; the curated list does not. Seeding from the former handed a
+   * brand-new account a stranger's venues, and — because `url` is unique but
+   * venues are not — a second copy of a cinema it was already subscribed to
+   * under a slightly different URL.
+   */
+  describe('what a brand-new account starts with (GOI-106)', () => {
+    it('is the curated venues only, not whatever other users have added', async () => {
+      const s = new InMemoryUserVenueStore();
+      // Someone else adds their own venue first. It joins the shared table,
+      // which is exactly right — it must not join the next user's /my.
+      await s.addCustom('u1', {
+        name: 'Kino Atlantic',
+        url: 'https://kinoatlantic.pl/repertuar',
+        city: 'Warsaw',
+        country: 'PL',
+        category: 'cinema',
+      });
+
+      await s.ensureSeeded('u2');
+      const names = (await s.list('u2')).map((v) => v.name);
+      expect(names).not.toContain('Kino Atlantic');
+      expect(names).toHaveLength(DEFAULT_VENUES.length);
+      expect([...names].sort()).toEqual([...DEFAULT_VENUES.map((v) => v.name)].sort());
+    });
+
+    it('lists no venue twice, even when the table holds two spellings of one', async () => {
+      const s = new InMemoryUserVenueStore();
+      // The same cinema as the curated `kino-muranow`, pasted without the
+      // path. `venues.url` is unique so this is a second row, and both used
+      // to be seeded — two "Kino Muranów" rows in a new user's /my.
+      await s.addCustom('u1', {
+        name: 'Kino Muranów',
+        url: 'https://kinomuranow.pl',
+        city: 'Warsaw',
+        country: 'PL',
+        category: 'cinema',
+      });
+
+      await s.ensureSeeded('u2');
+      const venues = await s.list('u2');
+      expect(venues.filter((v) => v.name === 'Kino Muranów')).toHaveLength(1);
+      expect(new Set(venues.map((v) => v.id)).size).toBe(venues.length);
+    });
+
+    it('still leaves a user free to add their own afterwards', async () => {
+      const s = new InMemoryUserVenueStore();
+      await s.ensureSeeded('u1');
+      await s.addCustom('u1', { ...KINOTEKA, name: 'Kinoteka (mine)', url: 'https://kinoteka.pl/en/' });
+      expect((await s.list('u1')).map((v) => v.name)).toContain('Kinoteka (mine)');
+    });
+  });
+
+  describe('seedVenueUrls', () => {
+    it('is every curated venue, in the file\'s own order', () => {
+      expect(seedVenueUrls()).toEqual(DEFAULT_VENUES.map((v) => v.url));
+    });
+
+    it('collapses entries that normalise to the same listing', () => {
+      const dupes = [
+        { ...DEFAULT_VENUES[0]!, id: 'a', url: 'https://kinomuranow.pl/repertuar' },
+        { ...DEFAULT_VENUES[0]!, id: 'b', url: 'https://kinomuranow.pl/repertuar#top' },
+      ];
+      expect(seedVenueUrls(dupes)).toEqual(['https://kinomuranow.pl/repertuar']);
+    });
   });
 
   it('two users adding the same URL share ONE venue row (scrape-once)', async () => {
@@ -227,5 +301,73 @@ describe('normalizeVenueUrl', () => {
 
   it('leaves unparseable input as trimmed text (zod validated upstream)', () => {
     expect(normalizeVenueUrl(' not a url ')).toBe('not a url');
+  });
+});
+
+
+describe('normalizeListName', () => {
+  /**
+   * This has to stay byte-for-byte equivalent to `lower(btrim(name))`, the
+   * expression the unique index in 0025 is built on. If the two disagree the
+   * store believes a name is free while Postgres rejects the insert, and the
+   * Elsewhere flow loses whatever it was committing (GOI-92).
+   */
+  it('folds case and surrounding whitespace, and nothing else', () => {
+    expect(normalizeListName('berlin')).toBe('berlin');
+    expect(normalizeListName('Berlin ')).toBe('berlin');
+    expect(normalizeListName('  BERLIN')).toBe('berlin');
+    // btrim doesn't collapse interior spaces, so neither may this.
+    expect(normalizeListName('New  York')).toBe('new  york');
+  });
+});
+
+describe('ensureList (GOI-92)', () => {
+  it('creates once and then returns the same folder for every spelling', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    const first = await s.ensureList('u1', 'Berlin');
+    for (const spelling of ['berlin', 'BERLIN', ' Berlin ']) {
+      expect((await s.ensureList('u1', spelling)).id).toBe(first.id);
+    }
+    expect(await s.lists('u1')).toHaveLength(1);
+    // The display form is what was typed first, not the normalised key.
+    expect(first.name).toBe('Berlin');
+  });
+
+  it('is safe to race — concurrent commits for one city share a folder', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    const ids = await Promise.all(
+      ['Berlin', 'berlin', 'BERLIN'].map((n) => s.ensureList('u1', n)),
+    );
+    expect(new Set(ids.map((l) => l.id)).size).toBe(1);
+    expect(await s.lists('u1')).toHaveLength(1);
+  });
+
+  it('keeps folders per user', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    const mine = await s.ensureList('u1', 'Berlin');
+    const theirs = await s.ensureList('u2', 'Berlin');
+    expect(theirs.id).not.toBe(mine.id);
+  });
+
+  it('refuses a blank name rather than creating an unnameable folder', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await expect(s.ensureList('u1', '   ')).rejects.toThrow(/folder name/i);
+  });
+});
+
+describe('createList and renameList agree with the same key', () => {
+  it('rejects a second folder that differs only by case', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await s.createList('u1', 'Berlin');
+    await expect(s.createList('u1', 'berlin ')).rejects.toThrow(/already have a list/i);
+  });
+
+  it('rejects renaming onto another folder, case-insensitively', async () => {
+    const s = new InMemoryUserVenueStore([]);
+    await s.createList('u1', 'Berlin');
+    const poznan = await s.createList('u1', 'Poznan');
+    await expect(s.renameList('u1', poznan.id, 'BERLIN')).rejects.toThrow(/already have a list/i);
+    // Re-casing a folder's own name is not a collision with itself.
+    expect((await s.renameList('u1', poznan.id, 'POZNAN')).name).toBe('POZNAN');
   });
 });

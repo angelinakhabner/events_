@@ -89,7 +89,14 @@ export function MyEventsSection() {
         {fallback ? (
           <NextUpNotice scope={dayFilterPhrase(day)} nextIso={nextEventStart(nearest)} />
         ) : null}
-        {events.length > 0 ? <EventBuckets events={events} venues={venueMap} compact /> : null}
+        {events.length > 0 ? (
+          <EventBuckets
+            events={events}
+            venues={venueMap}
+            compact
+            exhibitionsFirst={category === 'exhibition'}
+          />
+        ) : null}
       </div>
 
       {/* Festivals often replace the normal repertoire rather than appearing in
