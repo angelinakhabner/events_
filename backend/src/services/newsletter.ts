@@ -1,14 +1,14 @@
 import type {
-  Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
+  Category, Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
   NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
 import {
-  deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, sendCadenceDays,
-  timeFilterHour,
+  deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, isExhibition,
+  sendCadenceDays, timeFilterHour,
 } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
-import { defaultEventStore, type EventStore } from './event-store.js';
+import { defaultEventStore, FEED_CATEGORIES, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
 import { newsletterFromEmail, sendEmail } from './email.js';
 import { defaultNewsletterStore, SENT_EVENT_RETENTION_DAYS, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
@@ -96,6 +96,16 @@ export interface BriefScope {
 /**
  * Which events belong in a brief: within the window, at one of the chosen
  * venues (empty selection = all), inside the after/before-hour window.
+ *
+ * An exhibition is selected by a different rule (GOI-110). `startsAt` on a run
+ * is its opening day, not a showtime (GOI-67), so the two tests this applies to
+ * a screening both misfire on it: "starts in the future" hides every exhibition
+ * the morning after it opens, and the hour filters hide it always, since a run
+ * is stored at local midnight and no reader asks for events before 8 am. The
+ * query layer already selects a run by its closing date — this is the same rule
+ * applied a second time, here, where the section is actually built. Without it
+ * `listUpcoming` returned the exhibitions and this dropped them again, which is
+ * why a museums section could only ever show a show that had not opened yet.
  */
 export function selectBriefEvents(
   events: Event[],
@@ -104,9 +114,15 @@ export function selectBriefEvents(
 ): Event[] {
   const horizon = new Date(now.getTime() + sub.windowDays * 24 * 3_600_000);
   return events.filter((e) => {
-    const starts = new Date(e.startsAt);
-    if (starts < now || starts > horizon) return false;
     if (sub.venueIds.length > 0 && !sub.venueIds.includes(e.venueId)) return false;
+    const starts = new Date(e.startsAt);
+    if (starts > horizon) return false;
+    if (isExhibition(e)) {
+      // On today if it has not closed yet. No end date means an open-ended run
+      // — on until somebody says otherwise, which is the honest reading.
+      return e.endsAt == null || new Date(e.endsAt) >= now;
+    }
+    if (starts < now) return false;
     const hour = warsawHour(e.startsAt);
     if (sub.afterHour != null && hour < sub.afterHour) return false;
     if (sub.beforeHour != null && hour >= sub.beforeHour) return false;
@@ -114,14 +130,48 @@ export function selectBriefEvents(
   });
 }
 
-/** The ongoing festival the brief's "Also on" line calls out, if any. */
-export function currentFestival(venueNames?: string[]): Festival | null {
-  const ongoing = listFestivals().filter((f) => f.status === 'ongoing');
+/**
+ * How far ahead the festival band looks for one that has not opened yet.
+ *
+ * A festival is the one thing in a brief you have to act on *before* it starts:
+ * the good screenings sell out in the first day of sales, so a band that waits
+ * for opening night tells you on the morning it stops being useful. Deliberately
+ * wider than a weekly issue's own window — on 3 September a weekly brief covered
+ * nothing but the week, and the festival eleven days out went unmentioned in
+ * every issue until the one printed after it began.
+ */
+export const FESTIVAL_LOOKAHEAD_DAYS = 30;
+
+/** Enough to say what is on; past that a busy autumn pushes the listings off
+ *  the first screen, and the band stops being a headline. */
+const MAX_BRIEF_FESTIVALS = 3;
+
+/**
+ * The festivals the brief's band calls out: on now, or opening soon (GOI-110).
+ *
+ * Ongoing first — `listFestivals` orders by start date and has already dropped
+ * finished editions.
+ */
+export function briefFestivals(
+  windowDays: number,
+  venueNames?: string[],
+  now: Date = new Date(),
+): Festival[] {
+  const ahead = Math.max(windowDays, FESTIVAL_LOOKAHEAD_DAYS);
+  const horizon = warsawDay(new Date(now.getTime() + ahead * 24 * 3_600_000));
+  const soon = listFestivals(now).filter(
+    (f) => f.status === 'ongoing' || f.startDate <= horizon,
+  );
   // GOI-33: a festival at cinemas the reader doesn't follow isn't their news.
   // With no venue list — the settings preview, which has no subscriber — keep
   // the unscoped behaviour rather than showing nothing.
-  if (!venueNames) return ongoing[0] ?? null;
-  return festivalsAtVenues(ongoing, venueNames)[0] ?? null;
+  const scoped = venueNames ? festivalsAtVenues(soon, venueNames) : soon;
+  return scoped.slice(0, MAX_BRIEF_FESTIVALS);
+}
+
+/** The Warsaw calendar day of an instant, as `listFestivals` files its dates. */
+function warsawDay(at: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(at);
 }
 
 /** The widest cadence a config can produce — what an *empty* brief should
@@ -372,6 +422,88 @@ export function buildBriefSections(
   return sections;
 }
 
+/** The wide first fetch. The cap the database itself enforces. */
+export const BRIEF_FETCH_LIMIT = 500;
+/** One rule's own fetch, once the wide one has come back full. */
+const SECTION_FETCH_LIMIT = 100;
+/** Every category a rule can name — `FEED_CATEGORIES` is the feed's list and
+ *  leaves out `other`, which a venue can still be filed under. */
+const RULE_CATEGORIES: Category[] = [...FEED_CATEGORIES, 'other'];
+
+/**
+ * The candidate events one issue is built from.
+ *
+ * Not a single `listUpcoming` capped at 500, which is what both callers used to
+ * do. That query takes the *globally earliest* rows in the window, and a folder
+ * with a cinema in it spends the cap long before a sparse category is reached:
+ * a cinema publishes eight screenings a day, a theatre three a month and a
+ * museum one show a season, so a brief whose window holds more than 500
+ * screenings arrived with cinema in it and nothing else — the theatre and
+ * museum sections were empty because their events were never fetched, not
+ * because nothing was on. `listUpcomingWithCategoryFloor` documents the same
+ * failure for the home feed.
+ *
+ * So: the wide fetch as before, and then, only if the cap actually bit, one
+ * narrow fetch per due rule. A rule names either a category or one of the
+ * reader's venue tags — the two branches `eventInCategory` matches on — so both
+ * are narrowed here, by category and by the venues carrying the tag. The extra
+ * queries are indexed, capped, and skipped entirely on the ordinary week where
+ * the first fetch already returned the whole window.
+ */
+export async function fetchBriefEvents(
+  sub: {
+    sendCadence: NewsletterSendCadence;
+    categoryRules: NewsletterCategoryRule[];
+  },
+  venues: UserVenue[],
+  now: Date = new Date(),
+  events: Pick<EventStore, 'listUpcoming'> = defaultEventStore,
+): Promise<Event[]> {
+  const venueIds = venues.map((v) => v.id);
+  // An explicitly empty list means "no venues", not "all of them".
+  if (venueIds.length === 0) return [];
+  const until = new Date(now.getTime() + briefFetchWindowDays(sub, now) * 24 * 3_600_000);
+  const base = await events.listUpcoming({ venueIds, now, until, limit: BRIEF_FETCH_LIMIT });
+  if (base.length < BRIEF_FETCH_LIMIT) return base;
+
+  const byId = new Map(base.map((e) => [e.id, e]));
+  for (const rule of sub.categoryRules) {
+    if (!isRuleDue(rule.cadence, sub.sendCadence, now, rule.cadenceWeekday)) continue;
+    const ruleUntil = new Date(
+      now.getTime() + deriveWindowDays(sub.sendCadence, rule, now) * 24 * 3_600_000,
+    );
+    for (const scope of ruleFetchScopes(rule.category, venues)) {
+      const rows = await events.listUpcoming({
+        ...scope, now, until: ruleUntil, limit: SECTION_FETCH_LIMIT,
+      });
+      for (const e of rows) if (!byId.has(e.id)) byId.set(e.id, e);
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+/**
+ * How to narrow a fetch to one rule's events. Both branches of
+ * `eventInCategory`, in the same order: the category the rule names, and the
+ * venues tagged with it. A word can be both — "music" is a venue category and a
+ * plausible tag — so this returns the scopes it matches rather than the first.
+ */
+function ruleFetchScopes(
+  category: string,
+  venues: UserVenue[],
+): { venueIds: string[]; categories?: Category[] }[] {
+  const want = category.trim().toLowerCase();
+  if (!want) return [];
+  const scopes: { venueIds: string[]; categories?: Category[] }[] = [];
+  const named = RULE_CATEGORIES.find((c) => c === want);
+  if (named) scopes.push({ venueIds: venues.map((v) => v.id), categories: [named] });
+  const tagged = venues
+    .filter((v) => v.tags.some((t) => t.toLowerCase() === want))
+    .map((v) => v.id);
+  if (tagged.length > 0) scopes.push({ venueIds: tagged });
+  return scopes;
+}
+
 /**
  * How far back the changes block looks.
  *
@@ -393,7 +525,9 @@ export const CHANGE_LOOKBACK_DAYS = 14;
  */
 export async function buildWantToGoSection(
   sub: Pick<NewsletterSubscription, 'id' | 'userId' | 'wantToGo'>,
-  store: NewsletterStore,
+  // Only what it reads. The preview (GOI-110) substitutes `sentStates` to skip
+  // dedup, and has no config row to hand over as the rest of a store.
+  store: Pick<NewsletterStore, 'sentStates' | 'changesFor'>,
   wantToGo: Pick<WantToGoStore, 'list'>,
   now: Date,
 ): Promise<WantToGoSection> {
@@ -656,17 +790,9 @@ export async function sendNewsletterBriefs(
         outcomes.push({ ...base, status: 'skipped', reason: 'no-venues' });
         continue;
       }
-      // Narrow in SQL, not after the fact: `limit` cuts the globally earliest
-      // rows, so fetching "the next 500 events" and filtering by venue here
-      // silently truncated a weekly brief once the database held more than 500
-      // upcoming events across all venues — the later days just vanished. The
-      // window is the widest any section can ask for.
-      const events = await eventStore.listUpcoming({
-        venueIds: venues.map((v) => v.id),
-        now,
-        until: new Date(now.getTime() + briefFetchWindowDays(sub, now) * 24 * 3_600_000),
-        limit: 500,
-      });
+      // Narrowed in SQL, and per due rule once the cap bites — see
+      // `fetchBriefEvents` for why one flat query left sparse sections empty.
+      const events = await fetchBriefEvents(sub, venues, now, eventStore);
       const sections = buildBriefSections(events, sub, venues, now);
 
       // The saved-events queue counts as content (GOI-101). An issue whose
@@ -699,7 +825,11 @@ export async function sendNewsletterBriefs(
         fallbackFrequency: plannedFrequency(sub),
         recipientName: sub.recipientName,
         // Scoped to this subscriber's venues (GOI-33).
-        festival: currentFestival(venues.map((v) => v.name)),
+        festivals: briefFestivals(
+          briefWindowDays(plannedFrequency(sub)),
+          venues.map((v) => v.name),
+          now,
+        ),
         now,
       };
       if (deliversByEmail(sub.delivery)) {

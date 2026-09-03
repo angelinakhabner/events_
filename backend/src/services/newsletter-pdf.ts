@@ -152,7 +152,8 @@ export interface BriefPdfContent {
   wantToGo?: WantToGoSection;
   fallbackFrequency?: NewsletterFrequency;
   recipientName?: string | null;
-  festival?: Festival | null;
+  /** Festivals on now or opening soon — see `briefFestivals`. */
+  festivals?: Festival[];
   now?: Date;
 }
 
@@ -226,10 +227,7 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   });
 
   if (queue) drawWantToGo(doc, queue);
-  // Shaped for a list, given one: the pipeline picks a single ongoing festival
-  // (`currentFestival`), so widening this is a change at the call site rather
-  // than here.
-  if (content.festival) drawFestivals(doc, [content.festival]);
+  drawFestivals(doc, content.festivals ?? []);
 
   for (const section of sections) {
     drawSection(doc, section);

@@ -33,7 +33,9 @@ export const PL = {
   lastChance: 'Ostatnia szansa',
   tomorrow: 'Jutro',
   thisWeek: 'W tym tygodniu',
-  festivals: 'Festiwale w tym tygodniu',
+  /** Not "w tym tygodniu": the band carries festivals that open later than
+   *  this week too (GOI-110), and each row prints its own dates. */
+  festivals: 'Festiwale',
   nothing: 'W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.',
   settings: 'Zmień ustawienia',
   unsubscribe: 'Wypisz się',

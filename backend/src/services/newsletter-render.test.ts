@@ -59,7 +59,7 @@ describe('renderBriefHtml — content', () => {
         section({ category: 'comedy', events: [makeEvent({ title: 'Improv 101', category: 'comedy' })] }),
       ],
       recipientName: 'Ania',
-      festival: FESTIVAL,
+      festivals: [FESTIVAL],
     });
 
     // The band names who it is from and what it covers; the arithmetic is the
@@ -112,8 +112,9 @@ describe('renderBriefHtml — content', () => {
     expect(html).toContain('W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.');
   });
 
-  it('omits the festival line when none is running', () => {
-    expect(render({ festival: null })).not.toContain('FESTIWALE');
+  it('omits the festival band when nothing is on or opening soon', () => {
+    expect(render({ festivals: [] })).not.toContain('FESTIWALE');
+    expect(render({})).not.toContain('FESTIWALE');
   });
 
   it('escapes event text, including in the description and venue name', () => {
@@ -151,7 +152,7 @@ describe('renderBriefHtml — email safety', () => {
       events: [makeEvent(), makeEvent({ category: 'comedy', startsAt: '2026-07-22T20:00:00+02:00' })],
     })],
     recipientName: 'Ania',
-    festival: FESTIVAL,
+    festivals: [FESTIVAL],
     now: NOW,
   });
 
@@ -463,11 +464,11 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
   it('raises festivals above the listings instead of trailing them', () => {
     const html = render({
       sections: [section({ category: 'cinema', events: [cinema('2026-07-22T18:00:00+02:00', 'Kinoteka', 'A Film')] })],
-      festival: FESTIVAL,
+      festivals: [FESTIVAL],
     });
 
-    expect(html).toContain('FESTIWALE W TYM TYGODNIU');
-    expect(html.indexOf('FESTIWALE W TYM TYGODNIU')).toBeLessThan(html.indexOf('A Film'));
+    expect(html).toContain('FESTIWALE');
+    expect(html.indexOf('FESTIWALE')).toBeLessThan(html.indexOf('A Film'));
     // It used to be the last thing in the issue, under the button.
     expect(html).not.toContain('Also on:');
   });

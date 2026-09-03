@@ -205,7 +205,7 @@ describe('renderBriefPdf', () => {
 
     const pdf = await renderBriefPdf({
       sections: [section()],
-      festival,
+      festivals: [festival],
       now: new Date('2026-09-09T08:00:00.000Z'),
     });
     const { text } = await textOf(pdf);

@@ -569,8 +569,9 @@ export interface BriefContent {
   fallbackFrequency?: NewsletterFrequency;
   /** Greeting name; null greets without one. */
   recipientName?: string | null;
-  /** Ongoing festival for the "Also on" line, when there is one. */
-  festival?: Festival | null;
+  /** Festivals on now or opening soon, for the band under the queue. Chosen
+   *  by `briefFestivals`, which is where "soon" is defined. */
+  festivals?: Festival[];
   now?: Date;
 }
 
@@ -621,9 +622,7 @@ export function renderBriefHtml(content: BriefContent): string {
       `style="border-collapse:collapse"><tr><td style="border-top:2px solid ${C.divider};padding:24px 0;` +
       `font-family:${FONT};font-size:13px;line-height:1.5;color:${C.body}">` +
       `${escapeHtml(PL.nothing)}</td></tr></table>`;
-  // Shaped for a list, given one: the pipeline picks a single ongoing festival
-  // (`currentFestival`), so widening this is a change at the call site.
-  const festivals = content.festival ? [content.festival] : [];
+  const festivals = content.festivals ?? [];
 
   return (
     `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" ` +
