@@ -434,6 +434,33 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
   });
 
   /**
+   * A saved exhibition (GOI-125). It has no showtime to print and its opening
+   * day is weeks behind, so the row is dated by when it closes.
+   */
+  it('dates an ongoing saved exhibition by its closing date', () => {
+    const html = render({
+      sections: [],
+      wantToGo: {
+        changes: [],
+        reminders: [{
+          state: 'ongoing',
+          event: makeEvent({
+            title: 'Wystawa stała',
+            kind: 'exhibition',
+            startsAt: '2026-05-02T10:00:00+02:00',
+            endsAt: '2026-11-14T18:00:00+01:00',
+          }),
+        }],
+      } as never,
+    });
+
+    expect(html).toContain('TERAZ TRWA');
+    expect(html).toContain('Wystawa stała');
+    expect(html).toContain('TERAZ');
+    expect(html).toContain('DO 14 LISTOPADA');
+  });
+
+  /**
    * The gutter no longer repeats the subheading.
    *
    * "ZMIANY" already labels the group, so a "ZMIANA" marker on every row under
