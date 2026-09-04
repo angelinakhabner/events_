@@ -113,4 +113,43 @@ describe('scrapeFilharmonia', () => {
     });
     expect(res.events).toEqual([]);
   });
+
+  /**
+   * A complete walk claims the whole window; a truncated one must not
+   * (GOI-107). The runner prunes on the strength of a successful scrape, so a
+   * run that lost page two and said nothing would have the days it never read
+   * deleted as though it had read them and found nothing there.
+   */
+  it('claims the whole window when the walk finishes', async () => {
+    const page1 = await loadFixture('filharmonia.pl-repertuar.html');
+    const fakeFetch = (async () =>
+      new Response(page1, { status: 200 })) as unknown as typeof fetch;
+
+    const res = await scrapeFilharmonia({
+      baseUrl: 'https://filharmonia.pl/repertuar/',
+      today: new Date('2026-07-01T08:00:00.000Z'),
+      windowDays: 30,
+      fetcher: fakeFetch,
+    });
+    expect(res.coveredThrough).toBeUndefined();
+  });
+
+  it('reports how far it got when a page fails to load', async () => {
+    const page1 = await loadFixture('filharmonia.pl-repertuar.html');
+    const fakeFetch = (async (input: string | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('?p=2')) return new Response('nope', { status: 500 });
+      return new Response(page1, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await scrapeFilharmonia({
+      baseUrl: 'https://filharmonia.pl/repertuar/',
+      today: new Date('2026-07-12T08:00:00.000Z'),
+      windowDays: 45,
+      fetcher: fakeFetch,
+    });
+
+    // Page one's last concert is as far as this run may be trusted.
+    expect(res.coveredThrough).toBe('2026-09-03');
+  });
 });
