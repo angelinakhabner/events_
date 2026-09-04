@@ -6,6 +6,23 @@ export type Category =
   | 'music'
   | 'other';
 
+/** Every `Category`, as values. `FEED_CATEGORIES` is the listing's subset. */
+export const EVENT_CATEGORIES: Category[] = [
+  'cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other',
+];
+
+/**
+ * Is this string one of the built-in categories?
+ *
+ * A newsletter rule names either a category or one of the reader's own venue
+ * tags — one namespace, two sources (`eventInCategory`). Telling them apart is
+ * what lets a query be narrowed in SQL: a category is a column, a tag is a set
+ * of venues, and each needs a different `where`.
+ */
+export function isEventCategory(value: string): value is Category {
+  return (EVENT_CATEGORIES as string[]).includes(value.trim().toLowerCase());
+}
+
 export interface Venue {
   id: string;
   name: string;

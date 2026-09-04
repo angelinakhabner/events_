@@ -792,3 +792,53 @@ describe('MyPage — newsletter against an API older than the page (GOI-105)', (
     expect(within(section).getByText(/couldn.t generate a preview/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * "I set up museums and theatre and generated a brief with only cinema in it"
+ * (GOI-106).
+ *
+ * The brief prints what it contains, which is right for an email and wrong
+ * for the button whose job is to show what the settings produce: a monthly
+ * museums rule in a daily newsletter appears in one issue in thirty, so on
+ * the other twenty-nine the reader saw cinema and had nothing telling them
+ * whether the setting had failed to save, matched nothing, or simply rides a
+ * later issue. Those are three different answers and only one is a problem.
+ */
+describe('MyPage — what the generated brief actually contains (GOI-106)', () => {
+  it('accounts for every configured category, including the ones not in this issue', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const section = email.closest('section')!;
+    await waitFor(() => expect(email.value).toBe(USER_EMAIL));
+
+    // Daily, so a rule that is not "every issue" rides an issue other than
+    // this one — the shape the report was about.
+    await user.click(within(section).getByRole('radio', { name: /every day/i }));
+
+    // Two categories, one of them on a cadence that will not be due today.
+    const add = within(section).getByLabelText(/add a category/i);
+    const options = within(add).getAllByRole('option')
+      .map((o) => (o as HTMLOptionElement).value)
+      .filter(Boolean);
+    expect(options.length).toBeGreaterThan(1);
+    await user.selectOptions(add, options[0]!);
+    await user.selectOptions(within(section).getByLabelText(/add a category/i), options[1]!);
+
+    await user.click(within(section).getByRole('button', { name: /generate now/i }));
+    await screen.findByTestId('newsletter-preview');
+    const contents = within(section).getByTestId('newsletter-contents');
+
+    // Every category the reader configured is named, whether or not the brief
+    // above printed it — a category that vanishes from both is the bug.
+    for (const category of options.slice(0, 2)) {
+      expect(within(contents).getByText(new RegExp(category, 'i'))).toBeInTheDocument();
+    }
+    // Each says what became of it rather than just appearing in a list.
+    expect(within(contents).getAllByText(/not in this issue|nothing is on|event/i).length)
+      .toBeGreaterThanOrEqual(2);
+    // And the queue is accounted for rather than silently absent.
+    expect(within(contents).getByText(/saved events/i)).toBeInTheDocument();
+  });
+});

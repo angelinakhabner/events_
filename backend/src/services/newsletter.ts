@@ -3,12 +3,12 @@ import type {
   NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
 import {
-  deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, sendCadenceDays,
-  timeFilterHour,
+  deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, isEventCategory,
+  sendCadenceDays, timeFilterHour,
 } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
-import { defaultEventStore, type EventStore } from './event-store.js';
+import { defaultEventStore, type EventListInput, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
 import { newsletterFromEmail, sendEmail } from './email.js';
 import { defaultNewsletterStore, SENT_EVENT_RETENTION_DAYS, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
@@ -149,6 +149,92 @@ export function deriveWindowDays(
   return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
 
+/**
+ * How many rows one section's query may take. The store caps `limit` at 500,
+ * and a section is one category over one window — far short of it in practice.
+ */
+const PER_SECTION_LIMIT = 500;
+
+/**
+ * The events a brief's sections are built from — one query per due section
+ * rather than one query for the whole issue (GOI-106).
+ *
+ * The single query this replaces took the 500 globally-earliest rows across
+ * every venue, over the *widest* window any section asked for — and then every
+ * section was built from that one result. The limit cuts by start time, so
+ * what those 500 rows actually buy is a date: whatever day the densest
+ * category's screenings run out on. A reader following three cinemas that
+ * publish twenty screenings a day exhausts 500 rows inside four weeks, so a
+ * museums section reaching thirty days ahead was built from a fortnight and a
+ * bit. Everything past that day was never fetched, by any section. A museums
+ * or theatre section whose next event falls beyond it came out empty,
+ * `buildBriefSections` dropped it, and the brief arrived as cinema only — with
+ * nothing anywhere admitting a section had been configured at all.
+ *
+ * The fix is not a bigger limit; the store caps it at 500 and the next reader
+ * with a fourth cinema is back where they started. It is that one section's
+ * events must not be able to crowd out another's. So each due section fetches
+ * its own, narrowed the way the section itself selects: by its own window, and
+ * by category or by the venues carrying the tag. A cinema section's screenings
+ * are then cut at the cinema section's own horizon, where they belong, and
+ * cannot reach a museums section at all. A rule that names neither a category
+ * nor a tag any followed venue carries matches nothing by construction and is
+ * not queried.
+ *
+ * Shared by the sweep and by "Generate now" so the two cannot disagree about
+ * what an issue contains, which is the same reason `newsletterSaveInput` is
+ * shared by both front doors.
+ */
+export async function fetchBriefEvents(
+  sub: { sendCadence: NewsletterSendCadence; categoryRules: NewsletterCategoryRule[] },
+  venues: UserVenue[],
+  eventStore: Pick<EventStore, 'listUpcoming'> = defaultEventStore,
+  now: Date = new Date(),
+): Promise<Event[]> {
+  const venueIds = venues.map((v) => v.id);
+  if (venueIds.length === 0) return [];
+
+  const until = (days: number) => new Date(now.getTime() + days * 86_400_000);
+
+  // No rules: one unnamed section on the send cadence, which is what
+  // `buildBriefSections` builds for this case.
+  if (sub.categoryRules.length === 0) {
+    return eventStore.listUpcoming({
+      venueIds, now, until: until(sendCadenceDays(sub.sendCadence)), limit: PER_SECTION_LIMIT,
+    });
+  }
+
+  const queries: EventListInput[] = [];
+  for (const rule of sub.categoryRules) {
+    if (!isRuleDue(rule.cadence, sub.sendCadence, now, rule.cadenceWeekday)) continue;
+    const wanted = rule.category.trim().toLowerCase();
+    // `eventInCategory` matches an event's category *or* a tag on its venue,
+    // so both have to be reachable. Where a name is only one of the two, the
+    // query narrows to that one; where it is somehow both, neither narrowing
+    // is safe on its own and the window alone has to do.
+    const tagged = venues.filter((v) => v.tags.some((t) => t.trim().toLowerCase() === wanted));
+    const isCategory = isEventCategory(wanted);
+    const scope: EventListInput = {
+      now, until: until(deriveWindowDays(sub.sendCadence, rule, now)), limit: PER_SECTION_LIMIT,
+    };
+    if (isCategory && tagged.length === 0) queries.push({ ...scope, venueIds, categories: [wanted] });
+    else if (!isCategory && tagged.length > 0) queries.push({ ...scope, venueIds: tagged.map((v) => v.id) });
+    else if (isCategory) queries.push({ ...scope, venueIds });
+    // else: a tag no followed venue carries. Nothing can match it, so the
+    // section is empty whether or not a query is spent finding that out.
+  }
+  if (queries.length === 0) return [];
+
+  const results = await Promise.all(queries.map((q) => eventStore.listUpcoming(q)));
+  // Sections overlap — a rule on a tag and a rule on a category can reach the
+  // same screening — and `buildBriefSections` places an event in the first
+  // rule that claims it, so the union has to be deduplicated but not ordered
+  // by anything the sections do not already impose.
+  const byId = new Map<string, Event>();
+  for (const event of results.flat()) byId.set(event.id, event);
+  return [...byId.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
 /** Subject line: the widest cadence in the email decides how it reads, since
  *  a brief carrying a monthly section is not "today in Warsaw". */
 export function briefSubject(sections: BriefSection[]): string {
@@ -278,6 +364,72 @@ export function isRuleDue(
   if (sendCadence === 'weekly') return warsawDayOfMonth(now) <= 7;
   return true;
 }
+
+/** What became of one configured category in this issue (GOI-106). */
+export interface RuleDueness {
+  category: string;
+  /** Was the rule's cadence due in this issue at all? */
+  due: boolean;
+  /** How many events it caught. Zero with `due` is "due but nothing on". */
+  events: number;
+  /** Which issue carries it next, worded for a reader, when this one doesn't. */
+  nextIssue: string | null;
+}
+
+/**
+ * Every configured category, and what happened to it — the answer to "I asked
+ * for museums and theatres and got cinema" (GOI-106).
+ *
+ * A section that is not due, or is due with nothing on, is dropped by
+ * `buildBriefSections`, which is right for the brief itself: an email is not
+ * the place to list what it does not contain. It is wrong for **Generate
+ * now**, whose whole job is to show the reader what their settings produce. A
+ * monthly museums rule in a daily newsletter appears in one issue out of
+ * thirty, so on the other twenty-nine the reader presses the button, sees
+ * cinema, and has nothing to tell them whether the setting failed to save,
+ * failed to match, or simply is not in today's issue.
+ *
+ * The three cases read differently and are reported differently:
+ *
+ *  - not due — the rule rides a later issue, and `nextIssue` names which;
+ *  - due, nothing found — the section was built and came out empty;
+ *  - due, with events — it is in the brief, and the reader can see it.
+ */
+export function ruleDueness(
+  sub: { sendCadence: NewsletterSendCadence; categoryRules: NewsletterCategoryRule[] },
+  sections: BriefSection[],
+  now: Date = new Date(),
+): RuleDueness[] {
+  const found = new Map(sections.map((s) => [s.category.toLowerCase(), s.events.length]));
+  return sub.categoryRules.map((rule) => {
+    const due = isRuleDue(rule.cadence, sub.sendCadence, now, rule.cadenceWeekday);
+    return {
+      category: rule.category,
+      due,
+      events: found.get(rule.category.toLowerCase()) ?? 0,
+      nextIssue: due ? null : nextIssueWord(rule, sub.sendCadence),
+    };
+  });
+}
+
+/** Which issue a not-due rule rides, in the words the settings screen uses. */
+function nextIssueWord(
+  rule: Pick<NewsletterCategoryRule, 'cadence' | 'cadenceWeekday'>,
+  sendCadence: NewsletterSendCadence,
+): string {
+  if (rule.cadence === 'monthly') {
+    return sendCadence === 'daily'
+      ? "the 1st of the month's issue"
+      : "the month's first issue";
+  }
+  // Weekly inside a daily newsletter — the only other way to be not due.
+  const day = WEEKDAY_NAMES[rule.cadenceWeekday ?? 1] ?? 'Monday';
+  return `${day}'s issue`;
+}
+
+const WEEKDAY_NAMES = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+];
 
 /** Day of the month in Warsaw (1-31). */
 function warsawDayOfMonth(at: Date): number {
@@ -656,17 +808,10 @@ export async function sendNewsletterBriefs(
         outcomes.push({ ...base, status: 'skipped', reason: 'no-venues' });
         continue;
       }
-      // Narrow in SQL, not after the fact: `limit` cuts the globally earliest
-      // rows, so fetching "the next 500 events" and filtering by venue here
-      // silently truncated a weekly brief once the database held more than 500
-      // upcoming events across all venues — the later days just vanished. The
-      // window is the widest any section can ask for.
-      const events = await eventStore.listUpcoming({
-        venueIds: venues.map((v) => v.id),
-        now,
-        until: new Date(now.getTime() + briefFetchWindowDays(sub, now) * 24 * 3_600_000),
-        limit: 500,
-      });
+      // One query per due section, narrowed in SQL by that section's own
+      // window and category — see `fetchBriefEvents`. A single query for the
+      // whole issue spent its limit on whichever category publishes most.
+      const events = await fetchBriefEvents(sub, venues, eventStore, now);
       const sections = buildBriefSections(events, sub, venues, now);
 
       // The saved-events queue counts as content (GOI-101). An issue whose

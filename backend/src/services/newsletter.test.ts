@@ -13,6 +13,8 @@ import {
   eventInCategory,
   briefSubject,
   wasRecentlySent,
+  fetchBriefEvents,
+  ruleDueness,
 } from './newsletter.js';
 import { InMemoryUserVenueStore } from './user-venue-store.js';
 import type { EventListInput } from './event-store.js';
@@ -520,10 +522,41 @@ describe('sendNewsletterBriefs', () => {
     expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 7 * 24 * 3_600_000);
   });
 
-  it('fetches as far ahead as the widest section reaches, not as far as the cadence', async () => {
+  it('fetches as far ahead as the section reaches, not as far as the cadence', async () => {
     // A 60-day lookahead on a weekly newsletter: the query has to cover the
-    // section, or the section is silently truncated at the cadence's 30 days
+    // section, or the section is silently truncated at the cadence's 7 days
     // while still claiming the wider window in the subject line and the PDF.
+    const store = await storeWith({
+      email: 'a@b.pl',
+      sendCadence: 'weekly',
+      venueIds: ['v1', 'v2'],
+      sendHour: 8,
+      sendWeekday: 1,
+      enabled: true,
+      categoryRules: [
+        { category: 'cinema', cadence: 'every_issue', cadenceWeekday: null, detail: 'short', timeFilter: 'any', lookaheadDays: 60, sortOrder: 0 },
+      ],
+    });
+    const queries: EventListInput[] = [];
+    await sendNewsletterBriefs(store, NOW, {
+      ...deps(await venuesFollowedByU1()),
+      events: { listUpcoming: async (q = {}) => { queries.push(q); return []; } },
+      dryRun: true,
+      force: true,
+    });
+
+    expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 60 * 24 * 3_600_000);
+  });
+
+  /**
+   * A section that is not in this issue is not fetched for either (GOI-106).
+   *
+   * The fetch is per due section now, so "which rows does this issue need" and
+   * "which sections does this issue carry" are one question rather than two
+   * that can disagree. NOW is the 22nd, and a monthly rule in a weekly
+   * newsletter rides the month's first issue.
+   */
+  it('does not query for a section that is not due in this issue', async () => {
     const store = await storeWith({
       email: 'a@b.pl',
       sendCadence: 'weekly',
@@ -543,7 +576,7 @@ describe('sendNewsletterBriefs', () => {
       force: true,
     });
 
-    expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 60 * 24 * 3_600_000);
+    expect(queries).toEqual([]);
   });
 
   it('only restricts the sweep to one subscriber', async () => {
@@ -586,5 +619,234 @@ describe('InMemoryNewsletterStore', () => {
 
     const subs = await store.listEnabled();
     expect(subs.map((s) => s.userId)).toEqual(['on']);
+  });
+});
+
+/**
+ * The reported bug (GOI-106): a brief configured for cinema, museums and
+ * theatre arrived as cinema only.
+ *
+ * The fetch was one query — the 500 globally-earliest rows across every
+ * followed venue, over the *widest* window any section asked for. That is the
+ * failure `listUpcomingWithCategoryFloor` already documents for the feed, in a
+ * place that never got the fix: three cinemas publishing twenty screenings a
+ * day fill 500 rows inside a month, so a monthly museums section reaching 30
+ * days ahead was built from events that were never fetched. It came out empty,
+ * `buildBriefSections` dropped it, and the reader got a cinema-only PDF with
+ * nothing anywhere admitting a section had been configured.
+ */
+describe('fetchBriefEvents (GOI-106)', () => {
+  const VENUES = [
+    { id: 'kino', name: 'Kinoteka', category: 'cinema', tags: ['arthouse'] },
+    { id: 'msn', name: 'MSN', category: 'exhibition', tags: [] },
+    { id: 'teatr', name: 'Teatr Polski', category: 'theatre', tags: [] },
+  ] as unknown as Parameters<typeof fetchBriefEvents>[1];
+
+  /**
+   * A store that answers each query honestly, including its 500-row cap and
+   * its earliest-first ordering — which is what makes the starvation real
+   * rather than theoretical.
+   */
+  function storeOver(catalogue: Event[]) {
+    const queries: EventListInput[] = [];
+    const listUpcoming = async (q: EventListInput = {}) => {
+      const until = q.until;
+      const rows = catalogue
+        .filter((e) => new Date(e.startsAt) >= (q.now ?? NOW))
+        .filter((e) => (until ? new Date(e.startsAt) <= until : true))
+        .filter((e) => (q.venueIds ? q.venueIds.includes(e.venueId) : true))
+        .filter((e) => (q.categories ? q.categories.includes(e.category) : true))
+        .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+      return rows.slice(0, Math.min(q.limit ?? 100, 500));
+    };
+    return {
+      queries,
+      store: { listUpcoming: async (q: EventListInput = {}) => { queries.push(q); return listUpcoming(q); } },
+    };
+  }
+
+  /**
+   * Warsaw as this reader follows it: three cinemas between them publishing
+   * twenty screenings a day, and a museum and a theatre whose next dates are
+   * four weeks out — which is exactly where 500 cinema rows stop.
+   */
+  const CATALOGUE: Event[] = [];
+  for (let day = 0; day < 40; day += 1) {
+    const at = (hour: number) =>
+      new Date(NOW.getTime() + day * 86_400_000 + hour * 3_600_000).toISOString();
+    for (let n = 0; n < 20; n += 1) {
+      CATALOGUE.push(makeEvent({
+        id: `kino-${day}-${n}`, venueId: 'kino', category: 'cinema', startsAt: at(6 + n * 0.5),
+      }));
+    }
+    if (day >= 27) {
+      CATALOGUE.push(makeEvent({ id: `msn-${day}`, venueId: 'msn', category: 'exhibition', startsAt: at(11) }));
+      CATALOGUE.push(makeEvent({ id: `teatr-${day}`, venueId: 'teatr', category: 'theatre', startsAt: at(19) }));
+    }
+  }
+
+  /** The reported configuration: a daily newsletter, cinema every issue, and
+   *  museums and theatre looking a month ahead. */
+  const REPORTED = makeSub({
+    sendCadence: 'daily',
+    categoryRules: [
+      makeRule({ category: 'cinema', sortOrder: 0 }),
+      makeRule({ category: 'exhibition', lookaheadDays: 30, sortOrder: 1 }),
+      makeRule({ category: 'theatre', lookaheadDays: 30, sortOrder: 2 }),
+    ],
+  });
+
+  it('reaches sections the densest category would otherwise truncate away', async () => {
+    const { store } = storeOver(CATALOGUE);
+    const events = await fetchBriefEvents(REPORTED, VENUES, store, NOW);
+    const sections = buildBriefSections(events, REPORTED, VENUES, NOW);
+
+    expect(sections.map((s) => s.category)).toEqual(['cinema', 'exhibition', 'theatre']);
+    for (const section of sections) expect(section.events.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The same settings through the one shared query this replaced — so the
+   * test above is passing because of the fix, not because the fixture is
+   * generous. 500 rows of a twenty-a-day cinema stop around day 25; the
+   * museum and theatre dates are past that, so both sections vanish and the
+   * brief is cinema only. Which is the PDF that was reported.
+   */
+  it('is what one shared query could not do', async () => {
+    const { store } = storeOver(CATALOGUE);
+    const shared = await store.listUpcoming({
+      venueIds: VENUES.map((v) => v.id),
+      now: NOW,
+      until: new Date(NOW.getTime() + briefFetchWindowDays(REPORTED, NOW) * 86_400_000),
+      limit: 500,
+    });
+    const sections = buildBriefSections(shared, REPORTED, VENUES, NOW);
+    expect(sections.map((s) => s.category)).toEqual(['cinema']);
+  });
+
+  it('narrows by category for a category rule, and by venue for a tag rule', async () => {
+    const sub = makeSub({
+      sendCadence: 'daily',
+      categoryRules: [
+        makeRule({ category: 'exhibition', sortOrder: 0 }),
+        makeRule({ category: 'arthouse', sortOrder: 1 }),
+      ],
+    });
+    const { queries, store } = storeOver(CATALOGUE);
+    await fetchBriefEvents(sub, VENUES, store, NOW);
+
+    expect(queries).toHaveLength(2);
+    // A built-in category is a column, so it goes in the `where`.
+    expect(queries[0]!.categories).toEqual(['exhibition']);
+    expect(queries[0]!.venueIds).toEqual(['kino', 'msn', 'teatr']);
+    // A tag is a set of venues, so that is what narrows instead.
+    expect(queries[1]!.categories).toBeUndefined();
+    expect(queries[1]!.venueIds).toEqual(['kino']);
+  });
+
+  it('spends no query on a tag no followed venue carries', async () => {
+    const sub = makeSub({
+      sendCadence: 'daily',
+      categoryRules: [makeRule({ category: 'nobody-has-this-tag' })],
+    });
+    const { queries, store } = storeOver(CATALOGUE);
+    expect(await fetchBriefEvents(sub, VENUES, store, NOW)).toEqual([]);
+    expect(queries).toEqual([]);
+  });
+
+  it('gives each section its own window rather than one shared widest', async () => {
+    const sub = makeSub({
+      sendCadence: 'daily',
+      categoryRules: [
+        makeRule({ category: 'cinema', sortOrder: 0 }),
+        makeRule({ category: 'exhibition', lookaheadDays: 30, sortOrder: 1 }),
+      ],
+    });
+    const { queries, store } = storeOver(CATALOGUE);
+    await fetchBriefEvents(sub, VENUES, store, NOW);
+
+    expect(queries[0]!.until?.getTime()).toBe(NOW.getTime() + 1 * 86_400_000);
+    expect(queries[1]!.until?.getTime()).toBe(NOW.getTime() + 30 * 86_400_000);
+  });
+
+  it('deduplicates an event two rules both reach, and orders by start', async () => {
+    const sub = makeSub({
+      sendCadence: 'daily',
+      // 'cinema' the category and 'arthouse' the tag both reach the same venue.
+      categoryRules: [makeRule({ category: 'cinema', sortOrder: 0 }), makeRule({ category: 'arthouse', sortOrder: 1 })],
+    });
+    const { store } = storeOver(CATALOGUE);
+    const events = await fetchBriefEvents(sub, VENUES, store, NOW);
+
+    expect(new Set(events.map((e) => e.id)).size).toBe(events.length);
+    const starts = events.map((e) => e.startsAt);
+    expect([...starts].sort()).toEqual(starts);
+  });
+
+  it('asks nothing of the database when no venue is in scope', async () => {
+    const { queries, store } = storeOver(CATALOGUE);
+    expect(await fetchBriefEvents(makeSub({}), [], store, NOW)).toEqual([]);
+    expect(queries).toEqual([]);
+  });
+});
+
+/**
+ * Why a category the reader configured is not in the issue they generated
+ * (GOI-106).
+ *
+ * The brief itself is right to print only what it contains. "Generate now" is
+ * not: it exists to show what the settings produce, and a monthly rule appears
+ * in one issue in thirty, so on the other twenty-nine a reader sees cinema and
+ * cannot tell a lost setting from a quiet month from a section that simply
+ * rides a different issue.
+ */
+describe('ruleDueness (GOI-106)', () => {
+  const section = (category: string, events: number) => ({
+    category, windowDays: 1, detail: 'short' as const,
+    events: Array.from({ length: events }, (_, i) => makeEvent({ id: `${category}-${i}` })),
+  });
+
+  it('names the issue a not-due rule rides, per cadence', () => {
+    const sub = makeSub({
+      sendCadence: 'daily',
+      categoryRules: [
+        makeRule({ category: 'cinema', sortOrder: 0 }),
+        makeRule({ category: 'exhibition', cadence: 'monthly', sortOrder: 1 }),
+        makeRule({ category: 'theatre', cadence: 'weekly', cadenceWeekday: 1, sortOrder: 2 }),
+      ],
+    });
+    // NOW is Wednesday the 22nd: neither the 1st, nor the Monday the theatre
+    // rule names.
+    const report = ruleDueness(sub, [section('cinema', 4)], NOW);
+
+    expect(report[0]).toEqual({ category: 'cinema', due: true, events: 4, nextIssue: null });
+    expect(report[1]!.due).toBe(false);
+    expect(report[1]!.nextIssue).toMatch(/1st of the month/);
+    expect(report[2]!.due).toBe(false);
+    expect(report[2]!.nextIssue).toMatch(/Monday/);
+  });
+
+  /** Due but empty is a different answer from not due, and says so. */
+  it('tells "nothing on" apart from "not in this issue"', () => {
+    const sub = makeSub({
+      sendCadence: 'daily',
+      categoryRules: [makeRule({ category: 'theatre' })],
+    });
+    const report = ruleDueness(sub, [], NOW);
+    expect(report[0]).toEqual({ category: 'theatre', due: true, events: 0, nextIssue: null });
+  });
+
+  it('reports every configured category, in the order they are configured', () => {
+    const sub = makeSub({
+      sendCadence: 'weekly',
+      categoryRules: [
+        makeRule({ category: 'cinema', sortOrder: 0 }),
+        makeRule({ category: 'exhibition', sortOrder: 1 }),
+        makeRule({ category: 'theatre', sortOrder: 2 }),
+      ],
+    });
+    const report = ruleDueness(sub, [section('exhibition', 2)], NOW);
+    expect(report.map((r) => r.category)).toEqual(['cinema', 'exhibition', 'theatre']);
+    expect(report.map((r) => r.events)).toEqual([0, 2, 0]);
   });
 });

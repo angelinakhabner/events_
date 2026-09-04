@@ -312,6 +312,70 @@ describe('auth + /my flow (in-process)', () => {
     expect((await trpcCall('my.newsletter.get', { token: hana })).data).toBeNull();
   });
 
+  /**
+   * The two things "Generate now" left out (GOI-106).
+   *
+   * A reader set up cinema, museums and theatre with saved events on, pressed
+   * Generate, and got a cinema-only PDF with no queue in it. The queue was
+   * not filtered out — the preview never built one, so no setting could bring
+   * it back. And a category not in today's issue was dropped in silence,
+   * which is right for an email and wrong for the button whose job is to show
+   * what the settings produce.
+   */
+  it('newsletter preview carries the saved-events queue and says what each category did', async () => {
+    const email = `iris-${RUN}@example.com`;
+    const iris = await login(email);
+    const eventId = await usableEventId();
+    await trpcCall('my.wantToGo.add', { body: { eventId }, token: iris });
+
+    const res = await trpcCall('my.newsletter.preview', {
+      body: {
+        email,
+        // Daily, so a weekly rule rides one issue in seven and a monthly one
+        // rides one in thirty — the case the reader hit.
+        sendCadence: 'daily',
+        venueIds: [],
+        sendHour: 9,
+        categoryRules: [
+          { category: 'cinema', cadence: 'every_issue', detail: 'short', sortOrder: 0 },
+          { category: 'exhibition', cadence: 'monthly', detail: 'full', sortOrder: 1 },
+          { category: 'theatre', cadence: 'weekly', cadenceWeekday: 1, detail: 'short', sortOrder: 2 },
+        ],
+        wantToGo: { enabled: true, horizonDays: 7, changesEnabled: true, urgentSend: true },
+        enabled: true,
+      },
+      token: iris,
+    });
+    expect(res.status).toBe(200);
+    const { dueness, savedEvents } = res.data as {
+      dueness: { category: string; due: boolean; events: number; nextIssue: string | null }[];
+      savedEvents: number;
+    };
+
+    // Every configured category is accounted for, in the order configured —
+    // including the ones the brief itself does not print.
+    expect(dueness.map((d) => d.category)).toEqual(['cinema', 'exhibition', 'theatre']);
+    const byCategory = new Map(dueness.map((d) => [d.category, d]));
+    expect(byCategory.get('cinema')!.due).toBe(true);
+    // A not-due rule says which issue carries it instead of vanishing.
+    for (const category of ['exhibition', 'theatre']) {
+      const row = byCategory.get(category)!;
+      if (!row.due) expect(row.nextIssue).toBeTruthy();
+    }
+    // The preview builds a queue at all — before the fix this field did not
+    // exist, because nothing on the preview path ever read `wantToGo`, and no
+    // setting could bring the block back.
+    expect(typeof savedEvents).toBe('number');
+    // With a database behind it the saved event is a day out, inside the
+    // queue's horizon, and actually counted. The in-memory want-to-go store
+    // cannot resolve an event to a date (`list` returns nothing), so the
+    // count is only meaningful where the real store is.
+    if (HAS_DB) expect(savedEvents).toBeGreaterThan(0);
+
+    // Still no subscription: Generate saves nothing.
+    expect((await trpcCall('my.newsletter.get', { token: iris })).data).toBeNull();
+  });
+
   it('logout kills the session', async () => {
     const t = await login(`c-${RUN}@example.com`);
     await trpcCall('auth.logout', { body: {}, token: t });

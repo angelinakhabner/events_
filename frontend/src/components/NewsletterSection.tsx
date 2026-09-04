@@ -7,6 +7,7 @@ import type {
 import {
   allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
 } from '@afisz/shared';
+import type { RuleDueness } from '../../../backend/src/services/newsletter';
 import { trpc } from '../lib/trpc';
 import { newsletterApiIsStale, OLDER_API, readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
@@ -697,6 +698,8 @@ function NewsletterForm({
         html={preview.data?.html ?? null}
         pdf={preview.data?.pdf ?? null}
         count={preview.data?.events.length ?? null}
+        dueness={preview.data?.dueness ?? null}
+        savedEvents={preview.data?.savedEvents ?? null}
         error={readableApiError(preview.error?.message, NEWSLETTER_FIELDS)}
       />
 
@@ -1152,11 +1155,17 @@ function NewsletterPreview({
   html,
   pdf,
   count,
+  dueness,
+  savedEvents,
   error,
 }: {
   html: string | null;
   pdf: { filename: string; base64: string } | null;
   count: number | null;
+  /** What became of each configured category — see `ruleDueness`. */
+  dueness: RuleDueness[] | null;
+  /** Saved-event reminders and changes carried by this issue. */
+  savedEvents: number | null;
   error: string | null;
 }) {
   if (error) {
@@ -1186,6 +1195,7 @@ function NewsletterPreview({
           </button>
         </div>
       </div>
+      <WhatIsInIt dueness={dueness} savedEvents={savedEvents} />
       <iframe
         data-testid="newsletter-preview"
         title="Newsletter preview"
@@ -1194,6 +1204,61 @@ function NewsletterPreview({
         className="w-full max-w-[640px] h-[720px] border-3 border-ink bg-white"
       />
     </div>
+  );
+}
+
+/**
+ * Which of your categories are in this issue, and why the others are not
+ * (GOI-106).
+ *
+ * A brief prints what it contains, which is the right thing for an email and
+ * the wrong thing for a preview: a reader who set up cinema, museums and
+ * theatre and generated a Friday issue got cinema, with nothing to say whether
+ * the other two failed to save, matched nothing, or simply ride a different
+ * issue. Those three have different answers and only one of them is a
+ * problem, so the preview names them apart — beside the rendering, not inside
+ * it, because none of it belongs in what the recipient receives.
+ */
+function WhatIsInIt({
+  dueness,
+  savedEvents,
+}: {
+  dueness: RuleDueness[] | null;
+  savedEvents: number | null;
+}) {
+  if (!dueness || dueness.length === 0) return null;
+  return (
+    <ul
+      data-testid="newsletter-contents"
+      className="mb-3.5 list-none m-0 p-0 border-3 border-ink bg-panel px-4 py-3 text-[13px]"
+    >
+      {dueness.map((d) => (
+        <li key={d.category} className="flex flex-wrap gap-x-2 py-0.5">
+          <span className="font-extrabold uppercase tracking-[0.5px] text-xs self-center">
+            {categoryOrTagLabel(d.category)}
+          </span>
+          <span className={d.due && d.events > 0 ? 'text-ink' : 'text-muted'}>
+            {!d.due
+              ? `not in this issue — it rides ${d.nextIssue}`
+              : d.events === 0
+                ? 'in this issue, but nothing is on in its window'
+                : `${d.events} event${d.events === 1 ? '' : 's'}`}
+          </span>
+        </li>
+      ))}
+      {savedEvents !== null ? (
+        <li className="flex flex-wrap gap-x-2 py-0.5 border-t-2 border-rule mt-1.5 pt-2">
+          <span className="font-extrabold uppercase tracking-[0.5px] text-xs self-center">
+            Saved events
+          </span>
+          <span className={savedEvents > 0 ? 'text-ink' : 'text-muted'}>
+            {savedEvents > 0
+              ? `${savedEvents} to tell you about`
+              : 'nothing saved is coming up'}
+          </span>
+        </li>
+      ) : null}
+    </ul>
   );
 }
 

@@ -22,8 +22,8 @@ import {
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefFetchWindowDays, buildBriefSections, currentFestival, plannedFrequency,
-  resolveBriefVenues,
+  buildBriefSections, buildWantToGoSection, currentFestival, fetchBriefEvents,
+  plannedFrequency, resolveBriefVenues, ruleDueness,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
@@ -706,26 +706,46 @@ const my = router({
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
         const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
-        // Narrowed in SQL for the same reason the sender is: `limit` cuts the
-        // globally earliest rows, so a preview built from "the next 500 events"
-        // showed a short week once the database outgrew that. The window is the
-        // widest any section can ask for — the same call the sweep makes, so
-        // what Generate shows is what would actually be sent.
+        // One query per due section, narrowed by that section's own window and
+        // category — the same call the sweep makes, so what Generate shows is
+        // what would actually be sent. A single query for the whole issue spent
+        // its 500 rows on whichever category publishes most, which is what left
+        // a reader's museums and theatre sections empty (GOI-106).
         const now = new Date();
         const all = env.DATABASE_URL && venues.length > 0
-          ? await defaultEventStore.listUpcoming({
-            venueIds: venues.map((v) => v.id),
-            now,
-            until: new Date(now.getTime() + briefFetchWindowDays(input, now) * 24 * 3_600_000),
-            limit: 500,
-          })
+          ? await fetchBriefEvents(input, venues, defaultEventStore, now)
           : [];
         // The preview shows what would go out *now*, so a section whose
         // cadence isn't due today is genuinely absent from it — same rule the
-        // sweep applies.
+        // sweep applies. What it is *not* absent from is `dueness`, which says
+        // so in as many words rather than leaving a configured category to
+        // vanish without explanation.
         const sections = buildBriefSections(all, input, venues, now);
+        /**
+         * The saved-events queue (GOI-101), which the preview never built.
+         *
+         * The sweep has built it since the queue existed; "Generate now"
+         * rendered a brief with the field simply absent, so a reader with
+         * saved events coming up got a PDF that silently dropped the one part
+         * of the brief that asks them to do something — and no combination of
+         * settings could bring it back, because nothing on this path ever
+         * looked at `wantToGo` (GOI-106).
+         *
+         * Built without the send-history dedup the sweep applies. That dedup
+         * exists to stop one reminder being *emailed* twice; a preview emails
+         * nothing, and suppressing an item because the scheduled issue already
+         * carried it would hand the reader a PDF missing entries for a reason
+         * nothing on screen could explain.
+         */
+        const wantToGo = await buildWantToGoSection(
+          { id: ctx.user.id, userId: ctx.user.id, wantToGo: input.wantToGo },
+          { ...ctx.newsletter, sentStates: async () => new Set<string>() },
+          ctx.wantToGo,
+          now,
+        );
         const brief = {
           sections,
+          wantToGo,
           fallbackFrequency: plannedFrequency(input),
           recipientName: input.recipientName,
           festival: currentFestival(),
@@ -739,6 +759,11 @@ const my = router({
         // than standing up a separate authenticated download route.
         return {
           events: sections.flatMap((s) => s.events),
+          /** What became of each configured category — see `ruleDueness`. */
+          dueness: ruleDueness(input, sections, now),
+          /** So the preview can say the queue is in the brief rather than
+           *  leaving the reader to spot it in the rendering. */
+          savedEvents: wantToGo.reminders.length + wantToGo.changes.length,
           html: renderBriefHtml(brief),
           pdf: {
             filename: briefPdfFilename(now, plannedFrequency(input)),
