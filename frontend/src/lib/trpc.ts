@@ -21,10 +21,9 @@ export function makeTrpcClient() {
     links: [
       httpBatchLink({
         url: `${base}/trpc`,
-        // The invite cookie (GOI-83) lives on the API's origin, which is not
-        // this one — without `include` the browser withholds it and every
-        // procedure comes back denied.
-        fetch: (url, options) => fetch(url, { ...options, credentials: 'include' }),
+        // No cookies: the session is a bearer token in the header below, so
+        // the default (`same-origin`, i.e. none cross-site) is what we want.
+        // The invite cookie this used to carry is gone — the site is open.
         headers() {
           const token = getSessionToken();
           return {

@@ -17,7 +17,7 @@
 export const NAME = 'AFISZ.KA';
 
 /**
- * Where invite requests and privacy requests land. This is the address the
+ * Where questions and privacy requests land. This is the address the
  * deployment already sends transactional mail from (see docs/RUNBOOK.md); the
  * policy below promises a human answers it, so it must be able to receive.
  */
@@ -34,16 +34,16 @@ export const TAGLINE = 'A cultural events aggregator you assemble yourself.';
  */
 export const DESCRIPTION = `${NAME} is a cultural events aggregator you build for yourself, one venue at a time. Rather than browsing a city listings site and hoping it happens to cover what you care about, you point ${NAME} at the places you actually go — a cinema, an art-house theatre, a gallery, a concert hall, anywhere that publishes a programme on the web — and it reads their schedules for you, turning loose pages of listings into events you can filter. Venues gather into named lists, one per city or per mood, each remembering its own filters for category, time, price and day. From there you can mark what you want to go to, share that shortlist with the person you want to go with, drop a screening straight into your calendar, and have a brief of what is coming up arrive by email on the morning you choose.`;
 
-/** The invitation note. Not buried: it is a section of its own on the page. */
-export const ACCESS_HEADING = 'Access is by invitation';
+/** How someone gets in. Not buried: it is a section of its own on the page. */
+export const ACCESS_HEADING = 'Access is open';
 export const ACCESS_BLOCKS: readonly string[] = [
-  `${NAME} is in closed testing. There is no public sign-up, and no way to create an account from this page — the app opens only for a browser holding a working invite link, and every part of it, down to the last data request, is closed without one.`,
-  `If you would like an invitation, write to {email} and say a little about which city and which venues you would want to follow. Invitations go out in small batches while the app is still being built.`,
+  `${NAME} is open to anyone. Reading what is on needs no account at all. An account is what makes it yours: the venues you follow, the lists you group them into, the events you have marked as wanting to go to, and the email brief all belong to one address.`,
+  `To get one, open the app and sign in on the /my page with your email — a single-use link arrives in your inbox — or with your Google account. There is no invitation to wait for and no approval step. It is still being built, so write to {email} if something reads wrongly.`,
 ];
 
 export const CONTACT_HEADING = 'Contact';
 export const CONTACT_BLOCKS: readonly string[] = [
-  `Invitations, questions, a venue whose programme page is being read wrongly, or anything about the policy below: {email}.`,
+  `Questions, a venue whose programme page is being read wrongly, or anything about the policy below: {email}.`,
 ];
 
 /**
@@ -90,7 +90,7 @@ export const DPA = {
 } as const;
 
 export const POLICY_HEADING = 'Privacy policy';
-export const POLICY_UPDATED = '29 August 2026';
+export const POLICY_UPDATED = '3 September 2026';
 
 export type PolicyBlock =
   | { kind: 'p'; text: string }
@@ -127,11 +127,11 @@ export const POLICY_SECTIONS: readonly PolicySection[] = [
     blocks: [
       {
         kind: 'p',
-        text: 'Nothing below applies until you accept an invitation and start using the app. Everything it stores is something you typed or asked for; there is no profile built from your behaviour.',
+        text: 'Nothing below applies until you start using the app, and most of it not until you sign in. Everything it stores is something you typed or asked for; there is no profile built from your behaviour.',
       },
       {
         kind: 'p',
-        text: 'The GDPR requires each purpose to rest on a stated legal basis, so here they are. Your account, your lists and everything you save are processed under art. 6(1)(b) — performing the contract you entered into by accepting an invitation. The email brief and a connected Drive folder rest on art. 6(1)(a), your consent, which you can withdraw at any time without affecting anything done before you did. The pre-sign-in browser identifier and the ordinary server logs rest on art. 6(1)(f), the legitimate interest in the app working before you have an account and in keeping the service running and free of abuse. No special categories of data (art. 9) are processed, and the app is not directed at children under 16.',
+        text: 'The GDPR requires each purpose to rest on a stated legal basis, so here they are. Your account, your lists and everything you save are processed under art. 6(1)(b) — performing the contract you entered into when you created an account and accepted these terms. The email brief and a connected Drive folder rest on art. 6(1)(a), your consent, which you can withdraw at any time without affecting anything done before you did. The pre-sign-in browser identifier and the ordinary server logs rest on art. 6(1)(f), the legitimate interest in the app working before you have an account and in keeping the service running and free of abuse. No special categories of data (art. 9) are processed, and the app is not directed at children under 16.',
       },
       {
         kind: 'list',
@@ -141,7 +141,6 @@ export const POLICY_SECTIONS: readonly PolicySection[] = [
           'The events you mark as "want to go", and any shortlist you choose to share. A shared shortlist becomes readable by anyone holding the link you send, which is what sharing means; you can stop sharing it at any time.',
           'Your email brief settings, if you subscribe to one: the address it goes to, the name it should greet you by, which venues and categories it covers, and what time it should arrive.',
           'A random identifier kept in your browser’s local storage, so that things you save before signing in are still yours afterwards. It is a random value with no meaning of its own and is never combined with anything bought or received from elsewhere.',
-          'An invite cookie, set when you follow an invitation link, so you are not asked for it again on every visit. It carries the invite token and nothing else, and it is how the site knows to open at all.',
           'Access to a Google Drive folder, only if you explicitly connect one so that briefs are filed there as PDFs. That connection stores a Google refresh token and the address of the account you connected. Disconnecting it deletes both.',
         ],
       },
@@ -184,7 +183,7 @@ export const POLICY_SECTIONS: readonly PolicySection[] = [
     blocks: [
       {
         kind: 'p',
-        text: 'Your account and the things in it are kept for as long as the account exists, because they are the thing the app is for. Sign-in links expire quickly and are single-use. Sessions expire on their own. Invitations can be revoked, and a revoked invitation stops working immediately — the cookie is re-checked against the invite on every single request rather than trusted once. Ask for deletion and the account and everything attached to it goes, including any brief subscription and any Drive connection.',
+        text: 'Your account and the things in it are kept for as long as the account exists, because they are the thing the app is for. Sign-in links expire quickly and are single-use. Sessions expire on their own. Ask for deletion and the account and everything attached to it goes, including any brief subscription and any Drive connection.',
       },
     ],
   },
@@ -208,9 +207,7 @@ export const POLICY_SECTIONS: readonly PolicySection[] = [
         kind: 'list',
         items: [
           'a session token in local storage, so you stay signed in;',
-          'a random device identifier in local storage, so a list survives a reload before you have an account;',
-          'a note of whether the invite gate last let you in, so a returning visitor is not shown the public page for a moment before the app appears;',
-          'the invite cookie itself, set on the API when you follow an invitation link.',
+          'a random device identifier in local storage, so a list survives a reload before you have an account.',
         ],
       },
       {
@@ -268,7 +265,7 @@ export const POLICY_SECTIONS: readonly PolicySection[] = [
  * fourteen-day withdrawal right is stated rather than disclaimed.
  */
 export const TERMS_HEADING = 'Terms of use';
-export const TERMS_UPDATED = '29 August 2026';
+export const TERMS_UPDATED = '3 September 2026';
 
 export const TERMS_SECTIONS: readonly PolicySection[] = [
   {
@@ -285,7 +282,7 @@ export const TERMS_SECTIONS: readonly PolicySection[] = [
     blocks: [
       {
         kind: 'p',
-        text: `${NAME} reads programme information that cultural venues publish on their own websites and presents it as one listing. Free of charge, and by invitation, it lets you:`,
+        text: `${NAME} reads programme information that cultural venues publish on their own websites and presents it as one listing. Free of charge, it lets you:`,
       },
       {
         kind: 'list',
@@ -309,7 +306,7 @@ export const TERMS_SECTIONS: readonly PolicySection[] = [
     blocks: [
       {
         kind: 'p',
-        text: 'A device with internet access and a current version of a standard web browser (Chrome, Firefox, Safari or Edge) with JavaScript and local storage enabled, plus a working invitation. An email address is needed for an account or a brief, and nothing else is.',
+        text: 'A device with internet access and a current version of a standard web browser (Chrome, Firefox, Safari or Edge) with JavaScript and local storage enabled. An email address is needed for an account or a brief, and nothing else is.',
       },
       {
         kind: 'p',
@@ -352,7 +349,7 @@ export const TERMS_SECTIONS: readonly PolicySection[] = [
           'submit content that is unlawful, infringes anyone’s rights, or is designed to mislead;',
           'give a venue a name or tag that is defamatory, or that impersonates a real organisation;',
           'attempt to reach another user’s account, or parts of the service not made available to you;',
-          'pass your invitation to someone it was not meant for;',
+          'share a sign-in link sent to your address, or let anyone else use your account;',
           'scrape, overload or otherwise interfere with the service, or work around its technical limits;',
           'use the service to send unsolicited commercial messages.',
         ],
@@ -449,4 +446,4 @@ export const TERMS_SECTIONS: readonly PolicySection[] = [
  * characters, so this is written to stand alone rather than sliced out of the
  * paragraph above and cut mid-clause.
  */
-export const META_DESCRIPTION = `${NAME} is a cultural events aggregator you assemble yourself: follow the cinemas, theatres and galleries you actually go to, filter what is on, and get a brief by email. Access by invitation.`;
+export const META_DESCRIPTION = `${NAME} is a cultural events aggregator you assemble yourself: follow the cinemas, theatres and galleries you actually go to, filter what is on, and get a brief by email. Free to use — sign in with your email.`;

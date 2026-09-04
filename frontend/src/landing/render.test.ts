@@ -29,10 +29,10 @@ describe('landing page markup', () => {
     expect(body).toContain(escapeHtml(DESCRIPTION));
   });
 
-  it('says access is by invitation, visibly', () => {
+  it('says how to get in, visibly', () => {
     expect(body).toContain(ACCESS_HEADING);
-    expect(body).toMatch(/closed testing/i);
-    expect(body).toMatch(/no public sign-up/i);
+    expect(body).toMatch(/open to anyone/i);
+    expect(body).toMatch(/no invitation to wait for/i);
   });
 
   it('gives a contact address that can be clicked', () => {

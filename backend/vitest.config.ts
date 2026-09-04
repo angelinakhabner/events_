@@ -11,11 +11,6 @@ export default defineConfig({
     // that truncation flake (e.g. a fixture event vanishing mid-test). Run
     // files sequentially; the suite is small enough that this costs seconds.
     fileParallelism: false,
-    // The invite gate (GOI-83) defaults ON, which would deny every request in
-    // suites that predate it and are testing something else entirely. Tests
-    // run with it off; invite-gate's own suite turns it on explicitly, which
-    // is also the "local dev works without a token" path.
-    env: { INVITE_GATE_ENABLED: 'false' },
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

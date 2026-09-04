@@ -445,36 +445,6 @@ export const eventChanges = pgTable(
 );
 
 /**
- * Invite tokens for the pre-auth access gate (GOI-83).
- *
- * Temporary by construction: this table plus one middleware file is the whole
- * feature, so opening the site up later is a delete, not an untangling.
- *
- * Only the SHA-256 of a token is stored. The raw token exists once, in the URL
- * printed by the create script, and nowhere else — a dump of this table hands
- * an attacker nothing usable.
- */
-export const invites = pgTable(
-  'invites',
-  {
-    tokenHash: text('token_hash').primaryKey(),
-    /** Who or what it was minted for ("Kasia", "portfolio"). */
-    label: text('label').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    /** Null = never expires. */
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
-    /** Set to revoke. Checked on *every* request, not only at exchange, so a
-     *  cookie already issued from this token dies with it. */
-    revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
-    useCount: integer('use_count').notNull().default(0),
-  },
-  (t) => ({
-    labelIdx: index('invites_label_idx').on(t.label),
-  }),
-);
-
-/**
  * A user's connected cloud drive, where their briefs get filed (GOI-91).
  *
  * One row per user per provider, so a user can have Google Drive and (once a

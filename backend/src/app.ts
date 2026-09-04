@@ -26,21 +26,15 @@ import {
   googleDriveProvider,
 } from './services/google-drive.js';
 import { defaultDriveStore } from './services/drive-store.js';
-import {
-  NOINDEX,
-  ROBOTS_TXT,
-  exchangeInvite,
-  gateStatus,
-  inviteGate,
-} from './services/invite-gate.js';
+import { NOINDEX, ROBOTS_TXT } from './services/robots.js';
 
 export function createApp() {
   const app = new Hono();
 
-  // Credentialed CORS: the invite cookie only travels cross-site if the
-  // response names an explicit origin, so `origin: '*'` is no longer an
-  // option (browsers reject the wildcard together with credentials). The
-  // allowlist is the configured app plus the local dev servers.
+  // CORS is pinned to known origins rather than `*`: the SPA is the only
+  // intended caller, and a session bearer token has no business being sent
+  // from a page we don't serve. The allowlist is the configured app plus the
+  // local dev servers.
   const allowedOrigins = [
     env.APP_URL.replace(/\/$/, ''),
     'http://localhost:5173',
@@ -54,8 +48,9 @@ export function createApp() {
     }),
   );
 
-  // Off search engines entirely, on every route (GOI-83). A header rather than
-  // a meta tag so it also covers the JSON endpoints and the gate page.
+  // Off search engines entirely, on every route. A header rather than a meta
+  // tag so it also covers the JSON endpoints. See services/robots.ts — this is
+  // now the only thing left of the old invite gate's "keep it unlisted" half.
   app.use('*', async (c, next) => {
     await next();
     c.header('X-Robots-Tag', NOINDEX);
@@ -63,20 +58,14 @@ export function createApp() {
   app.get('/robots.txt', (c) => c.text(ROBOTS_TXT));
 
   // ─── Public newsletter API (GOI-87) ───────────────────────────────────────
-  // Mounted above the invite gate deliberately: the gate keeps the unfinished
-  // SPA out of public view, but the services this API exists for hold no
-  // invite cookie, so gating it would make it unusable. It carries its own
-  // bearer-key auth and is inert until NEWSLETTER_API_KEY is set.
+  // Carries its own bearer-key auth and is inert until NEWSLETTER_API_KEY is
+  // set — the services it exists for are machines, not logged-in people.
   app.route('/api/v1/newsletter', createNewsletterApi());
 
-  // ─── Invite gate (GOI-83) ─────────────────────────────────────────────────
-  // Deny by default, at the router root, before every route below — including
-  // /trpc/*. Temporary: removing the gate is deleting invite-gate.ts, these
-  // few lines, and the migration.
-  app.get('/i/:token', exchangeInvite);
-  app.get('/gate', gateStatus);
-  app.use('*', inviteGate());
-
+  // The site is open: anyone can reach it and sign in (magic link or Google).
+  // Nothing stands in front of the routes below. What is private is private
+  // per-procedure instead — see userProcedure/ownerProcedure in trpc/trpc.ts,
+  // which is where a caller's own lists, venues and newsletter live.
   app.get('/health', (c) => c.json({ ok: true }));
 
   // ─── "Sign in with Google" ────────────────────────────────────────────────

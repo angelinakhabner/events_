@@ -239,7 +239,7 @@ describe('the app and the landing page are one document', () => {
 
   // The static page is what a stranger — and a regulator — actually reads, so
   // it has to carry both documents, not only the policy.
-  it('publishes both documents statically, before any invite', () => {
+  it('publishes both documents statically, before anyone signs in', () => {
     const html = landingBody();
     expect(html).toContain('id="privacy"');
     expect(html).toContain('id="terms"');

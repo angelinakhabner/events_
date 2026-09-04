@@ -100,29 +100,59 @@ nothing useful without `RESEND_API_KEY`**: the token is still minted, but the
 link is only written to the server log and the UI says email isn't configured. CI uses a throwaway set (`backend/.env.test`)
 against the CI Postgres service.
 
+## Who can use the site
+
+**Anyone.** The site is open: a visitor lands on Home, browses events and
+venues, and can open a shared "want to go" list without an account. Signing in
+is what makes it *theirs* — saved venues, folders, want-to-go lists and the
+newsletter all hang off a user — and anyone can do it from **/my**, with either
+a magic link sent to their email or "Sign in with Google" (the Google button
+only renders where `GOOGLE_CLIENT_ID`/`SECRET` and `API_PUBLIC_URL` are set).
+There is no invite list and no approval step: whoever proves an email address
+owns it gets an account on the spot.
+
+**Private data stays private.** Opening the door is not the same as opening the
+rooms: access is enforced per procedure, by `userProcedure`/`ownerProcedure` in
+`backend/src/trpc/trpc.ts`, and always has been. One account's lists, venues and
+brief settings stay out of another's.
+
+Earlier builds sat behind a pre-auth invite gate (GOI-83) that answered `401`
+to every request without an invite cookie. It is gone — middleware, table,
+admin script and `INVITE_GATE_ENABLED` flag. If that variable is still set on
+a deployment it is now simply ignored, and can be deleted. The API keeps the
+one half of the gate that was never about access: every backend response
+carries `X-Robots-Tag: noindex` and `api.afisz.cc/robots.txt` disallows
+everything (`backend/src/services/robots.ts`). The frontend is a different
+origin and is meant to be found — see below.
+
 ## The public landing page
 
-`/` serves a real, crawlable page — what AFISZ.KA is, how to ask for an
-invitation, a contact address and the privacy policy — rather than the app or a
-redirect to it. The app itself stays behind the invite gate; the landing page is
-what everyone else gets.
+`/` serves a real, crawlable page — what AFISZ.KA is, how to sign in, a contact
+address and the privacy policy — rather than the app or a redirect to it. It is
+what a crawler reads and what a reader with JavaScript switched off is left
+with. A browser that can run the app gets the app: `main.tsx` draws the curtain
+over the landing page before the first render. (It used to wait on the invite
+gate's answer and leave the page up for anyone without one; there is no gate
+now, and nobody to turn away.)
 
 It is **static HTML baked into `index.html` at build time**, not a React route.
 A crawler handed an empty `#root` and a bundle to run may never see a word of a
-gated SPA, so the page is complete in the served document: no JavaScript, no API
-call, no webfont, nothing fetched from anywhere. That last part is why its own
-privacy policy can say so.
+client-rendered SPA, so the page is complete in the served document: no
+JavaScript, no API call, no webfont, nothing fetched from anywhere. That last
+part is why its own privacy policy can say so.
 
 | File | What it is |
 |---|---|
-| `frontend/src/landing/content.ts` | All the copy — name, description, invitation note, contact, policy. The only place it lives. |
+| `frontend/src/landing/content.ts` | All the copy — name, description, how to sign in, contact, policy. The only place it lives. |
 | `frontend/src/landing/render.ts` | Renders that copy to HTML, plus the inline stylesheet and the `<head>` tags (title, description, canonical, Open Graph, JSON-LD). |
 | `frontend/vite.config.ts` | The `afisz-landing` plugin, which substitutes the result into the `<!--afisz:head-->` and `<!--afisz:landing-->` markers in `index.html`. A missing marker fails the build. |
-| `frontend/src/lib/landing.ts` | Shows and hides the page in the browser. React never renders it — it can only draw the curtain. |
+| `frontend/src/lib/landing.ts` | Hides the page in the browser. React never renders it — it can only draw the curtain. |
 | `frontend/public/robots.txt` | Allows `/`, disallows the `/dev/` preview (which builds the same markup with `noindex`). |
 
 To change the copy, edit `content.ts` and nothing else. `src/landing/render.test.ts`
-asserts that everything the page promises to carry is in the served markup.
+asserts that everything the page promises to carry is in the served markup —
+including, since the site opened, that it tells a reader how to sign in rather
+than how to ask for an invitation.
 
 ## Public newsletter API (GOI-87)
 
@@ -135,9 +165,9 @@ Enable it by setting `NEWSLETTER_API_KEY` to a long random string. While it is
 unset every route answers `503`, so a deploy that forgets to configure one
 exposes nothing. Authenticate with `Authorization: Bearer <NEWSLETTER_API_KEY>`.
 
-The API sits **above the invite gate** — the services it exists for hold no
-invite cookie — and carries its own bearer auth instead. Subscriptions are
-addressed by **email**, never by internal user id.
+The API carries its own bearer auth rather than a user session — its callers
+are machines, with nobody to log in. Subscriptions are addressed by **email**,
+never by internal user id.
 
 | Method | Path | Purpose |
 |---|---|---|

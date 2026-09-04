@@ -48,3 +48,37 @@ describe('google auth endpoints (unconfigured)', () => {
     expect(res.status).toBe(503);
   });
 });
+
+/**
+ * The site is open to everyone.
+ *
+ * It used to sit behind a pre-auth invite gate (GOI-83) that answered 401 to
+ * every path without a cookie. That gate is gone: anyone can reach the app and
+ * sign in with their own email. These cases are the regression guard — a
+ * middleware that starts denying anonymous visitors again breaks them.
+ */
+describe('open access', () => {
+  it('answers an anonymous tRPC query', async () => {
+    const res = await createApp().request('/trpc/health');
+    expect(res.status).toBe(200);
+  });
+
+  it('tells an anonymous visitor how they can log in', async () => {
+    const res = await createApp().request('/trpc/auth.methods');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { result: { data: { magicLink: boolean } } };
+    expect(body.result.data.magicLink).toBe(true);
+  });
+
+  it('has no invite exchange or gate-status route left', async () => {
+    const app = createApp();
+    for (const path of ['/gate', '/i/some-token']) {
+      expect((await app.request(path)).status).toBe(404);
+    }
+  });
+
+  it('does not 401 an unknown path — nothing gates the router root', async () => {
+    const res = await createApp().request('/anything/else');
+    expect(res.status).toBe(404);
+  });
+});

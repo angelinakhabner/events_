@@ -5,8 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { trpc, makeQueryClient, makeTrpcClient } from './lib/trpc';
 import { App } from './App';
 import { DevGate } from './components/DevGate';
-import { InviteGate } from './components/InviteGate';
-import { gateWasOpen, hideLanding } from './lib/landing';
+import { hideLanding } from './lib/landing';
 import './index.css';
 
 const queryClient = makeQueryClient();
@@ -14,18 +13,19 @@ const trpcClient = makeTrpcClient();
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 // index.html carries the public landing page and shows it from the first paint
-// (src/landing/render.ts). Someone who was let in last time is about to be let
-// in again, so draw the curtain now rather than flashing the landing page at
-// them for as long as the gate check takes. If the invite has since been
-// revoked, InviteGate puts it straight back.
-if (gateWasOpen()) hideLanding();
+// (src/landing/render.ts). It is what a crawler reads and what someone with
+// JavaScript switched off is left with; a browser that can run the app gets
+// the app, so draw the curtain now rather than flashing the landing page at
+// everyone on every visit. This used to wait on the invite gate's answer —
+// there is no gate now, and nobody to turn away.
+hideLanding();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    {/* DevGate only bites on the dev preview build; production and local
+        builds leave VITE_DEV_GATE_HASH unset, so the app is open to
+        everyone and anyone can sign in from /my. */}
     <DevGate>
-      {/* Outside the tRPC provider on purpose (GOI-83): a visitor without an
-          invite must not reach anything that can fire a query. */}
-      <InviteGate>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter basename={basename || '/'}>
@@ -33,7 +33,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           </BrowserRouter>
         </QueryClientProvider>
       </trpc.Provider>
-      </InviteGate>
     </DevGate>
   </React.StrictMode>,
 );

@@ -5,16 +5,17 @@
  * by search engines, which is why it is static HTML rather than a React route.
  * `vite.config.ts` calls into here at build time and injects the result into
  * `index.html`, so the page is complete in the served document: it needs no
- * JavaScript, no API call and no round trip to the invite gate before a
- * crawler — or a person on a slow connection — can read a word of it.
+ * JavaScript, no API call and no round trip to the backend before a crawler —
+ * or a person on a slow connection — can read a word of it.
  *
  * It is deliberately self-contained. The styles below are inlined rather than
  * pulled from the Tailwind bundle (which only exists once the app's JS has
  * loaded) and there is no webfont link, so the page fetches nothing from
  * anywhere. That is what lets the policy it carries say so.
  *
- * The markup lives outside `#root`. React never owns it; the two gates decide
- * whether it stays on screen (see `src/lib/landing.ts`).
+ * The markup lives outside `#root`. React never owns it; the app hides it on
+ * its first render (see `src/lib/landing.ts`), so a browser that can run the
+ * app gets the app and everyone else keeps this page.
  */
 
 import {
@@ -143,7 +144,7 @@ export function landingHead({ noindex = false }: { noindex?: boolean } = {}): st
   ];
 }
 
-/** The page itself: masthead, what it is, the invitation note, contact, policy. */
+/** The page itself: masthead, what it is, how to get in, contact, policy, terms. */
 export function landingBody(): string {
   const policy = documentSections(POLICY_SECTIONS, 'privacy');
   const terms = documentSections(TERMS_SECTIONS, 'terms');
@@ -178,9 +179,9 @@ export function landingBody(): string {
         </section>
 
         <!-- GOI-95: the regulamin belongs on the page a stranger reads, not
-             only behind the invite. Art. 8(1)(1) UŚUDE requires it to be
+             only inside the app. Art. 8(1)(1) UŚUDE requires it to be
              available *before* the service is used, and for someone who has
-             not been invited yet, this page is before. -->
+             not signed in yet, this page is before. -->
         <section class="afisz-section" id="terms">
           <h2 class="afisz-h2">${escapeHtml(TERMS_HEADING)}</h2>
           <p class="afisz-updated">Last updated ${escapeHtml(TERMS_UPDATED)}</p>

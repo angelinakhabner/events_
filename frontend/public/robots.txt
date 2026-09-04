@@ -1,6 +1,7 @@
-# The landing page at / is the only public page: it describes what AFISZ.KA is
-# and how to ask for an invitation. Everything the app itself serves needs an
-# invite cookie, so there is nothing else here for a crawler to reach.
+# The landing page at / is the only page with anything in the served document:
+# it says what AFISZ.KA is, how to sign in, and what the app stores. The app
+# itself renders in the browser, so a crawler that followed a link into it
+# would read the same landing markup and nothing more.
 User-agent: *
 Allow: /$
 # The password-gated staging preview. Same landing copy, not the canonical one.
