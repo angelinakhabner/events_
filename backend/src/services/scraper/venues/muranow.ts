@@ -54,6 +54,14 @@ export interface MuranowScrapeResult {
   events: MuranowRawEvent[];
   /** Raw material the caller hashes for its skip-unchanged check. */
   signature: string;
+  /**
+   * The last day (YYYY-MM-DD) this scrape could actually read.
+   *
+   * Equal to the end of the requested window when every month hop landed. A
+   * failed hop leaves it at the end of the last month that did — see the note
+   * on the hop loop for why the runner needs to be told (GOI-107).
+   */
+  coveredThrough: string;
 }
 
 /** The calendar header's month, as YYYY-MM, or null when it's missing/unparseable. */
@@ -315,6 +323,15 @@ export async function scrapeMuranow(args: {
   const all: MuranowRawEvent[] = [...parseMuranowCalendar(baseHtml, tz, months[0])];
 
   // Only walk the pager if the window actually reaches beyond the base month.
+  //
+  // A hop that fails truncates the scrape, and the truncation has to be
+  // reported rather than swallowed: the runner prunes its whole window on the
+  // strength of a successful scrape, so a run that read August and was pruned
+  // across a window reaching into September deleted every September screening
+  // it had never looked at — and cancelled the saved ones (GOI-107). Reading
+  // less than was asked for is recoverable; being pruned as though it were
+  // everything is not. `covered` is how far this run may be trusted.
+  let covered = months[0]!;
   let state = months.length > 1 ? readFormState(baseHtml) : null;
   if (months.length > 1 && !state) {
     console.warn('[muranow] month pager form not found; only the base month was scraped');
@@ -331,6 +348,7 @@ export async function scrapeMuranow(args: {
       state = hop.state;
       chunks.push(`${ym}\n${hop.html}`);
       all.push(...parseMuranowCalendar(hop.html, tz, ym));
+      covered = ym;
     } catch (e) {
       console.warn(`[muranow] failed to advance to ${ym}: ${e instanceof Error ? e.message : e}`);
       break; // later months need this hop's build id — stop rather than spin
@@ -341,5 +359,18 @@ export async function scrapeMuranow(args: {
     const day = e.starts_at.slice(0, 10); // YYYY-MM-DD sorts lexically
     return day >= startDay && day <= endDay;
   });
-  return { events, signature: chunks.join('\n\n') };
+  const coveredThrough = minDay(endDay, endOfMonth(covered));
+  return { events, signature: chunks.join('\n\n'), coveredThrough };
+}
+
+/** The last day of a YYYY-MM month, as YYYY-MM-DD. */
+function endOfMonth(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  // Day 0 of the next month is the last day of this one.
+  const last = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+  return `${ym}-${String(last).padStart(2, '0')}`;
+}
+
+function minDay(a: string, b: string): string {
+  return a <= b ? a : b;
 }
