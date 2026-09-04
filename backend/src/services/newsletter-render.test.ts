@@ -404,6 +404,96 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
  * at the top, festivals above the listings rather than at the foot, one line
  * per cinema, and a run dated by when it closes.
  */
+/**
+ * GOI-120: a cinema section is one card per film, not one per film per day.
+ *
+ * A cinema runs the same film several times a day for a fortnight, so a weekly
+ * brief printed it as seven near-identical cards and the section read as the
+ * newsletter repeating itself. What the reader wants is the film, what it is,
+ * and which cinemas have it.
+ */
+describe('renderBriefHtml — collapsed cinema picks (GOI-120)', () => {
+  const screening = (iso: string, venue: string, title = 'Chungking Express') =>
+    makeEvent({
+      title,
+      startsAt: iso,
+      description: 'Dwie historie o samotności w Hongkongu.',
+      venue: { id: venue, name: venue, category: 'cinema', city: 'Warsaw', country: 'PL' },
+    });
+
+  const week = (events: Event[]) =>
+    render({ sections: [section({ category: 'cinema', windowDays: 7, events })] });
+
+  it('prints a film held over for a week once', () => {
+    const html = week([
+      screening('2026-07-20T18:00:00+02:00', 'Muranów'),
+      screening('2026-07-21T18:00:00+02:00', 'Muranów'),
+      screening('2026-07-22T20:30:00+02:00', 'Muranów'),
+    ]);
+
+    expect(html.split('Chungking Express')).toHaveLength(2);
+    // …and its description survives the collapse, since that is half of what
+    // the row is for.
+    expect(html).toContain('Dwie historie o samotności w Hongkongu.');
+  });
+
+  it('names every cinema it is shown at, once each', () => {
+    const html = week([
+      screening('2026-07-20T18:00:00+02:00', 'Muranów'),
+      screening('2026-07-22T20:30:00+02:00', 'Muranów'),
+      screening('2026-07-21T19:00:00+02:00', 'Kinoteka'),
+    ]);
+
+    expect(html.split('MURANÓW')).toHaveLength(2);
+    expect(html.split('KINOTEKA')).toHaveLength(2);
+  });
+
+  it('dates the row by the run, and each venue by its own', () => {
+    const html = week([
+      screening('2026-07-20T18:00:00+02:00', 'Muranów'),
+      screening('2026-07-22T20:30:00+02:00', 'Muranów'),
+    ]);
+
+    // The run, not whichever showing happens to be first: a card reading
+    // "PN 20 VII" for a film also on all week is worse than no date at all.
+    expect(html).toContain('20–22 VII');
+    // Thirty showtimes would bury the line, so a venue holding a film over
+    // says how long for instead.
+    expect(html).toContain('MURANÓW · 20–22 VII');
+  });
+
+  it('still prints the times when a cinema has the film for one day', () => {
+    const html = week([
+      screening('2026-07-22T18:00:00+02:00', 'Muranów'),
+      screening('2026-07-22T20:30:00+02:00', 'Muranów'),
+    ]);
+
+    expect(html).toContain('MURANÓW · 18:00, 20:30');
+    expect(html).toContain('ŚR 22 VII');
+  });
+
+  it('leaves a theatre run as one card per performance', () => {
+    // Two performances of a play are two evenings a reader chooses between,
+    // and each of those dates is the point.
+    const play = (iso: string) =>
+      makeEvent({
+        title: 'Dziady',
+        category: 'theatre',
+        startsAt: iso,
+        venue: { id: 'v9', name: 'Powszechny', category: 'theatre', city: 'Warsaw', country: 'PL' },
+      });
+    const html = render({
+      sections: [section({
+        category: 'theatre',
+        windowDays: 7,
+        events: [play('2026-07-20T19:00:00+02:00'), play('2026-07-23T19:00:00+02:00')],
+      })],
+    });
+
+    expect(html.split('Dziady')).toHaveLength(3);
+  });
+});
+
 describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
   const cinema = (iso: string, venue: string, title: string) =>
     makeEvent({

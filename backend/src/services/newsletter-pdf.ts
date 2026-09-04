@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url';
 import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
-import { groupPicks, type BriefSection, type Pick } from './newsletter-render.js';
+import {
+  collapsesAcrossDays, groupPicks, venueLines, type BriefSection, type Pick,
+} from './newsletter-render.js';
 import { isEmptySection, type QueuedChange, type WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, closingDate, dateRange, festivalSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, daySpan, festivalSpan, shortDate, time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -246,7 +248,10 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
 }
 
 function countPicks(sections: BriefSection[]): number {
-  return sections.reduce((n, s) => n + groupPicks(s.events).length, 0);
+  return sections.reduce(
+    (n, s) => n + groupPicks(s.events, collapsesAcrossDays(s.category)).length,
+    0,
+  );
 }
 
 /** How many of the reader's venues the brief actually drew on. */
@@ -433,7 +438,9 @@ function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
 // ─── Category sections ───────────────────────────────────────────────────────
 
 function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
-  const picks = groupPicks(section.events);
+  // One card per title per day (GOI-36), or one per title across the window
+  // where the category collapses that way (GOI-120).
+  const picks = groupPicks(section.events, collapsesAcrossDays(section.category));
   if (picks.length === 0) return;
 
   // The heading is kept with the row it opens. A "TEATR" alone at the foot of
@@ -487,7 +494,11 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   const blurb = blurbFor(pick, section.detail);
   // A section spanning more than a day has to date each row; a single-day one
   // would only be repeating its own heading.
-  const dateLine = section.windowDays > 1 ? shortDate(pick.startsAt) : null;
+  // A collapsed pick is a film held over, so it is dated by its run rather
+  // than by whichever showing happens to be first (GOI-120).
+  const dateLine = section.windowDays > 1
+    ? (pick.startsAt === pick.lastStartsAt ? shortDate(pick.startsAt) : pickSpan(pick))
+    : null;
 
   ensureSpace(doc, rowHeight(doc, pick, section));
 
@@ -505,11 +516,11 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
     .text(title, BODY_X, dateLine ? doc.y : top, { width: BODY_WIDTH });
 
   // One line per venue, so two cinemas showing the same film read as two
-  // places rather than as one run-on string.
-  for (const v of pick.venues) {
+  // places rather than as one run-on string. Shared with the email so the two
+  // renderings cannot disagree about what a venue line says.
+  for (const line of venueLines(pick)) {
     doc.font('bold').fontSize(7.5).fillColor(C.body)
-      .text(`${v.name} · ${v.startsAt.map(time).join(', ')}`.toUpperCase(),
-        BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
+      .text(line.toUpperCase(), BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
   }
 
   if (blurb) {
@@ -520,6 +531,11 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   doc.moveDown(0.55);
   rule(doc, C.divider, 0.5);
   doc.moveDown(0.55);
+}
+
+/** The run a collapsed pick covers, for the line over its title. */
+function pickSpan(pick: Pick): string {
+  return daySpan(pick.startsAt, pick.lastStartsAt);
 }
 
 /** An exhibition: dated by its closing, with no gutter time. */
