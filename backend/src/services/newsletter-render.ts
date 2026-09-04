@@ -1,6 +1,7 @@
 import type {
   Event, EventChangeType, Festival, NewsletterDetail, NewsletterFrequency, WantToGoState,
 } from '@afisz/shared';
+import { isExhibition } from '@afisz/shared';
 import type { QueuedChange, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 
@@ -62,6 +63,7 @@ function fmt(iso: string, opts: Intl.DateTimeFormatOptions): string {
 }
 
 const fmtTime = (iso: string) => fmt(iso, { hour: '2-digit', minute: '2-digit', hour12: false });
+
 const fmtDay = (iso: string) => fmt(iso, { weekday: 'short', day: 'numeric', month: 'short' });
 const fmtDayKey = (iso: string) => fmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' });
 
@@ -177,6 +179,22 @@ function venueLine(pick: Pick): string {
     .join(' · ');
 }
 
+/**
+ * What goes in the time column for one pick.
+ *
+ * An exhibition has no start time to print (GOI-67): its `startsAt` is a
+ * midnight placeholder for the day the run opened, so a clock reading of it
+ * says `00:00` — which the email did, for a show that is open all day and
+ * closes in October. It is dated by when it *closes* instead, which is the
+ * only urgent thing about a run and exactly what the PDF has always printed
+ * (`closingDate` → `DO 24 PAŹDZIERNIKA`). A run with no closing date has
+ * nothing to say here, so it says nothing rather than inventing a midnight.
+ */
+function whenCell(pick: Pick): string {
+  if (!isExhibition(pick.lead)) return fmtTime(pick.startsAt);
+  return pick.lead.endsAt ? `Until ${fmt(pick.lead.endsAt, { day: 'numeric', month: 'short' })}` : '';
+}
+
 /** Every pick is ruled underneath, and the first row in the list is ruled
  *  above too, so the list reads as a closed block — as in the design. */
 function pickRow(pick: Pick, top: boolean, detail: NewsletterDetail): string {
@@ -195,7 +213,7 @@ function pickRow(pick: Pick, top: boolean, detail: NewsletterDetail): string {
   // rest. A bare "18:00" on a card listing five screenings would mislead, so
   // an aggregated pick says how many there are.
   const showings =
-    pick.count > 1
+    pick.count > 1 && !isExhibition(event)
       ? `<div style="font-family:${FONT};font-weight:400;font-size:11px;line-height:1.3;` +
         `color:${C.meta};margin-top:4px">${pick.count} shows</div>`
       : '';
@@ -205,7 +223,7 @@ function pickRow(pick: Pick, top: boolean, detail: NewsletterDetail): string {
       // 76px time column + 18px gutter, matching the design's grid.
       `<td width="76" valign="top" style="${border}width:76px;padding:20px 18px 20px 0;` +
         `font-family:${FONT};font-weight:800;font-size:15px;line-height:1.2;color:${C.ink}">` +
-        escapeHtml(fmtTime(pick.startsAt)) + showings +
+        escapeHtml(whenCell(pick)) + showings +
       `</td>` +
       `<td valign="top" style="${border}padding:20px 0">` +
         tagCell(event.category, event.category === 'cinema') +
@@ -362,8 +380,11 @@ function picksTable(sections: BriefSection[]): string {
       // Only whatever lands first carries the rule that opens the list.
       const opensList = rows.length === 0;
       // A section spanning more than a day gets its days labelled; a daily
-      // one is a single day by definition.
-      if (section.windowDays > 1) {
+      // one is a single day by definition. A run is the exception either way:
+      // its `startsAt` is the day it opened, so heading it would print
+      // "MON, 1 JUN" over a show in a September brief. `whenCell` already
+      // says when it closes, which is the date that matters.
+      if (section.windowDays > 1 && !isExhibition(pick.lead)) {
         const day = fmtDayKey(pick.startsAt);
         if (day !== lastDay) {
           lastDay = day;

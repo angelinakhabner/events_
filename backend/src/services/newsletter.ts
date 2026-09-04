@@ -4,7 +4,7 @@ import type {
 } from '@afisz/shared';
 import {
   deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, isEventCategory,
-  sendCadenceDays, timeFilterHour,
+  isExhibition, sendCadenceDays, timeFilterHour,
 } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
@@ -96,6 +96,35 @@ export interface BriefScope {
 /**
  * Which events belong in a brief: within the window, at one of the chosen
  * venues (empty selection = all), inside the after/before-hour window.
+ *
+ * An exhibition is a *run*, not an occurrence (GOI-67), and this is the last
+ * place in the pipeline that did not know it (GOI-106). Every layer around it
+ * had been taught: `listUpcoming` fetches a running exhibition by its closing
+ * date, the feed's filters refuse to ask it scheduling questions, the
+ * saved-events queue measures its urgency by when it closes, and the PDF has
+ * a whole `drawExhibition` for it. The brief's own selection still compared
+ * `startsAt` to `now` — the exact rule the note in `listUpcoming` says "hid
+ * every exhibition the morning after it opened".
+ *
+ * So it hid them here too, and completely: a museum show that opened in June
+ * and closes in October has a `startsAt` three months past, so it failed
+ * `starts < now` in every issue of every newsletter. The store fetched it, and
+ * this threw it back. A reader who set up a museums category got an empty
+ * section, `buildBriefSections` dropped it, and their brief was cinema — whose
+ * screenings are timed occurrences with future starts, and so survived. No
+ * window, cadence or lookahead could have changed that.
+ *
+ * A run is therefore in the window when it *overlaps* it. The hour filters are
+ * handled as `filters.ts` already handles them for the feed — a run has no
+ * schedule to test, and its `startsAt` is a midnight placeholder, so asking it
+ * "after 17:00" would answer no for every exhibition by accident and "before
+ * 10:00" yes by accident. One convention, in both places: where the reader has
+ * set a time filter on the row, the run is not among the answers. The
+ * `TIME` column left at "any time" — its default, and what a museums row
+ * sensibly carries — includes them.
+ *
+ * An exhibition with no closing date has nothing better to go on, so it keeps
+ * the timed rule. The store only supplies one whose start is still ahead.
  */
 export function selectBriefEvents(
   events: Event[],
@@ -104,9 +133,19 @@ export function selectBriefEvents(
 ): Event[] {
   const horizon = new Date(now.getTime() + sub.windowDays * 24 * 3_600_000);
   return events.filter((e) => {
-    const starts = new Date(e.startsAt);
-    if (starts < now || starts > horizon) return false;
     if (sub.venueIds.length > 0 && !sub.venueIds.includes(e.venueId)) return false;
+    const starts = new Date(e.startsAt);
+    const closes = isExhibition(e) && e.endsAt ? new Date(e.endsAt) : null;
+
+    if (closes) {
+      // On at some point between now and the horizon: still open, and open
+      // by then. A run that closed yesterday is not news; one that opens
+      // after this issue's window belongs to a later issue.
+      if (closes < now || starts > horizon) return false;
+      return sub.afterHour == null && sub.beforeHour == null;
+    }
+
+    if (starts < now || starts > horizon) return false;
     const hour = warsawHour(e.startsAt);
     if (sub.afterHour != null && hour < sub.afterHour) return false;
     if (sub.beforeHour != null && hour >= sub.beforeHour) return false;

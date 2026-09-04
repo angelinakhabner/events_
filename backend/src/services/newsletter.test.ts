@@ -191,6 +191,82 @@ describe('selectBriefEvents', () => {
     expect(picked.map((e) => e.id)).toEqual(['evening']);
   });
 
+  /**
+   * A museum show is a run, not an occurrence (GOI-67), and this selection was
+   * the last place in the pipeline that did not know it (GOI-106).
+   *
+   * `startsAt` for a run is the opening date, usually months past, so
+   * `starts < now` threw out every exhibition that was actually on — in every
+   * issue, of every newsletter, whatever the window. The store fetches them
+   * (`listUpcoming` selects a run by its closing date); this dropped them
+   * again, the museums section came out empty, `buildBriefSections` dropped
+   * it, and the brief was cinema — whose screenings have future starts.
+   */
+  describe('exhibitions, which are runs rather than occurrences', () => {
+    const running = makeEvent({
+      id: 'formy',
+      kind: 'exhibition',
+      category: 'exhibition',
+      // Opened in June, closes in October: on today, by three months past.
+      startsAt: '2026-06-01T00:00:00+02:00',
+      endsAt: '2026-10-24T00:00:00+02:00',
+    });
+
+    it('keeps a run that is on now, whatever its opening date', () => {
+      const picked = selectBriefEvents([running], scope({ windowDays: 1 }), NOW);
+      expect(picked.map((e) => e.id)).toEqual(['formy']);
+    });
+
+    it('keeps it in a one-day window as readily as a thirty-day one', () => {
+      for (const windowDays of [1, 7, 30]) {
+        expect(selectBriefEvents([running], scope({ windowDays }), NOW)).toHaveLength(1);
+      }
+    });
+
+    it('drops a run that has already closed', () => {
+      const closed = makeEvent({
+        ...running, id: 'closed', endsAt: '2026-07-01T00:00:00+02:00',
+      });
+      expect(selectBriefEvents([closed], scope({ windowDays: 30 }), NOW)).toEqual([]);
+    });
+
+    it('leaves a run that opens after this issue to a later one', () => {
+      const later = makeEvent({
+        ...running, id: 'later',
+        startsAt: '2026-09-01T00:00:00+02:00',
+        endsAt: '2026-12-01T00:00:00+02:00',
+      });
+      expect(selectBriefEvents([later], scope({ windowDays: 1 }), NOW)).toEqual([]);
+      expect(selectBriefEvents([later], scope({ windowDays: 60 }), NOW)).toHaveLength(1);
+    });
+
+    /**
+     * Same rule as the feed's (`filters.ts`): a run is on all day, every day,
+     * so it has no schedule to answer a time-of-day question with — and its
+     * `startsAt` is a midnight placeholder, which would answer "before 10:00"
+     * yes by accident. The `TIME` column's default is "any time", which is
+     * what a museums row sensibly carries.
+     */
+    it('is not among the answers when the row asks a time-of-day question', () => {
+      expect(selectBriefEvents([running], scope({ windowDays: 30 }), NOW)).toHaveLength(1);
+      expect(selectBriefEvents([running], scope({ windowDays: 30, afterHour: 18 }), NOW)).toEqual([]);
+      expect(selectBriefEvents([running], scope({ windowDays: 30, beforeHour: 10 }), NOW)).toEqual([]);
+    });
+
+    it('treats a run with no closing date as a timed event, which is all it can', () => {
+      const openEnded = makeEvent({
+        ...running, id: 'open-ended', endsAt: null,
+        startsAt: '2026-06-01T00:00:00+02:00',
+      });
+      expect(selectBriefEvents([openEnded], scope({ windowDays: 30 }), NOW)).toEqual([]);
+    });
+
+    it('still scopes a run to the chosen venues', () => {
+      const elsewhere = makeEvent({ ...running, id: 'elsewhere', venueId: 'v9' });
+      expect(selectBriefEvents([elsewhere], scope({ windowDays: 30, venueIds: ['v1'] }), NOW)).toEqual([]);
+    });
+  });
+
   it('applies the before-hour filter', () => {
     const matinee = makeEvent({ id: 'matinee', startsAt: '2026-07-22T15:00:00+02:00' });
     const evening = makeEvent({ id: 'evening', startsAt: '2026-07-22T20:00:00+02:00' });
@@ -848,5 +924,84 @@ describe('ruleDueness (GOI-106)', () => {
     const report = ruleDueness(sub, [section('exhibition', 2)], NOW);
     expect(report.map((r) => r.category)).toEqual(['cinema', 'exhibition', 'theatre']);
     expect(report.map((r) => r.events)).toEqual([0, 2, 0]);
+  });
+});
+
+/**
+ * The reported setup, end to end (GOI-106).
+ *
+ * Cinema every issue looking a day ahead with a 17:00 cutoff; museums and
+ * theatre every issue looking thirty days ahead at any time. A daily
+ * newsletter. Every rule is due in every issue, so nothing here is a cadence
+ * question — and the brief still arrived as cinema alone.
+ *
+ * Two independent causes, either of which empties a section on its own:
+ * the museum's shows are runs whose opening date has passed
+ * (`selectBriefEvents`), and the theatre's dates sit beyond where 500 rows of
+ * cinema stopped (`fetchBriefEvents`). Both are asserted from the settings the
+ * reader actually had.
+ */
+describe('the reported newsletter, section by section (GOI-106)', () => {
+  const VENUES = [
+    { id: 'kino', name: 'Kinoteka', category: 'cinema', tags: [] },
+    { id: 'msn', name: 'MSN', category: 'exhibition', tags: [] },
+    { id: 'teatr', name: 'Teatr Polski', category: 'theatre', tags: [] },
+  ] as unknown as Parameters<typeof fetchBriefEvents>[1];
+
+  const SUB = makeSub({
+    sendCadence: 'daily',
+    categoryRules: [
+      makeRule({ category: 'cinema', lookaheadDays: 1, timeFilter: 'after_17', sortOrder: 0 }),
+      makeRule({ category: 'exhibition', lookaheadDays: 30, sortOrder: 1 }),
+      makeRule({ category: 'theatre', lookaheadDays: 30, sortOrder: 2 }),
+    ],
+  });
+
+  /** Warsaw as it actually is: a cinema several times an evening, a museum
+   *  running two shows that opened months ago, a theatre playing next month. */
+  const CATALOGUE: Event[] = [
+    // NOW is noon in Warsaw, so +6h..+9h is 18:00-21:00 — an evening the
+    // cinema row's "after 17:00" actually keeps.
+    ...[6, 7, 8, 9].map((offset) => makeEvent({
+      id: `kino-${offset}`, venueId: 'kino', category: 'cinema', kind: 'timed',
+      startsAt: new Date(NOW.getTime() + offset * 3_600_000).toISOString(),
+    })),
+    makeEvent({
+      id: 'formy', venueId: 'msn', category: 'exhibition', kind: 'exhibition',
+      startsAt: '2026-06-01T00:00:00+02:00', endsAt: '2026-10-24T00:00:00+02:00',
+    }),
+    makeEvent({
+      id: 'dzieci', venueId: 'msn', category: 'exhibition', kind: 'exhibition',
+      startsAt: '2026-05-10T00:00:00+02:00', endsAt: '2026-09-14T00:00:00+02:00',
+    }),
+    makeEvent({
+      id: 'hamlet', venueId: 'teatr', category: 'theatre', kind: 'timed',
+      startsAt: new Date(NOW.getTime() + 21 * 86_400_000).toISOString(),
+    }),
+  ];
+
+  it('carries all three sections, not cinema alone', async () => {
+    const events = await fetchBriefEvents(SUB, VENUES, {
+      listUpcoming: async () => CATALOGUE,
+    }, NOW);
+    const sections = buildBriefSections(events, SUB, VENUES, NOW);
+
+    expect(sections.map((s) => s.category)).toEqual(['cinema', 'exhibition', 'theatre']);
+    expect(sections[1]!.events.map((e) => e.id)).toEqual(['dzieci', 'formy']);
+    expect(sections[2]!.events.map((e) => e.id)).toEqual(['hamlet']);
+  });
+
+  /** And every category is accounted for on the screen, in this issue or a
+   *  later one — which is how the reader could have seen any of this. */
+  it('reports all three back to the reader', async () => {
+    const events = await fetchBriefEvents(SUB, VENUES, {
+      listUpcoming: async () => CATALOGUE,
+    }, NOW);
+    const report = ruleDueness(SUB, buildBriefSections(events, SUB, VENUES, NOW), NOW);
+    expect(report.map((r) => [r.category, r.due, r.events])).toEqual([
+      ['cinema', true, 4],
+      ['exhibition', true, 2],
+      ['theatre', true, 1],
+    ]);
   });
 });

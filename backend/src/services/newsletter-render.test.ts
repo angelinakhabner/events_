@@ -381,3 +381,63 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
     expect(html).toContain('&lt;SCRIPT&gt;');
   });
 });
+
+/**
+ * A running exhibition in the email (GOI-106).
+ *
+ * The PDF has always dated a run by when it closes (`closingDate`). The email
+ * read the clock off `startsAt` instead — a midnight placeholder for the day
+ * the run opened — and printed `00:00` beside a show that is open all day and
+ * closes in October. It also headed the row with the day it opened, so a
+ * September brief carried a "MON, 1 JUN" label.
+ */
+describe('exhibitions in the email brief (GOI-106)', () => {
+  const NOW = new Date('2026-09-04T10:00:00Z');
+
+  function exhibition(over: Partial<Event> = {}): Event {
+    return {
+      id: 'formy', venueId: 'msn', title: 'Formy nowoczesne', description: null,
+      kind: 'exhibition', category: 'exhibition',
+      startsAt: '2026-06-01T00:00:00+02:00',
+      endsAt: '2026-10-24T00:00:00+02:00',
+      language: null, director: null, cast: [], durationMinutes: null,
+      priceMin: null, priceMax: null, sourceUrl: 'https://msn.example/formy',
+      sourceId: null, scrapedAt: NOW.toISOString(),
+      venue: { id: 'msn', name: 'MSN', category: 'exhibition', city: 'Warsaw', country: 'PL' },
+      ...over,
+    };
+  }
+
+  const brief = (events: Event[], windowDays = 30) => renderBriefHtml({
+    sections: [{ category: 'exhibition', windowDays, detail: 'short', events }],
+    fallbackFrequency: 'daily', recipientName: null, festival: null, now: NOW,
+  });
+
+  it('dates a run by when it closes, not by a midnight it never started at', () => {
+    const html = brief([exhibition()]);
+    expect(html).toContain('Until 24 Oct');
+    expect(html).not.toContain('00:00');
+  });
+
+  it('does not head a run with the day it opened', () => {
+    // A 30-day section labels its days, which for a run would be its June
+    // opening — printed above a September brief.
+    const html = brief([exhibition()]);
+    expect(html).not.toMatch(/JUN/i);
+    expect(html).toContain('Formy nowoczesne');
+  });
+
+  it('says nothing rather than inventing a time for a run with no closing date', () => {
+    const html = brief([exhibition({ endsAt: null })]);
+    expect(html).toContain('Formy nowoczesne');
+    expect(html).not.toContain('00:00');
+  });
+
+  it('still prints a clock time for a timed event', () => {
+    const screening = exhibition({
+      id: 'film', kind: 'timed', category: 'cinema', title: 'Parasite',
+      startsAt: '2026-09-04T20:15:00+02:00', endsAt: null,
+    });
+    expect(brief([screening], 1)).toContain('20:15');
+  });
+});
