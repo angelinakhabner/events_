@@ -566,11 +566,16 @@ describe('the sweep', () => {
   } as never;
   const noEvents = { listUpcoming: async () => [] } as never;
 
+  /** No tracked titles: these cases are about saved events, and leaving the
+   *  film store unstubbed reaches Postgres, which rejects `u1` as a user id. */
+  const noFilms = { list: async () => [] };
+
   async function sweep(store: InMemoryNewsletterStore, saved: Event[], now: Date) {
     return sendNewsletterBriefs(store, now, {
       venues,
       events: noEvents,
       wantToGo: savedStore(saved),
+      films: noFilms,
       skipDrives: true,
       dryRun: true,
     });
@@ -603,6 +608,7 @@ describe('the sweep', () => {
       venues: { listAll: async () => [] } as never,
       events: noEvents,
       wantToGo: savedStore([ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' })]),
+      films: noFilms,
       skipDrives: true,
       dryRun: true,
     });
@@ -616,6 +622,7 @@ describe('the sweep', () => {
       venues: { listAll: async () => [] } as never,
       events: noEvents,
       wantToGo: savedStore([]),
+      films: noFilms,
       skipDrives: true,
       dryRun: true,
     });
@@ -638,6 +645,7 @@ describe('the sweep', () => {
       venues,
       events: noEvents,
       wantToGo: savedStore([event]),
+      films: noFilms,
       skipDrives: true,
       send: async () => { throw new Error('mail server down'); },
     });
@@ -657,7 +665,7 @@ describe('the sweep', () => {
     const event = ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' });
 
     await sendNewsletterBriefs(store, NOW, {
-      venues, events: noEvents, wantToGo: savedStore([event]), skipDrives: true,
+      venues, events: noEvents, wantToGo: savedStore([event]), films: noFilms, skipDrives: true,
       send: async () => { throw new Error('mail server down'); },
     });
 
