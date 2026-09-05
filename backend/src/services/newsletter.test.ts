@@ -12,6 +12,7 @@ import {
   resolveBriefVenues,
   sendNewsletterBriefs,
   buildBriefSections,
+  dropFestivalRestatements,
   eventInCategory,
   briefSubject,
   wasRecentlySent,
@@ -332,6 +333,74 @@ describe('fetchBriefEvents', () => {
 
 // The heart of per-category briefs: which sections turn up today, what each
 // one covers, and how much it says.
+/**
+ * GOI-124: the band and the listings must not print the same festival twice.
+ *
+ * A festival reaches the listings the way its venue publishes it, which for
+ * several of them is a run of identically titled rows — six entries in Teatr
+ * Dramatyczny's repertoire all saying "FESTIWAL SKRZYŻOWANIE KULTUR" and
+ * nothing about what any of them is.
+ */
+describe('dropFestivalRestatements', () => {
+  const festival = {
+    id: 'skrzyzowanie-2026',
+    name: 'Festiwal Skrzyżowanie Kultur',
+    url: null,
+    category: 'theatre',
+    venues: ['Teatr Dramatyczny'],
+    city: 'Warsaw',
+    startDate: '2026-07-22',
+    endDate: '2026-07-24',
+    description: null,
+    imageUrl: null,
+    status: 'ongoing',
+  } as unknown as Parameters<typeof dropFestivalRestatements>[1][number];
+
+  const sectionOf = (events: Event[]) =>
+    [{ category: 'theatre', windowDays: 7, detail: 'short', events }] as Parameters<
+      typeof dropFestivalRestatements
+    >[0];
+
+  it('drops the rows that only repeat the festival the band names', () => {
+    const sections = dropFestivalRestatements(
+      sectionOf([
+        makeEvent({ id: 'a', title: 'FESTIWAL SKRZYŻOWANIE KULTUR' }),
+        makeEvent({ id: 'b', title: 'Festiwal Skrzyżowanie Kultur ' }),
+        makeEvent({ id: 'c', title: 'Dziady' }),
+      ]),
+      [festival],
+    );
+    expect(sections[0]!.events.map((e) => e.id)).toEqual(['c']);
+  });
+
+  /**
+   * Matched on the title alone, and exactly. A festival screening that carries
+   * the film's own name is a different thing to tell someone about, and
+   * dropping every row at a festival's venues during its run would empty a
+   * cinema's listing for the week of Warsaw Film Festival.
+   */
+  it('keeps a festival screening that carries the film\u2019s own name', () => {
+    const sections = dropFestivalRestatements(
+      sectionOf([makeEvent({ id: 'a', title: 'Festiwal Skrzyżowanie Kultur: Ali Farka Touré' })]),
+      [festival],
+    );
+    expect(sections[0]!.events.map((e) => e.id)).toEqual(['a']);
+  });
+
+  it('drops a section left with nothing rather than heading an empty list', () => {
+    const sections = dropFestivalRestatements(
+      sectionOf([makeEvent({ id: 'a', title: 'Festiwal Skrzyżowanie Kultur' })]),
+      [festival],
+    );
+    expect(sections).toEqual([]);
+  });
+
+  it('leaves the listings alone when the band is empty', () => {
+    const sections = sectionOf([makeEvent({ id: 'a', title: 'Festiwal Skrzyżowanie Kultur' })]);
+    expect(dropFestivalRestatements(sections, [])).toBe(sections);
+  });
+});
+
 describe('buildBriefSections', () => {
   const VENUES = [
     { id: 'v1', tags: ['arthouse'] },
