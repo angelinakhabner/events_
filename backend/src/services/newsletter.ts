@@ -617,7 +617,15 @@ export async function buildWantToGoSection(
     changes = applyChangeDedup(all, changeStates);
   }
 
-  return { reminders, changes };
+  // An event the changes block already names is not also a reminder (GOI-123).
+  //
+  // The cancelled ones were kept out above, and for the same reason: a block
+  // that says "moved to 20:15" and then, three rows down, "tomorrow, 20:15" is
+  // the same event twice in the one part of the brief that asks the reader to
+  // do something. The change is the more specific thing to say, so it is the
+  // one that stays.
+  const changed = new Set(changes.map((c) => c.event.id));
+  return { reminders: reminders.filter((r) => !changed.has(r.event.id)), changes };
 }
 
 /**

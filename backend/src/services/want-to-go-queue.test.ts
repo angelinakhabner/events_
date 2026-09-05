@@ -400,6 +400,43 @@ describe('buildWantToGoSection', () => {
     expect(second.changes).toHaveLength(0);
   });
 
+  /**
+   * GOI-123: no event twice in the one block that asks the reader to do
+   * something. A rescheduled event is not cancelled, so it stayed in the
+   * reminders as well as the changes, and the block said "moved to 20:15" and
+   * then, three rows down, "tomorrow, 20:15".
+   */
+  it('does not also remind about an event the changes block names', async () => {
+    const store = new InMemoryNewsletterStore();
+    const saved = await config(store);
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
+    const moved = ev({ id: 'a', startsAt: '2026-09-08T20:15:00Z' });
+    store.changes = [{
+      eventId: 'a', changeType: 'rescheduled',
+      oldValue: '2026-09-08T18:00:00Z', newValue: '2026-09-08T20:15:00Z',
+      detectedAt: '2026-09-06T09:00:00Z',
+    }];
+
+    const section = await buildWantToGoSection(sub, store, savedStore([moved]), NOW);
+    expect(section.changes.map((c) => c.event.id)).toEqual(['a']);
+    expect(section.reminders).toHaveLength(0);
+  });
+
+  it('still reminds about the saved events nothing happened to', async () => {
+    const store = new InMemoryNewsletterStore();
+    const saved = await config(store);
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
+    const moved = ev({ id: 'a', startsAt: '2026-09-08T20:15:00Z' });
+    const other = ev({ id: 'b', startsAt: '2026-09-09T19:00:00Z', title: 'Kordian' });
+    store.changes = [{
+      eventId: 'a', changeType: 'rescheduled', oldValue: null, newValue: null,
+      detectedAt: '2026-09-06T09:00:00Z',
+    }];
+
+    const section = await buildWantToGoSection(sub, store, savedStore([moved, other]), NOW);
+    expect(section.reminders.map((r) => r.event.id)).toEqual(['b']);
+  });
+
   it('leaves changes out when the reader switched them off', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store, {
