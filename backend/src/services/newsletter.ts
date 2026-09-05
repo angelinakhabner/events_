@@ -113,7 +113,7 @@ export function selectBriefEvents(
   now: Date = new Date(),
 ): Event[] {
   const horizon = new Date(now.getTime() + sub.windowDays * 24 * 3_600_000);
-  return events.filter((e) => {
+  return byStartTime(events.filter((e) => {
     if (sub.venueIds.length > 0 && !sub.venueIds.includes(e.venueId)) return false;
     const starts = new Date(e.startsAt);
     if (starts > horizon) return false;
@@ -127,7 +127,28 @@ export function selectBriefEvents(
     if (sub.afterHour != null && hour < sub.afterHour) return false;
     if (sub.beforeHour != null && hour >= sub.beforeHour) return false;
     return true;
-  });
+  }));
+}
+
+/**
+ * Chronological, earliest first, with a stable tie-break (GOI-121).
+ *
+ * A brief was only ever *incidentally* in time order: this is a filter over
+ * whatever the fetch handed it, and both the wide query and the per-rule
+ * top-ups happen to order by start time — so nothing here guaranteed it, and a
+ * section came out in whatever order its rows arrived in. The rendered list
+ * survived on `groupPicks` re-sorting downstream, which left everything else
+ * built from a section — the preview's event list, anything a later section
+ * layout wants to group — carrying the fetch's order rather than the reader's.
+ *
+ * Stated here, once, so the guarantee belongs to the brief rather than to one
+ * renderer. Titles break a tie so two events at the same minute do not swap
+ * places between the email and the PDF.
+ */
+export function byStartTime(events: Event[]): Event[] {
+  return [...events].sort(
+    (a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title),
+  );
 }
 
 /**

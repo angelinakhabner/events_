@@ -404,6 +404,38 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
  * at the top, festivals above the listings rather than at the foot, one line
  * per cinema, and a run dated by when it closes.
  */
+/** GOI-121: whatever order the events arrive in, the list reads forwards. */
+describe('renderBriefHtml — time order (GOI-121)', () => {
+  it('lists a day earliest first however the events arrived', () => {
+    const at = (iso: string, title: string) => makeEvent({ title, startsAt: iso });
+    const html = render({
+      sections: [section({
+        category: 'cinema',
+        events: [
+          at('2026-07-22T22:00:00+02:00', 'Nocny'),
+          at('2026-07-22T13:00:00+02:00', 'Poranny'),
+          at('2026-07-22T18:30:00+02:00', 'Wieczorny'),
+        ],
+      })],
+    });
+
+    expect(html.indexOf('Poranny')).toBeLessThan(html.indexOf('Wieczorny'));
+    expect(html.indexOf('Wieczorny')).toBeLessThan(html.indexOf('Nocny'));
+  });
+
+  it('breaks a tie on title, so the email and the PDF cannot disagree', () => {
+    const at = '2026-07-22T18:00:00+02:00';
+    const html = render({
+      sections: [section({
+        category: 'cinema',
+        events: [makeEvent({ title: 'Bez końca', startsAt: at }), makeEvent({ title: 'Amator', startsAt: at })],
+      })],
+    });
+
+    expect(html.indexOf('Amator')).toBeLessThan(html.indexOf('Bez końca'));
+  });
+});
+
 /**
  * GOI-122: "museums" is one word for two different things — a run you can drop
  * in on any afternoon for the next six weeks, and a talk at seven on Thursday.

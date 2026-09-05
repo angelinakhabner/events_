@@ -145,7 +145,12 @@ export function groupPicks(events: Event[]): Pick[] {
     });
   }
 
-  return picks.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  // Earliest first, with the same tie-break the section itself uses, so two
+  // films at one time cannot swap places between the email and the PDF
+  // (GOI-121).
+  return picks.sort(
+    (a, b) => a.startsAt.localeCompare(b.startsAt) || a.lead.title.localeCompare(b.lead.title),
+  );
 }
 
 /**
