@@ -5,13 +5,15 @@ import { fileURLToPath } from 'node:url';
 import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
-import { groupPicks, type BriefSection, type Pick } from './newsletter-render.js';
+import {
+  groupPicks, splitByShape, type BriefSection, type Pick,
+} from './newsletter-render.js';
 import {
   isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
 } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, closingDate, dateRange, festivalSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -461,11 +463,16 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
   // that ends a few centimetres early.
   if (section.category) sectionHeading(doc, section.category, rowHeight(doc, picks[0]!, section));
 
-  for (const pick of picks) {
-    // An exhibition has no showtime worth putting in a gutter — it is on all
-    // day for months — so it is dated by when it closes instead (GOI-67).
-    if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail);
-    else drawPick(doc, pick, section);
+  // A museums section is listed in its two halves — runs, then what is on
+  // besides them (GOI-122).
+  for (const group of splitByShape(section, picks)) {
+    if (group.label) subHeading(doc, group.label);
+    for (const pick of group.picks) {
+      // An exhibition has no showtime worth putting in a gutter — it is on all
+      // day for months — so it is dated by its run instead (GOI-67, GOI-122).
+      if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail);
+      else drawPick(doc, pick, section);
+    }
   }
 }
 
@@ -507,7 +514,11 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   const blurb = blurbFor(pick, section.detail);
   // A section spanning more than a day has to date each row; a single-day one
   // would only be repeating its own heading.
-  const dateLine = section.windowDays > 1 ? shortDate(pick.startsAt) : null;
+  // A museum event is dated "5 SIERPNIA, SOBOTA" (GOI-122); the time still
+  // leads it in the gutter, since that is what it asks a reader to turn up for.
+  const dateLine = section.windowDays > 1
+    ? (section.category === 'exhibition' ? longDate(pick.startsAt) : shortDate(pick.startsAt))
+    : null;
 
   ensureSpace(doc, rowHeight(doc, pick, section));
 
@@ -542,12 +553,14 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   doc.moveDown(0.55);
 }
 
-/** An exhibition: dated by its closing, with no gutter time. */
+/** An exhibition: dated by its run, with no gutter time. */
 function drawExhibition(doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail']): void {
   const title = pick.lead.title;
   const blurb = blurbFor(pick, detail);
-  const closes = pick.lead.endsAt ? closingDate(pick.lead.endsAt) : null;
-  const eyebrow = [closes, pick.venues[0]?.name.toUpperCase()].filter(Boolean).join(' · ');
+  // From when till when, not only till when (GOI-122): a reader deciding
+  // whether to go this month wants both ends of the run.
+  const run = runSpan(pick.lead.startsAt, pick.lead.endsAt ?? null);
+  const eyebrow = [run, pick.venues[0]?.name.toUpperCase()].filter(Boolean).join(' · ');
 
   ensureSpace(doc, rowHeight(doc, pick, { detail, windowDays: 1, category: '', events: [] }));
 

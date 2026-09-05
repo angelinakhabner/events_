@@ -145,4 +145,53 @@ describe('scrapeTeatrStudio', () => {
     // The five-day gallery run ended on the 5th, so none of it survives.
     expect(res.events.every((e) => e.starts_at >= '2026-07-06')).toBe(true);
   });
+
+  /**
+   * A complete walk claims the whole window; a truncated one must not
+   * (GOI-107). The runner prunes on the strength of a successful scrape, so a
+   * run that lost August and said nothing would have August deleted as though
+   * it had read it and found nothing on.
+   */
+  it('claims the whole window when every month loads', async () => {
+    const fetcher = (async () =>
+      new Response(FIXTURE, { status: 200, headers: { 'content-type': 'text/html' } })
+    ) as unknown as typeof fetch;
+    const res = await scrapeTeatrStudio({
+      baseUrl: 'https://teatrstudio.pl/repertuar',
+      today: new Date('2026-07-01T08:00:00Z'),
+      windowDays: 40,
+      timezone: 'Europe/Warsaw',
+      fetcher,
+    });
+    expect(res.coveredThrough).toBeUndefined();
+  });
+
+  it('reports the last month it read when a later one fails', async () => {
+    const fetcher = (async (url: string | URL) => {
+      if (url.toString().includes('month=08-2026')) return new Response('nope', { status: 500 });
+      return new Response(FIXTURE, { status: 200, headers: { 'content-type': 'text/html' } });
+    }) as unknown as typeof fetch;
+
+    const res = await scrapeTeatrStudio({
+      baseUrl: 'https://teatrstudio.pl/repertuar',
+      today: new Date('2026-07-01T08:00:00Z'),
+      windowDays: 40,
+      timezone: 'Europe/Warsaw',
+      fetcher,
+    });
+
+    expect(res.coveredThrough).toBe('2026-07-31');
+  });
+
+  it('reports nothing beyond today when the first month fails', async () => {
+    const fetcher = (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch;
+    const res = await scrapeTeatrStudio({
+      baseUrl: 'https://teatrstudio.pl/repertuar',
+      today: new Date('2026-07-01T08:00:00Z'),
+      windowDays: 40,
+      timezone: 'Europe/Warsaw',
+      fetcher,
+    });
+    expect(res.coveredThrough).toBe('2026-07-01');
+  });
 });
