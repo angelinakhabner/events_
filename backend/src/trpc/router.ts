@@ -22,8 +22,8 @@ import {
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefFetchWindowDays, buildBriefSections, currentFestival, plannedFrequency,
-  resolveBriefVenues,
+  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection, fetchBriefEvents,
+  plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
@@ -706,29 +706,50 @@ const my = router({
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
         const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
-        // Narrowed in SQL for the same reason the sender is: `limit` cuts the
-        // globally earliest rows, so a preview built from "the next 500 events"
-        // showed a short week once the database outgrew that. The window is the
-        // widest any section can ask for — the same call the sweep makes, so
-        // what Generate shows is what would actually be sent.
+        // The same fetch the sweep makes, so what Generate shows is what would
+        // actually be sent — including its per-rule top-ups, without which a
+        // preview of a cinema-heavy folder showed cinema and nothing else.
         const now = new Date();
-        const all = env.DATABASE_URL && venues.length > 0
-          ? await defaultEventStore.listUpcoming({
-            venueIds: venues.map((v) => v.id),
-            now,
-            until: new Date(now.getTime() + briefFetchWindowDays(input, now) * 24 * 3_600_000),
-            limit: 500,
-          })
+        const all = env.DATABASE_URL
+          ? await fetchBriefEvents(input, venues, now, defaultEventStore)
           : [];
         // The preview shows what would go out *now*, so a section whose
         // cadence isn't due today is genuinely absent from it — same rule the
         // sweep applies.
         const sections = buildBriefSections(all, input, venues, now);
+        /**
+         * The saved-events queue, which the preview used to leave out entirely
+         * (GOI-110). It is the first block of a brief and the only one that
+         * asks the reader to do something, so a preview without it was missing
+         * the part of the design it was pressed to check.
+         *
+         * Built without send-state dedup — the substituted `sentStates`. A
+         * preview sends nothing, so it consumes no state; suppressing what a
+         * previous issue already announced would leave the reader looking at an
+         * empty block precisely because the feature has been working.
+         */
+        const wantToGo = await buildWantToGoSection(
+          { id: 'preview', userId: ctx.user.id, wantToGo: input.wantToGo, sendCadence: input.sendCadence },
+          {
+            sentStates: async () => new Set<string>(),
+            changesFor: (ids, since) => ctx.newsletter.changesFor(ids, since),
+          },
+          ctx.wantToGo,
+          now,
+        );
         const brief = {
           sections,
+          wantToGo,
           fallbackFrequency: plannedFrequency(input),
           recipientName: input.recipientName,
-          festival: currentFestival(),
+          // Scoped like the send is (GOI-33), so Generate and the issue agree
+          // — unless the reader follows nothing yet, where scoping to an empty
+          // list would hide the band from the screen meant to show it.
+          festivals: briefFestivals(
+            briefWindowDays(plannedFrequency(input)),
+            venues.length > 0 ? venues.map((v) => v.name) : undefined,
+            now,
+          ),
           now,
         };
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand

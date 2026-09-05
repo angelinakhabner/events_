@@ -8,6 +8,7 @@ import {
   expandRun,
   type ExhibitionRun,
 } from './edito-exhibitions.js';
+import { validateEvents } from '../validator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixtureDir = path.resolve(__dirname, '../../../../test/fixtures');
@@ -114,6 +115,37 @@ describe('parseExhibitionsListing', () => {
   });
 });
 
+/**
+ * The row has to survive the validator as an exhibition, since that is the
+ * whole point of emitting one (GOI-113). The midnight start and the closing
+ * date are exactly the two things it checks hardest.
+ */
+describe('a run through the validator', () => {
+  it('is stored as an exhibition, closing date and all', () => {
+    const rows = expandRun(
+      {
+        title: 'Plakat polski',
+        start: '2026-06-20',
+        end: '2026-09-13',
+        description: null,
+        sourceUrl: 'https://www.postermuseum.pl/wystawy/x,89.html',
+        sourceId: '89',
+      },
+      '2026-08-07',
+      '2026-10-06',
+    );
+
+    const { valid, invalid } = validateEvents(rows, {
+      category: 'exhibition',
+      timezone: 'Europe/Warsaw',
+    });
+    expect(invalid).toEqual([]);
+    expect(valid).toHaveLength(1);
+    expect(valid[0]!.kind).toBe('exhibition');
+    expect(valid[0]!.ends_at?.slice(0, 10)).toBe('2026-09-13');
+  });
+});
+
 describe('expandRun', () => {
   const run: ExhibitionRun = {
     title: 'Plakat polski',
@@ -124,48 +156,48 @@ describe('expandRun', () => {
     sourceId: '89',
   };
 
-  // The clip is what keeps a three-month run from becoming three months of
-  // rows, and what makes an exhibition that opened in June appear under today.
-  it('emits one all-day row per day inside the window', () => {
+  /**
+   * One row for the run, not one per day it covers (GOI-113).
+   *
+   * The per-day expansion predates `kind`/`ends_at` (GOI-67): with no way to
+   * say "a run over a date range", a run had to be spelled out day by day for
+   * a listing to show it under today. Once the schema could say it, keeping
+   * the expansion left these museums out of "Ongoing exhibitions" entirely —
+   * their runs arrived as a heap of midnight *timed* rows.
+   */
+  it('emits one exhibition row carrying the whole run', () => {
     const rows = expandRun(run, '2026-08-07', '2026-08-09');
 
-    expect(rows.map((r) => r.starts_at)).toEqual([
-      '2026-08-07T00:00:00+02:00',
-      '2026-08-08T00:00:00+02:00',
-      '2026-08-09T00:00:00+02:00',
-    ]);
-    expect(rows.map((r) => r.source_id)).toEqual([
-      'postermuseum:wystawa:89:2026-08-07',
-      'postermuseum:wystawa:89:2026-08-08',
-      'postermuseum:wystawa:89:2026-08-09',
-    ]);
-  });
-
-  it('clips to the run itself, not just the window', () => {
-    expect(expandRun(run, '2026-06-18', '2026-06-21').map((r) => r.starts_at.slice(0, 10))).toEqual([
-      '2026-06-20',
-      '2026-06-21',
-    ]);
-    expect(expandRun(run, '2026-09-12', '2026-09-20').map((r) => r.starts_at.slice(0, 10))).toEqual([
-      '2026-09-12',
-      '2026-09-13',
-    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      title: 'Plakat polski',
+      kind: 'exhibition',
+      // Dated by the run, not by the window: clipping the opening to "today"
+      // would say a show up since June started this morning.
+      starts_at: '2026-06-20T00:00:00+02:00',
+      ends_at: '2026-09-13T23:59:00+02:00',
+      source_id: 'postermuseum:wystawa:89',
+    });
   });
 
   it('emits nothing for a run entirely outside the window', () => {
     expect(expandRun(run, '2026-10-01', '2026-11-30')).toEqual([]);
+    expect(expandRun(run, '2026-04-01', '2026-05-30')).toEqual([]);
   });
 
-  // Stepping the calendar day rather than adding 24h: Warsaw falls back on
-  // 25 October 2026, and an hours-based step would repeat the 25th.
-  it('steps calendar days across a fall-back night', () => {
+  it('keeps a run that only overlaps the window at one end', () => {
+    expect(expandRun(run, '2026-06-18', '2026-06-21')).toHaveLength(1);
+    expect(expandRun(run, '2026-09-12', '2026-09-20')).toHaveLength(1);
+  });
+
+  // The offsets come off the run's own dates, so a run spanning Warsaw's
+  // fall-back night opens in CEST and closes in CET.
+  it('dates each end in the offset that applies to it', () => {
     const dst: ExhibitionRun = { ...run, start: '2026-10-24', end: '2026-10-27' };
-    expect(expandRun(dst, '2026-10-24', '2026-10-27').map((r) => r.starts_at)).toEqual([
-      '2026-10-24T00:00:00+02:00',
-      '2026-10-25T00:00:00+02:00',
-      '2026-10-26T00:00:00+01:00',
-      '2026-10-27T00:00:00+01:00',
-    ]);
+    expect(expandRun(dst, '2026-10-24', '2026-10-27')[0]).toMatchObject({
+      starts_at: '2026-10-24T00:00:00+02:00',
+      ends_at: '2026-10-27T23:59:00+01:00',
+    });
   });
 });
 

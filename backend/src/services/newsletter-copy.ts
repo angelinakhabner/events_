@@ -33,7 +33,15 @@ export const PL = {
   lastChance: 'Ostatnia szansa',
   tomorrow: 'Jutro',
   thisWeek: 'W tym tygodniu',
-  festivals: 'Festiwale w tym tygodniu',
+  /** A saved exhibition that is open and not closing yet (GOI-125). Not an
+   *  escalation step like the three above — one mention that it is on. */
+  ongoing: 'Teraz trwa',
+  /** The gutter marker beside such a row: it has no start time to show and
+   *  its opening day is weeks behind. */
+  now: 'TERAZ',
+  /** Not "w tym tygodniu": the band carries festivals that open later than
+   *  this week too (GOI-110), and each row prints its own dates. */
+  festivals: 'Festiwale',
   nothing: 'W tym tygodniu nic nie znaleźliśmy w Twoich miejscach.',
   settings: 'Zmień ustawienia',
   unsubscribe: 'Wypisz się',
@@ -61,6 +69,12 @@ export const PL = {
   movedVenue: 'zmiana miejsca',
   soldOut: 'brak biletów',
   until: (date: string) => `do ${date}`,
+  /** The two halves a museums section splits into (GOI-122): a run you can
+   *  drop in on any day, and something happening at a time. */
+  exhibitions: 'Wystawy',
+  events: 'Wydarzenia',
+  /** An open-ended run — one with no announced closing date. */
+  from: (date: string) => `od ${date}`,
   /**
    * The built-in categories, in the brief's own language (GOI-110).
    *
@@ -125,6 +139,36 @@ export function dateRange(from: Date, days: number): string {
   const toLong = fmt(to.toISOString(), { day: 'numeric', month: 'long' });
   if (days <= 1) return toLong.toUpperCase();
   return `${fromDay}–${toLong}`.toUpperCase();
+}
+
+/**
+ * `5 SIERPNIA, SOBOTA` — a date in the shape GOI-122 asks for.
+ *
+ * Day, month, weekday, which is the order the request writes it in ("5th Aug,
+ * Saturday") rather than `shortDate`'s weekday-first "SB 5 VIII". The month is
+ * spelled out and lands in the genitive Polish uses after a day number, which
+ * is what asking for day and month together gets.
+ */
+export function longDate(iso: string): string {
+  // Upper-cased here, as `shortDate` and `dateRange` are: the design sets every
+  // eyebrow in caps, and a helper that returns mixed case leaves the rendered
+  // markup disagreeing with the rendered page.
+  return `${fmt(iso, { day: 'numeric', month: 'long' })}, ${fmt(iso, { weekday: 'long' })}`
+    .toUpperCase();
+}
+
+/**
+ * `5 SIERPNIA – 14 WRZEŚNIA` — the run of an exhibition, from when till when.
+ *
+ * The weekdays `longDate` carries are dropped here on purpose: a reader
+ * planning a visit to something on for six weeks is choosing a date, not a
+ * day, and two weekday names inside one line is where the row stops being
+ * readable. A run with no announced closing date says only when it opened.
+ */
+export function runSpan(startIso: string, endIso: string | null): string {
+  const day = (iso: string) => fmt(iso, { day: 'numeric', month: 'long' });
+  const span = endIso ? `${day(startIso)} \u2013 ${day(endIso)}` : PL.from(day(startIso));
+  return span.toUpperCase();
 }
 
 /** `DO 14 WRZEŚNIA` — an exhibition is dated by when it closes. */

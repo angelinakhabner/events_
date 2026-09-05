@@ -33,7 +33,20 @@ export interface DeterministicScraper {
     windowDays: number;
     timezone?: string;
     fetcher?: typeof fetch;
-  }): Promise<{ events: unknown[]; signature: string }>;
+  }): Promise<{
+    events: unknown[];
+    signature: string;
+    /**
+     * The last day (YYYY-MM-DD) the scrape could actually read, when that is
+     * short of the window it was asked for — a page it could not fetch, a
+     * pager hop that failed. Absent means the whole window was covered.
+     *
+     * The runner prunes its window on the strength of a successful scrape, so
+     * a truncated run that says nothing gets its unread days pruned as though
+     * it had looked at them and found nothing there (GOI-107).
+     */
+    coveredThrough?: string;
+  }>;
   /**
    * Run the runner's description-enrichment pass over this venue's events.
    * For listings that carry descriptions inline (Kinoteka) it stays off; for

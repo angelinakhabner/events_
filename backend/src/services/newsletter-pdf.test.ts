@@ -168,7 +168,7 @@ describe('renderBriefPdf', () => {
    * GOI-67: an exhibition runs for months, so a start time in the gutter says
    * nothing a reader can act on. What they need is the date it comes down.
    */
-  it('dates an exhibition by its closing rather than by a showtime', async () => {
+  it('dates an exhibition by its run rather than by a showtime', async () => {
     const pdf = await renderBriefPdf({
       sections: [
         section({
@@ -188,7 +188,8 @@ describe('renderBriefPdf', () => {
     });
 
     const { text, flat } = await textOf(pdf);
-    expect(flat).toContain(squash('DO 14 WRZEŚNIA'));
+    // From when till when (GOI-122), not only till when.
+    expect(flat).toContain(squash('1 CZERWCA – 14 WRZEŚNIA'));
     expect(flat).toContain(squash('ZACHĘTA'));
     expect(text).toContain('Nowa rzeźba polska');
     // No 10:00 gutter beside it, which is what the timed layout would have put
@@ -205,7 +206,7 @@ describe('renderBriefPdf', () => {
 
     const pdf = await renderBriefPdf({
       sections: [section()],
-      festival,
+      festivals: [festival],
       now: new Date('2026-09-09T08:00:00.000Z'),
     });
     const { text } = await textOf(pdf);
@@ -241,6 +242,81 @@ describe('renderBriefPdf', () => {
  * something never reaches them at all — so these are regression tests for a
  * gap the delivery choice opened, not for new formatting.
  */
+/** GOI-122, in the PDF as in the email. */
+describe('museums in two halves (GOI-122)', () => {
+  it('lists the runs, then what is on besides them, each dated its own way', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section({
+        category: 'exhibition',
+        windowDays: 30,
+        events: [
+          event({
+            title: 'Oprowadzanie kuratorskie',
+            startsAt: '2026-08-05T16:00:00.000Z',
+            venue: { id: 'v9', name: 'Zachęta', city: 'Warsaw' } as Event['venue'],
+          }),
+          event({
+            title: 'Nowa rzeźba polska',
+            kind: 'exhibition',
+            startsAt: '2026-06-01T08:00:00.000Z',
+            endsAt: '2026-09-14T16:00:00.000Z',
+            venue: { id: 'v9', name: 'Zachęta', city: 'Warsaw' } as Event['venue'],
+          }),
+        ],
+      })],
+      now: new Date('2026-08-01T06:00:00.000Z'),
+    });
+
+    const { text, flat } = await textOf(pdf);
+    expect(flat).toContain(squash('WYSTAWY'));
+    expect(flat).toContain(squash('WYDARZENIA'));
+    expect(flat.indexOf(squash('Nowa rzeźba polska')))
+      .toBeLessThan(flat.indexOf(squash('WYDARZENIA')));
+    expect(flat).toContain(squash('1 CZERWCA – 14 WRZEŚNIA'));
+    expect(flat).toContain(squash('5 SIERPNIA, ŚRODA'));
+    expect(text).toContain('18:00');
+  });
+});
+
+/**
+ * GOI-123: what the reader pulls as a PDF must be the issue they were sent.
+ *
+ * Both of these were fixed in the email and left in the PDF, so one brief came
+ * out of the two renderers saying different things.
+ */
+describe('the PDF and the email agree (GOI-123)', () => {
+  it('heads a section with the category\u2019s Polish name, not its key', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section({ category: 'cinema', windowDays: 7 })],
+      fallbackFrequency: 'weekly',
+      now: new Date('2026-09-08T06:00:00.000Z'),
+    });
+
+    const { flat } = await textOf(pdf);
+    expect(flat).toContain(squash('KINO'));
+    expect(flat).not.toContain(squash('CINEMA'));
+  });
+
+  /**
+   * The masthead names the *issue's* span, not the widest section's. A weekly
+   * brief carrying a monthly rule has a section reaching thirty days out, and
+   * taking that as the span made the band read a range whose month comes off
+   * an end date five weeks away.
+   */
+  it('dates the masthead by the issue, not by its widest section', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section({ category: 'cinema', windowDays: 30 })],
+      fallbackFrequency: 'weekly',
+      now: new Date('2026-09-08T06:00:00.000Z'),
+    });
+
+    const { flat } = await textOf(pdf);
+    // 8–14 September: the week the issue covers.
+    expect(flat).toContain(squash('8–14 WRZEŚNIA'));
+    expect(flat).not.toContain(squash('PAŹDZIERNIKA'));
+  });
+});
+
 describe('the saved-events queue', () => {
   const queued = (over: Partial<Event> = {}) => event({ title: 'Hamlet', ...over });
 
