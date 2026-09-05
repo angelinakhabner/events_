@@ -163,6 +163,32 @@ describe('briefSubject', () => {
 });
 
 describe('selectBriefEvents', () => {
+  /**
+   * GOI-121. A brief was only ever incidentally in time order: this is a
+   * filter over whatever the fetch handed it, and both queries happen to order
+   * by start time — so nothing guaranteed it, and everything built from a
+   * section other than the rendered pick list carried the fetch's order.
+   */
+  it('returns the window in time order, earliest first', () => {
+    const late = makeEvent({ id: 'late', startsAt: '2026-07-22T22:30:00+02:00' });
+    const early = makeEvent({ id: 'early', startsAt: '2026-07-22T13:00:00+02:00' });
+    const middle = makeEvent({ id: 'middle', startsAt: '2026-07-22T18:00:00+02:00' });
+
+    const picked = selectBriefEvents([late, early, middle], scope({ windowDays: 1 }), NOW);
+    expect(picked.map((e) => e.id)).toEqual(['early', 'middle', 'late']);
+  });
+
+  it('breaks a tie on title, so two events at one minute never swap', () => {
+    const at = '2026-07-22T18:00:00+02:00';
+    const b = makeEvent({ id: 'b', title: 'Bez końca', startsAt: at });
+    const a = makeEvent({ id: 'a', title: 'Amator', startsAt: at });
+
+    expect(selectBriefEvents([b, a], scope({ windowDays: 1 }), NOW).map((e) => e.id))
+      .toEqual(['a', 'b']);
+    expect(selectBriefEvents([a, b], scope({ windowDays: 1 }), NOW).map((e) => e.id))
+      .toEqual(['a', 'b']);
+  });
+
   it('keeps only events inside the cadence window', () => {
     const today = makeEvent({ id: 'today', startsAt: '2026-07-22T20:00:00+02:00' });
     const nextWeek = makeEvent({ id: 'next-week', startsAt: '2026-07-27T20:00:00+02:00' });
@@ -346,6 +372,23 @@ describe('buildBriefSections', () => {
       makeEvent({ id: 'film-next-week', category: 'cinema', startsAt: '2026-07-27T20:00:00+02:00' }),
     ];
   }
+
+  /** GOI-121, at the level a section is actually built. */
+  it('orders every section earliest first, whatever order the fetch returned', () => {
+    const shuffled = [
+      makeEvent({ id: 'film-late', category: 'cinema', startsAt: '2026-07-22T22:00:00+02:00' }),
+      makeEvent({ id: 'film-early', category: 'cinema', startsAt: '2026-07-22T14:00:00+02:00' }),
+      makeEvent({ id: 'film-mid', category: 'cinema', startsAt: '2026-07-22T18:30:00+02:00' }),
+    ];
+    const sections = buildBriefSections(
+      shuffled,
+      makeSub({ categoryRules: [makeRule({ category: 'cinema' })] }),
+      VENUES,
+      NOW,
+    );
+    expect(sections[0]!.events.map((e) => e.id))
+      .toEqual(['film-early', 'film-mid', 'film-late']);
+  });
 
   it('with no rules, returns one unnamed section on the subscription cadence', () => {
     const sections = buildBriefSections(week(), makeSub({ sendCadence: 'daily' }), VENUES, NOW);
@@ -585,7 +628,20 @@ describe('sendNewsletterBriefs', () => {
    *  and these fixtures' user ids aren't UUIDs. Empty by default: a subscriber
    *  who follows nothing is the 'no-venues' case. */
   function deps(venues = new InMemoryUserVenueStore([])) {
-    return { venues, events: { listUpcoming: async () => [] } };
+    return {
+      venues,
+      events: { listUpcoming: async () => [] },
+      /**
+       * The saved-events queue is the third source the sweep reads, and it is
+       * injected for the reason `SweepOptions.wantToGo` gives: without it the
+       * sweep reaches for the process-wide store, so what these tests do
+       * depends on whether DATABASE_URL happens to be set. Under CI it is, the
+       * DB-backed store rejects a `u1` that is not a uuid, and three
+       * assertions about venue scoping and query windows fail on an error that
+       * has nothing to do with any of them.
+       */
+      wantToGo: { list: async () => [] },
+    };
   }
 
   /** A venue store where u1 follows v1 and v2 — `resolveBriefVenues` filters

@@ -404,6 +404,38 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
  * at the top, festivals above the listings rather than at the foot, one line
  * per cinema, and a run dated by when it closes.
  */
+/** GOI-121: whatever order the events arrive in, the list reads forwards. */
+describe('renderBriefHtml — time order (GOI-121)', () => {
+  it('lists a day earliest first however the events arrived', () => {
+    const at = (iso: string, title: string) => makeEvent({ title, startsAt: iso });
+    const html = render({
+      sections: [section({
+        category: 'cinema',
+        events: [
+          at('2026-07-22T22:00:00+02:00', 'Nocny'),
+          at('2026-07-22T13:00:00+02:00', 'Poranny'),
+          at('2026-07-22T18:30:00+02:00', 'Wieczorny'),
+        ],
+      })],
+    });
+
+    expect(html.indexOf('Poranny')).toBeLessThan(html.indexOf('Wieczorny'));
+    expect(html.indexOf('Wieczorny')).toBeLessThan(html.indexOf('Nocny'));
+  });
+
+  it('breaks a tie on title, so the email and the PDF cannot disagree', () => {
+    const at = '2026-07-22T18:00:00+02:00';
+    const html = render({
+      sections: [section({
+        category: 'cinema',
+        events: [makeEvent({ title: 'Bez końca', startsAt: at }), makeEvent({ title: 'Amator', startsAt: at })],
+      })],
+    });
+
+    expect(html.indexOf('Amator')).toBeLessThan(html.indexOf('Bez końca'));
+  });
+});
+
 /**
  * GOI-122: "museums" is one word for two different things — a run you can drop
  * in on any afternoon for the next six weeks, and a talk at seven on Thursday.
@@ -502,6 +534,33 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
     expect(html.indexOf('WANT TO GO')).toBeLessThan(html.indexOf('A Film'));
     // And the states are separated rather than run together.
     expect(html.indexOf('OSTATNIA SZANSA')).toBeLessThan(html.indexOf('JUTRO'));
+  });
+
+  /**
+   * A saved exhibition (GOI-125). It has no showtime to print and its opening
+   * day is weeks behind, so the row is dated by when it closes.
+   */
+  it('dates an ongoing saved exhibition by its closing date', () => {
+    const html = render({
+      sections: [],
+      wantToGo: {
+        changes: [],
+        reminders: [{
+          state: 'ongoing',
+          event: makeEvent({
+            title: 'Wystawa stała',
+            kind: 'exhibition',
+            startsAt: '2026-05-02T10:00:00+02:00',
+            endsAt: '2026-11-14T18:00:00+01:00',
+          }),
+        }],
+      } as never,
+    });
+
+    expect(html).toContain('TERAZ TRWA');
+    expect(html).toContain('Wystawa stała');
+    expect(html).toContain('TERAZ');
+    expect(html).toContain('DO 14 LISTOPADA');
   });
 
   /**
