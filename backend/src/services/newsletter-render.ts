@@ -2,10 +2,10 @@ import { isExhibition } from '@afisz/shared';
 import type {
   Event, Festival, NewsletterDetail, NewsletterFrequency,
 } from '@afisz/shared';
-import type { QueuedChange, WantToGoSection } from './want-to-go-queue.js';
+import type { QueuedChange, QueuedEvent, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, closingDate, dateRange, festivalSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -145,7 +145,12 @@ export function groupPicks(events: Event[]): Pick[] {
     });
   }
 
-  return picks.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  // Earliest first, with the same tie-break the section itself uses, so two
+  // films at one time cannot swap places between the email and the PDF
+  // (GOI-121).
+  return picks.sort(
+    (a, b) => a.startsAt.localeCompare(b.startsAt) || a.lead.title.localeCompare(b.lead.title),
+  );
 }
 
 /**
@@ -167,6 +172,10 @@ function venueLines(pick: Pick): string[] {
  *  above too, so the list reads as a closed block — as in the design. */
 function pickRow(
   pick: Pick, top: boolean, detail: NewsletterDetail, windowDays: number,
+  /** Date the row "5 SIERPNIA, SOBOTA" rather than "SB 5 VIII" (GOI-122).
+   *  The time still leads it, in the gutter, since that is what a museum
+   *  event asks a reader to be somewhere for. */
+  longForm = false,
 ): string {
   // An exhibition has no showtime worth putting in a gutter — it is on all day
   // for months — so it is dated by when it closes instead (GOI-67, GOI-110).
@@ -182,7 +191,7 @@ function pickRow(
   const dated = windowDays > 1
     ? `<div style="font-family:${FONT};font-weight:800;font-size:10px;line-height:1.2;` +
       `letter-spacing:.14em;text-transform:uppercase;color:${C.meta};margin-bottom:4px">` +
-      `${escapeHtml(shortDate(pick.startsAt))}</div>`
+      `${escapeHtml(longForm ? longDate(pick.startsAt) : shortDate(pick.startsAt))}</div>`
     : '';
 
   return (
@@ -223,8 +232,11 @@ function exhibitionRow(pick: Pick, top: boolean, detail: NewsletterDetail): stri
   const border =
     (top ? `border-top:2px solid ${C.divider};` : '') + `border-bottom:2px solid ${C.divider};`;
   const description = blurb(event, detail);
+  // From when till when, not only till when (GOI-122). A reader deciding
+  // whether to go this month wants both ends of the run; "DO 14 WRZEŚNIA" on
+  // its own says nothing about whether it has opened.
   const eyebrow = [
-    event.endsAt ? closingDate(event.endsAt) : null,
+    runSpan(event.startsAt, event.endsAt ?? null),
     pick.venues[0]?.name.toUpperCase(),
   ].filter(Boolean).join(' \u00b7 ');
 
@@ -273,6 +285,21 @@ function blurb(event: Event, detail: NewsletterDetail): string {
  * and a reader scanning for the urgent one should not have to read the times.
  * Changes lead: something that happened outranks something that is coming.
  */
+/** The short marker in a reminder row's gutter. */
+function queueGutter(item: QueuedEvent): string {
+  if (item.state === 'ongoing') return PL.now;
+  return item.state === 'tomorrow' ? time(item.event.startsAt) : weekday(item.event.startsAt);
+}
+
+/** The line under a reminder's title: where it is, and the date that matters
+ *  for its state — the showtime, or for a run, when it closes. */
+function queueMeta(item: QueuedEvent): string {
+  const when = item.state === 'ongoing'
+    ? (item.event.endsAt ? closingDate(item.event.endsAt) : null)
+    : (item.state === 'tomorrow' ? null : time(item.event.startsAt));
+  return [item.event.venue?.name, when].filter(Boolean).join(' \u00b7 ');
+}
+
 function wantToGoBlock(section: WantToGoSection): string {
   if (section.reminders.length === 0 && section.changes.length === 0) return '';
 
@@ -293,10 +320,13 @@ function wantToGoBlock(section: WantToGoSection): string {
     }
   }
 
+  // `ongoing` last: the three above are deadlines, and a run that is simply
+  // open is the one row nobody has to act on today.
   for (const [state, label, urgent] of [
     ['last_chance', PL.lastChance, true],
     ['tomorrow', PL.tomorrow, false],
     ['this_week', PL.thisWeek, false],
+    ['ongoing', PL.ongoing, false],
   ] as const) {
     const items = section.reminders.filter((r) => r.state === state);
     if (items.length === 0) continue;
@@ -304,13 +334,11 @@ function wantToGoBlock(section: WantToGoSection): string {
     for (const item of items) {
       rows.push(queueRow({
         // A reminder for tomorrow is about a time; one for later in the week
-        // is about a day. The gutter shows whichever the reader needs.
-        gutter: state === 'tomorrow' ? time(item.event.startsAt) : weekday(item.event.startsAt),
+        // is about a day; an exhibition already open is about neither, and its
+        // opening weekday is weeks behind.
+        gutter: queueGutter(item),
         title: item.event.title,
-        meta: [
-          item.event.venue?.name,
-          state === 'tomorrow' ? null : time(item.event.startsAt),
-        ].filter(Boolean).join(' \u00b7 '),
+        meta: queueMeta(item),
       }));
     }
   }
@@ -400,8 +428,39 @@ function sectionHeadingRow(section: BriefSection, top: boolean): string {
  * typed it — translating someone's "arthouse" would be inventing a name for
  * something they already named.
  */
-function sectionLabel(category: string): string {
+export function sectionLabel(category: string): string {
   return PL.categories[category as keyof typeof PL.categories] ?? category;
+}
+
+/** A run of picks under one optional subheading. */
+interface PickGroup {
+  label: string | null;
+  picks: Pick[];
+}
+
+/**
+ * The museums section, in its two halves (GOI-122).
+ *
+ * "Museums" is one word for two different things: a run you can drop in on any
+ * afternoon for the next six weeks, and a talk at seven on Thursday. Listed
+ * together they read as one undifferentiated schedule, and the reader has to
+ * check each row's date line to work out which kind of plan it is.
+ *
+ * Only where both halves are actually present — a section of nothing but runs
+ * gets no "Wystawy" heading, which would only repeat the section's own — and
+ * only for exhibitions: every other category is one shape already.
+ */
+export function splitByShape(section: BriefSection, picks: Pick[]): PickGroup[] {
+  if (section.category !== 'exhibition') return [{ label: null, picks }];
+  const runs = picks.filter((p) => isExhibition(p.lead));
+  const timed = picks.filter((p) => !isExhibition(p.lead));
+  if (runs.length === 0 || timed.length === 0) return [{ label: null, picks }];
+  // Runs first: they are the answer to "what is on at the museum", and the
+  // events are what is on *besides*.
+  return [
+    { label: PL.exhibitions, picks: runs },
+    { label: PL.events, picks: timed },
+  ];
 }
 
 function picksTable(sections: BriefSection[]): string {
@@ -416,9 +475,15 @@ function picksTable(sections: BriefSection[]): string {
     if (named && section.category) {
       rows.push(sectionHeadingRow(section, rows.length === 0));
     }
-    for (const pick of picks) {
-      // Only whatever lands first carries the rule that opens the list.
-      rows.push(pickRow(pick, rows.length === 0, section.detail, section.windowDays));
+    for (const group of splitByShape(section, picks)) {
+      if (group.label) rows.push(subHeadingRow(group.label, false));
+      for (const pick of group.picks) {
+        // Only whatever lands first carries the rule that opens the list.
+        rows.push(pickRow(
+          pick, rows.length === 0, section.detail, section.windowDays,
+          section.category === 'exhibition',
+        ));
+      }
     }
   }
 

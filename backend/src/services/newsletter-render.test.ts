@@ -404,6 +404,109 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
  * at the top, festivals above the listings rather than at the foot, one line
  * per cinema, and a run dated by when it closes.
  */
+/** GOI-121: whatever order the events arrive in, the list reads forwards. */
+describe('renderBriefHtml — time order (GOI-121)', () => {
+  it('lists a day earliest first however the events arrived', () => {
+    const at = (iso: string, title: string) => makeEvent({ title, startsAt: iso });
+    const html = render({
+      sections: [section({
+        category: 'cinema',
+        events: [
+          at('2026-07-22T22:00:00+02:00', 'Nocny'),
+          at('2026-07-22T13:00:00+02:00', 'Poranny'),
+          at('2026-07-22T18:30:00+02:00', 'Wieczorny'),
+        ],
+      })],
+    });
+
+    expect(html.indexOf('Poranny')).toBeLessThan(html.indexOf('Wieczorny'));
+    expect(html.indexOf('Wieczorny')).toBeLessThan(html.indexOf('Nocny'));
+  });
+
+  it('breaks a tie on title, so the email and the PDF cannot disagree', () => {
+    const at = '2026-07-22T18:00:00+02:00';
+    const html = render({
+      sections: [section({
+        category: 'cinema',
+        events: [makeEvent({ title: 'Bez końca', startsAt: at }), makeEvent({ title: 'Amator', startsAt: at })],
+      })],
+    });
+
+    expect(html.indexOf('Amator')).toBeLessThan(html.indexOf('Bez końca'));
+  });
+});
+
+/**
+ * GOI-122: "museums" is one word for two different things — a run you can drop
+ * in on any afternoon for the next six weeks, and a talk at seven on Thursday.
+ * Listed together they read as one undifferentiated schedule.
+ */
+describe('renderBriefHtml — museums in two halves (GOI-122)', () => {
+  const run = (title: string) =>
+    makeEvent({
+      title,
+      kind: 'exhibition',
+      startsAt: '2026-07-01T10:00:00+02:00',
+      endsAt: '2026-09-14T18:00:00+02:00',
+      venue: { id: 'z', name: 'Zachęta', category: 'exhibition', city: 'Warsaw', country: 'PL' },
+    });
+  const talk = (title: string, iso: string) =>
+    makeEvent({
+      title,
+      startsAt: iso,
+      venue: { id: 'z', name: 'Zachęta', category: 'exhibition', city: 'Warsaw', country: 'PL' },
+    });
+
+  const museums = (events: Event[]) =>
+    render({ sections: [section({ category: 'exhibition', windowDays: 30, events })] });
+
+  it('lists the runs, then what is on besides them', () => {
+    const html = museums([
+      talk('Oprowadzanie kuratorskie', '2026-08-05T18:00:00+02:00'),
+      run('Formy nowoczesne'),
+    ]);
+
+    expect(html).toContain('WYSTAWY');
+    expect(html).toContain('WYDARZENIA');
+    expect(html.indexOf('WYDARZENIA')).toBeLessThan(html.indexOf('Oprowadzanie kuratorskie'));
+    // Runs first: they answer "what is on at the museum", and the events are
+    // what is on besides.
+    expect(html.indexOf('Formy nowoczesne')).toBeLessThan(html.indexOf('WYDARZENIA'));
+  });
+
+  it('dates a run from when till when, and an event by day and time', () => {
+    const html = museums([
+      talk('Oprowadzanie kuratorskie', '2026-08-05T18:00:00+02:00'),
+      run('Formy nowoczesne'),
+    ]);
+
+    expect(html).toContain('1 LIPCA – 14 WRZEŚNIA');
+    // "5th Aug, Saturday", in the brief's own language — and the time leads it
+    // in the gutter, since that is what the event asks a reader to turn up for.
+    expect(html).toContain('5 SIERPNIA, ŚRODA');
+    expect(html).toContain('18:00');
+  });
+
+  it('leaves a section of nothing but runs unsplit', () => {
+    // A lone "WYSTAWY" subheading under the section's own heading would only
+    // repeat it.
+    const html = museums([run('Formy nowoczesne'), run('Nowa rzeźba')]);
+    expect(html).not.toContain('WYDARZENIA');
+    expect(html.split('WYSTAWY')).toHaveLength(2);
+  });
+
+  it('leaves every other category as one list', () => {
+    const html = render({
+      sections: [section({
+        category: 'cinema',
+        windowDays: 7,
+        events: [makeEvent({ title: 'Chungking Express' })],
+      })],
+    });
+    expect(html).not.toContain('WYDARZENIA');
+  });
+});
+
 describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
   const cinema = (iso: string, venue: string, title: string) =>
     makeEvent({
@@ -431,6 +534,33 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
     expect(html.indexOf('WANT TO GO')).toBeLessThan(html.indexOf('A Film'));
     // And the states are separated rather than run together.
     expect(html.indexOf('OSTATNIA SZANSA')).toBeLessThan(html.indexOf('JUTRO'));
+  });
+
+  /**
+   * A saved exhibition (GOI-125). It has no showtime to print and its opening
+   * day is weeks behind, so the row is dated by when it closes.
+   */
+  it('dates an ongoing saved exhibition by its closing date', () => {
+    const html = render({
+      sections: [],
+      wantToGo: {
+        changes: [],
+        reminders: [{
+          state: 'ongoing',
+          event: makeEvent({
+            title: 'Wystawa stała',
+            kind: 'exhibition',
+            startsAt: '2026-05-02T10:00:00+02:00',
+            endsAt: '2026-11-14T18:00:00+01:00',
+          }),
+        }],
+      } as never,
+    });
+
+    expect(html).toContain('TERAZ TRWA');
+    expect(html).toContain('Wystawa stała');
+    expect(html).toContain('TERAZ');
+    expect(html).toContain('DO 14 LISTOPADA');
   });
 
   /**
@@ -509,7 +639,7 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
 
   /** The gap the ticket names: the email printed an opening time for a run on
    *  until October, which is the one fact about it that does not matter. */
-  it('dates an exhibition by when it closes, with no showtime', () => {
+  it('dates an exhibition by its run, with no showtime', () => {
     const html = render({
       sections: [section({
         category: 'exhibition',
@@ -523,13 +653,15 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
       })],
     });
 
-    expect(html).toContain('DO 14 WRZEŚNIA · ZACHĘTA');
+    // From when till when (GOI-122): "do 14 września" alone says nothing about
+    // whether the run has opened.
+    expect(html).toContain('1 LIPCA – 14 WRZEŚNIA · ZACHĘTA');
     expect(html).toContain('Formy nowoczesne');
     // No gutter time, and no venue-and-times line of the timed kind.
     expect(html).not.toContain('ZACHĘTA · 10:00');
   });
 
-  it('falls back to the venue alone for a run with no closing date', () => {
+  it('says only when it opened for a run with no closing date', () => {
     const html = render({
       sections: [section({
         category: 'exhibition',
@@ -542,7 +674,7 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
       })],
     });
 
-    expect(html).toContain('MUZEUM NARODOWE');
+    expect(html).toContain('OD 22 LIPCA · MUZEUM NARODOWE');
     expect(html).not.toContain('DO ');
   });
 });

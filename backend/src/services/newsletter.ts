@@ -113,7 +113,7 @@ export function selectBriefEvents(
   now: Date = new Date(),
 ): Event[] {
   const horizon = new Date(now.getTime() + sub.windowDays * 24 * 3_600_000);
-  return events.filter((e) => {
+  return byStartTime(events.filter((e) => {
     if (sub.venueIds.length > 0 && !sub.venueIds.includes(e.venueId)) return false;
     const starts = new Date(e.startsAt);
     if (starts > horizon) return false;
@@ -127,7 +127,28 @@ export function selectBriefEvents(
     if (sub.afterHour != null && hour < sub.afterHour) return false;
     if (sub.beforeHour != null && hour >= sub.beforeHour) return false;
     return true;
-  });
+  }));
+}
+
+/**
+ * Chronological, earliest first, with a stable tie-break (GOI-121).
+ *
+ * A brief was only ever *incidentally* in time order: this is a filter over
+ * whatever the fetch handed it, and both the wide query and the per-rule
+ * top-ups happen to order by start time — so nothing here guaranteed it, and a
+ * section came out in whatever order its rows arrived in. The rendered list
+ * survived on `groupPicks` re-sorting downstream, which left everything else
+ * built from a section — the preview's event list, anything a later section
+ * layout wants to group — carrying the fetch's order rather than the reader's.
+ *
+ * Stated here, once, so the guarantee belongs to the brief rather than to one
+ * renderer. Titles break a tie so two events at the same minute do not swap
+ * places between the email and the PDF.
+ */
+export function byStartTime(events: Event[]): Event[] {
+  return [...events].sort(
+    (a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title),
+  );
 }
 
 /**
@@ -550,6 +571,26 @@ function ruleFetchScopes(
 export const CHANGE_LOOKBACK_DAYS = 14;
 
 /**
+ * How far ahead the reminder queue looks, in days.
+ *
+ * The configured horizon is a floor, not a ceiling, and the send cadence is
+ * the other one. A monthly reader on the stored default of seven days was told
+ * about a saved event only when it happened to fall in the week after an
+ * issue — three weeks in four, everything they had saved went unmentioned and
+ * the block came out empty (GOI-125). The horizon is no longer theirs to set
+ * either (GOI-103), so nothing they could do would widen it.
+ *
+ * Taking the wider of the two guarantees the property that matters: every
+ * saved event inside the span an issue covers gets mentioned in it. Dedup by
+ * state stops the extra reach costing a repeat.
+ */
+export function queueHorizonDays(
+  sub: Pick<NewsletterSubscription, 'wantToGo' | 'sendCadence'>,
+): number {
+  return Math.max(sub.wantToGo.horizonDays, sendCadenceDays(sub.sendCadence));
+}
+
+/**
  * The "want to go" block of one issue (GOI-101), already deduplicated.
  *
  * Reads the reader's saved events rather than the venue listing: this is a
@@ -558,7 +599,7 @@ export const CHANGE_LOOKBACK_DAYS = 14;
  * among them — a cancelled row is kept precisely so this can mention it.
  */
 export async function buildWantToGoSection(
-  sub: Pick<NewsletterSubscription, 'id' | 'userId' | 'wantToGo'>,
+  sub: Pick<NewsletterSubscription, 'id' | 'userId' | 'wantToGo' | 'sendCadence'>,
   // Only what it reads. The preview (GOI-110) substitutes `sentStates` to skip
   // dedup, and has no config row to hand over as the rest of a store.
   store: Pick<NewsletterStore, 'sentStates' | 'changesFor'>,
@@ -574,7 +615,11 @@ export async function buildWantToGoSection(
   // Reminders. A cancelled event has nothing to remind anyone about — the
   // changes block below is where it belongs.
   const live = saved.filter((e) => !e.cancelledAt);
-  const candidates = queueCandidates(live, { ...sub.wantToGo, changesEnabled: sub.wantToGo.changesEnabled }, now);
+  const candidates = queueCandidates(
+    live,
+    { horizonDays: queueHorizonDays(sub), changesEnabled: sub.wantToGo.changesEnabled },
+    now,
+  );
   const byState = new Map<string, Set<string>>();
   for (const state of new Set(candidates.map((c) => c.state))) {
     byState.set(state, await store.sentStates(sub.id, state, candidates.map((c) => c.event.id)));
@@ -606,7 +651,15 @@ export async function buildWantToGoSection(
     changes = applyChangeDedup(all, changeStates);
   }
 
-  return { reminders, changes };
+  // An event the changes block already names is not also a reminder (GOI-123).
+  //
+  // The cancelled ones were kept out above, and for the same reason: a block
+  // that says "moved to 20:15" and then, three rows down, "tomorrow, 20:15" is
+  // the same event twice in the one part of the brief that asks the reader to
+  // do something. The change is the more specific thing to say, so it is the
+  // one that stays.
+  const changed = new Set(changes.map((c) => c.event.id));
+  return { reminders: reminders.filter((r) => !changed.has(r.event.id)), changes };
 }
 
 /**
@@ -818,37 +871,50 @@ export async function sendNewsletterBriefs(
     }
     try {
       const venues = await resolveBriefVenues(sub.userId, sub.venueIds, venueStore);
-      // Nothing in scope — no venues followed, or none matched the selection.
-      // An empty list must not fall through to "every venue in the database".
-      if (venues.length === 0) {
-        outcomes.push({ ...base, status: 'skipped', reason: 'no-venues' });
-        continue;
-      }
-      // Narrowed in SQL, and per due rule once the cap bites — see
-      // `fetchBriefEvents` for why one flat query left sparse sections empty.
-      const events = await fetchBriefEvents(sub, venues, now, eventStore);
-      // Scoped to this subscriber's venues (GOI-33). Chosen before the
-      // sections are trimmed, since it is what decides what they may drop.
-      const festivals = briefFestivals(
-        briefWindowDays(plannedFrequency(sub)),
-        venues.map((v) => v.name),
-        now,
-      );
-      // …and a row that only restates one of them is the same fact printed
-      // twice in one issue (GOI-124).
-      const sections = dropFestivalRestatements(
-        buildBriefSections(events, sub, venues, now),
-        festivals,
-      );
 
       // The saved-events queue counts as content (GOI-101). An issue whose
       // cinema, museums and theatre sections are all empty but which has three
       // saved events tomorrow *is* worth sending — in August it is likely to
       // be the only thing carrying the newsletter, and that is the intended
       // behaviour rather than a degenerate case.
+      //
+      // Built before the venue check for that reason. It used to sit after it,
+      // which meant a reader following no venues was skipped as `no-venues`
+      // however much they had saved — the queue reads their saved events, not
+      // a venue listing, and needs no venue to have something to say (GOI-125).
       const wantToGo = await buildWantToGoSection(sub, store, opts.wantToGo ?? defaultWantToGoStore, now);
 
+      // Nothing in scope — no venues followed, or none matched the selection.
+      // An empty list must not fall through to "every venue in the database",
+      // so the listings are skipped rather than widened; the queue still goes.
+      const events = venues.length > 0
+        // Narrowed in SQL, and per due rule once the cap bites — see
+        // `fetchBriefEvents` for why one flat query left sparse sections empty.
+        ? await fetchBriefEvents(sub, venues, now, eventStore)
+        : [];
+      // Scoped to this subscriber's venues (GOI-33). Chosen before the
+      // sections are trimmed, since it is what decides what they may drop —
+      // and empty for a reader following no venues, which is the same band
+      // they would have been shown anyway.
+      const festivals = briefFestivals(
+        briefWindowDays(plannedFrequency(sub)),
+        venues.map((v) => v.name),
+        now,
+      );
+      // …and a row that only restates one of them is the same fact printed
+      // twice in one issue (GOI-124). Trimmed here rather than in a renderer,
+      // so the email and the filed PDF cannot disagree about it, and before
+      // the "nothing on" check below, so an issue whose listings were only
+      // restatement rows is skipped rather than sent near-empty.
+      const sections = venues.length > 0
+        ? dropFestivalRestatements(buildBriefSections(events, sub, venues, now), festivals)
+        : [];
+
       if (sections.length === 0 && isEmptySection(wantToGo)) {
+        if (venues.length === 0) {
+          outcomes.push({ ...base, status: 'skipped', reason: 'no-venues' });
+          continue;
+        }
         outcomes.push({
           ...base, status: 'skipped', reason: 'no-events', eventCount: 0,
           detail: `${events.length} upcoming event(s) at ${venues.length} venue(s) in the window, no section was due with anything in it and nothing saved is coming up`,
