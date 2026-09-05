@@ -233,23 +233,36 @@ export function HomePage() {
  * on purpose: the wordmark and this headline are the brand, the rest of the
  * interface stays in English.
  */
+/**
+ * The masthead, on one line rather than three (GOI-114).
+ *
+ * Three stacked lines at up to 110px, over a paragraph, put the intro at
+ * something near half the screen before the festival banner underneath it had
+ * said anything — so the listing, which is what the page is for, started below
+ * the fold. Asked for a quarter of the screen for the pair, and a quarter is
+ * not reachable with three lines of display type in it: at three lines the
+ * type has to come down to about 22px to fit, which is not a masthead any
+ * more. One line is what buys the size back — it keeps its weight, and the
+ * stroked word keeps the character of the stacked version.
+ *
+ * Sized against the viewport's *height*, not its width, because the promise
+ * being kept is about how much of the screen this takes. `vw` says nothing
+ * about that on a short laptop screen, which is exactly where it was worst.
+ */
 function Hero() {
   return (
-    <div className="bg-ink text-white page-x pt-10 pb-9 md:pt-16 md:pb-14">
+    <div className="bg-ink text-white page-x py-5 md:py-7">
       <div className="max-w-[900px]">
         <h1
-          className="font-display leading-[0.94] tracking-[0.5px] md:tracking-[1px] m-0"
-          style={{ fontSize: 'clamp(44px, 9vw, 110px)' }}
+          className="font-display leading-[1.02] tracking-[0.5px] md:tracking-[1px] m-0"
+          style={{ fontSize: 'clamp(30px, min(7vw, 8vh), 68px)' }}
         >
-          <span className="block">CO</span>
-          <span className="block text-accent">SIĘ</span>
+          CO <span className="text-accent">SIĘ</span>{' '}
           {/* Stroked in its own colour: the letterforms thicken rather than
-              hollow out, which is what gives the third line its weight. */}
-          <span className="block" style={{ WebkitTextStroke: '3px #fff' }}>
-            DZIEJE
-          </span>
+              hollow out, which is what gave the third line its weight. */}
+          <span style={{ WebkitTextStroke: '2px #fff' }}>DZIEJE</span>
         </h1>
-        <p className="mt-4 md:mt-6 max-w-[520px] text-sm md:text-lg font-medium text-[#c9c4bc]">
+        <p className="mt-1.5 md:mt-2 max-w-[520px] text-xs md:text-sm font-medium text-[#c9c4bc]">
           Cinema, theatre, comedy, music and museums across Warsaw — one listing,
           refreshed every few minutes.
         </p>

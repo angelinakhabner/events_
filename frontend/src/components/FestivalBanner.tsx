@@ -80,12 +80,12 @@ function FestivalBannerCard({ festival }: { festival: Festival }) {
               alt=""
               loading="lazy"
               onError={() => setArtworkFailed(true)}
-              className="h-40 w-full object-cover md:h-full md:min-h-[184px]"
+              className="h-24 w-full object-cover md:h-full md:min-h-[128px]"
             />
           </div>
         ) : null}
 
-        <div className="page-x py-7 md:py-9 md:flex-1">
+        <div className="page-x py-4 md:py-5 md:flex-1">
           <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] md:text-xs font-extrabold uppercase tracking-[1.5px]">
             {/* "Now on" and "Coming soon" are the two things a festival can be
                 worth a banner for, and they are not the same news. */}
@@ -99,17 +99,20 @@ function FestivalBannerCard({ festival }: { festival: Festival }) {
           </p>
 
           <h2
-            className="font-display leading-[0.98] tracking-[0.5px] m-0 mt-3 group-hover:text-accent"
-            style={{ fontSize: 'clamp(28px, 4.4vw, 52px)' }}
+            className="font-display leading-[1.02] tracking-[0.5px] m-0 mt-1.5 group-hover:text-accent"
+            style={{ fontSize: 'clamp(22px, min(3.2vw, 4vh), 36px)' }}
           >
             {festival.name}
           </h2>
 
-          <p className="mt-3 max-w-[560px] text-sm md:text-base font-medium text-[#c9c4bc]">
+          {/* One line, and cut rather than wrapped: the banner is a headline,
+              and the festival's own site is a click away for the rest
+              (GOI-114). */}
+          <p className="mt-1.5 max-w-[560px] truncate text-xs md:text-sm font-medium text-[#c9c4bc]">
             {festival.description}
           </p>
 
-          <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 m-0 text-[11px] md:text-xs font-extrabold uppercase tracking-[1px]">
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 m-0 text-[11px] md:text-xs font-extrabold uppercase tracking-[1px]">
             <span className="text-[#8d8b87]">{venueLine(festival)}</span>
             {festival.url ? (
               <span className="text-accent group-hover:underline">Festival site →</span>
