@@ -585,7 +585,20 @@ describe('sendNewsletterBriefs', () => {
    *  and these fixtures' user ids aren't UUIDs. Empty by default: a subscriber
    *  who follows nothing is the 'no-venues' case. */
   function deps(venues = new InMemoryUserVenueStore([])) {
-    return { venues, events: { listUpcoming: async () => [] } };
+    return {
+      venues,
+      events: { listUpcoming: async () => [] },
+      /**
+       * The saved-events queue is the third source the sweep reads, and it is
+       * injected for the reason `SweepOptions.wantToGo` gives: without it the
+       * sweep reaches for the process-wide store, so what these tests do
+       * depends on whether DATABASE_URL happens to be set. Under CI it is, the
+       * DB-backed store rejects a `u1` that is not a uuid, and three
+       * assertions about venue scoping and query windows fail on an error that
+       * has nothing to do with any of them.
+       */
+      wantToGo: { list: async () => [] },
+    };
   }
 
   /** A venue store where u1 follows v1 and v2 — `resolveBriefVenues` filters
