@@ -5,7 +5,7 @@ import type {
 import type { QueuedChange, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, closingDate, dateRange, daySpan, festivalSpan, shortDate, time, weekday,
+  PL, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate, time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -204,18 +204,26 @@ function venueWhen(v: ShowingVenue): string {
  *
  * A collapsed cinema pick is a film held over, so the row is dated by its run
  * rather than by whichever showing happens to be first — a card reading "PN 7
- * IX" for a film also on all week is worse than no date at all.
+ * IX" for a film also on all week is worse than no date at all. A run outranks
+ * `longForm`: a museums row spanning days is a span whichever way it is
+ * written, and "5 SIERPNIA, ŚRODA" for something also on all week is the same
+ * mistake in longer words.
  */
-function pickWhen(pick: Pick): string {
-  return fmtDayKey(pick.startsAt) === fmtDayKey(pick.lastStartsAt)
-    ? shortDate(pick.startsAt)
-    : daySpan(pick.startsAt, pick.lastStartsAt);
+function pickWhen(pick: Pick, longForm: boolean): string {
+  if (fmtDayKey(pick.startsAt) !== fmtDayKey(pick.lastStartsAt)) {
+    return daySpan(pick.startsAt, pick.lastStartsAt);
+  }
+  return longForm ? longDate(pick.startsAt) : shortDate(pick.startsAt);
 }
 
 /** Every pick is ruled underneath, and the first row in the list is ruled
  *  above too, so the list reads as a closed block — as in the design. */
 function pickRow(
   pick: Pick, top: boolean, detail: NewsletterDetail, windowDays: number,
+  /** Date the row "5 SIERPNIA, SOBOTA" rather than "SB 5 VIII" (GOI-122).
+   *  The time still leads it, in the gutter, since that is what a museum
+   *  event asks a reader to be somewhere for. */
+  longForm = false,
 ): string {
   // An exhibition has no showtime worth putting in a gutter — it is on all day
   // for months — so it is dated by when it closes instead (GOI-67, GOI-110).
@@ -231,7 +239,7 @@ function pickRow(
   const dated = windowDays > 1
     ? `<div style="font-family:${FONT};font-weight:800;font-size:10px;line-height:1.2;` +
       `letter-spacing:.14em;text-transform:uppercase;color:${C.meta};margin-bottom:4px">` +
-      `${escapeHtml(pickWhen(pick))}</div>`
+      `${escapeHtml(pickWhen(pick, longForm))}</div>`
     : '';
 
   return (
@@ -272,8 +280,11 @@ function exhibitionRow(pick: Pick, top: boolean, detail: NewsletterDetail): stri
   const border =
     (top ? `border-top:2px solid ${C.divider};` : '') + `border-bottom:2px solid ${C.divider};`;
   const description = blurb(event, detail);
+  // From when till when, not only till when (GOI-122). A reader deciding
+  // whether to go this month wants both ends of the run; "DO 14 WRZEŚNIA" on
+  // its own says nothing about whether it has opened.
   const eyebrow = [
-    event.endsAt ? closingDate(event.endsAt) : null,
+    runSpan(event.startsAt, event.endsAt ?? null),
     pick.venues[0]?.name.toUpperCase(),
   ].filter(Boolean).join(' \u00b7 ');
 
@@ -453,6 +464,37 @@ function sectionLabel(category: string): string {
   return PL.categories[category as keyof typeof PL.categories] ?? category;
 }
 
+/** A run of picks under one optional subheading. */
+interface PickGroup {
+  label: string | null;
+  picks: Pick[];
+}
+
+/**
+ * The museums section, in its two halves (GOI-122).
+ *
+ * "Museums" is one word for two different things: a run you can drop in on any
+ * afternoon for the next six weeks, and a talk at seven on Thursday. Listed
+ * together they read as one undifferentiated schedule, and the reader has to
+ * check each row's date line to work out which kind of plan it is.
+ *
+ * Only where both halves are actually present — a section of nothing but runs
+ * gets no "Wystawy" heading, which would only repeat the section's own — and
+ * only for exhibitions: every other category is one shape already.
+ */
+export function splitByShape(section: BriefSection, picks: Pick[]): PickGroup[] {
+  if (section.category !== 'exhibition') return [{ label: null, picks }];
+  const runs = picks.filter((p) => isExhibition(p.lead));
+  const timed = picks.filter((p) => !isExhibition(p.lead));
+  if (runs.length === 0 || timed.length === 0) return [{ label: null, picks }];
+  // Runs first: they are the answer to "what is on at the museum", and the
+  // events are what is on *besides*.
+  return [
+    { label: PL.exhibitions, picks: runs },
+    { label: PL.events, picks: timed },
+  ];
+}
+
 function picksTable(sections: BriefSection[]): string {
   const rows: string[] = [];
   const named = sections.length > 1 || (sections[0]?.category ?? '') !== '';
@@ -466,9 +508,15 @@ function picksTable(sections: BriefSection[]): string {
     if (named && section.category) {
       rows.push(sectionHeadingRow(section, rows.length === 0));
     }
-    for (const pick of picks) {
-      // Only whatever lands first carries the rule that opens the list.
-      rows.push(pickRow(pick, rows.length === 0, section.detail, section.windowDays));
+    for (const group of splitByShape(section, picks)) {
+      if (group.label) rows.push(subHeadingRow(group.label, false));
+      for (const pick of group.picks) {
+        // Only whatever lands first carries the rule that opens the list.
+        rows.push(pickRow(
+          pick, rows.length === 0, section.detail, section.windowDays,
+          section.category === 'exhibition',
+        ));
+      }
     }
   }
 

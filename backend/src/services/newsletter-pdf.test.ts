@@ -168,7 +168,7 @@ describe('renderBriefPdf', () => {
    * GOI-67: an exhibition runs for months, so a start time in the gutter says
    * nothing a reader can act on. What they need is the date it comes down.
    */
-  it('dates an exhibition by its closing rather than by a showtime', async () => {
+  it('dates an exhibition by its run rather than by a showtime', async () => {
     const pdf = await renderBriefPdf({
       sections: [
         section({
@@ -188,7 +188,8 @@ describe('renderBriefPdf', () => {
     });
 
     const { text, flat } = await textOf(pdf);
-    expect(flat).toContain(squash('DO 14 WRZEŚNIA'));
+    // From when till when (GOI-122), not only till when.
+    expect(flat).toContain(squash('1 CZERWCA – 14 WRZEŚNIA'));
     expect(flat).toContain(squash('ZACHĘTA'));
     expect(text).toContain('Nowa rzeźba polska');
     // No 10:00 gutter beside it, which is what the timed layout would have put
@@ -274,6 +275,42 @@ describe('collapsed cinema picks (GOI-120)', () => {
     expect(flat).toContain(squash('KINO MURANÓW · 8–10 IX'));
     expect(flat).toContain(squash('KINOTEKA · 19:00'));
     expect(flat).toContain(squash('Dwie historie'));
+  });
+});
+
+/** GOI-122, in the PDF as in the email. */
+describe('museums in two halves (GOI-122)', () => {
+  it('lists the runs, then what is on besides them, each dated its own way', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section({
+        category: 'exhibition',
+        windowDays: 30,
+        events: [
+          event({
+            title: 'Oprowadzanie kuratorskie',
+            startsAt: '2026-08-05T16:00:00.000Z',
+            venue: { id: 'v9', name: 'Zachęta', city: 'Warsaw' } as Event['venue'],
+          }),
+          event({
+            title: 'Nowa rzeźba polska',
+            kind: 'exhibition',
+            startsAt: '2026-06-01T08:00:00.000Z',
+            endsAt: '2026-09-14T16:00:00.000Z',
+            venue: { id: 'v9', name: 'Zachęta', city: 'Warsaw' } as Event['venue'],
+          }),
+        ],
+      })],
+      now: new Date('2026-08-01T06:00:00.000Z'),
+    });
+
+    const { text, flat } = await textOf(pdf);
+    expect(flat).toContain(squash('WYSTAWY'));
+    expect(flat).toContain(squash('WYDARZENIA'));
+    expect(flat.indexOf(squash('Nowa rzeźba polska')))
+      .toBeLessThan(flat.indexOf(squash('WYDARZENIA')));
+    expect(flat).toContain(squash('1 CZERWCA – 14 WRZEŚNIA'));
+    expect(flat).toContain(squash('5 SIERPNIA, ŚRODA'));
+    expect(text).toContain('18:00');
   });
 });
 
