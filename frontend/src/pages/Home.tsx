@@ -59,6 +59,10 @@ export function HomePage() {
 
   const [venueSelection, setVenueSelection] = useState<VenueSelection>({});
 
+  // The venue selection, read before the listing query because it is part of
+  // that query's key now (GOI-94).
+  const selectedVenues = selectionFor(venueSelection, category);
+
   // The day strip's selection as a Warsaw day window. Recomputed only when the
   // selection changes, so it stays referentially stable as a query key.
   const range = useMemo(() => dayFilterRange(day), [day]);
@@ -76,6 +80,12 @@ export function HomePage() {
     {
       ...(category ? { filters: { categories: [category] } } : {}),
       ...(range ? { fromDay: range.fromDay } : {}),
+      // In the key, so the selection narrows in SQL rather than in the browser
+      // (GOI-94). It costs a refetch per pick, which is the price of the pick
+      // meaning anything: applied here, to whichever hundred rows came back,
+      // choosing the cinema that publishes eight screenings a day changed
+      // nothing and choosing a sparse one emptied the feed.
+      ...(selectedVenues.length > 0 ? { venueIds: selectedVenues } : {}),
     },
     { refetchInterval: REFETCH_INTERVAL_MS, refetchOnWindowFocus: true },
   );
@@ -92,7 +102,6 @@ export function HomePage() {
     () => filterOptionsQuery.data?.venues ?? [],
     [filterOptionsQuery.data],
   );
-  const selectedVenues = selectionFor(venueSelection, category);
 
   // Restore a linked selection once the venues it names are known. Runs only
   // while nothing is selected, so it can't fight the user's own clicks.

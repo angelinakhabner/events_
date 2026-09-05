@@ -122,6 +122,16 @@ const events = router({
         filters: eventFiltersSchema.optional(),
         /** Start the listing at this Warsaw day instead of now — see below. */
         fromDay: dayKeySchema.optional(),
+        /**
+         * The venue selection, narrowed in SQL (GOI-94).
+         *
+         * A sibling of `fromDay` rather than a member of `filters`: those are
+         * the dimensions SQL does not cover and the browser finishes off, and
+         * this is the opposite — the whole point is that it happens before the
+         * limit. Empty and absent both mean "every venue"; an explicitly empty
+         * selection is what the picker's "All venues" sends.
+         */
+        venueIds: z.array(z.string()).optional(),
       }).optional(),
     )
     .query(async ({ input }) => {
@@ -155,9 +165,18 @@ const events = router({
       // selected day *and*, if it is empty, whatever comes after it — and
       // since these rows are ordered by start, the selected day's are at the
       // head of the response, where the limit can't reach them.
+      //
+      // The venue selection is narrowed here too, and for the same reason
+      // (GOI-94). It used to be applied in the browser, to whichever hundred
+      // rows came back — so picking the cinema that publishes eight screenings
+      // a day changed nothing visible, since it already filled the page, and
+      // picking a sparse one emptied the feed rather than narrowing it. Both
+      // read as "the picker doesn't work", and both are this cap.
+      const venueIds = input?.venueIds?.length ? input.venueIds : undefined;
       const rows = await defaultEventStore.listUpcomingWithCategoryFloor({
         city: 'Warsaw',
         categories: filters.categories,
+        venueIds,
         fromDay,
         limit: fromDay ? FROM_DAY_LIMIT : 100,
       });
