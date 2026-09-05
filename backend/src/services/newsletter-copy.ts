@@ -179,12 +179,21 @@ export function closingDate(iso: string): string {
 /**
  * `10–16 VIII` — a festival's run, beside its name.
  *
- * The month comes off the end date and is Roman, as Polish listings write a
- * span. Both renderers print this line, so it lives here rather than being
- * assembled twice from `ROMAN` and two `fmt` calls.
+ * The month is Roman, as Polish listings write a span. Both renderers print
+ * this line, so it lives here rather than being assembled twice from `ROMAN`
+ * and two `fmt` calls.
+ *
+ * A run that crosses a month prints both months (GOI-124). Taking the month
+ * off the end date alone was right for the ordinary week-long festival and a
+ * flat lie about anything longer: the Vistula's open-air summer season, 19
+ * June to 30 August, read as "19–30 VIII" — a fortnight in August, over a run
+ * that had been going for ten weeks by then.
  */
 export function festivalSpan(f: Festival): string {
-  const from = fmt(`${f.startDate}T12:00:00Z`, { day: 'numeric' });
-  const to = fmt(`${f.endDate}T12:00:00Z`, { day: 'numeric' });
-  return `${from}–${to} ${ROMAN[Number(f.endDate.slice(5, 7)) - 1]}`;
+  const day = (date: string) => fmt(`${date}T12:00:00Z`, { day: 'numeric' });
+  const month = (date: string) => ROMAN[Number(date.slice(5, 7)) - 1];
+  if (month(f.startDate) === month(f.endDate)) {
+    return `${day(f.startDate)}–${day(f.endDate)} ${month(f.endDate)}`;
+  }
+  return `${day(f.startDate)} ${month(f.startDate)} – ${day(f.endDate)} ${month(f.endDate)}`;
 }

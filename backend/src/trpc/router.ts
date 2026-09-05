@@ -22,7 +22,8 @@ import {
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection, fetchBriefEvents,
+  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection,
+  dropFestivalRestatements, fetchBriefEvents,
   plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
@@ -716,7 +717,20 @@ const my = router({
         // The preview shows what would go out *now*, so a section whose
         // cadence isn't due today is genuinely absent from it — same rule the
         // sweep applies.
-        const sections = buildBriefSections(all, input, venues, now);
+        // Scoped like the send is (GOI-33), so Generate and the issue agree —
+        // unless the reader follows nothing yet, where scoping to an empty
+        // list would hide the band from the screen meant to show it.
+        const festivals = briefFestivals(
+          briefWindowDays(plannedFrequency(input)),
+          venues.length > 0 ? venues.map((v) => v.name) : undefined,
+          now,
+        );
+        // A row that only restates a festival the band names is the same fact
+        // printed twice in one issue (GOI-124).
+        const sections = dropFestivalRestatements(
+          buildBriefSections(all, input, venues, now),
+          festivals,
+        );
         /**
          * The saved-events queue, which the preview used to leave out entirely
          * (GOI-110). It is the first block of a brief and the only one that
@@ -742,14 +756,7 @@ const my = router({
           wantToGo,
           fallbackFrequency: plannedFrequency(input),
           recipientName: input.recipientName,
-          // Scoped like the send is (GOI-33), so Generate and the issue agree
-          // — unless the reader follows nothing yet, where scoping to an empty
-          // list would hide the band from the screen meant to show it.
-          festivals: briefFestivals(
-            briefWindowDays(plannedFrequency(input)),
-            venues.length > 0 ? venues.map((v) => v.name) : undefined,
-            now,
-          ),
+          festivals,
           now,
         };
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand
