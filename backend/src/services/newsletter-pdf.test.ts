@@ -278,6 +278,45 @@ describe('museums in two halves (GOI-122)', () => {
   });
 });
 
+/**
+ * GOI-123: what the reader pulls as a PDF must be the issue they were sent.
+ *
+ * Both of these were fixed in the email and left in the PDF, so one brief came
+ * out of the two renderers saying different things.
+ */
+describe('the PDF and the email agree (GOI-123)', () => {
+  it('heads a section with the category\u2019s Polish name, not its key', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section({ category: 'cinema', windowDays: 7 })],
+      fallbackFrequency: 'weekly',
+      now: new Date('2026-09-08T06:00:00.000Z'),
+    });
+
+    const { flat } = await textOf(pdf);
+    expect(flat).toContain(squash('KINO'));
+    expect(flat).not.toContain(squash('CINEMA'));
+  });
+
+  /**
+   * The masthead names the *issue's* span, not the widest section's. A weekly
+   * brief carrying a monthly rule has a section reaching thirty days out, and
+   * taking that as the span made the band read a range whose month comes off
+   * an end date five weeks away.
+   */
+  it('dates the masthead by the issue, not by its widest section', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section({ category: 'cinema', windowDays: 30 })],
+      fallbackFrequency: 'weekly',
+      now: new Date('2026-09-08T06:00:00.000Z'),
+    });
+
+    const { flat } = await textOf(pdf);
+    // 8–14 September: the week the issue covers.
+    expect(flat).toContain(squash('8–14 WRZEŚNIA'));
+    expect(flat).not.toContain(squash('PAŹDZIERNIKA'));
+  });
+});
+
 describe('the saved-events queue', () => {
   const queued = (over: Partial<Event> = {}) => event({ title: 'Hamlet', ...over });
 

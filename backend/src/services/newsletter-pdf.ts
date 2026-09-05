@@ -6,12 +6,14 @@ import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
 import {
-  groupPicks, splitByShape, type BriefSection, type Pick,
+  groupPicks, sectionLabel, splitByShape, type BriefSection, type Pick,
 } from './newsletter-render.js';
-import { isEmptySection, type QueuedChange, type WantToGoSection } from './want-to-go-queue.js';
+import {
+  isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
+} from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -181,6 +183,11 @@ export function briefPdfFilename(now: Date, frequency: NewsletterFrequency): str
  * anyway, and a stream would make the byte count unavailable until after the
  * upload had to declare it.
  */
+/** The span a cadence covers, in days — as `newsletter-render.ts` reads it. */
+function cadenceDays(frequency: NewsletterFrequency): number {
+  return frequency === 'daily' ? 1 : frequency === 'weekly' ? 7 : 30;
+}
+
 export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   const now = content.now ?? new Date();
   const sections = content.sections;
@@ -221,7 +228,18 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   // draws nothing, so without this the second page onwards would be white.
   doc.on('pageAdded', () => paintPageBackground(doc));
 
-  drawMasthead(doc, { now, days: widest || (frequency === 'daily' ? 1 : 7) });
+  /**
+   * The *send* cadence, not the widest section (GOI-110, and the PDF catching
+   * up with it in GOI-123).
+   *
+   * Those are different numbers and only one of them is the issue. A weekly
+   * brief carrying a monthly museums rule has a section reaching thirty days
+   * into the future, and taking that as the span made the band read
+   * "10–8 WRZEŚNIA": a range whose month comes off an end date five weeks out,
+   * over an issue that covers a week. The email was fixed and the PDF was not,
+   * so the filed copy and the emailed one dated the same issue differently.
+   */
+  drawMasthead(doc, { now, days: cadenceDays(content.fallbackFrequency ?? frequency) });
   drawSummary(doc, {
     picks: countPicks(sections),
     venues: countVenues(sections),
@@ -343,10 +361,13 @@ function drawWantToGo(doc: PDFKit.PDFDocument, section: WantToGoSection): void {
     }
   }
 
+  // `ongoing` last: the three above are deadlines, and a run that is simply
+  // open is the one row nobody has to act on today.
   for (const [state, label] of [
     ['last_chance', PL.lastChance],
     ['tomorrow', PL.tomorrow],
     ['this_week', PL.thisWeek],
+    ['ongoing', PL.ongoing],
   ] as const) {
     const rows = section.reminders.filter((r) => r.state === state);
     if (rows.length === 0) continue;
@@ -354,17 +375,32 @@ function drawWantToGo(doc: PDFKit.PDFDocument, section: WantToGoSection): void {
     for (const row of rows) {
       drawQueueRow(doc, {
         // A reminder for tomorrow is about a time; one for later in the week
-        // is about a day. The gutter shows whichever the reader needs.
-        gutter: state === 'tomorrow' ? time(row.event.startsAt) : weekday(row.event.startsAt),
+        // is about a day; an exhibition already open is about neither, and its
+        // opening weekday is weeks behind.
+        gutter: queueGutter(row),
         gutterColor: C.accent,
         title: row.event.title,
-        meta: [row.event.venue?.name, state === 'tomorrow' ? null : time(row.event.startsAt)]
-          .filter(Boolean).join(' · '),
+        meta: queueMeta(row),
       });
     }
   }
 
   doc.moveDown(0.5);
+}
+
+/** The short marker in a reminder row's gutter. */
+function queueGutter(row: QueuedEvent): string {
+  if (row.state === 'ongoing') return PL.now;
+  return row.state === 'tomorrow' ? time(row.event.startsAt) : weekday(row.event.startsAt);
+}
+
+/** The line under a reminder's title: where it is, and the date that matters
+ *  for its state — the showtime, or for a run, when it closes. */
+function queueMeta(row: QueuedEvent): string {
+  const when = row.state === 'ongoing'
+    ? (row.event.endsAt ? closingDate(row.event.endsAt) : null)
+    : (row.state === 'tomorrow' ? null : time(row.event.startsAt));
+  return [row.event.venue?.name, when].filter(Boolean).join(' · ');
 }
 
 /** What a change is, in a phrase that fits beside the venue. */
@@ -441,7 +477,14 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
   // The heading is kept with the row it opens. A "TEATR" alone at the foot of
   // a page, with the first play at the head of the next, is worse than a page
   // that ends a few centimetres early.
-  if (section.category) sectionHeading(doc, section.category, rowHeight(doc, picks[0]!, section));
+  // The category's Polish name, as the email prints it (GOI-110). The PDF was
+  // heading its sections with the raw category key, so a filed brief announced
+  // "CINEMA" and "EXHIBITION" over pages that are Polish throughout — and the
+  // two renderings of one issue disagreed about what its sections are called
+  // (GOI-123). Shared rather than reimplemented, so they cannot drift again.
+  if (section.category) {
+    sectionHeading(doc, sectionLabel(section.category), rowHeight(doc, picks[0]!, section));
+  }
 
   // A museums section is listed in its two halves — runs, then what is on
   // besides them (GOI-122).

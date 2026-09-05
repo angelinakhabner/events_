@@ -104,7 +104,52 @@ describe('wantToGoState', () => {
         id: 'y', kind: 'exhibition',
         startsAt: '2026-06-01T10:00:00Z', endsAt: '2026-11-12T18:00:00Z',
       });
-      expect(wantToGoState(later, [later], NOW, 7)).toBeNull();
+      expect(wantToGoState(later, [later], NOW, 7)).toBe('ongoing');
+    });
+  });
+
+  // GOI-125. Between them these two shapes are every exhibition a reader can
+  // realistically save — the ones worth saving are the ones still open — and
+  // both used to fall through to the start-date tests against an opening date
+  // months past, so a saved exhibition simply never reached the brief.
+  describe('an exhibition that is open', () => {
+    it('is reported as ongoing when it closes beyond the horizon', () => {
+      const run = ev({
+        id: 'x', kind: 'exhibition',
+        startsAt: '2026-06-01T10:00:00Z', endsAt: '2027-01-12T18:00:00Z',
+      });
+      expect(wantToGoState(run, [run], NOW, 7)).toBe('ongoing');
+    });
+
+    it('is reported as ongoing when it has no closing date at all', () => {
+      const run = ev({
+        id: 'x', kind: 'exhibition', startsAt: '2026-06-01T10:00:00Z', endsAt: null,
+      });
+      expect(wantToGoState(run, [run], NOW, 7)).toBe('ongoing');
+    });
+
+    it('is still nothing once it has closed', () => {
+      const over = ev({
+        id: 'x', kind: 'exhibition',
+        startsAt: '2026-01-01T10:00:00Z', endsAt: '2026-02-01T18:00:00Z',
+      });
+      expect(wantToGoState(over, [over], NOW, 7)).toBeNull();
+    });
+
+    // Not open yet: dated by when it opens, like anything else — so a run
+    // starting after the horizon is still outside this issue.
+    it('is dated by its opening while it is still to come', () => {
+      const soon = ev({
+        id: 'x', kind: 'exhibition',
+        startsAt: '2026-09-08T10:00:00Z', endsAt: '2027-01-12T18:00:00Z',
+      });
+      expect(wantToGoState(soon, [soon], NOW, 7)).toBe('tomorrow');
+
+      const far = ev({
+        id: 'y', kind: 'exhibition',
+        startsAt: '2026-10-04T10:00:00Z', endsAt: '2027-01-12T18:00:00Z',
+      });
+      expect(wantToGoState(far, [far], NOW, 7)).toBeNull();
     });
   });
 });
@@ -254,7 +299,7 @@ describe('buildWantToGoSection', () => {
       categoryRules: [{ category: 'cinema', cadence: 'every_issue', cadenceWeekday: null, detail: 'short', timeFilter: 'any', lookaheadDays: null, sortOrder: 0 }],
     });
     const section = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' })]),
       NOW,
@@ -270,7 +315,7 @@ describe('buildWantToGoSection', () => {
   it('escalates one event across issues, saying each state exactly once', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store);
-    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo };
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
     // A run, so the final night reads as a last chance.
     const events = [
       ev({ id: 'early', startsAt: '2026-09-09T18:00:00Z' }),
@@ -292,10 +337,34 @@ describe('buildWantToGoSection', () => {
     expect(said).toEqual(['early:this_week', 'last:last_chance', 'early:tomorrow']);
   });
 
+  /**
+   * The horizon is a floor, not a ceiling (GOI-125). A monthly reader on the
+   * stored default of seven days was told about a saved event only when it
+   * happened to fall in the week after an issue — three weeks in four,
+   * everything they had saved went unmentioned and the block came out empty.
+   */
+  it('reaches as far ahead as the issue covers', async () => {
+    const store = new InMemoryNewsletterStore();
+    const events = [ev({ id: 'a', startsAt: '2026-09-25T18:00:00Z' })]; // 18 days out
+
+    const daily = await config(store, { sendCadence: 'daily' });
+    const inWeek = await buildWantToGoSection(
+      { id: daily.id, userId: 'u1', wantToGo: daily.wantToGo, sendCadence: 'daily' },
+      store, savedStore(events), NOW,
+    );
+    expect(inWeek.reminders).toHaveLength(0);
+
+    const monthly = await buildWantToGoSection(
+      { id: daily.id, userId: 'u1', wantToGo: daily.wantToGo, sendCadence: 'monthly' },
+      store, savedStore(events), NOW,
+    );
+    expect(monthly.reminders.map((r) => r.event.id)).toEqual(['a']);
+  });
+
   it('says the same thing once across three issues where nothing changed', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store);
-    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo };
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
     const events = [ev({ id: 'a', startsAt: '2026-09-13T18:00:00Z' })];
 
     let total = 0;
@@ -311,7 +380,7 @@ describe('buildWantToGoSection', () => {
   it('reports a change to a saved event, once', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store);
-    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo };
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
     const cancelled = ev({
       id: 'a', startsAt: '2026-09-09T18:00:00Z', cancelledAt: '2026-09-06T09:00:00Z',
     });
@@ -355,7 +424,7 @@ describe('buildWantToGoSection', () => {
       const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
 
       const section = await buildWantToGoSection(
-        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
         store,
         savedStore([]),
         NOW,
@@ -368,7 +437,9 @@ describe('buildWantToGoSection', () => {
     it('says it once, in each state, like everything else in the queue', async () => {
       const store = new InMemoryNewsletterStore();
       const saved = await config(store);
-      const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo };
+      const sub = {
+        id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence,
+      };
       const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
       const src = sources([film('Chungking Express')], [announced]);
 
@@ -386,7 +457,7 @@ describe('buildWantToGoSection', () => {
       const store = new InMemoryNewsletterStore();
       const saved = await config(store);
       const section = await buildWantToGoSection(
-        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
         store,
         savedStore([]),
         NOW,
@@ -404,7 +475,7 @@ describe('buildWantToGoSection', () => {
       const both = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
 
       const section = await buildWantToGoSection(
-        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
         store,
         savedStore([both]),
         NOW,
@@ -418,13 +489,50 @@ describe('buildWantToGoSection', () => {
       const store = new InMemoryNewsletterStore();
       const saved = await config(store);
       const section = await buildWantToGoSection(
-        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
         store,
         savedStore([]),
         NOW,
       );
       expect(isEmptySection(section)).toBe(true);
     });
+  });
+
+  /**
+   * GOI-123: no event twice in the one block that asks the reader to do
+   * something. A rescheduled event is not cancelled, so it stayed in the
+   * reminders as well as the changes, and the block said "moved to 20:15" and
+   * then, three rows down, "tomorrow, 20:15".
+   */
+  it('does not also remind about an event the changes block names', async () => {
+    const store = new InMemoryNewsletterStore();
+    const saved = await config(store);
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
+    const moved = ev({ id: 'a', startsAt: '2026-09-08T20:15:00Z' });
+    store.changes = [{
+      eventId: 'a', changeType: 'rescheduled',
+      oldValue: '2026-09-08T18:00:00Z', newValue: '2026-09-08T20:15:00Z',
+      detectedAt: '2026-09-06T09:00:00Z',
+    }];
+
+    const section = await buildWantToGoSection(sub, store, savedStore([moved]), NOW);
+    expect(section.changes.map((c) => c.event.id)).toEqual(['a']);
+    expect(section.reminders).toHaveLength(0);
+  });
+
+  it('still reminds about the saved events nothing happened to', async () => {
+    const store = new InMemoryNewsletterStore();
+    const saved = await config(store);
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
+    const moved = ev({ id: 'a', startsAt: '2026-09-08T20:15:00Z' });
+    const other = ev({ id: 'b', startsAt: '2026-09-09T19:00:00Z', title: 'Kordian' });
+    store.changes = [{
+      eventId: 'a', changeType: 'rescheduled', oldValue: null, newValue: null,
+      detectedAt: '2026-09-06T09:00:00Z',
+    }];
+
+    const section = await buildWantToGoSection(sub, store, savedStore([moved, other]), NOW);
+    expect(section.reminders.map((r) => r.event.id)).toEqual(['b']);
   });
 
   it('leaves changes out when the reader switched them off', async () => {
@@ -437,7 +545,7 @@ describe('buildWantToGoSection', () => {
       detectedAt: '2026-09-06T09:00:00Z',
     }];
     const section = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([ev({ id: 'a', startsAt: '2026-09-09T18:00:00Z', cancelledAt: '2026-09-06T09:00:00Z' })]),
       NOW,
@@ -483,6 +591,38 @@ describe('the sweep', () => {
   });
 
   /**
+   * The queue reads the reader's saved events, not a venue listing, so it has
+   * something to say with no venue followed at all — and used to be built
+   * after the venue check, which skipped that reader as `no-venues` however
+   * much they had saved (GOI-125).
+   */
+  it('sends an issue to a reader who follows no venues but has saved events', async () => {
+    const store = new InMemoryNewsletterStore();
+    await config(store, { sendHour: 10, sendMinute: 0 });
+    const result = await sendNewsletterBriefs(store, NOW, {
+      venues: { listAll: async () => [] } as never,
+      events: noEvents,
+      wantToGo: savedStore([ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' })]),
+      skipDrives: true,
+      dryRun: true,
+    });
+    expect(result.outcomes[0]).toMatchObject({ status: 'sent' });
+  });
+
+  it('still calls that reader no-venues when they have saved nothing either', async () => {
+    const store = new InMemoryNewsletterStore();
+    await config(store, { sendHour: 10, sendMinute: 0 });
+    const result = await sendNewsletterBriefs(store, NOW, {
+      venues: { listAll: async () => [] } as never,
+      events: noEvents,
+      wantToGo: savedStore([]),
+      skipDrives: true,
+      dryRun: true,
+    });
+    expect(result.outcomes[0]).toMatchObject({ status: 'skipped', reason: 'no-venues' });
+  });
+
+  /**
    * A failed send must not consume the states. Otherwise the reader is never
    * told, and the system believes they were — which is the one failure mode
    * that cannot be recovered from, since the next issue skips what it thinks
@@ -522,7 +662,7 @@ describe('the sweep', () => {
     });
 
     const next = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([event]),
       NOW,
@@ -625,7 +765,7 @@ describe('urgent change emails', () => {
     });
 
     const next = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([cancelledSoon]),
       NOW,
