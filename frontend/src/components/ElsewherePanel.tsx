@@ -137,7 +137,27 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
   const [open, setOpen] = useState(false);
   const [city, setCity] = useState('');
   const [type, setType] = useState<Category | ''>('');
-  const [matchAgainst, setMatchAgainst] = useState(activeFolderId ?? folders[0]?.id ?? '');
+  /**
+   * Which folder's taste is being matched.
+   *
+   * The reader's choice, *resolved against the folders that actually exist* —
+   * and the resolving is the fix (GOI-116). This was a plain `useState`
+   * initialised to `activeFolderId ?? folders[0]?.id ?? ''`, which is read
+   * once, on the first render. The panel's folders arrive from a query, so on
+   * that first render there are none and the id is null: the state initialised
+   * to `''` and, since a `useState` initialiser is ignored on every later
+   * render, stayed `''` after the folders landed.
+   *
+   * The select then showed its first folder — a value of `''` matches no
+   * option, so the browser displays the first one — while the state said
+   * nothing was chosen, and `Propose` was disabled by a `!matchAgainst` the
+   * reader had no way to satisfy. A complete-looking form with a dead button.
+   */
+  const [matchChoice, setMatchAgainst] = useState(activeFolderId ?? '');
+  const matchAgainst =
+    [matchChoice, activeFolderId].find((id) => id && folders.some((f) => f.id === id))
+    ?? folders[0]?.id
+    ?? '';
   /** '' means "the new city folder" — the default, and the only destination
    *  that doesn't exist yet. */
   const [destination, setDestination] = useState('');
@@ -280,10 +300,20 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
         </button>
       </form>
 
-      <p className="mt-3 mb-0 text-xs text-muted">
-        Up to {VENUE_SUGGEST_MAX_CANDIDATES} venues, each checked for whether we can read its
-        programme. Nothing is created until you add something.
-      </p>
+      {/* The one case where the button is legitimately dead: there is no
+          folder to match against, so the search has no taste to work from.
+          Said out loud rather than left to be inferred from a control that
+          does nothing (GOI-116). */}
+      {folders.length === 0 ? (
+        <p className="mt-3 mb-0 text-xs font-bold text-accent">
+          Add a venue to a folder first — the search works by matching what is already in one.
+        </p>
+      ) : (
+        <p className="mt-3 mb-0 text-xs text-muted">
+          Up to {VENUE_SUGGEST_MAX_CANDIDATES} venues, each checked for whether we can read its
+          programme. Nothing is created until you add something.
+        </p>
+      )}
 
       {suggest.error ? (
         <p role="alert" className="mt-4 text-sm font-bold text-accent">{suggest.error.message}</p>

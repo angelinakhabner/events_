@@ -33,6 +33,12 @@ export const PL = {
   lastChance: 'Ostatnia szansa',
   tomorrow: 'Jutro',
   thisWeek: 'W tym tygodniu',
+  /** A saved exhibition that is open and not closing yet (GOI-125). Not an
+   *  escalation step like the three above — one mention that it is on. */
+  ongoing: 'Teraz trwa',
+  /** The gutter marker beside such a row: it has no start time to show and
+   *  its opening day is weeks behind. */
+  now: 'TERAZ',
   /** Not "w tym tygodniu": the band carries festivals that open later than
    *  this week too (GOI-110), and each row prints its own dates. */
   festivals: 'Festiwale',
