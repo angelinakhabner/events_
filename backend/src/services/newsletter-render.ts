@@ -407,7 +407,7 @@ function sectionHeadingRow(section: BriefSection, top: boolean): string {
  * typed it — translating someone's "arthouse" would be inventing a name for
  * something they already named.
  */
-function sectionLabel(category: string): string {
+export function sectionLabel(category: string): string {
   return PL.categories[category as keyof typeof PL.categories] ?? category;
 }
 
