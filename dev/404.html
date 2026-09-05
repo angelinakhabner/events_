@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#141414" />
+    <!-- Icon set lives in public/icons. These are the production references;
+         the dev-preview build rewrites them to the DEV-marked set (see the
+         appVariantIcons plugin in vite.config.ts). Kept out of the landing
+         head below: that block is generated copy, this is chrome. -->
+    <link rel="icon" type="image/png" sizes="48x48" href="/dev/icons/afisz-dev-app-icon-48.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/dev/icons/afisz-dev-app-icon-512.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/dev/icons/afisz-dev-app-icon-120.png" />
+    <link rel="manifest" href="/dev/manifest.dev.webmanifest" />
+    <!--
+      The title, description, canonical URL and social card are generated from
+      src/landing/content.ts and injected here at the marker below, so the copy
+      on the page and the copy a crawler reads cannot drift apart.
+    -->
+    <title>DEV · AFISZ.KA — A cultural events aggregator you assemble yourself.</title>
+    <meta name="description" content="AFISZ.KA is a cultural events aggregator you assemble yourself: follow the cinemas, theatres and galleries you actually go to, filter what is on, and get a brief by email. Access by invitation.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="canonical" href="https://afisz.cc/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="AFISZ.KA">
+    <meta property="og:title" content="AFISZ.KA — A cultural events aggregator you assemble yourself.">
+    <meta property="og:description" content="AFISZ.KA is a cultural events aggregator you assemble yourself: follow the cinemas, theatres and galleries you actually go to, filter what is on, and get a brief by email. Access by invitation.">
+    <meta property="og:url" content="https://afisz.cc/">
+    <meta name="twitter:card" content="summary">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"AFISZ.KA","url":"https://afisz.cc","description":"AFISZ.KA is a cultural events aggregator you assemble yourself: follow the cinemas, theatres and galleries you actually go to, filter what is on, and get a brief by email. Access by invitation.","inLanguage":"en"}</script>
+    <script type="module" crossorigin src="/dev/assets/index-BoTG7VLN.js"></script>
+    <link rel="stylesheet" crossorigin href="/dev/assets/index-BX479uIw.css">
+  </head>
+  <body class="bg-paper text-ink">
+    <!--
+      The public landing page is injected here: a complete, self-contained
+      document that needs no JavaScript to read. It sits outside #root because
+      React must not own it — see src/landing/render.ts and src/lib/landing.ts.
+    -->
+    <style>
+#landing {
+  --ink: #141414; --paper: #eae6df; --panel: #f4f1ea;
+  --accent: #c62828; --muted: #6b6660; --body: #3a3632; --rule: #cfc9bf;
+  background: var(--paper);
+  color: var(--body);
+  font-family: Archivo, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  min-height: 100%;
+}
+#landing[hidden] { display: none; }
+#landing .afisz-landing-inner { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+#landing a { color: var(--ink); text-underline-offset: 2px; }
+#landing a:hover { color: var(--accent); }
+#landing .afisz-masthead { border-bottom: 5px solid var(--ink); padding-bottom: 1.25rem; margin-bottom: 2rem; }
+#landing .afisz-wordmark {
+  font-family: Anton, Impact, 'Arial Narrow', ui-sans-serif, sans-serif;
+  font-weight: 400; letter-spacing: 1px; text-transform: uppercase;
+  font-size: clamp(2.25rem, 9vw, 3.5rem); line-height: 1; color: var(--ink); margin: 0;
+}
+#landing .afisz-square { display: inline-block; width: 0.22em; height: 0.22em; background: var(--accent); margin-left: 0.14em; vertical-align: baseline; }
+#landing .afisz-tagline { margin: 0.75rem 0 0; font-size: 1.0625rem; color: var(--muted); }
+#landing .afisz-section { margin: 0 0 3rem; }
+#landing .afisz-h1, #landing .afisz-h2 {
+  font-family: Anton, Impact, 'Arial Narrow', ui-sans-serif, sans-serif;
+  font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--ink); border-top: 3px solid var(--ink); padding-top: 0.75rem; margin: 0 0 1rem;
+}
+#landing .afisz-h1 { font-size: 1.75rem; }
+#landing .afisz-h2 { font-size: 1.4375rem; }
+#landing #what-it-is .afisz-h1 { border-top: 0; padding-top: 0; }
+#landing .afisz-note { background: var(--panel); border-left: 5px solid var(--accent); padding: 1.25rem 1.25rem 0.25rem; }
+#landing .afisz-note .afisz-h2 { border-top: 0; padding-top: 0; color: var(--accent); }
+#landing p { margin: 0 0 1rem; }
+#landing .afisz-updated { font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-top: -0.5rem; }
+#landing .afisz-policy-section { margin: 1.75rem 0 0; }
+#landing .afisz-policy-section h3 {
+  font-size: 0.8125rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--ink); margin: 0 0 0.5rem; border-bottom: 2px solid var(--rule); padding-bottom: 0.375rem;
+}
+#landing ul { margin: 0 0 1rem; padding-left: 1.125rem; }
+#landing li { margin: 0 0 0.625rem; }
+#landing .afisz-footer { border-top: 3px solid var(--ink); padding-top: 1rem; font-size: 0.8125rem; color: var(--muted); }
+#landing .afisz-footer a { color: var(--muted); }
+#landing:not([hidden]) ~ #root { display: none; }</style>
+    <div id="landing">
+    <div class="afisz-landing-inner">
+      <header class="afisz-masthead">
+        <p class="afisz-wordmark">AFISZ.KA<span class="afisz-square" aria-hidden="true"></span></p>
+        <p class="afisz-tagline">A cultural events aggregator you assemble yourself.</p>
+      </header>
+
+      <main>
+        <section class="afisz-section" id="what-it-is">
+          <h1 class="afisz-h1">What AFISZ.KA is</h1>
+          <p>AFISZ.KA is a cultural events aggregator you build for yourself, one venue at a time. Rather than browsing a city listings site and hoping it happens to cover what you care about, you point AFISZ.KA at the places you actually go — a cinema, an art-house theatre, a gallery, a concert hall, anywhere that publishes a programme on the web — and it reads their schedules for you, turning loose pages of listings into events you can filter. Venues gather into named lists, one per city or per mood, each remembering its own filters for category, time, price and day. From there you can mark what you want to go to, share that shortlist with the person you want to go with, drop a screening straight into your calendar, and have a brief of what is coming up arrive by email on the morning you choose.</p>
+        </section>
+
+        <section class="afisz-section afisz-note" id="access">
+          <h2 class="afisz-h2">Access is by invitation</h2>
+          <p>AFISZ.KA is in closed testing. There is no public sign-up, and no way to create an account from this page — the app opens only for a browser holding a working invite link, and every part of it, down to the last data request, is closed without one.</p>
+          <p>If you would like an invitation, write to <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> and say a little about which city and which venues you would want to follow. Invitations go out in small batches while the app is still being built.</p>
+        </section>
+
+        <section class="afisz-section" id="contact">
+          <h2 class="afisz-h2">Contact</h2>
+          <p>Invitations, questions, a venue whose programme page is being read wrongly, or anything about the policy below: <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>.</p>
+        </section>
+
+        <section class="afisz-section" id="privacy">
+          <h2 class="afisz-h2">Privacy policy</h2>
+          <p class="afisz-updated">Last updated 29 August 2026</p>
+          
+        <section class="afisz-policy-section" id="privacy-who-this-is">
+          <h3>Who this is</h3>
+          <p>AFISZ.KA is a small, independently run project. The controller of the personal data described below — the administrator danych osobowych, in the words of the Polish implementation of the GDPR — is the operator of AFISZ.KA, reachable at <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>, which is also the address to use for anything in this policy. No data protection officer has been appointed, as art. 37 GDPR does not require one for processing of this kind; that address reaches the controller directly.</p>
+          <p>This page you are reading now is a plain static document. It loads no fonts, scripts, images or styles from anywhere else, sets no cookies, and stores nothing in your browser. Reading it leaves no trace with us beyond the ordinary web-server log kept by GitHub Pages, which serves it.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-what-the-app-collects-and-why">
+          <h3>What the app collects, and why</h3>
+          <p>Nothing below applies until you accept an invitation and start using the app. Everything it stores is something you typed or asked for; there is no profile built from your behaviour.</p>
+          <p>The GDPR requires each purpose to rest on a stated legal basis, so here they are. Your account, your lists and everything you save are processed under art. 6(1)(b) — performing the contract you entered into by accepting an invitation. The email brief and a connected Drive folder rest on art. 6(1)(a), your consent, which you can withdraw at any time without affecting anything done before you did. The pre-sign-in browser identifier and the ordinary server logs rest on art. 6(1)(f), the legitimate interest in the app working before you have an account and in keeping the service running and free of abuse. No special categories of data (art. 9) are processed, and the app is not directed at children under 16.</p>
+          <ul><li>Your email address, if you sign in. It is the account — there is no password. Signing in sends a single-use link to that address; only a hash of the link is kept, and only until it is used or expires.</li><li>The venues you add, the lists you group them into, any names, categories or personal tags you override them with, and the filters each list remembers. This is the substance of the app.</li><li>The events you mark as &quot;want to go&quot;, and any shortlist you choose to share. A shared shortlist becomes readable by anyone holding the link you send, which is what sharing means; you can stop sharing it at any time.</li><li>Your email brief settings, if you subscribe to one: the address it goes to, the name it should greet you by, which venues and categories it covers, and what time it should arrive.</li><li>A random identifier kept in your browser’s local storage, so that things you save before signing in are still yours afterwards. It is a random value with no meaning of its own and is never combined with anything bought or received from elsewhere.</li><li>An invite cookie, set when you follow an invitation link, so you are not asked for it again on every visit. It carries the invite token and nothing else, and it is how the site knows to open at all.</li><li>Access to a Google Drive folder, only if you explicitly connect one so that briefs are filed there as PDFs. That connection stores a Google refresh token and the address of the account you connected. Disconnecting it deletes both.</li></ul>
+        </section>
+        <section class="afisz-policy-section" id="privacy-what-is-never-collected">
+          <h3>What is never collected</h3>
+          <p>There is no advertising anywhere in this project and no advertising technology in it. No analytics package, no tracking pixel, no session recorder, no fingerprinting, no third-party cookie. Your data is not sold, rented, or handed to data brokers, and it is not used to train machine-learning models.</p>
+          <p>Nothing here makes automated decisions producing legal or similarly significant effects, and nobody is profiled, within the meaning of art. 22 GDPR. What the app shows you is what you asked it to follow.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-who-else-sees-it">
+          <h3>Who else sees it</h3>
+          <p>Running the app means using a few other services. Each sees only the part it needs to do its job, and none of them are given anything to use for their own purposes:</p>
+          <ul><li>Railway hosts the application server and its Postgres database, so the data described above physically lives there.</li><li>GitHub Pages serves the site you are looking at, and keeps the usual server-side access logs.</li><li>Resend delivers email — sign-in links and the brief — and therefore handles the recipient address and the message.</li><li>Anthropic’s Claude models read the venue programme pages we fetch, in order to turn them into structured events. What is sent is the public web page of a venue. Your account, your lists and your saved events are not part of it.</li><li>Google, only if you sign in with Google or connect a Drive folder, and only for what that requires.</li></ul>
+        </section>
+        <section class="afisz-policy-section" id="privacy-how-long-it-is-kept">
+          <h3>How long it is kept</h3>
+          <p>Your account and the things in it are kept for as long as the account exists, because they are the thing the app is for. Sign-in links expire quickly and are single-use. Sessions expire on their own. Invitations can be revoked, and a revoked invitation stops working immediately — the cookie is re-checked against the invite on every single request rather than trusted once. Ask for deletion and the account and everything attached to it goes, including any brief subscription and any Drive connection.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-where-it-goes-outside-europe">
+          <h3>Where it goes outside Europe</h3>
+          <p>Some of the services above are established in the United States. Where personal data reaches them, the transfer rests on the European Commission’s adequacy decision of 10 July 2023 for the EU–US Data Privacy Framework where the provider is certified under it, and otherwise on the Standard Contractual Clauses adopted by the Commission under art. 46(2)(c) GDPR. Ask at <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> for the safeguards covering a particular transfer and you will be sent them.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-cookies-and-what-is-kept-in-your-browser">
+          <h3>Cookies and what is kept in your browser</h3>
+          <p>There is no cookie banner because there is nothing to ask consent for. No advertising or analytics cookie is set anywhere. What is stored on your device is strictly necessary to provide the service you asked for, which art. 173(3) of the Polish Prawo telekomunikacyjne exempts from the consent requirement:</p>
+          <ul><li>a session token in local storage, so you stay signed in;</li><li>a random device identifier in local storage, so a list survives a reload before you have an account;</li><li>a note of whether the invite gate last let you in, so a returning visitor is not shown the public page for a moment before the app appears;</li><li>the invite cookie itself, set on the API when you follow an invitation link.</li></ul>
+          <p>Clearing this site’s data in your browser removes all of them. Doing so signs you out and detaches anything saved without an account.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-your-rights">
+          <h3>Your rights</h3>
+          <p>You can ask what is held about you, ask for a copy of it, ask for it to be corrected, or ask for all of it to be deleted. Write to <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> from the address you signed in with, and expect a reply from a person rather than a form. Every brief also carries its own unsubscribe, which needs no email to us at all.</p>
+          <p>Named as the GDPR names them, those rights are: access and a copy (art. 15), rectification (art. 16), erasure (art. 17), restriction of processing (art. 18), portability in a machine-readable form (art. 20), objection to anything done on the basis of legitimate interest (art. 21), and withdrawal of any consent you have given (art. 7(3)). A request is answered within one month, as art. 12(3) requires.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-complaints">
+          <h3>Complaints</h3>
+          <p>A complaint is worth making to <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> first, because it can usually be fixed there. You also have the right to complain to the supervisory authority, which in Poland is the Prezes Urzędu Ochrony Danych Osobowych, ul. Stawki 2, 00-193 Warszawa, whose site is uodo.gov.pl.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-changes">
+          <h3>Changes</h3>
+          <p>This policy is versioned with the application it describes, and its history is public. It was last changed on 29 August 2026. If it changes in a way that affects anyone already using the app, the change is sent to them by email rather than quietly published here.</p>
+        </section>
+        </section>
+
+        <!-- GOI-95: the regulamin belongs on the page a stranger reads, not
+             only behind the invite. Art. 8(1)(1) UŚUDE requires it to be
+             available *before* the service is used, and for someone who has
+             not been invited yet, this page is before. -->
+        <section class="afisz-section" id="terms">
+          <h2 class="afisz-h2">Terms of use</h2>
+          <p class="afisz-updated">Last updated 29 August 2026</p>
+          
+        <section class="afisz-policy-section" id="terms-who-provides-the-service">
+          <h3>Who provides the service</h3>
+          <p>AFISZ.KA is provided by the operator of AFISZ.KA (the “Provider”), contactable at <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>. These terms are made available free of charge before you use the service, in a form you can display, copy and store, as art. 8(1)(1) of the ustawa o świadczeniu usług drogą elektroniczną requires.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-what-the-service-does">
+          <h3>What the service does</h3>
+          <p>AFISZ.KA reads programme information that cultural venues publish on their own websites and presents it as one listing. Free of charge, and by invitation, it lets you:</p>
+          <ul><li>browse and filter what is on;</li><li>follow the venues you choose and group them into named lists;</li><li>keep a “want to go” shortlist and share it by link;</li><li>add an event to your calendar;</li><li>subscribe to an email brief of what is coming up at your venues;</li><li>optionally connect one Google Drive folder, so each brief is filed there as a PDF.</li></ul>
+          <p>There is no charge for any of it and nothing to buy. AFISZ.KA does not sell tickets, take bookings, or act as an intermediary between you and any venue.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-what-you-need-to-use-it">
+          <h3>What you need to use it</h3>
+          <p>A device with internet access and a current version of a standard web browser (Chrome, Firefox, Safari or Edge) with JavaScript and local storage enabled, plus a working invitation. An email address is needed for an account or a brief, and nothing else is.</p>
+          <p>Using the internet carries the ordinary risks of doing so — interception in transit, malware, and messages that claim to come from a service and do not. Sign-in links are sent from a verified domain, and you will never be asked for a password, because the service has none.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-your-account">
+          <h3>Your account</h3>
+          <p>You sign in with a single-use link sent to your email address, or with a Google account. No password is held. Anyone with access to your mailbox can therefore sign in as you: keep it secure, and write to <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> if you believe your account has been used by someone else.</p>
+          <p>You may close your account at any time, for any reason, by writing to that address. Closing it deletes your lists, your brief and any Drive connection.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-the-email-brief">
+          <h3>The email brief</h3>
+          <p>The brief is sent only if you ask for it, which under art. 10 of the ustawa o świadczeniu usług drogą elektroniczną is your consent to receive commercial information by electronic means. You can withdraw that consent at any time — from the unsubscribe link in every message, or by switching the brief off in your account — and it takes effect immediately. The brief reports what the venues have published; it carries no advertising.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-how-you-may-use-it">
+          <h3>How you may use it</h3>
+          <p>Use the service lawfully and in a way that does not degrade it for others. You must not supply unlawful content — a prohibition art. 8(3)(2)(b) of that Act requires these terms to state — and in particular you must not:</p>
+          <ul><li>submit content that is unlawful, infringes anyone’s rights, or is designed to mislead;</li><li>give a venue a name or tag that is defamatory, or that impersonates a real organisation;</li><li>attempt to reach another user’s account, or parts of the service not made available to you;</li><li>pass your invitation to someone it was not meant for;</li><li>scrape, overload or otherwise interfere with the service, or work around its technical limits;</li><li>use the service to send unsolicited commercial messages.</li></ul>
+          <p>Where content you supply is unlawful, it may be removed and the account responsible suspended, in accordance with art. 14 of that Act and the Digital Services Act.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-accuracy-of-the-listings">
+          <h3>Accuracy of the listings</h3>
+          <p>The listings are read from venues’ own websites, automatically. Programmes change, screenings are cancelled, and a page can be misread. AFISZ.KA therefore presents this information for orientation, not as a guarantee, and the venue’s own site is always the authority. Check with the venue before you set out — every listing links to its source for exactly that reason.</p>
+          <p>A wrong or missing listing is worth reporting to <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>, and reports are acted on.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-rights-in-the-content">
+          <h3>Rights in the content</h3>
+          <p>The design, the code and the wording of the service belong to the Provider. Programme information, titles, descriptions and images belong to the venues and to the rights holders in the works described, and appear here for the purpose of informing you what is on.</p>
+          <p>Anything you enter — a list name, a tag, your own name for a venue — stays yours. The Provider is granted only the permission needed to store it, show it back to you, and show it to anyone you deliberately share a shortlist with.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-complaints">
+          <h3>Complaints</h3>
+          <p>Complaints about the service go to <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>. Describe the problem, when it happened, and the address you use with the service. A complaint is answered within 14 days of being received; if it is not answered within that period, it is taken to have been accepted as submitted.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-if-you-are-a-consumer">
+          <h3>If you are a consumer</h3>
+          <p>The service is free, but it is supplied to you as a digital service and Polish consumer law applies to it. You may withdraw from the contract within 14 days of creating your account, without giving a reason and at no cost, by writing to <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>. In practice, closing your account does the same thing at any time.</p>
+          <p>Nothing in these terms limits any right you have under the ustawa o prawach konsumenta or the Kodeks cywilny. Where a clause here conflicts with those rights, the law prevails and the clause does not apply to you. You may also use out-of-court dispute resolution, including the consumer ombudsman — the miejski lub powiatowy rzecznik konsumentów — and the Inspekcja Handlowa; neither side is obliged to.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-liability-and-availability">
+          <h3>Liability and availability</h3>
+          <p>The Provider is liable for damage caused by failing to perform or improperly performing these terms, on the general principles of the Kodeks cywilny. Liability is not excluded or limited for wilful misconduct, nor for harm to life or health, nor — where you are a consumer — in any way the law forbids.</p>
+          <p>The service is in closed testing and is offered as it stands, without a guaranteed level of availability. It may be interrupted for maintenance, and it may be discontinued. If it is discontinued, account holders will be given reasonable notice by email so that anything worth keeping can be exported first.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-changes-to-these-terms">
+          <h3>Changes to these terms</h3>
+          <p>These terms may change — when a feature is added, or when the law does. Account holders are told by email at least 14 days before a change takes effect, and may close their account before then if they do not accept it. Continuing to use the service after that means accepting it. They were last changed on 29 August 2026.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-governing-law">
+          <h3>Governing law</h3>
+          <p>These terms are governed by Polish law. If you are a consumer resident elsewhere in the EU, this does not deprive you of the protection of the mandatory rules of your own country’s law. Disputes are heard by the courts having jurisdiction under the Kodeks postępowania cywilnego. How your personal data is handled is set out in the privacy policy.</p>
+        </section>
+        </section>
+      </main>
+
+      <footer class="afisz-footer">
+        <p>AFISZ.KA · <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> · <a href="#privacy">Privacy</a> · <a href="#terms">Terms</a></p>
+      </footer>
+    </div></div>
+    <div id="root"></div>
+  </body>
+</html>
