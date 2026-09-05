@@ -321,6 +321,46 @@ describe('scrapeMuranow', () => {
     // June's in-window screenings still land; July is simply missing.
     expect(res.events.length).toBeGreaterThan(0);
     expect(new Set(res.events.map((e) => e.starts_at.slice(0, 7)))).toEqual(new Set(['2026-06']));
+    // …and says so, so the runner prunes June and leaves July alone. Without
+    // this the run reads as authoritative for a week it only read four days
+    // of, and every July screening already stored is deleted (GOI-107).
+    expect(res.coveredThrough).toBe('2026-06-30');
+  });
+
+  it('reports the whole window as covered when every hop lands', async () => {
+    const july = `
+      <div id="calendar-wrapper">
+        <span class="calendar-seance-full__month-label">Lipiec 2026</span>
+      </div>`;
+    const fetcher = (async (_u: string | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(ajaxReply(july, 'form-second'), { status: 200 });
+      return new Response(html, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await scrapeMuranow({
+      baseUrl: BASE_URL,
+      today: new Date('2026-06-28T08:00:00Z'),
+      windowDays: 7,
+      timezone: TZ,
+      fetcher,
+    });
+
+    expect(res.coveredThrough).toBe('2026-07-05');
+  });
+
+  it('reports the base month as covered when the pager form is missing', async () => {
+    const noForm = html.replace(/<form[^>]*mur-tickets-seances-calendar-form[\s\S]*?<\/form>/i, '');
+    const fetcher = (async () => new Response(noForm, { status: 200 })) as unknown as typeof fetch;
+
+    const res = await scrapeMuranow({
+      baseUrl: BASE_URL,
+      today: new Date('2026-06-28T08:00:00Z'),
+      windowDays: 7,
+      timezone: TZ,
+      fetcher,
+    });
+
+    expect(res.coveredThrough).toBe('2026-06-30');
   });
 
   it('survives an AJAX reply that carries no calendar markup', async () => {
@@ -338,5 +378,6 @@ describe('scrapeMuranow', () => {
     });
 
     expect(new Set(res.events.map((e) => e.starts_at.slice(0, 7)))).toEqual(new Set(['2026-06']));
+    expect(res.coveredThrough).toBe('2026-06-30');
   });
 });
