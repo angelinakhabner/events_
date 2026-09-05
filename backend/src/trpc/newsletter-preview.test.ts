@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Event } from '@afisz/shared';
+import type { Event, Film } from '@afisz/shared';
 import { appRouter } from './router.js';
 import type { AppContext } from './context.js';
 import { InMemoryUserVenueStore } from '../services/user-venue-store.js';
@@ -39,12 +39,15 @@ const saved: Event = {
   venue: { id: 'v1', name: 'Kinoteka', category: 'cinema', city: 'Warsaw', country: 'PL' },
 };
 
-function ctx(events: Event[]): AppContext {
+function ctx(events: Event[], films: Film[] = []): AppContext {
   return {
     user: { id: 'u1', email: 'a@b.pl' },
     userVenues: new InMemoryUserVenueStore(),
     newsletter: new InMemoryNewsletterStore(),
     wantToGo: { list: async () => events },
+    // The queue's other half since GOI-112: titles tracked without a screening
+    // to save. Empty for every test that predates them.
+    films: { list: async () => films },
   } as unknown as AppContext;
 }
 

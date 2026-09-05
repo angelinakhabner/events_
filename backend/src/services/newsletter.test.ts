@@ -641,6 +641,10 @@ describe('sendNewsletterBriefs', () => {
        * has nothing to do with any of them.
        */
       wantToGo: { list: async () => [] },
+      // …and the tracked titles beside them (GOI-112), for the same reason:
+      // unstubbed, the sweep reaches the Postgres-backed film store, which
+      // rejects the `u1` these tests use as a user id.
+      films: { list: async () => [] },
     };
   }
 

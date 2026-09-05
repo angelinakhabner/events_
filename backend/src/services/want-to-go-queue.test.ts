@@ -401,6 +401,104 @@ describe('buildWantToGoSection', () => {
   });
 
   /**
+   * GOI-112: a title tracked before any venue announced it.
+   *
+   * It has no event to save, so it cannot reach the queue the way a saved
+   * screening does — and the brief stayed silent about it for exactly as long
+   * as it mattered, right up until it was announced. The screenings it picks
+   * up join the queue as ordinary events, so the states and the dedup apply
+   * unchanged.
+   */
+  describe('tracked titles', () => {
+    const film = (title: string, status = 'want') =>
+      ({ id: `f-${title}`, title, status, createdAt: NOW.toISOString() }) as never;
+
+    const sources = (films: unknown[], events: Event[]) => ({
+      films: { list: async () => films as never },
+      events: { listUpcoming: async () => events },
+    }) as never;
+
+    it('reports a tracked title once a venue announces it', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+        sources([film('Chungking Express')], [announced]),
+      );
+
+      expect(section.reminders.map((r) => r.event.id)).toEqual(['a']);
+    });
+
+    it('says it once, in each state, like everything else in the queue', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const sub = {
+        id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence,
+      };
+      const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+      const src = sources([film('Chungking Express')], [announced]);
+
+      const first = await buildWantToGoSection(sub, store, savedStore([]), NOW, src);
+      await recordWantToGoSent(saved.id, first, store, NOW);
+      const second = await buildWantToGoSection(sub, store, savedStore([]), NOW, src);
+
+      expect(first.reminders).toHaveLength(1);
+      expect(second.reminders).toHaveLength(0);
+    });
+
+    // A title marked seen is a record of where somebody has been, not a thing
+    // to be reminded about.
+    it('leaves a title the reader already saw alone', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+        sources(
+          [film('Chungking Express', 'seen')],
+          [ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' })],
+        ),
+      );
+      expect(section.reminders).toHaveLength(0);
+    });
+
+    it('counts a title that is also a saved event once', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const both = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([both]),
+        NOW,
+        sources([film('Chungking Express')], [both]),
+      );
+
+      expect(section.reminders).toHaveLength(1);
+    });
+
+    it('is absent for a caller that does not track titles', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+      );
+      expect(isEmptySection(section)).toBe(true);
+    });
+  });
+
+  /**
    * GOI-123: no event twice in the one block that asks the reader to do
    * something. A rescheduled event is not cancelled, so it stayed in the
    * reminders as well as the changes, and the block said "moved to 20:15" and
@@ -468,11 +566,16 @@ describe('the sweep', () => {
   } as never;
   const noEvents = { listUpcoming: async () => [] } as never;
 
+  /** No tracked titles: these cases are about saved events, and leaving the
+   *  film store unstubbed reaches Postgres, which rejects `u1` as a user id. */
+  const noFilms = { list: async () => [] };
+
   async function sweep(store: InMemoryNewsletterStore, saved: Event[], now: Date) {
     return sendNewsletterBriefs(store, now, {
       venues,
       events: noEvents,
       wantToGo: savedStore(saved),
+      films: noFilms,
       skipDrives: true,
       dryRun: true,
     });
@@ -505,6 +608,7 @@ describe('the sweep', () => {
       venues: { listAll: async () => [] } as never,
       events: noEvents,
       wantToGo: savedStore([ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' })]),
+      films: noFilms,
       skipDrives: true,
       dryRun: true,
     });
@@ -518,6 +622,7 @@ describe('the sweep', () => {
       venues: { listAll: async () => [] } as never,
       events: noEvents,
       wantToGo: savedStore([]),
+      films: noFilms,
       skipDrives: true,
       dryRun: true,
     });
@@ -540,6 +645,7 @@ describe('the sweep', () => {
       venues,
       events: noEvents,
       wantToGo: savedStore([event]),
+      films: noFilms,
       skipDrives: true,
       send: async () => { throw new Error('mail server down'); },
     });
@@ -559,7 +665,7 @@ describe('the sweep', () => {
     const event = ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' });
 
     await sendNewsletterBriefs(store, NOW, {
-      venues, events: noEvents, wantToGo: savedStore([event]), skipDrives: true,
+      venues, events: noEvents, wantToGo: savedStore([event]), films: noFilms, skipDrives: true,
       send: async () => { throw new Error('mail server down'); },
     });
 

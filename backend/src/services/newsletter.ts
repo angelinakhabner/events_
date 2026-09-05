@@ -13,6 +13,7 @@ import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './us
 import { newsletterFromEmail, sendEmail } from './email.js';
 import { defaultNewsletterStore, SENT_EVENT_RETENTION_DAYS, type NewsletterStore, type NewsletterSubscription } from './newsletter-store.js';
 import { defaultWantToGoStore, type WantToGoStore } from './want-to-go-store.js';
+import { defaultFilmStore, type FilmStore } from './film-store.js';
 import {
   applyChangeDedup, applyQueueDedup, changeState, isEmptySection, isUrgent, queueCandidates,
   statesToRecord, urgentSendAllowed, type QueuedChange, type WantToGoSection,
@@ -537,6 +538,57 @@ function ruleFetchScopes(
 export const CHANGE_LOOKBACK_DAYS = 14;
 
 /**
+ * The two stores the tracked-title half of the queue reads (GOI-112).
+ *
+ * A reader can put a *title* on their list before any venue has announced it —
+ * that is the whole point of searching for something that turns out not to be
+ * on. Those titles have no event to save, so they cannot reach the queue the
+ * way a saved screening does, and the brief stayed silent about them for
+ * exactly as long as they mattered: right up until one was announced.
+ */
+export interface TrackedTitles {
+  films: Pick<FilmStore, 'list'>;
+  events: Pick<EventStore, 'listUpcoming'>;
+}
+
+/**
+ * The screenings a reader's tracked titles have picked up, inside the horizon.
+ *
+ * They join the queue as ordinary events, which is what makes this cheap: the
+ * state machine, the escalation and the send-state dedup all apply unchanged,
+ * so a newly announced title is reported once, in the state it is actually in,
+ * and never again in that state.
+ *
+ * Only titles still on the want list — one marked seen is a record of where
+ * somebody has been, not a thing to be reminded about.
+ */
+async function announcedTrackedTitles(
+  tracked: TrackedTitles,
+  sub: Pick<NewsletterSubscription, 'userId' | 'wantToGo' | 'sendCadence'>,
+  now: Date,
+): Promise<Event[]> {
+  const films = (await tracked.films.list(sub.userId)).filter((f) => f.status === 'want');
+  if (films.length === 0) return [];
+  // The same horizon a saved event gets (GOI-125), so a tracked title is not
+  // reported on a narrower window than the thing beside it in the block.
+  const until = new Date(now.getTime() + queueHorizonDays(sub) * 86_400_000);
+
+  const found = await Promise.all(
+    films.map((f) =>
+      tracked.events
+        .listUpcoming({ title: f.title, until, limit: TRACKED_TITLE_LIMIT })
+        .catch(() => [] as Event[]),
+    ),
+  );
+  return found.flat();
+}
+
+/** Per title, per issue. A tracked film that turns out to be on at six cinemas
+ *  is news; its whole fortnight of showtimes is a listing, and the queue is
+ *  not one. */
+const TRACKED_TITLE_LIMIT = 6;
+
+/**
  * How far ahead the reminder queue looks, in days.
  *
  * The configured horizon is a floor, not a ceiling, and the send cadence is
@@ -571,16 +623,26 @@ export async function buildWantToGoSection(
   store: Pick<NewsletterStore, 'sentStates' | 'changesFor'>,
   wantToGo: Pick<WantToGoStore, 'list'>,
   now: Date,
+  /** The tracked-title half of the queue (GOI-112). Absent means "saved events
+   *  only", which is what every caller wanted before titles could be tracked
+   *  without a screening to save. */
+  tracked?: TrackedTitles,
 ): Promise<WantToGoSection> {
   if (!sub.wantToGo.enabled) return { reminders: [], changes: [] };
 
-  const saved = await wantToGo.list(sub.userId);
+  const saved = [
+    ...(await wantToGo.list(sub.userId)),
+    ...(tracked ? await announcedTrackedTitles(tracked, sub, now) : []),
+  ];
   if (saved.length === 0) return { reminders: [], changes: [] };
+  // A title tracked *and* saved as a screening is one event, not two.
   const byId = new Map(saved.map((e) => [e.id, e]));
 
   // Reminders. A cancelled event has nothing to remind anyone about — the
   // changes block below is where it belongs.
-  const live = saved.filter((e) => !e.cancelledAt);
+  // From `byId`, not `saved`: a title tracked *and* saved as a screening is
+  // one event, not two (GOI-112).
+  const live = [...byId.values()].filter((e) => !e.cancelledAt);
   const candidates = queueCandidates(
     live,
     { horizonDays: queueHorizonDays(sub), changesEnabled: sub.wantToGo.changesEnabled },
@@ -764,6 +826,8 @@ export interface SweepOptions {
    *  exactly that trap when it was added — the sweep only failed once the
    *  suite was run against a real Postgres. */
   wantToGo?: Pick<WantToGoStore, 'list'>;
+  /** The tracked-title half of the queue (GOI-112), injected like the rest. */
+  films?: Pick<FilmStore, 'list'>;
   /** Work out every outcome without sending or recording anything. */
   dryRun?: boolean;
   /** Ignore the schedule (due slot + recent-send guard) and brief everyone
@@ -848,7 +912,10 @@ export async function sendNewsletterBriefs(
       // which meant a reader following no venues was skipped as `no-venues`
       // however much they had saved — the queue reads their saved events, not
       // a venue listing, and needs no venue to have something to say (GOI-125).
-      const wantToGo = await buildWantToGoSection(sub, store, opts.wantToGo ?? defaultWantToGoStore, now);
+      const wantToGo = await buildWantToGoSection(
+        sub, store, opts.wantToGo ?? defaultWantToGoStore, now,
+        { films: opts.films ?? defaultFilmStore, events: eventStore },
+      );
 
       // Nothing in scope — no venues followed, or none matched the selection.
       // An empty list must not fall through to "every venue in the database",

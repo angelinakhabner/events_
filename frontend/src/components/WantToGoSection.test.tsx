@@ -36,7 +36,12 @@ vi.mock('../lib/trpc', () => {
           films: { list: { invalidate } },
         },
       }),
-      events: { screenings: { useQuery: (...a: unknown[]) => screeningsMock(...a) } },
+      events: {
+        screenings: { useQuery: (...a: unknown[]) => screeningsMock(...a) },
+        // The cross-venue search above the list (GOI-112). Idle here: these
+        // tests are about what the list renders, not about searching.
+        search: { useQuery: () => ({ data: undefined, isLoading: false, error: null }) },
+      },
       my: {
         wantToGo: {
           entries: { useQuery: () => entriesMock() },
