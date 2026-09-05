@@ -100,6 +100,20 @@ function setup() {
   return { onAdded };
 }
 
+/** Mount the way the tab really does: the folders arrive from a query, so the
+ *  first render has none and no active folder (GOI-116). */
+function setupLoading() {
+  const onAdded = vi.fn();
+  const view = render(<ElsewherePanel folders={[]} activeFolderId={null} onAdded={onAdded} />);
+  return {
+    onAdded,
+    loaded: () =>
+      view.rerender(
+        <ElsewherePanel folders={folders} activeFolderId="folder-1" onAdded={onAdded} />,
+      ),
+  };
+}
+
 function open() {
   fireEvent.click(screen.getByRole('button', { name: /^elsewhere$/i }));
 }
@@ -145,6 +159,59 @@ describe('the trigger', () => {
     setup();
     open();
     expect(screen.getByLabelText(/match against/i)).toHaveValue('folder-1');
+  });
+
+  /**
+   * GOI-116: "propose button is not active". The folders arrive from a query,
+   * so the first render has none — and the folder id was read once, by a
+   * `useState` initialiser, which is ignored on every render after it. The
+   * state stayed empty while the select displayed a folder (a value matching
+   * no option shows the first one), so the form looked complete and the button
+   * was disabled by a condition the reader could not satisfy.
+   */
+  it('activates once the folders arrive, having mounted without any', async () => {
+    const { loaded } = setupLoading();
+    open();
+    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
+
+    loaded();
+
+    expect(screen.getByLabelText(/match against/i)).toHaveValue('folder-1');
+    expect(screen.getByRole('button', { name: /^propose$/i })).toBeEnabled();
+  });
+
+  it('searches with the folder the select is showing, not an empty id', async () => {
+    const { loaded } = setupLoading();
+    open();
+    loaded();
+    suggestMutateAsync.mockResolvedValue({ suggestions: [] });
+
+    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+    });
+
+    expect(suggestMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ listId: 'folder-1', city: 'Berlin' }),
+    );
+  });
+
+  it('keeps the reader\u2019s own choice once they make one', () => {
+    setup();
+    open();
+    fireEvent.change(screen.getByLabelText(/match against/i), { target: { value: 'folder-2' } });
+    expect(screen.getByLabelText(/match against/i)).toHaveValue('folder-2');
+  });
+
+  /** The one case where a dead button is right — and it says why. */
+  it('explains itself when there is no folder to match against', () => {
+    render(<ElsewherePanel folders={[]} activeFolderId={null} onAdded={vi.fn()} />);
+    open();
+    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+
+    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
+    expect(screen.getByText(/add a venue to a folder first/i)).toBeInTheDocument();
   });
 
   it('will not search without a city', () => {

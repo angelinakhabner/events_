@@ -15,7 +15,7 @@ const TODAY = new Date('2026-08-08T09:00:00Z');
 // what it actually has on is the exhibitions, on a page whose rows carry no
 // date fields at all.
 describe('parseKrolikarnia', () => {
-  it('reads the running exhibition off /wystawy as all-day rows', async () => {
+  it('reads the running exhibition off /wystawy as one dated run', async () => {
     const rows = parseKrolikarnia(
       await loadFixture('krolikarnia.mnw.art.pl-wystawy-obecne.html'),
       'Europe/Warsaw',
@@ -26,13 +26,16 @@ describe('parseKrolikarnia', () => {
     expect(rows[0]).toMatchObject({
       title: 'Rzeźba na meblościankę',
       source_url: 'https://krolikarnia.mnw.art.pl/wystawy/rzezba-na-mebloscianke,203.html',
+      // A run over a date range, which is what puts it under "Ongoing
+      // exhibitions" rather than in a heap of midnight timed rows (GOI-113).
+      kind: 'exhibition',
     });
-    // 14 May – 25 October: the run is already under way, so it starts at today
-    // rather than at its opening date, and every row is local midnight.
-    expect(rows[0]!.starts_at.slice(0, 10)).toBe('2026-08-08');
-    expect(rows.every((r) => r.starts_at.includes('T00:00:00'))).toBe(true);
-    // Clipped to the 60-day exhibition horizon, not to the run's own end.
-    expect(rows.at(-1)!.starts_at.slice(0, 10)).toBe('2026-10-07');
+    // 14 May – 25 October, dated by the run itself at both ends rather than
+    // clipped to the window: a show up since May did not start this morning,
+    // and its closing date is the whole reason to hurry.
+    expect(rows[0]!.starts_at.slice(0, 10)).toBe('2026-05-14');
+    expect(rows[0]!.ends_at?.slice(0, 10)).toBe('2026-10-25');
+    expect(rows[0]!.starts_at).toContain('T00:00:00');
   });
 
   // The rows are namespaced per venue, so two museums that happen to share an
@@ -43,7 +46,7 @@ describe('parseKrolikarnia', () => {
       'Europe/Warsaw',
       TODAY,
     );
-    expect(rows[0]!.source_id).toBe('krolikarnia:wystawa:203:2026-08-08');
+    expect(rows[0]!.source_id).toBe('krolikarnia:wystawa:203');
   });
 
   it('still reads the month calendar when handed one', async () => {

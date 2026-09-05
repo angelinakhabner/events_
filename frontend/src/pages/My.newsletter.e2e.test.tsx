@@ -574,6 +574,50 @@ describe('MyPage — newsletter end-to-end', () => {
   });
 
   /**
+   * GOI-119: the setup form has to say what its own settings mean.
+   *
+   * "Look ahead: 30 days" is a number with no sentence beside it — the reader
+   * asked outright what it meant — and the venue step never said that the list
+   * it shows is their own venues, or that ticking picks specific ones.
+   */
+  it('says what looking ahead does, collapsed and expanded', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/of museums in each issue/i)).toBeInTheDocument();
+
+    await user.click(
+      within(section).getByRole('button', { name: /set how far ahead museums looks/i }),
+    );
+    expect(within(section).getByText(/days of museums each issue lists/i)).toBeInTheDocument();
+  });
+
+  it('says the venues are the reader\u2019s own, and what ticking one does', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/these are the venues you follow/i)).toBeInTheDocument();
+    expect(within(section).getByText(/leave everything unticked/i)).toBeInTheDocument();
+  });
+
+  it('says where a category comes from', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/a category is a heading in the brief/i))
+      .toBeInTheDocument();
+  });
+
+  /**
    * GOI-102 §3 / GOI-101. Saved events are not a category: they are a queue of
    * things the reader already chose, and they sit in their own block rather
    * than as a row in the table.
