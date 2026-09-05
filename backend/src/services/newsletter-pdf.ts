@@ -8,10 +8,12 @@ import { isExhibition } from '@afisz/shared';
 import {
   groupPicks, splitByShape, type BriefSection, type Pick,
 } from './newsletter-render.js';
-import { isEmptySection, type QueuedChange, type WantToGoSection } from './want-to-go-queue.js';
+import {
+  isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
+} from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -343,10 +345,13 @@ function drawWantToGo(doc: PDFKit.PDFDocument, section: WantToGoSection): void {
     }
   }
 
+  // `ongoing` last: the three above are deadlines, and a run that is simply
+  // open is the one row nobody has to act on today.
   for (const [state, label] of [
     ['last_chance', PL.lastChance],
     ['tomorrow', PL.tomorrow],
     ['this_week', PL.thisWeek],
+    ['ongoing', PL.ongoing],
   ] as const) {
     const rows = section.reminders.filter((r) => r.state === state);
     if (rows.length === 0) continue;
@@ -354,17 +359,32 @@ function drawWantToGo(doc: PDFKit.PDFDocument, section: WantToGoSection): void {
     for (const row of rows) {
       drawQueueRow(doc, {
         // A reminder for tomorrow is about a time; one for later in the week
-        // is about a day. The gutter shows whichever the reader needs.
-        gutter: state === 'tomorrow' ? time(row.event.startsAt) : weekday(row.event.startsAt),
+        // is about a day; an exhibition already open is about neither, and its
+        // opening weekday is weeks behind.
+        gutter: queueGutter(row),
         gutterColor: C.accent,
         title: row.event.title,
-        meta: [row.event.venue?.name, state === 'tomorrow' ? null : time(row.event.startsAt)]
-          .filter(Boolean).join(' · '),
+        meta: queueMeta(row),
       });
     }
   }
 
   doc.moveDown(0.5);
+}
+
+/** The short marker in a reminder row's gutter. */
+function queueGutter(row: QueuedEvent): string {
+  if (row.state === 'ongoing') return PL.now;
+  return row.state === 'tomorrow' ? time(row.event.startsAt) : weekday(row.event.startsAt);
+}
+
+/** The line under a reminder's title: where it is, and the date that matters
+ *  for its state — the showtime, or for a run, when it closes. */
+function queueMeta(row: QueuedEvent): string {
+  const when = row.state === 'ongoing'
+    ? (row.event.endsAt ? closingDate(row.event.endsAt) : null)
+    : (row.state === 'tomorrow' ? null : time(row.event.startsAt));
+  return [row.event.venue?.name, when].filter(Boolean).join(' · ');
 }
 
 /** What a change is, in a phrase that fits beside the venue. */

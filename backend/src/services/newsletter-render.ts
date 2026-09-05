@@ -2,10 +2,10 @@ import { isExhibition } from '@afisz/shared';
 import type {
   Event, Festival, NewsletterDetail, NewsletterFrequency,
 } from '@afisz/shared';
-import type { QueuedChange, WantToGoSection } from './want-to-go-queue.js';
+import type { QueuedChange, QueuedEvent, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -280,6 +280,21 @@ function blurb(event: Event, detail: NewsletterDetail): string {
  * and a reader scanning for the urgent one should not have to read the times.
  * Changes lead: something that happened outranks something that is coming.
  */
+/** The short marker in a reminder row's gutter. */
+function queueGutter(item: QueuedEvent): string {
+  if (item.state === 'ongoing') return PL.now;
+  return item.state === 'tomorrow' ? time(item.event.startsAt) : weekday(item.event.startsAt);
+}
+
+/** The line under a reminder's title: where it is, and the date that matters
+ *  for its state — the showtime, or for a run, when it closes. */
+function queueMeta(item: QueuedEvent): string {
+  const when = item.state === 'ongoing'
+    ? (item.event.endsAt ? closingDate(item.event.endsAt) : null)
+    : (item.state === 'tomorrow' ? null : time(item.event.startsAt));
+  return [item.event.venue?.name, when].filter(Boolean).join(' \u00b7 ');
+}
+
 function wantToGoBlock(section: WantToGoSection): string {
   if (section.reminders.length === 0 && section.changes.length === 0) return '';
 
@@ -300,10 +315,13 @@ function wantToGoBlock(section: WantToGoSection): string {
     }
   }
 
+  // `ongoing` last: the three above are deadlines, and a run that is simply
+  // open is the one row nobody has to act on today.
   for (const [state, label, urgent] of [
     ['last_chance', PL.lastChance, true],
     ['tomorrow', PL.tomorrow, false],
     ['this_week', PL.thisWeek, false],
+    ['ongoing', PL.ongoing, false],
   ] as const) {
     const items = section.reminders.filter((r) => r.state === state);
     if (items.length === 0) continue;
@@ -311,13 +329,11 @@ function wantToGoBlock(section: WantToGoSection): string {
     for (const item of items) {
       rows.push(queueRow({
         // A reminder for tomorrow is about a time; one for later in the week
-        // is about a day. The gutter shows whichever the reader needs.
-        gutter: state === 'tomorrow' ? time(item.event.startsAt) : weekday(item.event.startsAt),
+        // is about a day; an exhibition already open is about neither, and its
+        // opening weekday is weeks behind.
+        gutter: queueGutter(item),
         title: item.event.title,
-        meta: [
-          item.event.venue?.name,
-          state === 'tomorrow' ? null : time(item.event.startsAt),
-        ].filter(Boolean).join(' \u00b7 '),
+        meta: queueMeta(item),
       }));
     }
   }
