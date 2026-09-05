@@ -243,6 +243,29 @@ const events = router({
       return { venues: await predefinedVenueOptions(ctx, input?.category) };
     }),
 
+  /**
+   * Search upcoming events by title, across venues (GOI-112).
+   *
+   * Across *every* venue, not the reader's own: the question being asked is
+   * "is this film on anywhere", and answering it from the follow list would
+   * report "no" for a film playing two streets away at a cinema they have not
+   * added. The results carry their venue, so what to do about that is the
+   * reader's to decide.
+   *
+   * Public, like `screenings` beside it: a logged-out reader can search. What
+   * needs an account is the half that happens when the answer is nothing —
+   * putting the title on a list so the next sweep can tell you.
+   */
+  search: publicProcedure
+    .input(z.object({
+      q: z.string().min(2).max(120),
+      limit: z.number().int().min(1).max(100).default(50),
+    }))
+    .query(async ({ input }) => {
+      if (!env.DATABASE_URL) return [];
+      return defaultEventStore.listUpcoming({ titleQuery: input.q.trim(), limit: input.limit });
+    }),
+
   /** Upcoming screenings of one title across every venue, soonest first —
    *  powers the "Nearest screenings" button on film cards. */
   screenings: publicProcedure
@@ -736,6 +759,9 @@ const my = router({
           },
           ctx.wantToGo,
           now,
+          // A tracked title that has just been announced belongs in the
+          // preview for the same reason it belongs in the issue (GOI-112).
+          { films: ctx.films, events: defaultEventStore },
         );
         const brief = {
           sections,

@@ -4,6 +4,7 @@ import { trpc } from '../lib/trpc';
 import { formatShortDate } from '../lib/format';
 import { SavedTitleRow, filmAsEvent } from './SavedTitleRow';
 import { ShareListLink } from './ShareListLink';
+import { VenueSearch } from './VenueSearch';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -11,10 +12,14 @@ import { ErrorState, SkeletonList } from './states';
  * /my → "Want to go" (GOI-26): one plain list rather than the day-grouped
  * event view — saved events and tracked films side by side, soonest first.
  *
- * Nothing is typed in here. Events arrive via the "Want to go" button on an
- * event, films via "Track film" in the live screenings panel. Anything on the
- * list can be marked seen, which moves it to the "Seen" tab instead of
- * dropping it.
+ * Things reach it two ways. The "Want to go" button on an event and "Track
+ * film" in a screenings panel both start from having already *found* the
+ * thing, which is no help when the question is "is this on anywhere" — so the
+ * search above the list is the third way, and the only one that also answers
+ * when the answer is no (GOI-112).
+ *
+ * Anything on the list can be marked seen, which moves it to the "Seen" tab
+ * instead of dropping it.
  */
 export function WantToGoSection() {
   const [tab, setTab] = useState<'want' | 'seen'>('want');
@@ -36,11 +41,18 @@ export function WantToGoSection() {
     <section>
       <PanelHeading
         title="Want to go"
-        blurb={'Everything you saved, in one list. Add events with "Want to go" on any event, and films with "Track film" in the nearest-screenings panel.'}
+        blurb={'Everything you saved, in one list. Search for something across every venue below, or add events with "Want to go" and films with "Track film" wherever you find them.'}
         rule={false}
       />
 
       <ShareListLink />
+
+      {/* Above the list, because it is how things get onto it. `tracked` is
+          passed down so the search never offers to add a title twice. */}
+      <VenueSearch
+        tracked={(films.data ?? []).map((f) => f.title.trim().toLowerCase())}
+        onTrack={() => { void films.refetch(); }}
+      />
 
       <div className="mb-5 flex" role="tablist" aria-label="Want to go lists">
         <TabButton active={tab === 'want'} onClick={() => setTab('want')}>
@@ -62,7 +74,7 @@ export function WantToGoSection() {
       {!loading && !error && shown.length === 0 ? (
         <p className="border-t-3 border-ink pt-5 text-sm text-muted">
           {tab === 'want'
-            ? 'Nothing saved yet — use “Want to go” on an event, or “Track film” in the nearest-screenings panel.'
+            ? 'Nothing saved yet — search above, or use “Want to go” on any event you come across.'
             : 'Nothing marked seen yet.'}
         </p>
       ) : null}

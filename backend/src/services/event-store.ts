@@ -22,6 +22,16 @@ export interface EventListInput {
   categories?: Category[];
   /** Exact title, matched case-insensitively — same film at every cinema. */
   title?: string;
+  /**
+   * Part of a title, matched case-insensitively (GOI-112).
+   *
+   * Separate from `title` rather than a mode of it: `title` answers "every
+   * showing of *this* film", which is what a saved title and the screenings
+   * strip ask, and matching that loosely would fold two different works whose
+   * names contain one another into one card. This answers "what is on that I
+   * might mean", which is a different question and a worse key.
+   */
+  titleQuery?: string;
   /** Upper bound on start time — the caller's window, e.g. a week ahead. */
   until?: Date;
   /**
@@ -139,6 +149,11 @@ export class EventStore {
     if (input.city) conditions.push(eq(schema.venues.city, input.city));
     if (input.title) {
       conditions.push(sql`lower(${schema.events.title}) = lower(${input.title})`);
+    }
+    if (input.titleQuery) {
+      // `%` and `_` in what someone typed are characters, not wildcards.
+      const escaped = input.titleQuery.replace(/[\\%_]/g, (c) => `\\${c}`);
+      conditions.push(sql`${schema.events.title} ilike ${`%${escaped}%`} escape '\\'`);
     }
 
     // INNER JOIN is intentional: an event without a venue is meaningless and
