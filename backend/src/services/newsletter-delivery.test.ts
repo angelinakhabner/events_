@@ -61,7 +61,12 @@ async function setup(delivery: 'email' | 'drive' | 'both') {
     deps: {
       venues,
       events: { listUpcoming: async () => [event()] },
+      // Injected for the same reason `venues` and `events` are: without it the
+      // sweep reaches for the process-wide store, and the test's behaviour
+      // starts depending on whether DATABASE_URL happens to be set (GOI-101,
+      // and the tracked titles beside them since GOI-112).
       wantToGo: { list: async () => [] },
+      films: { list: async () => [] },
     },
   };
 }
