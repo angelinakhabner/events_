@@ -748,7 +748,7 @@ const my = router({
          * empty block precisely because the feature has been working.
          */
         const wantToGo = await buildWantToGoSection(
-          { id: 'preview', userId: ctx.user.id, wantToGo: input.wantToGo },
+          { id: 'preview', userId: ctx.user.id, wantToGo: input.wantToGo, sendCadence: input.sendCadence },
           {
             sentStates: async () => new Set<string>(),
             changesFor: (ids, since) => ctx.newsletter.changesFor(ids, since),
