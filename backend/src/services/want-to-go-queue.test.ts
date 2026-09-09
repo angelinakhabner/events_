@@ -485,6 +485,42 @@ describe('buildWantToGoSection', () => {
       expect(section.reminders).toHaveLength(1);
     });
 
+    /**
+     * The title on the list is whatever the reader typed into a search that
+     * found nothing, so the re-check has to look for it the way the search
+     * did. Asked exactly, "chungking" never equals "Chungking Express" — and
+     * the one route that puts a title on the list *before* a venue announces
+     * it would be the one route whose titles the queue could never report.
+     */
+    it('looks the title up as words, not as a venue would spell it', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+      const asked: Array<Record<string, unknown>> = [];
+
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+        {
+          films: { list: async () => [film('chungking')] },
+          // Stands in for the SQL predicate: `titleWords` is the condition
+          // that matches a title where it appears as whole words, and `title`
+          // the one that demands the venue's own spelling.
+          events: {
+            listUpcoming: async (input: Record<string, unknown>) => {
+              asked.push(input);
+              return input.titleWords === 'chungking' ? [announced] : [];
+            },
+          },
+        } as never,
+      );
+
+      expect(asked.every((q) => q.title === undefined)).toBe(true);
+      expect(section.reminders.map((r) => r.event.title)).toEqual(['Chungking Express']);
+    });
+
     it('is absent for a caller that does not track titles', async () => {
       const store = new InMemoryNewsletterStore();
       const saved = await config(store);

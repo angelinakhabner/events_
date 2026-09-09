@@ -32,6 +32,36 @@ export interface EventListInput {
    * might mean", which is a different question and a worse key.
    */
   titleQuery?: string;
+  /**
+   * A tracked title, matched where it appears as whole words (GOI-112).
+   *
+   * The third question, and the one a *watch* asks: "has anything been
+   * announced that this title names?" It is neither of the other two, because
+   * of where the string comes from. Before the cross-venue search there was no
+   * free-text field anywhere, so a tracked title was copied off a real
+   * screening and matched how the venue spelt it — `title` was exact and that
+   * was right. A title now reaches the list from a search box *that found
+   * nothing*, so it is whatever the reader typed, and an exact re-check can
+   * only keep answering "no": "chungking" never equals "Chungking Express".
+   *
+   * Whole words rather than `titleQuery`'s substring, because this runs
+   * unattended for months rather than in front of somebody who can retype it.
+   * A tracked "It" as a substring is inside "Spirited Away" and "Little
+   * Women", and would report a reader's list back to them as news.
+   *
+   * Looser than exact, though, and deliberately: what makes that safe is where
+   * a tracked title comes from. The search only offers to track a title when
+   * it has *no* substring match at all, and a word match is a subset of a
+   * substring match — so a title can only reach the list while this predicate
+   * finds nothing either. Anything it later matches is genuinely new.
+   *
+   * It reads a title tracked from a real screening the same way, because
+   * nothing records which route a title arrived by, and after GOI-112 either
+   * is possible. The cost is a sequel: a tracked "Dune" now also turns up
+   * "Dune: Part Two", which on a list of things you want to go to is closer
+   * to an answer than to noise.
+   */
+  titleWords?: string;
   /** Upper bound on start time — the caller's window, e.g. a week ahead. */
   until?: Date;
   /**
@@ -154,6 +184,9 @@ export class EventStore {
       // `%` and `_` in what someone typed are characters, not wildcards.
       const escaped = input.titleQuery.replace(/[\\%_]/g, (c) => `\\${c}`);
       conditions.push(sql`${schema.events.title} ilike ${`%${escaped}%`} escape '\\'`);
+    }
+    if (input.titleWords) {
+      conditions.push(sql`${schema.events.title} ~* ${wholeWordPattern(input.titleWords)}`);
     }
 
     // INNER JOIN is intentional: an event without a venue is meaningless and
@@ -483,6 +516,36 @@ function warsawDayWindow(fromDay: string, toDay?: string) {
          AND (${schema.events.endsAt} IS NULL OR ${endDay} >= ${fromDay}::date)
     ELSE ${startDay} >= ${fromDay}::date AND ${notAfter}
   END)`;
+}
+
+/**
+ * A POSIX regex matching `title` where it appears as whole words (GOI-112) —
+ * the predicate behind `titleWords`.
+ *
+ * Escaped, because a tracked title is a string somebody typed and every
+ * metacharacter in it is a character: `.` should not match any letter, and an
+ * unbalanced `(` is a syntax error Postgres raises rather than a query that
+ * finds nothing.
+ *
+ * The `\y` boundaries are added only at ends that are themselves word
+ * characters. Postgres's `\y` asserts a *transition*, so anchoring after the
+ * `%` of "100%" would demand a word character immediately after it and refuse
+ * to match "100% wełny" — the title it was copied from.
+ *
+ * Which means the two engines have to agree on what a word character is, and
+ * where they don't, the safe way to be wrong is to leave the boundary off: a
+ * looser pattern still matches the title it came from, while one anchored at
+ * an end Postgres does not consider a word matches nothing at all. So this
+ * asks for less than Postgres's `[[:alnum:]_]` does — `\p{N}` would call the
+ * `½` of "8½" a number where Postgres does not, and "8½" would then stop
+ * finding itself.
+ */
+export function wholeWordPattern(title: string): string {
+  const escaped = title.replace(/[\\^$.|?*+()[\]{}]/g, (c) => `\\${c}`);
+  const WORD = /[\p{L}\p{Nd}_]/u;
+  const open = WORD.test(title.slice(0, 1)) ? '\\y' : '';
+  const close = WORD.test(title.slice(-1)) ? '\\y' : '';
+  return `${open}${escaped}${close}`;
 }
 
 export const defaultEventStore = new EventStore();

@@ -210,6 +210,11 @@ function FilmRow({ film }: { film: Film }) {
         event={filmAsEvent(film)}
         showScreenings={!seen}
         screeningsOpen={!seen}
+        // A tracked title is the one string on this list a venue did not
+        // write. Since GOI-112 it can be what the reader typed into a search
+        // that found nothing, so looking it up exactly would leave the row
+        // saying "no upcoming screenings" long after the film was announced.
+        screeningsMatch="words"
         meta={
           seen ? (
             <>
