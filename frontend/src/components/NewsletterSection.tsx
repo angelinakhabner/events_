@@ -734,7 +734,20 @@ function DeliveryChoice({
 
   return (
     <div>
-      <div role="radiogroup" aria-label="How to send it" className="flex border-2 border-ink">
+      {/*
+        Three buttons of one size (GOI-115).
+        They were sized by their own labels, so "Email", "Drive" and "Both"
+        came out three different widths — which reads as three options of
+        different weight, when they are one choice of three equal answers. A
+        three-column grid gives each the same cell whatever its label is, and
+        `w-full` on the buttons is what makes them fill it rather than sit
+        centred in it.
+      */}
+      <div
+        role="radiogroup"
+        aria-label="How to send it"
+        className="grid grid-cols-3 border-2 border-ink max-w-[420px]"
+      >
         {options.map((o, i) => {
           const active = value === o.value;
           return (
@@ -744,7 +757,7 @@ function DeliveryChoice({
               role="radio"
               aria-checked={active}
               onClick={() => onChange(o.value)}
-              className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+              className={`w-full cursor-pointer px-4 py-[9px] text-center text-xs font-extrabold uppercase tracking-[0.5px] ${
                 i < options.length - 1 ? 'border-r-2 border-ink' : ''
               } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
             >
@@ -753,6 +766,8 @@ function DeliveryChoice({
           );
         })}
       </div>
+      {/* One line under the row rather than three inside it: the hint answers
+          "what did I just pick", which only the chosen one has to say. */}
       <p className="mt-2 text-xs text-faint">{current?.hint}</p>
     </div>
   );

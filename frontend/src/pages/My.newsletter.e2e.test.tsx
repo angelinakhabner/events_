@@ -134,6 +134,36 @@ describe('MyPage — newsletter end-to-end', () => {
    * visual change has to keep — one selected option at a time, and the
    * selection actually reaching the payload.
    */
+  /**
+   * GOI-115: one choice of three equal answers, so three cells of one size.
+   *
+   * They were sized by their own labels — "Email", "Drive" and "Both" came out
+   * three different widths, which reads as three options of different weight.
+   */
+  it('lays the delivery choice out as three equal cells', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+
+    expect(group.className).toContain('grid-cols-3');
+    const options = within(group).getAllByRole('radio');
+    expect(options.map((o) => o.textContent)).toEqual(['Email', 'Drive', 'Both']);
+    for (const option of options) expect(option.className).toContain('w-full');
+  });
+
+  it('still says what the chosen delivery does', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+
+    await user.click(within(group).getByRole('radio', { name: 'Both' }));
+    expect(await screen.findByText(/emailed, and filed as a pdf as well/i)).toBeInTheDocument();
+  });
+
   it('shows the cadence as a segmented control with exactly one option selected', async () => {
     const user = userEvent.setup();
     renderPage();
