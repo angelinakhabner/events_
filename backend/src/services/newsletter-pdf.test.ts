@@ -242,6 +242,42 @@ describe('renderBriefPdf', () => {
  * something never reaches them at all — so these are regression tests for a
  * gap the delivery choice opened, not for new formatting.
  */
+/**
+ * GOI-120, in the PDF as in the email: a cinema section is one card per film,
+ * not one per film per day, and a venue holding a film over says how long for
+ * rather than listing thirty showtimes.
+ */
+describe('collapsed cinema picks (GOI-120)', () => {
+  const screening = (iso: string, venue: string) =>
+    event({
+      title: 'Chungking Express',
+      startsAt: iso,
+      description: 'Dwie historie o samotności w Hongkongu.',
+      venue: { id: venue, name: venue, city: 'Warsaw' },
+    } as Partial<Event>);
+
+  it('prints a film held over for a week once, with every cinema named', async () => {
+    const pdf = await renderBriefPdf({
+      sections: [section({
+        category: 'cinema',
+        windowDays: 7,
+        events: [
+          screening('2026-09-08T16:00:00.000Z', 'Kino Muranów'),
+          screening('2026-09-10T18:30:00.000Z', 'Kino Muranów'),
+          screening('2026-09-09T17:00:00.000Z', 'Kinoteka'),
+        ],
+      })],
+      now: new Date('2026-09-08T06:00:00.000Z'),
+    });
+
+    const { flat } = await textOf(pdf);
+    expect(flat.split(squash('Chungking Express'))).toHaveLength(2);
+    expect(flat).toContain(squash('KINO MURANÓW · 8–10 IX'));
+    expect(flat).toContain(squash('KINOTEKA · 19:00'));
+    expect(flat).toContain(squash('Dwie historie'));
+  });
+});
+
 /** GOI-122, in the PDF as in the email. */
 describe('museums in two halves (GOI-122)', () => {
   it('lists the runs, then what is on besides them, each dated its own way', async () => {

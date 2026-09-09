@@ -129,6 +129,21 @@ export function shortDate(iso: string): string {
   return `${weekday(iso)} ${day} ${ROMAN[month]}`;
 }
 
+/**
+ * `7–13 IX` — the days a run covers, beside a venue or over a row (GOI-120).
+ *
+ * The month comes off the end date and is Roman, as Polish listings write a
+ * span, matching `festivalSpan`. A run inside one month prints the month once;
+ * one that crosses a boundary prints both, since "28–3 X" would read as a span
+ * running backwards.
+ */
+export function daySpan(fromIso: string, toIso: string): string {
+  const month = (iso: string) => ROMAN[Number(fmt(iso, { month: 'numeric' })) - 1];
+  const day = (iso: string) => fmt(iso, { day: 'numeric' });
+  if (month(fromIso) === month(toIso)) return `${day(fromIso)}–${day(toIso)} ${month(toIso)}`;
+  return `${day(fromIso)} ${month(fromIso)} – ${day(toIso)} ${month(toIso)}`;
+}
+
 /** `10–16 SIERPNIA` — the span the brief covers, for the masthead. */
 export function dateRange(from: Date, days: number): string {
   const to = new Date(from.getTime() + Math.max(days - 1, 0) * 86_400_000);

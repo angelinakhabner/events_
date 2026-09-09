@@ -6,14 +6,16 @@ import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
 import {
-  groupPicks, sectionLabel, splitByShape, type BriefSection, type Pick,
+  collapsesAcrossDays, groupPicks, sectionLabel, splitByShape, venueLines,
+  type BriefSection, type Pick,
 } from './newsletter-render.js';
 import {
   isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
 } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, closingDate, dateRange, festivalSpan, longDate, runSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
+  time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -266,7 +268,10 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
 }
 
 function countPicks(sections: BriefSection[]): number {
-  return sections.reduce((n, s) => n + groupPicks(s.events).length, 0);
+  return sections.reduce(
+    (n, s) => n + groupPicks(s.events, collapsesAcrossDays(s.category)).length,
+    0,
+  );
 }
 
 /** How many of the reader's venues the brief actually drew on. */
@@ -471,7 +476,9 @@ function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
 // ─── Category sections ───────────────────────────────────────────────────────
 
 function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
-  const picks = groupPicks(section.events);
+  // One card per title per day (GOI-36), or one per title across the window
+  // where the category collapses that way (GOI-120).
+  const picks = groupPicks(section.events, collapsesAcrossDays(section.category));
   if (picks.length === 0) return;
 
   // The heading is kept with the row it opens. A "TEATR" alone at the foot of
@@ -537,11 +544,7 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   const blurb = blurbFor(pick, section.detail);
   // A section spanning more than a day has to date each row; a single-day one
   // would only be repeating its own heading.
-  // A museum event is dated "5 SIERPNIA, SOBOTA" (GOI-122); the time still
-  // leads it in the gutter, since that is what it asks a reader to turn up for.
-  const dateLine = section.windowDays > 1
-    ? (section.category === 'exhibition' ? longDate(pick.startsAt) : shortDate(pick.startsAt))
-    : null;
+  const dateLine = section.windowDays > 1 ? pickDateLine(pick, section) : null;
 
   ensureSpace(doc, rowHeight(doc, pick, section));
 
@@ -559,11 +562,11 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
     .text(title, BODY_X, dateLine ? doc.y : top, { width: BODY_WIDTH });
 
   // One line per venue, so two cinemas showing the same film read as two
-  // places rather than as one run-on string.
-  for (const v of pick.venues) {
+  // places rather than as one run-on string. Shared with the email so the two
+  // renderings cannot disagree about what a venue line says.
+  for (const line of venueLines(pick)) {
     doc.font('bold').fontSize(7.5).fillColor(C.body)
-      .text(`${v.name} · ${v.startsAt.map(time).join(', ')}`.toUpperCase(),
-        BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
+      .text(line.toUpperCase(), BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
   }
 
   if (blurb) {
@@ -574,6 +577,20 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   doc.moveDown(0.55);
   rule(doc, C.divider, 0.5);
   doc.moveDown(0.55);
+}
+
+/**
+ * The date over a row, as `pickWhen` decides it for the email.
+ *
+ * A collapsed pick is a film held over, so it is dated by its run rather than
+ * by whichever showing happens to be first (GOI-120); a museum event is dated
+ * "5 SIERPNIA, ŚRODA" (GOI-122), with the time still leading it in the gutter,
+ * since that is what it asks a reader to turn up for. A run outranks the long
+ * form: a row spanning days is a span whichever way it is written.
+ */
+function pickDateLine(pick: Pick, section: BriefSection): string {
+  if (pick.startsAt !== pick.lastStartsAt) return daySpan(pick.startsAt, pick.lastStartsAt);
+  return section.category === 'exhibition' ? longDate(pick.startsAt) : shortDate(pick.startsAt);
 }
 
 /** An exhibition: dated by its run, with no gutter time. */
