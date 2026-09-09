@@ -22,7 +22,8 @@ import {
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection, fetchBriefEvents,
+  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection,
+  dropFestivalRestatements, fetchBriefEvents,
   plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
@@ -122,6 +123,16 @@ const events = router({
         filters: eventFiltersSchema.optional(),
         /** Start the listing at this Warsaw day instead of now — see below. */
         fromDay: dayKeySchema.optional(),
+        /**
+         * The venue selection, narrowed in SQL (GOI-94).
+         *
+         * A sibling of `fromDay` rather than a member of `filters`: those are
+         * the dimensions SQL does not cover and the browser finishes off, and
+         * this is the opposite — the whole point is that it happens before the
+         * limit. Empty and absent both mean "every venue"; an explicitly empty
+         * selection is what the picker's "All venues" sends.
+         */
+        venueIds: z.array(z.string()).optional(),
       }).optional(),
     )
     .query(async ({ input }) => {
@@ -155,9 +166,18 @@ const events = router({
       // selected day *and*, if it is empty, whatever comes after it — and
       // since these rows are ordered by start, the selected day's are at the
       // head of the response, where the limit can't reach them.
+      //
+      // The venue selection is narrowed here too, and for the same reason
+      // (GOI-94). It used to be applied in the browser, to whichever hundred
+      // rows came back — so picking the cinema that publishes eight screenings
+      // a day changed nothing visible, since it already filled the page, and
+      // picking a sparse one emptied the feed rather than narrowing it. Both
+      // read as "the picker doesn't work", and both are this cap.
+      const venueIds = input?.venueIds?.length ? input.venueIds : undefined;
       const rows = await defaultEventStore.listUpcomingWithCategoryFloor({
         city: 'Warsaw',
         categories: filters.categories,
+        venueIds,
         fromDay,
         limit: fromDay ? FROM_DAY_LIMIT : 100,
       });
@@ -716,7 +736,20 @@ const my = router({
         // The preview shows what would go out *now*, so a section whose
         // cadence isn't due today is genuinely absent from it — same rule the
         // sweep applies.
-        const sections = buildBriefSections(all, input, venues, now);
+        // Scoped like the send is (GOI-33), so Generate and the issue agree —
+        // unless the reader follows nothing yet, where scoping to an empty
+        // list would hide the band from the screen meant to show it.
+        const festivals = briefFestivals(
+          briefWindowDays(plannedFrequency(input)),
+          venues.length > 0 ? venues.map((v) => v.name) : undefined,
+          now,
+        );
+        // A row that only restates a festival the band names is the same fact
+        // printed twice in one issue (GOI-124).
+        const sections = dropFestivalRestatements(
+          buildBriefSections(all, input, venues, now),
+          festivals,
+        );
         /**
          * The saved-events queue, which the preview used to leave out entirely
          * (GOI-110). It is the first block of a brief and the only one that
@@ -742,14 +775,7 @@ const my = router({
           wantToGo,
           fallbackFrequency: plannedFrequency(input),
           recipientName: input.recipientName,
-          // Scoped like the send is (GOI-33), so Generate and the issue agree
-          // — unless the reader follows nothing yet, where scoping to an empty
-          // list would hide the band from the screen meant to show it.
-          festivals: briefFestivals(
-            briefWindowDays(plannedFrequency(input)),
-            venues.length > 0 ? venues.map((v) => v.name) : undefined,
-            now,
-          ),
+          festivals,
           now,
         };
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand
