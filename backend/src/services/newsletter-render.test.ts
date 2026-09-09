@@ -603,6 +603,23 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
     expect(html).not.toContain('Also on:');
   });
 
+  /**
+   * GOI-124. Taking the month off the end date alone was right for the
+   * ordinary week-long festival and a flat lie about anything longer: this
+   * run, 19 June to 30 August, read as "19–30 VIII" — a fortnight in August,
+   * over something that had been going for ten weeks by then.
+   */
+  it('names both months when a festival runs across one', () => {
+    const html = render({ festivals: [FESTIVAL] });
+    expect(html).toContain('19 VI – 30 VIII');
+    expect(html).not.toContain('19–30 VIII');
+  });
+
+  it('names the month once for a festival inside it', () => {
+    const html = render({ festivals: [{ ...FESTIVAL, startDate: '2026-08-10', endDate: '2026-08-16' }] });
+    expect(html).toContain('10–16 VIII');
+  });
+
   it('gives a film one line per cinema, each with that cinema’s own times', () => {
     const html = render({
       sections: [section({

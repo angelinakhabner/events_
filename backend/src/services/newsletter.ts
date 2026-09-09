@@ -168,6 +168,40 @@ export const FESTIVAL_LOOKAHEAD_DAYS = 30;
 const MAX_BRIEF_FESTIVALS = 3;
 
 /**
+ * Drop the listing rows that only restate a festival the band already names
+ * (GOI-124).
+ *
+ * A festival reaches the listings the way its venue publishes it, which for
+ * several of them is a run of identically titled rows — six entries in Teatr
+ * Dramatyczny's repertoire all saying "FESTIWAL SKRZYŻOWANIE KULTUR" and
+ * nothing about what any of them is. With the band directly above naming the
+ * same festival, its dates and its link, those rows are the same fact printed
+ * seven times, and they crowd out the events that are only on once.
+ *
+ * Matched on the title alone, exactly: a festival screening that carries the
+ * film's own name is a different thing to tell someone about, and dropping
+ * every row at a festival's venues during its run would empty a cinema's
+ * listing for the week of Warsaw Film Festival.
+ */
+export function dropFestivalRestatements(
+  sections: BriefSection[],
+  festivals: Festival[],
+): BriefSection[] {
+  if (festivals.length === 0) return sections;
+  const named = new Set(festivals.map((f) => normalizeTitle(f.name)));
+  return sections
+    .map((section) => ({
+      ...section,
+      events: section.events.filter((e) => !named.has(normalizeTitle(e.title))),
+    }))
+    .filter((section) => section.events.length > 0);
+}
+
+function normalizeTitle(title: string): string {
+  return title.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
  * The festivals the brief's band calls out: on now, or opening soon (GOI-110).
  *
  * Ongoing first — `listFestivals` orders by start date and has already dropped
@@ -858,7 +892,23 @@ export async function sendNewsletterBriefs(
         // `fetchBriefEvents` for why one flat query left sparse sections empty.
         ? await fetchBriefEvents(sub, venues, now, eventStore)
         : [];
-      const sections = venues.length > 0 ? buildBriefSections(events, sub, venues, now) : [];
+      // Scoped to this subscriber's venues (GOI-33). Chosen before the
+      // sections are trimmed, since it is what decides what they may drop —
+      // and empty for a reader following no venues, which is the same band
+      // they would have been shown anyway.
+      const festivals = briefFestivals(
+        briefWindowDays(plannedFrequency(sub)),
+        venues.map((v) => v.name),
+        now,
+      );
+      // …and a row that only restates one of them is the same fact printed
+      // twice in one issue (GOI-124). Trimmed here rather than in a renderer,
+      // so the email and the filed PDF cannot disagree about it, and before
+      // the "nothing on" check below, so an issue whose listings were only
+      // restatement rows is skipped rather than sent near-empty.
+      const sections = venues.length > 0
+        ? dropFestivalRestatements(buildBriefSections(events, sub, venues, now), festivals)
+        : [];
 
       if (sections.length === 0 && isEmptySection(wantToGo)) {
         if (venues.length === 0) {
@@ -886,12 +936,7 @@ export async function sendNewsletterBriefs(
         wantToGo,
         fallbackFrequency: plannedFrequency(sub),
         recipientName: sub.recipientName,
-        // Scoped to this subscriber's venues (GOI-33).
-        festivals: briefFestivals(
-          briefWindowDays(plannedFrequency(sub)),
-          venues.map((v) => v.name),
-          now,
-        ),
+        festivals,
         now,
       };
       if (deliversByEmail(sub.delivery)) {
