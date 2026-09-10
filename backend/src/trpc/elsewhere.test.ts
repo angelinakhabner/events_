@@ -54,8 +54,9 @@ function ctx(user: { id: string; email: string } | null): AppContext {
 const caller = (user: { id: string; email: string } | null = { id: 'u1', email: 'a@b.c' }) =>
   appRouter.createCaller(ctx(user));
 
-/** Seed a folder with something to match against — the search refuses an
- *  empty folder, which is a different test. */
+/** Seed a folder with something to match against. The folder is optional now,
+ *  so most of these could omit it; they keep it because a search that carries
+ *  exemplars is the one with more moving parts. */
 async function seededFolder(userId = 'u1'): Promise<string> {
   await userVenues.ensureSeeded(userId);
   const [folder] = await userVenues.lists(userId);
@@ -88,6 +89,74 @@ describe('the endpoints are authenticated, not just the page', () => {
     })],
   ])('rejects %s without a session', async (_name, call) => {
     await expect(call()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+});
+
+describe('what a search may ask for', () => {
+  it('takes a city, dates, an interest and venue types', async () => {
+    const listId = await seededFolder();
+    await caller().my.venues.suggestSimilar({
+      listId,
+      city: 'Thessaloniki',
+      interest: 'jazz concerts',
+      types: ['Music'],
+      from: '2026-09-11',
+      until: '2026-09-11',
+    });
+    expect(suggestSimilarVenues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        city: 'Thessaloniki',
+        interest: 'jazz concerts',
+        types: ['Music'],
+        from: '2026-09-11',
+        until: '2026-09-11',
+      }),
+    );
+  });
+
+  // The dates are the caller's to match against real programmes; they only
+  // reach the model as context, so they have to come back with the answer.
+  it('returns the window it searched for', async () => {
+    const res = await caller().my.venues.suggestSimilar({
+      city: 'Thessaloniki', from: '2026-09-11', until: '2026-09-12', interest: 'jazz',
+    });
+    expect(res).toMatchObject({
+      city: 'Thessaloniki', from: '2026-09-11', until: '2026-09-12', interest: 'jazz',
+    });
+  });
+
+  // A city you have never been to has nothing to match against. Refusing that
+  // search would be refusing the ask that was actually made.
+  it('searches without a folder at all', async () => {
+    const res = await caller().my.venues.suggestSimilar({ city: 'Thessaloniki', interest: 'jazz' });
+    expect(res.basedOn).toBe(0);
+    expect(res.suggestions).toHaveLength(1);
+    expect(suggestSimilarVenues).toHaveBeenCalledWith(expect.objectContaining({ like: [] }));
+  });
+
+  it('searches against an empty folder rather than refusing', async () => {
+    const empty = await userVenues.createList('u1', 'Berlin');
+    await expect(
+      caller().my.venues.suggestSimilar({ listId: empty.id, city: 'Berlin' }),
+    ).resolves.toMatchObject({ basedOn: 0 });
+  });
+
+  it.each([
+    ['a window that ends before it starts', { from: '2026-09-14', until: '2026-09-11' }],
+    ['a window longer than venues publish for', { from: '2026-01-01', until: '2026-06-01' }],
+    ['a date that is not a date', { from: '2026-02-31', until: '2026-02-31' }],
+    ['more venue types than exist', { types: ['a', 'b', 'c', 'd', 'e', 'f'] }],
+  ])('refuses %s', async (_name, extra) => {
+    await expect(
+      caller().my.venues.suggestSimilar({ city: 'Berlin', ...extra }),
+    ).rejects.toBeInstanceOf(TRPCError);
+    expect(suggestSimilarVenues).not.toHaveBeenCalled();
+  });
+
+  it('takes one end of the window on its own', async () => {
+    await expect(
+      caller().my.venues.suggestSimilar({ city: 'Berlin', from: '2026-09-11' }),
+    ).resolves.toMatchObject({ from: '2026-09-11', until: null });
   });
 });
 
