@@ -104,7 +104,52 @@ describe('wantToGoState', () => {
         id: 'y', kind: 'exhibition',
         startsAt: '2026-06-01T10:00:00Z', endsAt: '2026-11-12T18:00:00Z',
       });
-      expect(wantToGoState(later, [later], NOW, 7)).toBeNull();
+      expect(wantToGoState(later, [later], NOW, 7)).toBe('ongoing');
+    });
+  });
+
+  // GOI-125. Between them these two shapes are every exhibition a reader can
+  // realistically save — the ones worth saving are the ones still open — and
+  // both used to fall through to the start-date tests against an opening date
+  // months past, so a saved exhibition simply never reached the brief.
+  describe('an exhibition that is open', () => {
+    it('is reported as ongoing when it closes beyond the horizon', () => {
+      const run = ev({
+        id: 'x', kind: 'exhibition',
+        startsAt: '2026-06-01T10:00:00Z', endsAt: '2027-01-12T18:00:00Z',
+      });
+      expect(wantToGoState(run, [run], NOW, 7)).toBe('ongoing');
+    });
+
+    it('is reported as ongoing when it has no closing date at all', () => {
+      const run = ev({
+        id: 'x', kind: 'exhibition', startsAt: '2026-06-01T10:00:00Z', endsAt: null,
+      });
+      expect(wantToGoState(run, [run], NOW, 7)).toBe('ongoing');
+    });
+
+    it('is still nothing once it has closed', () => {
+      const over = ev({
+        id: 'x', kind: 'exhibition',
+        startsAt: '2026-01-01T10:00:00Z', endsAt: '2026-02-01T18:00:00Z',
+      });
+      expect(wantToGoState(over, [over], NOW, 7)).toBeNull();
+    });
+
+    // Not open yet: dated by when it opens, like anything else — so a run
+    // starting after the horizon is still outside this issue.
+    it('is dated by its opening while it is still to come', () => {
+      const soon = ev({
+        id: 'x', kind: 'exhibition',
+        startsAt: '2026-09-08T10:00:00Z', endsAt: '2027-01-12T18:00:00Z',
+      });
+      expect(wantToGoState(soon, [soon], NOW, 7)).toBe('tomorrow');
+
+      const far = ev({
+        id: 'y', kind: 'exhibition',
+        startsAt: '2026-10-04T10:00:00Z', endsAt: '2027-01-12T18:00:00Z',
+      });
+      expect(wantToGoState(far, [far], NOW, 7)).toBeNull();
     });
   });
 });
@@ -254,7 +299,7 @@ describe('buildWantToGoSection', () => {
       categoryRules: [{ category: 'cinema', cadence: 'every_issue', cadenceWeekday: null, detail: 'short', timeFilter: 'any', lookaheadDays: null, sortOrder: 0 }],
     });
     const section = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' })]),
       NOW,
@@ -270,7 +315,7 @@ describe('buildWantToGoSection', () => {
   it('escalates one event across issues, saying each state exactly once', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store);
-    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo };
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
     // A run, so the final night reads as a last chance.
     const events = [
       ev({ id: 'early', startsAt: '2026-09-09T18:00:00Z' }),
@@ -292,10 +337,34 @@ describe('buildWantToGoSection', () => {
     expect(said).toEqual(['early:this_week', 'last:last_chance', 'early:tomorrow']);
   });
 
+  /**
+   * The horizon is a floor, not a ceiling (GOI-125). A monthly reader on the
+   * stored default of seven days was told about a saved event only when it
+   * happened to fall in the week after an issue — three weeks in four,
+   * everything they had saved went unmentioned and the block came out empty.
+   */
+  it('reaches as far ahead as the issue covers', async () => {
+    const store = new InMemoryNewsletterStore();
+    const events = [ev({ id: 'a', startsAt: '2026-09-25T18:00:00Z' })]; // 18 days out
+
+    const daily = await config(store, { sendCadence: 'daily' });
+    const inWeek = await buildWantToGoSection(
+      { id: daily.id, userId: 'u1', wantToGo: daily.wantToGo, sendCadence: 'daily' },
+      store, savedStore(events), NOW,
+    );
+    expect(inWeek.reminders).toHaveLength(0);
+
+    const monthly = await buildWantToGoSection(
+      { id: daily.id, userId: 'u1', wantToGo: daily.wantToGo, sendCadence: 'monthly' },
+      store, savedStore(events), NOW,
+    );
+    expect(monthly.reminders.map((r) => r.event.id)).toEqual(['a']);
+  });
+
   it('says the same thing once across three issues where nothing changed', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store);
-    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo };
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
     const events = [ev({ id: 'a', startsAt: '2026-09-13T18:00:00Z' })];
 
     let total = 0;
@@ -311,7 +380,7 @@ describe('buildWantToGoSection', () => {
   it('reports a change to a saved event, once', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store);
-    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo };
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
     const cancelled = ev({
       id: 'a', startsAt: '2026-09-09T18:00:00Z', cancelledAt: '2026-09-06T09:00:00Z',
     });
@@ -331,6 +400,177 @@ describe('buildWantToGoSection', () => {
     expect(second.changes).toHaveLength(0);
   });
 
+  /**
+   * GOI-112: a title tracked before any venue announced it.
+   *
+   * It has no event to save, so it cannot reach the queue the way a saved
+   * screening does — and the brief stayed silent about it for exactly as long
+   * as it mattered, right up until it was announced. The screenings it picks
+   * up join the queue as ordinary events, so the states and the dedup apply
+   * unchanged.
+   */
+  describe('tracked titles', () => {
+    const film = (title: string, status = 'want') =>
+      ({ id: `f-${title}`, title, status, createdAt: NOW.toISOString() }) as never;
+
+    const sources = (films: unknown[], events: Event[]) => ({
+      films: { list: async () => films as never },
+      events: { listUpcoming: async () => events },
+    }) as never;
+
+    it('reports a tracked title once a venue announces it', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+        sources([film('Chungking Express')], [announced]),
+      );
+
+      expect(section.reminders.map((r) => r.event.id)).toEqual(['a']);
+    });
+
+    it('says it once, in each state, like everything else in the queue', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const sub = {
+        id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence,
+      };
+      const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+      const src = sources([film('Chungking Express')], [announced]);
+
+      const first = await buildWantToGoSection(sub, store, savedStore([]), NOW, src);
+      await recordWantToGoSent(saved.id, first, store, NOW);
+      const second = await buildWantToGoSection(sub, store, savedStore([]), NOW, src);
+
+      expect(first.reminders).toHaveLength(1);
+      expect(second.reminders).toHaveLength(0);
+    });
+
+    // A title marked seen is a record of where somebody has been, not a thing
+    // to be reminded about.
+    it('leaves a title the reader already saw alone', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+        sources(
+          [film('Chungking Express', 'seen')],
+          [ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' })],
+        ),
+      );
+      expect(section.reminders).toHaveLength(0);
+    });
+
+    it('counts a title that is also a saved event once', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const both = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([both]),
+        NOW,
+        sources([film('Chungking Express')], [both]),
+      );
+
+      expect(section.reminders).toHaveLength(1);
+    });
+
+    /**
+     * The title on the list is whatever the reader typed into a search that
+     * found nothing, so the re-check has to look for it the way the search
+     * did. Asked exactly, "chungking" never equals "Chungking Express" — and
+     * the one route that puts a title on the list *before* a venue announces
+     * it would be the one route whose titles the queue could never report.
+     */
+    it('looks the title up as words, not as a venue would spell it', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const announced = ev({ id: 'a', title: 'Chungking Express', startsAt: '2026-09-09T18:00:00Z' });
+      const asked: Array<Record<string, unknown>> = [];
+
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+        {
+          films: { list: async () => [film('chungking')] },
+          // Stands in for the SQL predicate: `titleWords` is the condition
+          // that matches a title where it appears as whole words, and `title`
+          // the one that demands the venue's own spelling.
+          events: {
+            listUpcoming: async (input: Record<string, unknown>) => {
+              asked.push(input);
+              return input.titleWords === 'chungking' ? [announced] : [];
+            },
+          },
+        } as never,
+      );
+
+      expect(asked.every((q) => q.title === undefined)).toBe(true);
+      expect(section.reminders.map((r) => r.event.title)).toEqual(['Chungking Express']);
+    });
+
+    it('is absent for a caller that does not track titles', async () => {
+      const store = new InMemoryNewsletterStore();
+      const saved = await config(store);
+      const section = await buildWantToGoSection(
+        { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
+        store,
+        savedStore([]),
+        NOW,
+      );
+      expect(isEmptySection(section)).toBe(true);
+    });
+  });
+
+  /**
+   * GOI-123: no event twice in the one block that asks the reader to do
+   * something. A rescheduled event is not cancelled, so it stayed in the
+   * reminders as well as the changes, and the block said "moved to 20:15" and
+   * then, three rows down, "tomorrow, 20:15".
+   */
+  it('does not also remind about an event the changes block names', async () => {
+    const store = new InMemoryNewsletterStore();
+    const saved = await config(store);
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
+    const moved = ev({ id: 'a', startsAt: '2026-09-08T20:15:00Z' });
+    store.changes = [{
+      eventId: 'a', changeType: 'rescheduled',
+      oldValue: '2026-09-08T18:00:00Z', newValue: '2026-09-08T20:15:00Z',
+      detectedAt: '2026-09-06T09:00:00Z',
+    }];
+
+    const section = await buildWantToGoSection(sub, store, savedStore([moved]), NOW);
+    expect(section.changes.map((c) => c.event.id)).toEqual(['a']);
+    expect(section.reminders).toHaveLength(0);
+  });
+
+  it('still reminds about the saved events nothing happened to', async () => {
+    const store = new InMemoryNewsletterStore();
+    const saved = await config(store);
+    const sub = { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence };
+    const moved = ev({ id: 'a', startsAt: '2026-09-08T20:15:00Z' });
+    const other = ev({ id: 'b', startsAt: '2026-09-09T19:00:00Z', title: 'Kordian' });
+    store.changes = [{
+      eventId: 'a', changeType: 'rescheduled', oldValue: null, newValue: null,
+      detectedAt: '2026-09-06T09:00:00Z',
+    }];
+
+    const section = await buildWantToGoSection(sub, store, savedStore([moved, other]), NOW);
+    expect(section.reminders.map((r) => r.event.id)).toEqual(['b']);
+  });
+
   it('leaves changes out when the reader switched them off', async () => {
     const store = new InMemoryNewsletterStore();
     const saved = await config(store, {
@@ -341,7 +581,7 @@ describe('buildWantToGoSection', () => {
       detectedAt: '2026-09-06T09:00:00Z',
     }];
     const section = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([ev({ id: 'a', startsAt: '2026-09-09T18:00:00Z', cancelledAt: '2026-09-06T09:00:00Z' })]),
       NOW,
@@ -362,11 +602,16 @@ describe('the sweep', () => {
   } as never;
   const noEvents = { listUpcoming: async () => [] } as never;
 
+  /** No tracked titles: these cases are about saved events, and leaving the
+   *  film store unstubbed reaches Postgres, which rejects `u1` as a user id. */
+  const noFilms = { list: async () => [] };
+
   async function sweep(store: InMemoryNewsletterStore, saved: Event[], now: Date) {
     return sendNewsletterBriefs(store, now, {
       venues,
       events: noEvents,
       wantToGo: savedStore(saved),
+      films: noFilms,
       skipDrives: true,
       dryRun: true,
     });
@@ -387,6 +632,40 @@ describe('the sweep', () => {
   });
 
   /**
+   * The queue reads the reader's saved events, not a venue listing, so it has
+   * something to say with no venue followed at all — and used to be built
+   * after the venue check, which skipped that reader as `no-venues` however
+   * much they had saved (GOI-125).
+   */
+  it('sends an issue to a reader who follows no venues but has saved events', async () => {
+    const store = new InMemoryNewsletterStore();
+    await config(store, { sendHour: 10, sendMinute: 0 });
+    const result = await sendNewsletterBriefs(store, NOW, {
+      venues: { listAll: async () => [] } as never,
+      events: noEvents,
+      wantToGo: savedStore([ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' })]),
+      films: noFilms,
+      skipDrives: true,
+      dryRun: true,
+    });
+    expect(result.outcomes[0]).toMatchObject({ status: 'sent' });
+  });
+
+  it('still calls that reader no-venues when they have saved nothing either', async () => {
+    const store = new InMemoryNewsletterStore();
+    await config(store, { sendHour: 10, sendMinute: 0 });
+    const result = await sendNewsletterBriefs(store, NOW, {
+      venues: { listAll: async () => [] } as never,
+      events: noEvents,
+      wantToGo: savedStore([]),
+      films: noFilms,
+      skipDrives: true,
+      dryRun: true,
+    });
+    expect(result.outcomes[0]).toMatchObject({ status: 'skipped', reason: 'no-venues' });
+  });
+
+  /**
    * A failed send must not consume the states. Otherwise the reader is never
    * told, and the system believes they were — which is the one failure mode
    * that cannot be recovered from, since the next issue skips what it thinks
@@ -402,6 +681,7 @@ describe('the sweep', () => {
       venues,
       events: noEvents,
       wantToGo: savedStore([event]),
+      films: noFilms,
       skipDrives: true,
       send: async () => { throw new Error('mail server down'); },
     });
@@ -421,12 +701,12 @@ describe('the sweep', () => {
     const event = ev({ id: 'a', startsAt: '2026-09-08T18:00:00Z' });
 
     await sendNewsletterBriefs(store, NOW, {
-      venues, events: noEvents, wantToGo: savedStore([event]), skipDrives: true,
+      venues, events: noEvents, wantToGo: savedStore([event]), films: noFilms, skipDrives: true,
       send: async () => { throw new Error('mail server down'); },
     });
 
     const next = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([event]),
       NOW,
@@ -529,7 +809,7 @@ describe('urgent change emails', () => {
     });
 
     const next = await buildWantToGoSection(
-      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo },
+      { id: saved.id, userId: 'u1', wantToGo: saved.wantToGo, sendCadence: saved.sendCadence },
       store,
       savedStore([cancelledSoon]),
       NOW,

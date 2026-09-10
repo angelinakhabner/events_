@@ -367,7 +367,7 @@ export interface NewsletterSettings {
  * tell someone. That is why the state is the dedup key rather than the event —
  * see `newsletter_sent_events`.
  */
-export type WantToGoState = 'tomorrow' | 'this_week' | 'last_chance';
+export type WantToGoState = 'tomorrow' | 'this_week' | 'last_chance' | 'ongoing';
 
 /** What a change to a saved event was. */
 export type EventChangeType = 'cancelled' | 'rescheduled' | 'moved' | 'sold_out';
@@ -376,9 +376,11 @@ export type EventChangeType = 'cancelled' | 'rescheduled' | 'moved' | 'sold_out'
  * Which state a saved event is in for this issue, or null when it is outside
  * the reader's horizon and there is nothing to say yet.
  *
- * `last_chance` wins over the other two, because "this is the final
- * performance" is the more urgent fact even on the day before: a reader who is
- * told only "tomorrow" will assume there is another one next week.
+ * `last_chance` wins over the others, because "this is the final performance"
+ * is the more urgent fact even on the day before: a reader who is told only
+ * "tomorrow" will assume there is another one next week. `ongoing` is the
+ * exception to the escalation — an exhibition that is open and not closing yet
+ * escalates to nothing, it is simply worth one mention.
  *
  * `siblings` is every other future occurrence of the same production, which is
  * what "final performance" is measured against.
@@ -394,10 +396,20 @@ export function wantToGoState(
 
   // An exhibition runs continuously, so its urgency is its closing date
   // rather than its start — which has usually long passed.
-  const closes = event.kind === 'exhibition' && event.endsAt ? new Date(event.endsAt) : null;
-  if (closes) {
-    if (closes < now) return null;
-    return closes <= horizon ? 'last_chance' : null;
+  //
+  // A run that closes beyond the horizon used to return null, and so did one
+  // with no closing date at all, because both fell through to the start-date
+  // tests below against a date already in the past. Between them that is every
+  // exhibition a reader can realistically save: the ones worth saving are the
+  // ones still open, and a saved exhibition never reached the brief until the
+  // fortnight it was about to close (GOI-125). It is `ongoing` instead — said
+  // once, since the state is the dedup key.
+  if (event.kind === 'exhibition') {
+    const closes = event.endsAt ? new Date(event.endsAt) : null;
+    if (closes && closes < now) return null;
+    if (closes && closes <= horizon) return 'last_chance';
+    if (starts <= now) return 'ongoing';
+    // Not open yet: dated by when it opens, like anything else.
   }
 
   if (starts < now || starts > horizon) return null;

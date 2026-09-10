@@ -174,6 +174,9 @@ function dedupe(events: TeatrStudioRawEvent[]): TeatrStudioRawEvent[] {
 export interface TeatrStudioScrapeResult {
   events: TeatrStudioRawEvent[];
   signature: string;
+  /** Set only when a month failed to fetch and the walk stopped short of the
+   *  window — the last day this run may be trusted for (GOI-107). */
+  coveredThrough?: string;
 }
 
 /** `?month=MM-YYYY` — the pager's own shape. */
@@ -202,6 +205,13 @@ export async function scrapeTeatrStudio(args: {
   const y0 = Number(startDay.slice(0, 4));
   const m0 = Number(startDay.slice(5, 7));
 
+  // How far the walk actually got. A month that would not load stops it short
+  // of the window, and the runner prunes its whole window on the strength of a
+  // successful scrape — so unread months would be deleted as though this run
+  // had looked at them and found nothing (GOI-107). Running past the window is
+  // not truncation: that month is outside what was asked for.
+  let coveredThrough: string | undefined;
+
   for (let i = 0; i < MAX_MONTHS; i++) {
     const month = ((m0 - 1 + i) % 12) + 1;
     const year = y0 + Math.floor((m0 - 1 + i) / 12);
@@ -212,6 +222,9 @@ export async function scrapeTeatrStudio(args: {
       html = await fetchVenueHTML(monthUrl(args.baseUrl, year, month), { fetcher: args.fetcher });
     } catch (e) {
       console.warn(`[teatrstudio] failed to fetch ${year}-${month}: ${e instanceof Error ? e.message : e}`);
+      // Trusted through the end of the last month that did load; nothing at
+      // all when the first one is the one that failed.
+      coveredThrough = i === 0 ? startDay : endOfPreviousMonth(year, month);
       break;
     }
     pages.push(html);
@@ -227,5 +240,16 @@ export async function scrapeTeatrStudio(args: {
     })
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
-  return { events, signature: pages.join('\n') };
+  return {
+    events,
+    signature: pages.join('\n'),
+    ...(coveredThrough ? { coveredThrough } : {}),
+  };
+}
+
+/** The last day of the month before `year-month`, as YYYY-MM-DD. */
+function endOfPreviousMonth(year: number, month: number): string {
+  // Day 0 of a month is the last day of the one before it.
+  const last = new Date(Date.UTC(year, month - 1, 0));
+  return last.toISOString().slice(0, 10);
 }

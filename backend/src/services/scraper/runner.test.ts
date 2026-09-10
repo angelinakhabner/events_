@@ -386,6 +386,42 @@ describe('countCalendarFallbacks', () => {
   });
 });
 
+/**
+ * The prune window is what the scrape *read*, not what it asked for (GOI-107).
+ *
+ * A multi-page scraper that loses a page mid-walk returns what it has. Pruning
+ * the full window on the strength of that deletes the days it never looked at
+ * — and cancels the saved ones, so a reader is told a film they bookmarked is
+ * off. Muranów's calendar is one month per page and the cinema window is a
+ * week, so every scrape near a month's end depends on a hop that can fail.
+ */
+describe('clampToCovered', () => {
+  const asked = new Date('2026-07-05T08:00:00Z');
+
+  it('leaves the asked-for window alone when the scrape covered it', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    expect(clampToCovered(asked, null, 'Europe/Warsaw')).toBe(asked);
+  });
+
+  it('pulls the window back to the last day the scrape read', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    const end = clampToCovered(asked, '2026-06-30', 'Europe/Warsaw');
+    // The last minute of that day in Warsaw, not its midnight: a run that read
+    // the whole of June is authoritative for June's last evening.
+    expect(end.toISOString()).toBe('2026-06-30T21:59:00.000Z');
+  });
+
+  it('never widens the window past what was asked for', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    expect(clampToCovered(asked, '2026-12-31', 'Europe/Warsaw')).toBe(asked);
+  });
+
+  it('falls back to the asked-for window on an unparseable day', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    expect(clampToCovered(asked, 'not-a-day', 'Europe/Warsaw')).toBe(asked);
+  });
+});
+
 describe('resolveVenueUrl', () => {
   // 2026-06-18T22:00Z is already 2026-06-19 00:00 in Warsaw (CEST, +02:00) —
   // confirms formatting uses the venue timezone, not UTC.

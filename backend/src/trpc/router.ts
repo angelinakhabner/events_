@@ -22,8 +22,9 @@ import {
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefFetchWindowDays, buildBriefSections, currentFestival, plannedFrequency,
-  resolveBriefVenues,
+  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection,
+  dropFestivalRestatements, fetchBriefEvents,
+  plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
@@ -122,6 +123,16 @@ const events = router({
         filters: eventFiltersSchema.optional(),
         /** Start the listing at this Warsaw day instead of now — see below. */
         fromDay: dayKeySchema.optional(),
+        /**
+         * The venue selection, narrowed in SQL (GOI-94).
+         *
+         * A sibling of `fromDay` rather than a member of `filters`: those are
+         * the dimensions SQL does not cover and the browser finishes off, and
+         * this is the opposite — the whole point is that it happens before the
+         * limit. Empty and absent both mean "every venue"; an explicitly empty
+         * selection is what the picker's "All venues" sends.
+         */
+        venueIds: z.array(z.string()).optional(),
       }).optional(),
     )
     .query(async ({ input }) => {
@@ -155,9 +166,18 @@ const events = router({
       // selected day *and*, if it is empty, whatever comes after it — and
       // since these rows are ordered by start, the selected day's are at the
       // head of the response, where the limit can't reach them.
+      //
+      // The venue selection is narrowed here too, and for the same reason
+      // (GOI-94). It used to be applied in the browser, to whichever hundred
+      // rows came back — so picking the cinema that publishes eight screenings
+      // a day changed nothing visible, since it already filled the page, and
+      // picking a sparse one emptied the feed rather than narrowing it. Both
+      // read as "the picker doesn't work", and both are this cap.
+      const venueIds = input?.venueIds?.length ? input.venueIds : undefined;
       const rows = await defaultEventStore.listUpcomingWithCategoryFloor({
         city: 'Warsaw',
         categories: filters.categories,
+        venueIds,
         fromDay,
         limit: fromDay ? FROM_DAY_LIMIT : 100,
       });
@@ -243,13 +263,54 @@ const events = router({
       return { venues: await predefinedVenueOptions(ctx, input?.category) };
     }),
 
-  /** Upcoming screenings of one title across every venue, soonest first —
-   *  powers the "Nearest screenings" button on film cards. */
-  screenings: publicProcedure
-    .input(z.object({ title: z.string().min(1) }))
+  /**
+   * Search upcoming events by title, across venues (GOI-112).
+   *
+   * Across *every* venue, not the reader's own: the question being asked is
+   * "is this film on anywhere", and answering it from the follow list would
+   * report "no" for a film playing two streets away at a cinema they have not
+   * added. The results carry their venue, so what to do about that is the
+   * reader's to decide.
+   *
+   * Public, like `screenings` beside it: a logged-out reader can search. What
+   * needs an account is the half that happens when the answer is nothing —
+   * putting the title on a list so the next sweep can tell you.
+   */
+  search: publicProcedure
+    .input(z.object({
+      q: z.string().min(2).max(120),
+      limit: z.number().int().min(1).max(100).default(50),
+    }))
     .query(async ({ input }) => {
       if (!env.DATABASE_URL) return [];
-      return defaultEventStore.listUpcoming({ title: input.title, limit: 50 });
+      return defaultEventStore.listUpcoming({ titleQuery: input.q.trim(), limit: input.limit });
+    }),
+
+  /**
+   * Upcoming screenings of one title across every venue, soonest first —
+   * powers the "Nearest screenings" button on film cards.
+   *
+   * `match` picks how the title is read, because since GOI-112 two different
+   * kinds of string arrive here. A screening's own title is exact, and must
+   * stay exact: matching it loosely would fold two works whose names contain
+   * one another into one card. A *tracked* title is whatever the reader typed
+   * into a search that found nothing, so it is matched where it appears as
+   * whole words — otherwise the row that promises "it appears here as soon as
+   * it is announced" says "no upcoming screenings" for as long as the title
+   * is spelt any other way, which is for ever.
+   */
+  screenings: publicProcedure
+    .input(z.object({
+      title: z.string().min(1),
+      match: z.enum(['exact', 'words']).default('exact'),
+    }))
+    .query(async ({ input }) => {
+      if (!env.DATABASE_URL) return [];
+      return defaultEventStore.listUpcoming(
+        input.match === 'words'
+          ? { titleWords: input.title, limit: 50 }
+          : { title: input.title, limit: 50 },
+      );
     }),
 });
 
@@ -706,29 +767,59 @@ const my = router({
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
         const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
-        // Narrowed in SQL for the same reason the sender is: `limit` cuts the
-        // globally earliest rows, so a preview built from "the next 500 events"
-        // showed a short week once the database outgrew that. The window is the
-        // widest any section can ask for — the same call the sweep makes, so
-        // what Generate shows is what would actually be sent.
+        // The same fetch the sweep makes, so what Generate shows is what would
+        // actually be sent — including its per-rule top-ups, without which a
+        // preview of a cinema-heavy folder showed cinema and nothing else.
         const now = new Date();
-        const all = env.DATABASE_URL && venues.length > 0
-          ? await defaultEventStore.listUpcoming({
-            venueIds: venues.map((v) => v.id),
-            now,
-            until: new Date(now.getTime() + briefFetchWindowDays(input, now) * 24 * 3_600_000),
-            limit: 500,
-          })
+        const all = env.DATABASE_URL
+          ? await fetchBriefEvents(input, venues, now, defaultEventStore)
           : [];
         // The preview shows what would go out *now*, so a section whose
         // cadence isn't due today is genuinely absent from it — same rule the
         // sweep applies.
-        const sections = buildBriefSections(all, input, venues, now);
+        // Scoped like the send is (GOI-33), so Generate and the issue agree —
+        // unless the reader follows nothing yet, where scoping to an empty
+        // list would hide the band from the screen meant to show it.
+        const festivals = briefFestivals(
+          briefWindowDays(plannedFrequency(input)),
+          venues.length > 0 ? venues.map((v) => v.name) : undefined,
+          now,
+        );
+        // A row that only restates a festival the band names is the same fact
+        // printed twice in one issue (GOI-124).
+        const sections = dropFestivalRestatements(
+          buildBriefSections(all, input, venues, now),
+          festivals,
+        );
+        /**
+         * The saved-events queue, which the preview used to leave out entirely
+         * (GOI-110). It is the first block of a brief and the only one that
+         * asks the reader to do something, so a preview without it was missing
+         * the part of the design it was pressed to check.
+         *
+         * Built without send-state dedup — the substituted `sentStates`. A
+         * preview sends nothing, so it consumes no state; suppressing what a
+         * previous issue already announced would leave the reader looking at an
+         * empty block precisely because the feature has been working.
+         */
+        const wantToGo = await buildWantToGoSection(
+          { id: 'preview', userId: ctx.user.id, wantToGo: input.wantToGo, sendCadence: input.sendCadence },
+          {
+            sentStates: async () => new Set<string>(),
+            changesFor: (ids, since) => ctx.newsletter.changesFor(ids, since),
+          },
+          ctx.wantToGo,
+          now,
+          // A tracked title that has just been announced belongs in the
+          // preview for the same reason it belongs in the issue (GOI-112).
+          { films: ctx.films, events: defaultEventStore },
+        );
         const brief = {
           sections,
+          wantToGo,
           fallbackFrequency: plannedFrequency(input),
           recipientName: input.recipientName,
-          festival: currentFestival(),
+          festivals,
           now,
         };
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand

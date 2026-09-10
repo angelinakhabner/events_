@@ -400,7 +400,7 @@ function NewsletterForm({
                 type="text"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
-                placeholder="Ania"
+                placeholder="First name"
                 className="field"
               />
               <p className="mt-1.5 text-xs text-faint">
@@ -427,8 +427,8 @@ function NewsletterForm({
           label="Venues from my venues"
           note={
             venueIds.length === 0
-              ? 'None ticked — the newsletter covers every venue in the folders below. Ticking some narrows the newsletter only; your folders are not changed.'
-              : 'Ticking narrows the newsletter only. Your folders are not changed, and a venue removed here is still in the folder.'
+              ? 'These are the venues you follow, in their folders. Tick the specific ones you want briefed on; leave everything unticked and the newsletter covers all of them. Ticking narrows the newsletter only — your folders are not changed.'
+              : `Briefing on ${venueIds.length} of your venues. Ticking narrows the newsletter only: your folders are not changed, and a venue unticked here is still in the folder.`
           }
         >
           {byFolder.map((folder) => (
@@ -549,7 +549,7 @@ function NewsletterForm({
         <FormSection
           step={4}
           label="What goes in it, per category"
-          note="Give a category its own rhythm, depth and time of day — cinema in every issue in brief, museums once a month with the full write-up. Categories are your venues' own categories and any tags you added to them."
+          note="A category is a heading in the brief, and it comes from your venues — their own kind (cinema, theatre, museums) and any tag you put on them. Each one gets its own rhythm, depth and time of day: cinema in every issue in brief, museums once a month with the full write-up. Nothing you don't add a rule for is listed."
         >
           {/* Named rather than silent: the reader chose those values, and a
               form that rewrites a choice without saying so is one they stop
@@ -734,7 +734,20 @@ function DeliveryChoice({
 
   return (
     <div>
-      <div role="radiogroup" aria-label="How to send it" className="flex border-2 border-ink">
+      {/*
+        Three buttons of one size (GOI-115).
+        They were sized by their own labels, so "Email", "Drive" and "Both"
+        came out three different widths — which reads as three options of
+        different weight, when they are one choice of three equal answers. A
+        three-column grid gives each the same cell whatever its label is, and
+        `w-full` on the buttons is what makes them fill it rather than sit
+        centred in it.
+      */}
+      <div
+        role="radiogroup"
+        aria-label="How to send it"
+        className="grid grid-cols-3 border-2 border-ink max-w-[420px]"
+      >
         {options.map((o, i) => {
           const active = value === o.value;
           return (
@@ -744,7 +757,7 @@ function DeliveryChoice({
               role="radio"
               aria-checked={active}
               onClick={() => onChange(o.value)}
-              className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+              className={`w-full cursor-pointer px-4 py-[9px] text-center text-xs font-extrabold uppercase tracking-[0.5px] ${
                 i < options.length - 1 ? 'border-r-2 border-ink' : ''
               } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
             >
@@ -753,6 +766,8 @@ function DeliveryChoice({
           );
         })}
       </div>
+      {/* One line under the row rather than three inside it: the hint answers
+          "what did I just pick", which only the chosen one has to say. */}
       <p className="mt-2 text-xs text-faint">{current?.hint}</p>
     </div>
   );
@@ -937,8 +952,10 @@ function RuleRow({
       ) : null}
 
       {/* Collapsed by default: empty is correct almost always, and a field
-          every row carries invites a number nobody needed to choose. */}
-      <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
+          every row carries invites a number nobody needed to choose.
+          What it *means* is spelled out either way (GOI-119): a number of days
+          with no sentence beside it is a setting nobody can answer. */}
+      <span className="flex w-full flex-wrap items-center gap-2.5 pl-0 md:pl-[122px]">
         {showLookahead ? (
           <>
             <label className="text-xs text-faint" htmlFor={`rule-lookahead-${index}`}>
@@ -957,18 +974,25 @@ function RuleRow({
               className="field w-[92px] py-1.5 text-[13px]"
             />
             <span className="text-xs text-faint">
-              days — leave empty for {derived}, which this cadence covers already
+              days of {label.toLowerCase()} each issue lists, counting from the day it
+              arrives. Leave it empty for {derived} — the span this cadence already
+              covers with no gaps and no repeats.
             </span>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => setShowLookahead(true)}
-            className="act act-sm"
-            aria-label={`Set how far ahead ${label} looks`}
-          >
-            Look ahead: {derived} days
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setShowLookahead(true)}
+              className="act act-sm"
+              aria-label={`Set how far ahead ${label} looks`}
+            >
+              Look ahead: {derived} days
+            </button>
+            <span className="text-xs text-faint">
+              of {label.toLowerCase()} in each issue. Change it to reach further.
+            </span>
+          </>
         )}
       </span>
     </li>

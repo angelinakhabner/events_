@@ -2,10 +2,11 @@ import { isExhibition } from '@afisz/shared';
 import type {
   Event, Festival, NewsletterDetail, NewsletterFrequency,
 } from '@afisz/shared';
-import type { QueuedChange, WantToGoSection } from './want-to-go-queue.js';
+import type { QueuedChange, QueuedEvent, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, closingDate, dateRange, festivalSpan, shortDate, time, weekday,
+  PL, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
+  time, weekday,
 } from './newsletter-copy.js';
 
 /**
@@ -76,7 +77,7 @@ function oneLine(text: string, max = 120): string {
   return `${flat.slice(0, max - 1).replace(/[\s,.;:—-]+$/, '')}…`;
 }
 
-/** One venue's showings of a title on a given day. */
+/** One venue's showings of a title, within whatever a pick covers. */
 export interface ShowingVenue {
   name: string;
   /** ISO starts, ascending. */
@@ -84,7 +85,8 @@ export interface ShowingVenue {
 }
 
 /**
- * A title on one day, however many times and wherever it is on (GOI-36).
+ * A title on one day, however many times and wherever it is on (GOI-36) — or
+ * across the whole window, for a category collapsed that way (GOI-120).
  *
  * A film playing three cinemas on Saturday used to occupy three cards, which
  * pushed everything else out of a brief that only shows a handful of picks and
@@ -96,23 +98,42 @@ export interface Pick {
   lead: Event;
   /** Earliest start across every showing; the list sorts on this. */
   startsAt: string;
+  /** Latest start across every showing. Equal to `startsAt` for a pick that
+   *  covers one day, which is every pick outside a collapsed category. */
+  lastStartsAt: string;
   venues: ShowingVenue[];
   /** Total showings across all venues — 1 for an ordinary pick. */
   count: number;
 }
 
 /**
- * Collapse events into one Pick per title per Warsaw day.
+ * Whether a category's picks collapse across the whole window rather than
+ * per day (GOI-120).
+ *
+ * A cinema runs the same film several times a day for a fortnight, so a weekly
+ * brief printed it as seven near-identical cards and the section read as the
+ * newsletter repeating itself — the reader wants the film, what it is, and
+ * which cinemas have it. A theatre run is a handful of performances a reader
+ * chooses between, and each of those dates is the point, so it stays per day.
+ */
+export function collapsesAcrossDays(category: string): boolean {
+  return category === 'cinema';
+}
+
+/**
+ * Collapse events into one Pick per title per Warsaw day — or one per title
+ * outright when `acrossDays` is set.
  *
  * Grouped on the day *in Warsaw*, not the UTC date: a 00:30 show belongs to
  * the evening a reader would call it, and a UTC key would split a single
  * evening across two cards. Titles match case-insensitively and ignore
  * surrounding whitespace, since they come from different venues' markup.
  */
-export function groupPicks(events: Event[]): Pick[] {
+export function groupPicks(events: Event[], acrossDays = false): Pick[] {
   const byKey = new Map<string, Event[]>();
   for (const e of events) {
-    const key = `${fmtDayKey(e.startsAt)}|${e.title.trim().toLowerCase()}`;
+    const title = e.title.trim().toLowerCase();
+    const key = acrossDays ? title : `${fmtDayKey(e.startsAt)}|${title}`;
     const list = byKey.get(key);
     if (list) list.push(e);
     else byKey.set(key, [e]);
@@ -140,12 +161,18 @@ export function groupPicks(events: Event[]): Pick[] {
         ? { ...lead, description: sorted.find((e) => e.description)!.description }
         : lead,
       startsAt: lead.startsAt,
+      lastStartsAt: sorted[sorted.length - 1]!.startsAt,
       venues: [...byVenue.values()],
       count: sorted.length,
     });
   }
 
-  return picks.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  // Earliest first, with the same tie-break the section itself uses, so two
+  // films at one time cannot swap places between the email and the PDF
+  // (GOI-121).
+  return picks.sort(
+    (a, b) => a.startsAt.localeCompare(b.startsAt) || a.lead.title.localeCompare(b.lead.title),
+  );
 }
 
 /**
@@ -156,17 +183,53 @@ export function groupPicks(events: Event[]): Pick[] {
  * parse it. Two cinemas showing the same film are two places you could go, and
  * the design sets them as two lines.
  */
-function venueLines(pick: Pick): string[] {
+export function venueLines(pick: Pick): string[] {
   return pick.venues.map((v) => {
-    const times = v.startsAt.map(time).join(', ');
-    return v.name ? `${v.name} \u00b7 ${times}` : times;
+    const detail = venueWhen(v);
+    return v.name ? `${v.name} \u00b7 ${detail}` : detail;
   });
+}
+
+/**
+ * What a venue line says after the name: the showtimes, or the run.
+ *
+ * A cinema with four showings tonight is answering "when tonight"; the same
+ * cinema holding a film over for a fortnight is answering "until when", and
+ * listing thirty times would bury the one line of the row that matters
+ * (GOI-120). The two cases are told apart by the Warsaw days the showings fall
+ * on, not by the category, so nothing has to be threaded down here.
+ */
+function venueWhen(v: ShowingVenue): string {
+  const days = [...new Set(v.startsAt.map(fmtDayKey))];
+  if (days.length <= 1) return v.startsAt.map(time).join(', ');
+  return daySpan(v.startsAt[0]!, v.startsAt[v.startsAt.length - 1]!);
+}
+
+/**
+ * The date over a row: the day it is on, or the run it covers (GOI-120).
+ *
+ * A collapsed cinema pick is a film held over, so the row is dated by its run
+ * rather than by whichever showing happens to be first — a card reading "PN 7
+ * IX" for a film also on all week is worse than no date at all. A run outranks
+ * `longForm`: a museums row spanning days is a span whichever way it is
+ * written, and "5 SIERPNIA, ŚRODA" for something also on all week is the same
+ * mistake in longer words.
+ */
+function pickWhen(pick: Pick, longForm: boolean): string {
+  if (fmtDayKey(pick.startsAt) !== fmtDayKey(pick.lastStartsAt)) {
+    return daySpan(pick.startsAt, pick.lastStartsAt);
+  }
+  return longForm ? longDate(pick.startsAt) : shortDate(pick.startsAt);
 }
 
 /** Every pick is ruled underneath, and the first row in the list is ruled
  *  above too, so the list reads as a closed block — as in the design. */
 function pickRow(
   pick: Pick, top: boolean, detail: NewsletterDetail, windowDays: number,
+  /** Date the row "5 SIERPNIA, SOBOTA" rather than "SB 5 VIII" (GOI-122).
+   *  The time still leads it, in the gutter, since that is what a museum
+   *  event asks a reader to be somewhere for. */
+  longForm = false,
 ): string {
   // An exhibition has no showtime worth putting in a gutter — it is on all day
   // for months — so it is dated by when it closes instead (GOI-67, GOI-110).
@@ -182,7 +245,7 @@ function pickRow(
   const dated = windowDays > 1
     ? `<div style="font-family:${FONT};font-weight:800;font-size:10px;line-height:1.2;` +
       `letter-spacing:.14em;text-transform:uppercase;color:${C.meta};margin-bottom:4px">` +
-      `${escapeHtml(shortDate(pick.startsAt))}</div>`
+      `${escapeHtml(pickWhen(pick, longForm))}</div>`
     : '';
 
   return (
@@ -223,8 +286,11 @@ function exhibitionRow(pick: Pick, top: boolean, detail: NewsletterDetail): stri
   const border =
     (top ? `border-top:2px solid ${C.divider};` : '') + `border-bottom:2px solid ${C.divider};`;
   const description = blurb(event, detail);
+  // From when till when, not only till when (GOI-122). A reader deciding
+  // whether to go this month wants both ends of the run; "DO 14 WRZEŚNIA" on
+  // its own says nothing about whether it has opened.
   const eyebrow = [
-    event.endsAt ? closingDate(event.endsAt) : null,
+    runSpan(event.startsAt, event.endsAt ?? null),
     pick.venues[0]?.name.toUpperCase(),
   ].filter(Boolean).join(' \u00b7 ');
 
@@ -273,6 +339,21 @@ function blurb(event: Event, detail: NewsletterDetail): string {
  * and a reader scanning for the urgent one should not have to read the times.
  * Changes lead: something that happened outranks something that is coming.
  */
+/** The short marker in a reminder row's gutter. */
+function queueGutter(item: QueuedEvent): string {
+  if (item.state === 'ongoing') return PL.now;
+  return item.state === 'tomorrow' ? time(item.event.startsAt) : weekday(item.event.startsAt);
+}
+
+/** The line under a reminder's title: where it is, and the date that matters
+ *  for its state — the showtime, or for a run, when it closes. */
+function queueMeta(item: QueuedEvent): string {
+  const when = item.state === 'ongoing'
+    ? (item.event.endsAt ? closingDate(item.event.endsAt) : null)
+    : (item.state === 'tomorrow' ? null : time(item.event.startsAt));
+  return [item.event.venue?.name, when].filter(Boolean).join(' \u00b7 ');
+}
+
 function wantToGoBlock(section: WantToGoSection): string {
   if (section.reminders.length === 0 && section.changes.length === 0) return '';
 
@@ -293,10 +374,13 @@ function wantToGoBlock(section: WantToGoSection): string {
     }
   }
 
+  // `ongoing` last: the three above are deadlines, and a run that is simply
+  // open is the one row nobody has to act on today.
   for (const [state, label, urgent] of [
     ['last_chance', PL.lastChance, true],
     ['tomorrow', PL.tomorrow, false],
     ['this_week', PL.thisWeek, false],
+    ['ongoing', PL.ongoing, false],
   ] as const) {
     const items = section.reminders.filter((r) => r.state === state);
     if (items.length === 0) continue;
@@ -304,13 +388,11 @@ function wantToGoBlock(section: WantToGoSection): string {
     for (const item of items) {
       rows.push(queueRow({
         // A reminder for tomorrow is about a time; one for later in the week
-        // is about a day. The gutter shows whichever the reader needs.
-        gutter: state === 'tomorrow' ? time(item.event.startsAt) : weekday(item.event.startsAt),
+        // is about a day; an exhibition already open is about neither, and its
+        // opening weekday is weeks behind.
+        gutter: queueGutter(item),
         title: item.event.title,
-        meta: [
-          item.event.venue?.name,
-          state === 'tomorrow' ? null : time(item.event.startsAt),
-        ].filter(Boolean).join(' \u00b7 '),
+        meta: queueMeta(item),
       }));
     }
   }
@@ -400,8 +482,39 @@ function sectionHeadingRow(section: BriefSection, top: boolean): string {
  * typed it — translating someone's "arthouse" would be inventing a name for
  * something they already named.
  */
-function sectionLabel(category: string): string {
+export function sectionLabel(category: string): string {
   return PL.categories[category as keyof typeof PL.categories] ?? category;
+}
+
+/** A run of picks under one optional subheading. */
+interface PickGroup {
+  label: string | null;
+  picks: Pick[];
+}
+
+/**
+ * The museums section, in its two halves (GOI-122).
+ *
+ * "Museums" is one word for two different things: a run you can drop in on any
+ * afternoon for the next six weeks, and a talk at seven on Thursday. Listed
+ * together they read as one undifferentiated schedule, and the reader has to
+ * check each row's date line to work out which kind of plan it is.
+ *
+ * Only where both halves are actually present — a section of nothing but runs
+ * gets no "Wystawy" heading, which would only repeat the section's own — and
+ * only for exhibitions: every other category is one shape already.
+ */
+export function splitByShape(section: BriefSection, picks: Pick[]): PickGroup[] {
+  if (section.category !== 'exhibition') return [{ label: null, picks }];
+  const runs = picks.filter((p) => isExhibition(p.lead));
+  const timed = picks.filter((p) => !isExhibition(p.lead));
+  if (runs.length === 0 || timed.length === 0) return [{ label: null, picks }];
+  // Runs first: they are the answer to "what is on at the museum", and the
+  // events are what is on *besides*.
+  return [
+    { label: PL.exhibitions, picks: runs },
+    { label: PL.events, picks: timed },
+  ];
 }
 
 function picksTable(sections: BriefSection[]): string {
@@ -410,15 +523,22 @@ function picksTable(sections: BriefSection[]): string {
 
   for (const section of sections) {
     // One card per title per day, however many venues and times it runs at
-    // (GOI-36). Already sorted by first showing.
-    const picks = groupPicks(section.events);
+    // (GOI-36) — or one per title across the window, where the category
+    // collapses that way (GOI-120). Already sorted by first showing.
+    const picks = groupPicks(section.events, collapsesAcrossDays(section.category));
 
     if (named && section.category) {
       rows.push(sectionHeadingRow(section, rows.length === 0));
     }
-    for (const pick of picks) {
-      // Only whatever lands first carries the rule that opens the list.
-      rows.push(pickRow(pick, rows.length === 0, section.detail, section.windowDays));
+    for (const group of splitByShape(section, picks)) {
+      if (group.label) rows.push(subHeadingRow(group.label, false));
+      for (const pick of group.picks) {
+        // Only whatever lands first carries the rule that opens the list.
+        rows.push(pickRow(
+          pick, rows.length === 0, section.detail, section.windowDays,
+          section.category === 'exhibition',
+        ));
+      }
     }
   }
 
@@ -569,8 +689,9 @@ export interface BriefContent {
   fallbackFrequency?: NewsletterFrequency;
   /** Greeting name; null greets without one. */
   recipientName?: string | null;
-  /** Ongoing festival for the "Also on" line, when there is one. */
-  festival?: Festival | null;
+  /** Festivals on now or opening soon, for the band under the queue. Chosen
+   *  by `briefFestivals`, which is where "soon" is defined. */
+  festivals?: Festival[];
   now?: Date;
 }
 
@@ -593,7 +714,10 @@ export function renderBriefHtml(content: BriefContent): string {
   const events = sections.flatMap((s) => s.events);
   // "N picks" counts cards, not showings: after GOI-36 a film at three
   // cinemas is one pick, and claiming three would contradict the list below.
-  const pickCount = sections.reduce((n, s) => n + groupPicks(s.events).length, 0);
+  const pickCount = sections.reduce(
+    (n, s) => n + groupPicks(s.events, collapsesAcrossDays(s.category)).length,
+    0,
+  );
   const venueCount = new Set(events.map((e) => e.venueId)).size;
   // The widest cadence present sets how many days the masthead names — a brief
   // carrying a monthly section does not cover today. With nothing on, fall
@@ -621,9 +745,7 @@ export function renderBriefHtml(content: BriefContent): string {
       `style="border-collapse:collapse"><tr><td style="border-top:2px solid ${C.divider};padding:24px 0;` +
       `font-family:${FONT};font-size:13px;line-height:1.5;color:${C.body}">` +
       `${escapeHtml(PL.nothing)}</td></tr></table>`;
-  // Shaped for a list, given one: the pipeline picks a single ongoing festival
-  // (`currentFestival`), so widening this is a change at the call site.
-  const festivals = content.festival ? [content.festival] : [];
+  const festivals = content.festivals ?? [];
 
   return (
     `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" ` +

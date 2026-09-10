@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Festival } from '@afisz/shared';
 import { festivalVenueMatches, festivalsAtVenues } from '@afisz/shared';
-import { currentFestival } from './newsletter.js';
+import { briefFestivals, FESTIVAL_LOOKAHEAD_DAYS } from './newsletter.js';
 
 // GOI-33: festivals scoped to the venues a reader actually chose. The curated
 // festival list and the venue list come from different places and disagree on
@@ -86,21 +86,33 @@ describe('festivalsAtVenues', () => {
   });
 });
 
-describe('currentFestival scoping (GOI-33)', () => {
-  it('falls back to any ongoing festival when no venues are given', () => {
+describe('briefFestivals scoping (GOI-33)', () => {
+  it('falls back to any festival on or opening soon when no venues are given', () => {
     // The settings preview has no subscriber, so scoping it to nothing would
-    // hide the festival line from the very screen meant to show it.
-    const unscoped = currentFestival();
+    // hide the festival band from the very screen meant to show it.
+    const unscoped = briefFestivals(7);
     // The seed list is date-driven; whatever it returns, asking again with a
     // venue that cannot match must not return the same thing.
-    if (unscoped) {
-      expect(currentFestival(['Definitely Not A Real Venue'])).toBeNull();
-    } else {
-      expect(unscoped).toBeNull();
-    }
+    expect(briefFestivals(7, ['Definitely Not A Real Venue'])).toEqual([]);
+    expect(unscoped.length).toBeLessThanOrEqual(3);
   });
 
-  it('returns null rather than an unrelated festival when scoped', () => {
-    expect(currentFestival(['Definitely Not A Real Venue'])).toBeNull();
+  it('returns nothing rather than an unrelated festival when scoped', () => {
+    expect(briefFestivals(7, ['Definitely Not A Real Venue'])).toEqual([]);
+  });
+
+  it('carries a festival that has not opened yet (GOI-110)', () => {
+    // The band used to show ongoing festivals only, so a festival eleven days
+    // out was absent from every issue until the one after it began — by which
+    // time the screenings worth booking are gone. Anchored to the seed list's
+    // own dates: whatever the calendar holds, a window reaching past a
+    // festival's start date must include it.
+    const soon = briefFestivals(1, undefined, new Date('2026-09-03T10:00:00Z'));
+    expect(soon.map((f) => f.id)).toContain('skrzyzowanie-kultur-2026');
+    // …and one whose start is beyond the lookahead is still left out.
+    const early = new Date('2026-09-03T10:00:00Z');
+    const wff = briefFestivals(1, undefined, early).find((f) => f.id === 'wff-2026');
+    expect(wff).toBeUndefined();
+    expect(FESTIVAL_LOOKAHEAD_DAYS).toBe(30);
   });
 });

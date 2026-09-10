@@ -134,6 +134,36 @@ describe('MyPage — newsletter end-to-end', () => {
    * visual change has to keep — one selected option at a time, and the
    * selection actually reaching the payload.
    */
+  /**
+   * GOI-115: one choice of three equal answers, so three cells of one size.
+   *
+   * They were sized by their own labels — "Email", "Drive" and "Both" came out
+   * three different widths, which reads as three options of different weight.
+   */
+  it('lays the delivery choice out as three equal cells', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+
+    expect(group.className).toContain('grid-cols-3');
+    const options = within(group).getAllByRole('radio');
+    expect(options.map((o) => o.textContent)).toEqual(['Email', 'Drive', 'Both']);
+    for (const option of options) expect(option.className).toContain('w-full');
+  });
+
+  it('still says what the chosen delivery does', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+
+    await user.click(within(group).getByRole('radio', { name: 'Both' }));
+    expect(await screen.findByText(/emailed, and filed as a pdf as well/i)).toBeInTheDocument();
+  });
+
   it('shows the cadence as a segmented control with exactly one option selected', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -541,6 +571,50 @@ describe('MyPage — newsletter end-to-end', () => {
     await user.selectOptions(cadence, 'monthly');
     expect(within(section).getByRole('button', { name: /set how far ahead museums looks/i }))
       .toHaveTextContent('Look ahead: 30 days');
+  });
+
+  /**
+   * GOI-119: the setup form has to say what its own settings mean.
+   *
+   * "Look ahead: 30 days" is a number with no sentence beside it — the reader
+   * asked outright what it meant — and the venue step never said that the list
+   * it shows is their own venues, or that ticking picks specific ones.
+   */
+  it('says what looking ahead does, collapsed and expanded', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/of museums in each issue/i)).toBeInTheDocument();
+
+    await user.click(
+      within(section).getByRole('button', { name: /set how far ahead museums looks/i }),
+    );
+    expect(within(section).getByText(/days of museums each issue lists/i)).toBeInTheDocument();
+  });
+
+  it('says the venues are the reader\u2019s own, and what ticking one does', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/these are the venues you follow/i)).toBeInTheDocument();
+    expect(within(section).getByText(/leave everything unticked/i)).toBeInTheDocument();
+  });
+
+  it('says where a category comes from', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/a category is a heading in the brief/i))
+      .toBeInTheDocument();
   });
 
   /**
