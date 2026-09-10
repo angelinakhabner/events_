@@ -263,13 +263,54 @@ const events = router({
       return { venues: await predefinedVenueOptions(ctx, input?.category) };
     }),
 
-  /** Upcoming screenings of one title across every venue, soonest first —
-   *  powers the "Nearest screenings" button on film cards. */
-  screenings: publicProcedure
-    .input(z.object({ title: z.string().min(1) }))
+  /**
+   * Search upcoming events by title, across venues (GOI-112).
+   *
+   * Across *every* venue, not the reader's own: the question being asked is
+   * "is this film on anywhere", and answering it from the follow list would
+   * report "no" for a film playing two streets away at a cinema they have not
+   * added. The results carry their venue, so what to do about that is the
+   * reader's to decide.
+   *
+   * Public, like `screenings` beside it: a logged-out reader can search. What
+   * needs an account is the half that happens when the answer is nothing —
+   * putting the title on a list so the next sweep can tell you.
+   */
+  search: publicProcedure
+    .input(z.object({
+      q: z.string().min(2).max(120),
+      limit: z.number().int().min(1).max(100).default(50),
+    }))
     .query(async ({ input }) => {
       if (!env.DATABASE_URL) return [];
-      return defaultEventStore.listUpcoming({ title: input.title, limit: 50 });
+      return defaultEventStore.listUpcoming({ titleQuery: input.q.trim(), limit: input.limit });
+    }),
+
+  /**
+   * Upcoming screenings of one title across every venue, soonest first —
+   * powers the "Nearest screenings" button on film cards.
+   *
+   * `match` picks how the title is read, because since GOI-112 two different
+   * kinds of string arrive here. A screening's own title is exact, and must
+   * stay exact: matching it loosely would fold two works whose names contain
+   * one another into one card. A *tracked* title is whatever the reader typed
+   * into a search that found nothing, so it is matched where it appears as
+   * whole words — otherwise the row that promises "it appears here as soon as
+   * it is announced" says "no upcoming screenings" for as long as the title
+   * is spelt any other way, which is for ever.
+   */
+  screenings: publicProcedure
+    .input(z.object({
+      title: z.string().min(1),
+      match: z.enum(['exact', 'words']).default('exact'),
+    }))
+    .query(async ({ input }) => {
+      if (!env.DATABASE_URL) return [];
+      return defaultEventStore.listUpcoming(
+        input.match === 'words'
+          ? { titleWords: input.title, limit: 50 }
+          : { title: input.title, limit: 50 },
+      );
     }),
 });
 
@@ -769,6 +810,9 @@ const my = router({
           },
           ctx.wantToGo,
           now,
+          // A tracked title that has just been announced belongs in the
+          // preview for the same reason it belongs in the issue (GOI-112).
+          { films: ctx.films, events: defaultEventStore },
         );
         const brief = {
           sections,
