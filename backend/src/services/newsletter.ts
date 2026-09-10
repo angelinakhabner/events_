@@ -576,7 +576,13 @@ async function announcedTrackedTitles(
   const found = await Promise.all(
     films.map((f) =>
       tracked.events
-        .listUpcoming({ title: f.title, until, limit: TRACKED_TITLE_LIMIT })
+        // `titleWords`, not `title`: the string on the list is whatever the
+        // reader typed into a search that found nothing, so an exact re-check
+        // would go on answering "no" for a title spelt any other way —
+        // "chungking" never equals "Chungking Express", and the one route
+        // that puts a title on the list before a venue has announced it is
+        // the one route whose titles it could never match.
+        .listUpcoming({ titleWords: f.title, until, limit: TRACKED_TITLE_LIMIT })
         .catch(() => [] as Event[]),
     ),
   );

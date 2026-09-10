@@ -226,4 +226,32 @@ describe('WantToGoSection — a saved title shows where it is playing', () => {
     // The row names the thing you saved as a film, not as its venue's category.
     expect(screen.getByText('film')).toBeInTheDocument();
   });
+
+  /**
+   * GOI-112. A tracked title is the one string on this list a venue did not
+   * write: since the cross-venue search it can be what the reader typed into a
+   * box that found nothing. Looked up exactly, "chungking" never equals
+   * "Chungking Express", so the row would go on saying "no upcoming
+   * screenings" about a film that opened weeks ago — which is the row's entire
+   * job, and the promise the search makes when it puts the title there.
+   */
+  it('looks a tracked title up as words, and a saved event exactly', () => {
+    entriesMock.mockReturnValue({ data: [makeEntry()], isLoading: false, error: null });
+    filmsMock.mockReturnValue({
+      data: [makeFilm({ title: 'chungking' })],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<WantToGoSection />);
+
+    expect(screeningsMock).toHaveBeenCalledWith(
+      { title: 'chungking', match: 'words' },
+      expect.anything(),
+    );
+    expect(screeningsMock).toHaveBeenCalledWith(
+      { title: 'Ojczyzna', match: 'exact' },
+      expect.anything(),
+    );
+  });
 });
