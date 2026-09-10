@@ -17,7 +17,8 @@ import { listFestivals } from '../data/festivals.js';
 import {
   festivalsAtVenues, venueSchedule,
   venueFilterStatus, venueSlug, MAX_DRIVE_FOLDER_NAME,
-  VENUE_SUGGEST_MAX_CANDIDATES, VENUE_SUGGEST_PER_HOUR,
+  VENUE_SEARCH_MAX_WINDOW_DAYS, VENUE_SUGGEST_MAX_CANDIDATES,
+  VENUE_SUGGEST_MAX_TYPES, VENUE_SUGGEST_PER_HOUR,
   type Category, type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
   type VenueFilterOption,
 } from '@afisz/shared';
@@ -81,6 +82,21 @@ const venues = router({
 });
 
 const dayKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** A calendar day a search may name: `dayKeySchema`'s shape, plus being a real
+ *  date. '2026-02-31' matches the pattern and is not a day. */
+const searchDaySchema = dayKeySchema.refine(
+  (v) => new Date(`${v}T00:00:00.000Z`).toISOString().slice(0, 10) === v,
+  'That is not a real date.',
+);
+
+/** Days from one ISO day to another (a one-day window is 0). Both ends are
+ *  midnight UTC, so this is arithmetic rather than a DST guess. */
+export function daysBetween(from: string, until: string): number {
+  return Math.round(
+    (Date.parse(`${until}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
+  );
+}
 
 /**
  * An inclusive Europe/Warsaw calendar-day window (GOI-88) — what the day
@@ -600,12 +616,20 @@ const my = router({
       }),
 
     /**
-     * "Propose me similar venues in city X, like the ones in folder Y, of
-     * type Z" (GOI-86).
+     * "Find me jazz concerts in Thessaloniki tomorrow" (GOI-86).
+     *
+     * A search is a city plus any of: what they are after in their own words,
+     * the venue types they want, the dates they will be there, and a folder of
+     * their own venues to match the character of. Only the city is required —
+     * every other field narrows an ask that is already answerable without it.
      *
      * A mutation rather than a query because it costs a model call: queries
      * are refetched on focus, on reconnect and on cache invalidation, and none
      * of those are moments the user asked to spend money.
+     *
+     * The dates are deliberately *not* trusted to the model, which cannot know
+     * what is on tomorrow. They travel with the answer so the caller can match
+     * them against each candidate's real programme, which the probe reads.
      *
      * Suggestions are returned, never subscribed. Adding one goes through the
      * ordinary `add` path, so it is probed like any pasted URL and a
@@ -614,21 +638,52 @@ const my = router({
      */
     suggestSimilar: userProcedure
       .input(
-        z.object({
-          /** Folder whose venues are the taste exemplars. */
-          listId: z.string().min(1),
-          /** Target city, as typed. */
-          city: z.string().trim().min(1).max(80),
-          /** Optional narrowing ("Museums"). Free text — the ticket's example
-           *  is a phrase, not an enum. */
-          type: z.string().trim().max(60).optional(),
-          limit: z
-            .number()
-            .int()
-            .min(1)
-            .max(VENUE_SUGGEST_MAX_CANDIDATES)
-            .default(VENUE_SUGGEST_MAX_CANDIDATES),
-        }),
+        z
+          .object({
+            /** Folder whose venues are the taste exemplars. Optional: a city
+             *  you have never been to has nothing to match against, and that
+             *  is a normal search rather than a broken one. */
+            listId: z.string().min(1).optional(),
+            /** Target city, as typed. */
+            city: z.string().trim().min(1).max(80),
+            /** What they are after: "jazz concerts". Free text — a genre is
+             *  not one of our categories, and it is the sharpest thing most
+             *  people can say about what they want. */
+            interest: z.string().trim().max(120).optional(),
+            /** Venue types wanted, as category labels. Empty means anything. */
+            types: z
+              .array(z.string().trim().min(1).max(40))
+              .max(VENUE_SUGGEST_MAX_TYPES)
+              .optional(),
+            /** Inclusive date window, `YYYY-MM-DD`. Either end may stand
+             *  alone: "from Friday" and "up to the 20th" are both real asks. */
+            from: searchDaySchema.optional(),
+            until: searchDaySchema.optional(),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(VENUE_SUGGEST_MAX_CANDIDATES)
+              .default(VENUE_SUGGEST_MAX_CANDIDATES),
+          })
+          .superRefine((input, ctx) => {
+            if (!input.from || !input.until) return;
+            if (input.until < input.from) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['until'],
+                message: 'The end of the window is before its start.',
+              });
+              return;
+            }
+            if (daysBetween(input.from, input.until) > VENUE_SEARCH_MAX_WINDOW_DAYS) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['until'],
+                message: `Dates can span at most ${VENUE_SEARCH_MAX_WINDOW_DAYS} days — few venues publish further ahead than that.`,
+              });
+            }
+          }),
       )
       .mutation(async ({ ctx, input }) => {
         // GOI-92: a search is a model call, and every candidate it returns is
@@ -641,13 +696,11 @@ const my = router({
           });
         }
 
-        const like = await ctx.userVenues.list(ctx.user.id, input.listId);
-        if (like.length === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'That folder has no venues yet — add a couple first, so there is something to match against.',
-          });
-        }
+        // An empty folder is not an error any more: the city, the interest and
+        // the dates are a search on their own, and refusing one because the
+        // *optional* taste signal is empty would be refusing the ask that was
+        // actually made.
+        const like = input.listId ? await ctx.userVenues.list(ctx.user.id, input.listId) : [];
         // Everything the user follows, not just this folder: a venue already
         // in another folder is not a useful suggestion either.
         const followed = await ctx.userVenues.listAll(ctx.user.id);
@@ -657,7 +710,10 @@ const my = router({
           suggestions = await suggestSimilarVenues({
             like: like.map((v) => ({ name: v.name, city: v.city, category: v.category, tags: v.tags })),
             city: input.city,
-            type: input.type,
+            interest: input.interest,
+            types: input.types,
+            from: input.from,
+            until: input.until,
             limit: input.limit,
           });
         } catch (e) {
@@ -672,7 +728,10 @@ const my = router({
 
         return {
           city: input.city,
-          type: input.type ?? null,
+          interest: input.interest ?? null,
+          types: input.types ?? [],
+          from: input.from ?? null,
+          until: input.until ?? null,
           basedOn: like.length,
           suggestions: dedupeSuggestions(
             suggestions,
