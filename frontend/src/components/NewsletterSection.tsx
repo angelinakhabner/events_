@@ -400,7 +400,7 @@ function NewsletterForm({
                 type="text"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
-                placeholder="Ania"
+                placeholder="First name"
                 className="field"
               />
               <p className="mt-1.5 text-xs text-faint">
