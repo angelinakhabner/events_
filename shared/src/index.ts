@@ -864,6 +864,20 @@ export const VENUE_SUGGEST_PER_HOUR = 5;
  *  list of eight resolves quickly, few enough that one search is not a burst
  *  of fetches at some venue's small server. */
 export const VENUE_SUGGEST_PROBE_CONCURRENCY = 4;
+/** How many venue types one search may name. Five is the whole category
+ *  vocabulary minus 'other', so the cap can only ever be hit by asking for
+ *  everything — at which point naming none of them says the same thing. */
+export const VENUE_SUGGEST_MAX_TYPES = 5;
+/**
+ * The longest date window a discovery search accepts, in days.
+ *
+ * The window is a real filter, not decoration: a candidate's programme is read
+ * and its entries are matched against these dates. Past about two months that
+ * stops meaning anything — few venues publish that far ahead, so every
+ * candidate would come back "nothing in your dates" for want of listings
+ * rather than for want of events.
+ */
+export const VENUE_SEARCH_MAX_WINDOW_DAYS = 62;
 
 // ─── Venue filter row (GOI-76) ───────────────────────────────────────────────
 

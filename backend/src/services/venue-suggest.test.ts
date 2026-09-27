@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  buildPrompt, dedupe, describeExemplars, suggestSimilarVenues, type SuggestedVenue,
+  buildPrompt, dedupe, describeExemplars, describeWindow, suggestSimilarVenues,
+  type SuggestedVenue,
 } from './venue-suggest.js';
 
 const exemplars = [
@@ -36,17 +37,70 @@ describe('describeExemplars', () => {
   });
 });
 
+describe('describeWindow', () => {
+  // The weekday is the part that changes the answer: "worth going to on a
+  // Tuesday" is a different question from the same date on a Saturday.
+  it('names the weekday, not just the date', () => {
+    expect(describeWindow('2026-09-11', '2026-09-11')).toBe('Fri, 11 Sep 2026 (one day)');
+  });
+
+  it('reads as a range when the two ends differ', () => {
+    expect(describeWindow('2026-09-11', '2026-09-14')).toBe('Fri, 11 Sep 2026 to Mon, 14 Sep 2026');
+  });
+
+  it('lets either end stand alone', () => {
+    expect(describeWindow('2026-09-11')).toBe('Fri, 11 Sep 2026 onwards');
+    expect(describeWindow(undefined, '2026-09-14')).toBe('up to and including Mon, 14 Sep 2026');
+  });
+
+  it('says plainly when no dates were given', () => {
+    expect(describeWindow()).toMatch(/any time/);
+  });
+});
+
 describe('buildPrompt', () => {
-  it('carries the target city, the type and the exemplars', () => {
-    const p = buildPrompt({ like: exemplars, city: 'Berlin', type: 'Museums', limit: 4 });
-    expect(p).toContain('Target city: Berlin');
-    expect(p).toContain('Type wanted: Museums');
-    expect(p).toContain('POLIN');
+  it('carries the city, the dates, the interest and the types', () => {
+    const p = buildPrompt({
+      city: 'Thessaloniki',
+      interest: 'jazz concerts',
+      types: ['Music'],
+      from: '2026-09-11',
+      until: '2026-09-11',
+      limit: 4,
+    });
+    expect(p).toContain('Target city: Thessaloniki');
+    expect(p).toContain('Dates: Fri, 11 Sep 2026 (one day)');
+    expect(p).toContain('Looking for: jazz concerts');
+    expect(p).toContain('Venue types wanted: Music');
     expect(p).toContain('up to 4 venues');
   });
 
-  it('falls back to matching the examples when no type is given', () => {
-    expect(buildPrompt({ like: exemplars, city: 'Berlin' })).toContain('anything matching the examples');
+  it('carries the exemplars when a folder was matched against', () => {
+    const p = buildPrompt({ like: exemplars, city: 'Berlin' });
+    expect(p).toContain('examples of their taste');
+    expect(p).toContain('POLIN');
+  });
+
+  // A city you have never been to has nothing to match against, and that is a
+  // normal search rather than a degraded one.
+  it('says there are no examples rather than showing an empty list', () => {
+    const p = buildPrompt({ city: 'Berlin' });
+    expect(p).toContain('No example venues were given');
+    expect(p).not.toContain('(the folder is empty)');
+  });
+
+  it('falls back to an open ask when no interest or type is given', () => {
+    const p = buildPrompt({ like: exemplars, city: 'Berlin' });
+    expect(p).toContain('Looking for: anything worth going to');
+    expect(p).toContain('Venue types wanted: any');
+    expect(p).toContain('Dates: any time');
+  });
+
+  // The model cannot know what is on tomorrow; the probe reads that. A prompt
+  // that asked for listings would be asking to be lied to.
+  it('never asks the model for the programme itself', () => {
+    const p = buildPrompt({ city: 'Berlin', from: '2026-09-11', until: '2026-09-12' });
+    expect(p).not.toMatch(/what.s on|listings? for|events on/i);
   });
 });
 

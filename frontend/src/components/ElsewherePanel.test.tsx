@@ -5,17 +5,25 @@ import {
   ElsewherePanel,
   candidateNote,
   candidateStatus,
+  eventsInWindow,
+  isoDay,
+  presetWindow,
   probeFacts,
   probeWithConcurrency,
+  windowNote,
+  windowProblem,
 } from './ElsewherePanel';
 
 /**
  * "Elsewhere" discovery (GOI-92).
  *
- * The thing worth testing here is not the form — it is the promise the form
- * makes: every candidate says whether we can actually read it, a candidate we
- * can't read is still addable *with its reason*, and nothing on this screen
- * ever spends money on a browser render.
+ * The thing worth testing here is not the form — it is the promises the form
+ * makes: that the ask someone actually has ("jazz concerts in Thessaloniki
+ * tomorrow") can be expressed, that every candidate says whether we can
+ * actually read it, that the dates are checked against what we read rather
+ * than asserted, that a candidate we can't read is still addable *with its
+ * reason*, and that nothing on this screen ever spends money on a browser
+ * render.
  */
 
 let suggestState: Record<string, unknown>;
@@ -77,6 +85,13 @@ const ok: ProbeOutcome = {
   sampleEvents: [],
   shared: false,
 };
+/** A readable venue whose programme we could sample — the case the date
+ *  window is actually checked against. */
+const withProgramme = (startsAt: (string | null)[]): ProbeOutcome => ({
+  ...(ok as Extract<ProbeOutcome, { status: 'success' }>),
+  sampleEvents: startsAt.map((at, i) => ({ title: `Gig ${i + 1}`, startsAt: at })),
+});
+
 const needsPaid: ProbeOutcome = {
   status: 'needs_decision',
   normalizedUrl: volksbuehne.url,
@@ -146,11 +161,14 @@ describe('the trigger', () => {
     expect(screen.queryByLabelText(/^city$/i)).not.toBeInTheDocument();
   });
 
-  it('opens to city, venue type, match against and destination', () => {
+  it('opens to the whole ask: city, interest, types, dates, folder, destination', () => {
     setup();
     open();
     expect(screen.getByLabelText(/^city$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/venue type/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/looking for/i)).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /venue types/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^from$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^until$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/match against/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/destination/i)).toBeInTheDocument();
   });
@@ -169,11 +187,13 @@ describe('the trigger', () => {
    * no option shows the first one), so the form looked complete and the button
    * was disabled by a condition the reader could not satisfy.
    */
-  it('activates once the folders arrive, having mounted without any', async () => {
+  it('follows the folder you are in once the folders arrive', () => {
     const { loaded } = setupLoading();
     open();
     fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
+    // The button no longer waits on a folder — the search stands on its own —
+    // but the control must still catch up with the tab it was opened from.
+    expect(screen.getByRole('button', { name: /^propose$/i })).toBeEnabled();
 
     loaded();
 
@@ -204,14 +224,22 @@ describe('the trigger', () => {
     expect(screen.getByLabelText(/match against/i)).toHaveValue('folder-2');
   });
 
-  /** The one case where a dead button is right — and it says why. */
-  it('explains itself when there is no folder to match against', () => {
+  /**
+   * GOI-116 ended with a dead button being *explained* here: with no folder,
+   * there was no taste to search from. There is now — a city, dates and an
+   * interest are a search — so the button works instead of apologising.
+   */
+  it('searches with no folders at all', async () => {
     render(<ElsewherePanel folders={[]} activeFolderId={null} onAdded={vi.fn()} />);
     open();
     fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    expect(screen.getByRole('button', { name: /^propose$/i })).toBeEnabled();
 
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
-    expect(screen.getByText(/add a venue to a folder first/i)).toBeInTheDocument();
+    suggestMutateAsync.mockResolvedValue({ suggestions: [] });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+    });
+    expect(suggestMutateAsync).toHaveBeenCalledWith({ city: 'Berlin', limit: 8 });
   });
 
   it('will not search without a city', () => {
@@ -229,16 +257,63 @@ describe('the trigger', () => {
     expect(screen.getByRole('option', { name: /new folder: berlin/i })).toBeInTheDocument();
   });
 
-  // Venue *type* must come from the categories the rest of the tab uses —
+  // Venue *types* must come from the categories the rest of the tab uses —
   // a parallel vocabulary here would produce folders nothing else can filter.
-  it('offers the existing category vocabulary as the venue type', () => {
+  it('offers the existing category vocabulary as the venue types', () => {
     setup();
     open();
-    const type = screen.getByLabelText(/venue type/i);
     for (const label of ['Cinema', 'Theatre', 'Museums', 'Comedy', 'Music']) {
-      expect(screen.getByRole('option', { name: label })).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: label })).not.toBeChecked();
     }
-    expect(type).toHaveValue('');
+  });
+
+  // Someone after live music will take a jazz club *and* a concert hall; the
+  // old one-of-five dropdown made them choose.
+  it('takes several types at once', () => {
+    setup();
+    open();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Music' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Theatre' }));
+    expect(screen.getByRole('checkbox', { name: 'Music' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Theatre' })).toBeChecked();
+  });
+
+  it('will not search a window that ends before it starts', () => {
+    setup();
+    open();
+    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    fireEvent.change(screen.getByLabelText(/^from$/i), { target: { value: '2026-09-14' } });
+    fireEvent.change(screen.getByLabelText(/^until$/i), { target: { value: '2026-09-11' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/before its start/i);
+    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
+  });
+
+  // "Tomorrow" is the ask this panel exists for; making someone type two dates
+  // to say it would be the interface arguing with the sentence.
+  it('fills both dates from one preset', () => {
+    setup();
+    open();
+    fireEvent.click(screen.getByRole('button', { name: /^tomorrow$/i }));
+    const tomorrow = presetWindow('tomorrow').from;
+    expect(screen.getByLabelText(/^from$/i)).toHaveValue(tomorrow);
+    expect(screen.getByLabelText(/^until$/i)).toHaveValue(tomorrow);
+    expect(screen.getByRole('button', { name: /^tomorrow$/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clears the dates again', () => {
+    setup();
+    open();
+    fireEvent.click(screen.getByRole('button', { name: /^tomorrow$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^any dates$/i }));
+    expect(screen.getByLabelText(/^from$/i)).toHaveValue('');
+    expect(screen.getByLabelText(/^until$/i)).toHaveValue('');
+  });
+
+  // A city you have never been to has nothing to match against.
+  it('can search without matching a folder at all', () => {
+    setup();
+    open();
+    expect(screen.getByRole('option', { name: /nothing — just the search/i })).toBeInTheDocument();
   });
 });
 
@@ -250,20 +325,49 @@ describe('searching and probing', () => {
     );
   });
 
-  it('asks with the folder, city, type and the candidate cap', async () => {
+  it('asks with the whole sentence: city, interest, types, dates, folder, cap', async () => {
     setup();
     open();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
-    fireEvent.change(screen.getByLabelText(/venue type/i), { target: { value: 'theatre' } });
+    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Thessaloniki' } });
+    fireEvent.change(screen.getByLabelText(/looking for/i), { target: { value: 'jazz concerts' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Music' }));
+    fireEvent.click(screen.getByRole('button', { name: /^tomorrow$/i }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
     });
+    const tomorrow = presetWindow('tomorrow').from;
+    expect(suggestMutateAsync).toHaveBeenCalledWith({
+      listId: 'folder-1',
+      city: 'Thessaloniki',
+      interest: 'jazz concerts',
+      types: ['Music'],
+      from: tomorrow,
+      until: tomorrow,
+      limit: 8,
+    });
+  });
+
+  // Empty fields are omitted rather than sent as '' — the server reads an
+  // absent field as "not narrowed", and an empty string as a bad value.
+  it('leaves out what was not filled in', async () => {
+    setup();
+    await search();
     expect(suggestMutateAsync).toHaveBeenCalledWith({
       listId: 'folder-1',
       city: 'Berlin',
-      type: 'Theatre',
       limit: 8,
     });
+  });
+
+  it('drops the folder from the ask when none is matched against', async () => {
+    setup();
+    open();
+    fireEvent.change(screen.getByLabelText(/match against/i), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+    });
+    expect(suggestMutateAsync).toHaveBeenCalledWith({ city: 'Berlin', limit: 8 });
   });
 
   it('probes every candidate through the existing checker', async () => {
@@ -351,6 +455,161 @@ describe('searching and probing', () => {
     setup();
     await search();
     expect(screen.getByText(/Nothing came back/)).toBeInTheDocument();
+  });
+});
+
+describe('the dates are checked, not claimed', () => {
+  beforeEach(() => {
+    suggestMutateAsync.mockResolvedValue({ basedOn: 3, suggestions: [bahnhof, volksbuehne] });
+    suggestState = { ...idle, isSuccess: true, data: { basedOn: 3, suggestions: [bahnhof, volksbuehne] } };
+  });
+
+  /** Search Berlin for a fixed two-day window. */
+  async function searchDates() {
+    open();
+    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    fireEvent.change(screen.getByLabelText(/^from$/i), { target: { value: '2026-09-11' } });
+    fireEvent.change(screen.getByLabelText(/^until$/i), { target: { value: '2026-09-12' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+    });
+  }
+
+  it('names what the venue has on in the window, from its own programme', async () => {
+    checkUrl.mockImplementation(({ url }: { url: string }) =>
+      Promise.resolve(
+        url === bahnhof.url
+          ? withProgramme(['2026-09-11T19:00:00.000Z', '2026-10-02T19:00:00.000Z'])
+          : blocked,
+      ),
+    );
+    setup();
+    await searchDates();
+    await waitFor(() =>
+      expect(screen.getByTestId(`dates-${bahnhof.url}`)).toHaveTextContent('Gig 1'),
+    );
+    // The October entry is outside the window and must not be counted.
+    expect(screen.getByTestId(`dates-${bahnhof.url}`)).not.toHaveTextContent('Gig 2');
+  });
+
+  // A probe samples the first few entries it finds. Saying "nothing on" would
+  // be a claim about the venue; what we can honestly report is what we read.
+  it('says nothing matched *among what we sampled*, not that the venue is dark', async () => {
+    checkUrl.mockResolvedValue(withProgramme(['2026-10-02T19:00:00.000Z']));
+    setup();
+    await searchDates();
+    await waitFor(() =>
+      expect(screen.getByTestId(`dates-${bahnhof.url}`)).toHaveTextContent(/listings we sampled/i),
+    );
+  });
+
+  it('counts how many candidates had something on', async () => {
+    checkUrl.mockImplementation(({ url }: { url: string }) =>
+      Promise.resolve(
+        url === bahnhof.url ? withProgramme(['2026-09-12T19:00:00.000Z']) : withProgramme([]),
+      ),
+    );
+    setup();
+    await searchDates();
+    await waitFor(() =>
+      expect(screen.getByTestId('window-summary')).toHaveTextContent('1 of 2'),
+    );
+  });
+
+  it('says nothing about dates when none were given', async () => {
+    checkUrl.mockResolvedValue(withProgramme(['2026-09-11T19:00:00.000Z']));
+    setup();
+    await search();
+    await waitFor(() => expect(checkUrl).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId(`dates-${bahnhof.url}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('window-summary')).not.toBeInTheDocument();
+  });
+});
+
+describe('eventsInWindow / windowNote', () => {
+  const window = { from: '2026-09-11', until: '2026-09-12' };
+
+  it('keeps the entries inside the window, inclusive of both ends', () => {
+    const outcome = withProgramme([
+      '2026-09-10T20:00:00.000Z',
+      '2026-09-11T20:00:00.000Z',
+      '2026-09-12T20:00:00.000Z',
+      '2026-09-13T20:00:00.000Z',
+    ]);
+    expect(eventsInWindow(outcome, window.from, window.until).map((e) => e.title)).toEqual([
+      'Gig 2', 'Gig 3',
+    ]);
+  });
+
+  // A permanent exhibition is not "on" on any particular day; counting undated
+  // entries would make every museum a hit for every window.
+  it('does not count undated entries as matches', () => {
+    expect(eventsInWindow(withProgramme([null, null]), window.from, window.until)).toEqual([]);
+  });
+
+  it('takes an open-ended window from either side', () => {
+    const outcome = withProgramme(['2026-09-10T20:00:00.000Z', '2026-09-13T20:00:00.000Z']);
+    expect(eventsInWindow(outcome, '2026-09-12', '').map((e) => e.title)).toEqual(['Gig 2']);
+    expect(eventsInWindow(outcome, '', '2026-09-12').map((e) => e.title)).toEqual(['Gig 1']);
+  });
+
+  it('has nothing to say about a venue we could not read', () => {
+    expect(eventsInWindow(blocked, window.from, window.until)).toEqual([]);
+    expect(windowNote(blocked, window.from, window.until)).toBeNull();
+    expect(windowNote(undefined, window.from, window.until)).toBeNull();
+  });
+
+  it('distinguishes "read nothing dated" from "read nothing matching"', () => {
+    expect(windowNote(withProgramme([]), window.from, window.until)).toMatch(/no dated listing/i);
+    expect(windowNote(withProgramme(['2026-10-02T20:00:00.000Z']), window.from, window.until))
+      .toMatch(/nothing in your dates/i);
+  });
+
+  it('caps the titles it names and counts the rest', () => {
+    const note = windowNote(
+      withProgramme([
+        '2026-09-11T18:00:00.000Z', '2026-09-11T20:00:00.000Z',
+        '2026-09-12T18:00:00.000Z', '2026-09-12T20:00:00.000Z',
+      ]),
+      window.from,
+      window.until,
+    )!;
+    expect(note).toMatch(/Gig 3/);
+    expect(note).not.toMatch(/Gig 4/);
+    expect(note).toMatch(/\+1 more/);
+  });
+});
+
+describe('presetWindow / windowProblem', () => {
+  it('reads "tomorrow" off the user\'s own calendar, not UTC', () => {
+    // 23:30 local on the 11th: `toISOString()` would already say the 12th.
+    const lateEvening = new Date(2026, 8, 11, 23, 30);
+    expect(presetWindow('tomorrow', lateEvening)).toEqual({ from: '2026-09-12', until: '2026-09-12' });
+    expect(isoDay(lateEvening)).toBe('2026-09-11');
+  });
+
+  it('runs "next 7 days" from today inclusive', () => {
+    expect(presetWindow('week', new Date(2026, 8, 11))).toEqual({
+      from: '2026-09-11', until: '2026-09-17',
+    });
+  });
+
+  // Never the weekend just gone: on a weekday it is the one still to come, and
+  // inside a weekend it is the part that is left.
+  it.each([
+    ['a Wednesday', new Date(2026, 8, 9), { from: '2026-09-12', until: '2026-09-13' }],
+    ['a Saturday', new Date(2026, 8, 12), { from: '2026-09-12', until: '2026-09-13' }],
+    ['a Sunday', new Date(2026, 8, 13), { from: '2026-09-13', until: '2026-09-13' }],
+  ])('resolves "this weekend" on %s', (_name, today, expected) => {
+    expect(presetWindow('weekend', today)).toEqual(expected);
+  });
+
+  it('holds a backwards or over-long window, and passes everything else', () => {
+    expect(windowProblem('2026-09-14', '2026-09-11')).toMatch(/before its start/i);
+    expect(windowProblem('2026-01-01', '2026-06-01')).toMatch(/at most/i);
+    expect(windowProblem('2026-09-11', '2026-09-11')).toBeNull();
+    expect(windowProblem('', '2026-09-11')).toBeNull();
+    expect(windowProblem('2026-09-11', '')).toBeNull();
   });
 });
 
