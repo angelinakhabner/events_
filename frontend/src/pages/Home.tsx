@@ -237,13 +237,14 @@ export function HomePage() {
 
 /**
  * The full-bleed black band: "CO SIĘ DZIEJE" — Polish for "what's going on" —
- * stacked in Anton, with the middle line in red and the last one drawn as an
+ * set in Anton with the middle word in red and the last one drawn as an
  * outline. It is the app's only piece of poster-scale type, and it is Polish
  * on purpose: the wordmark and this headline are the brand, the rest of the
  * interface stays in English.
  */
 /**
- * The masthead, on one line rather than three (GOI-114).
+ * The masthead, on one line rather than three (GOI-114), and on desktop only
+ * (GOI-127).
  *
  * Three stacked lines at up to 110px, over a paragraph, put the intro at
  * something near half the screen before the festival banner underneath it had
@@ -257,25 +258,39 @@ export function HomePage() {
  * Sized against the viewport's *height*, not its width, because the promise
  * being kept is about how much of the screen this takes. `vw` says nothing
  * about that on a short laptop screen, which is exactly where it was worst.
+ *
+ * On a phone even one line is a line too many. A masthead earns its space by
+ * being the thing you see first on a screen that has room for more than one
+ * thing; at 393px it is instead the only thing, and it says what the wordmark
+ * two rows above it has already said. So below `md` the band goes and the page
+ * opens on the logo and then the festival — which is what was asked for — and
+ * the filters come up about 110px sooner.
+ *
+ * The heading itself stays. A page needs an `h1` whether or not it is drawn,
+ * and dropping the element rather than hiding it would leave the home page
+ * with none for a screen reader or a crawler on a phone-width viewport.
  */
 function Hero() {
   return (
-    <div className="bg-ink text-white page-x py-5 md:py-7">
-      <div className="max-w-[900px]">
-        <h1
-          className="font-display leading-[1.02] tracking-[0.5px] md:tracking-[1px] m-0"
-          style={{ fontSize: 'clamp(30px, min(7vw, 8vh), 68px)' }}
-        >
-          CO <span className="text-accent">SIĘ</span>{' '}
-          {/* Stroked in its own colour: the letterforms thicken rather than
-              hollow out, which is what gave the third line its weight. */}
-          <span style={{ WebkitTextStroke: '2px #fff' }}>DZIEJE</span>
-        </h1>
-        <p className="mt-1.5 md:mt-2 max-w-[520px] text-xs md:text-sm font-medium text-[#c9c4bc]">
-          Cinema, theatre, comedy, music and museums across Warsaw — one listing,
-          refreshed every few minutes.
-        </p>
+    <>
+      <h1 className="sr-only md:hidden">Co się dzieje &mdash; what&rsquo;s on in Warsaw</h1>
+      <div className="hidden md:block bg-ink text-white page-x py-7">
+        <div className="max-w-[900px]">
+          <h1
+            className="font-display leading-[1.02] tracking-[1px] m-0"
+            style={{ fontSize: 'clamp(30px, min(7vw, 8vh), 68px)' }}
+          >
+            CO <span className="text-accent">SIĘ</span>{' '}
+            {/* Stroked in its own colour: the letterforms thicken rather than
+                hollow out, which is what gave the third line its weight. */}
+            <span style={{ WebkitTextStroke: '2px #fff' }}>DZIEJE</span>
+          </h1>
+          <p className="mt-2 max-w-[520px] text-sm font-medium text-[#c9c4bc]">
+            Cinema, theatre, comedy, music and museums across Warsaw — one listing,
+            refreshed every few minutes.
+          </p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
