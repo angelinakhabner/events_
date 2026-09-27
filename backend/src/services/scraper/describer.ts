@@ -1,57 +1,103 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../../config.js';
 import { MODEL } from './extractor.js';
-import type { DescriptionClient, DescriptionResult } from './enricher.js';
+import type { DescribeInput, DescriptionClient, DescriptionResult } from './enricher.js';
+
+/** Two sentences is comfortably under this even with a search's tool calls
+ *  in the reply. The ceiling exists to bound the bill, not to shape the
+ *  answer. */
+const MAX_TOKENS = 1_500;
+
+/** Searches one show may spend. One usually finds it; the second is for a
+ *  title that needs the venue or the director beside it to disambiguate. */
+const MAX_SEARCHES = 2;
+
+/** `pause_turn` continuations before giving up on a show (it is retried next
+ *  run, not lost). */
+const MAX_CONTINUATIONS = 2;
+
+const SYSTEM = `You write event descriptions for an English-language listings app about cultural life in Poland.
+
+You are given what is known about one event: its title, the venue, the venue's own listing note, and usually the text of the event's page. These are usually in Polish, sometimes in another language.
+
+Reply with exactly two lines and nothing else:
+
+CATEGORY: <one of: exhibition, guided_tour, workshop, screening, lecture, concert, performance, festival, other>
+DESCRIPTION: <in English: what the work itself is about>
+
+Rules:
+- Always write the description in English, whatever language the sources are in. Translate; never copy non-English sentences. Keep proper names (titles, people, places) as they are.
+- Describe the work — what the film, play, concert or exhibition is about, and who made it. At most 2 sentences, ideally 1.
+- Never describe logistics: the stage or room, subtitles or surtitles, the language it is performed in, ticket prices, discounts, booking, opening hours, accessibility, the address. "Performance on the Main Stage with English surtitles" is not a description.
+- If the material you were given does not say what the work is about, search the web for it (the title with the venue, or the work itself — a film's synopsis, a play's premise, an artist's show) and describe it from what you find. Use only results that are clearly about this same work.
+- If you still cannot tell what it is about, write: DESCRIPTION: NONE. Never invent.
+- CATEGORY must be one of the listed values exactly. Use "other" if unsure.`;
 
 /**
- * The model call behind detail-page enrichment (GOI-79).
+ * The server-side web search tool (GOI-131).
+ *
+ * Cast because the pinned SDK predates server tools in its types; the API
+ * itself takes the block as written, and the rest of this file only ever
+ * reads the reply's text blocks, which the old types do describe.
+ */
+const WEB_SEARCH = {
+  type: 'web_search_20260209',
+  name: 'web_search',
+  max_uses: MAX_SEARCHES,
+} as unknown as Anthropic.Tool;
+
+/**
+ * Writes one show's description (GOI-79, then GOI-130 / GOI-131).
  *
  * Deliberately not the event extractor: that one is a forced tool call
  * returning an array of events with a dozen fields, sized for a whole listing
- * page. This reads one page and returns one or two sentences, so it wants a
- * small `max_tokens` and plain text — and it reports token usage back, which
- * the event extractor's interface doesn't, because the run has to record what
- * enrichment cost.
+ * page. This reads one show and returns one or two sentences — in English,
+ * about the work, searched for when the venue's own words do not say — and it
+ * reports token usage back, because the run has to record what enrichment
+ * cost.
  */
-
-/** Two sentences of Polish is comfortably under this. The ceiling exists to
- *  bound the bill, not to shape the answer. */
-const MAX_TOKENS = 300;
-
-const SYSTEM = `You describe cultural events for a listings app.
-
-You are given the readable text of a single event's page. Reply with exactly
-two lines and nothing else:
-
-CATEGORY: <one of: exhibition, guided_tour, workshop, screening, lecture, concert, performance, festival, other>
-DESCRIPTION: <what the event IS — the play, film, concert or exhibition itself>
-
-Rules:
-- Answer the description in the same language as the page.
-- At most 2 sentences, ideally 1.
-- Describe the work, not the logistics. Never mention ticket prices, booking,
-  opening hours, accessibility or the venue's address.
-- If the page carries no description of the work, write: DESCRIPTION: NONE
-- CATEGORY must be one of the listed values exactly. Use "other" if unsure.`;
-
 export class AnthropicDescriber implements DescriptionClient {
   private client: Anthropic;
+  /** Flipped off for the life of the process by an account that rejects the
+   *  tool (web search not enabled in the Console), so that is paid for once
+   *  rather than as a failed request per show. */
+  private searchAvailable = true;
 
   constructor(apiKey: string, private readonly model: string = MODEL) {
     this.client = new Anthropic({ apiKey, maxRetries: 4 });
   }
 
-  async describe({ text, url }: { text: string; url: string }): Promise<DescriptionResult> {
-    const resp = await this.client.messages.create({
-      model: this.model,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM,
-      messages: [{ role: 'user', content: `Page: ${url}\n\n${text}` }],
-    });
+  async describe(input: DescribeInput): Promise<DescriptionResult> {
+    const messages: Anthropic.MessageParam[] = [{ role: 'user', content: describePrompt(input) }];
+    let resp: Anthropic.Message;
+    try {
+      resp = await this.create(messages);
+    } catch (e) {
+      if (!(this.searchAvailable && e instanceof Anthropic.BadRequestError)) throw e;
+      // Only blame the tool if the same request goes through without it; a
+      // 400 about something else must not switch search off for the process.
+      resp = await this.create(messages, false);
+      console.warn(`[describer] web search rejected, describing from the page alone: ${e.message}`);
+      this.searchAvailable = false;
+    }
+
+    let inputTokens = resp.usage.input_tokens;
+    let outputTokens = resp.usage.output_tokens;
+    let searched = usedSearch(resp);
+
+    // A server-side tool loop that hits its iteration limit pauses; handing
+    // the turn back resumes it where it stopped.
+    for (let n = 0; (resp.stop_reason as string) === 'pause_turn' && n < MAX_CONTINUATIONS; n++) {
+      messages.push({ role: 'assistant', content: resp.content });
+      resp = await this.create(messages);
+      inputTokens += resp.usage.input_tokens;
+      outputTokens += resp.usage.output_tokens;
+      searched ||= usedSearch(resp);
+    }
 
     const raw = resp.content
       .map((block) => (block.type === 'text' ? block.text : ''))
-      .join('\n')
+      .join('')
       .trim();
 
     const parsed = parseReply(raw);
@@ -61,10 +107,39 @@ export class AnthropicDescriber implements DescriptionClient {
       // costing a second one. `classifyEvent` ignores it whenever the keyword
       // pass already answered, so an unnecessary value here is harmless.
       category: parsed.category,
-      inputTokens: resp.usage.input_tokens,
-      outputTokens: resp.usage.output_tokens,
+      inputTokens,
+      outputTokens,
+      searched,
     };
   }
+
+  private create(messages: Anthropic.MessageParam[], search = this.searchAvailable): Promise<Anthropic.Message> {
+    return this.client.messages.create({
+      model: this.model,
+      max_tokens: MAX_TOKENS,
+      system: SYSTEM,
+      messages,
+      ...(search ? { tools: [WEB_SEARCH] } : {}),
+    });
+  }
+}
+
+/** The user turn: everything known about the show, labelled, blanks omitted. */
+export function describePrompt(input: DescribeInput): string {
+  const lines = [
+    input.title ? `Title: ${input.title}` : null,
+    input.venue ? `Venue: ${input.venue.name}, ${input.venue.city} (${input.venue.category})` : null,
+    `Page: ${input.url}`,
+    input.note?.trim() ? `Listing note: ${input.note.trim()}` : null,
+  ].filter(Boolean);
+  const page = input.text?.trim()
+    ? `\n\nPage text:\n${input.text.trim()}`
+    : '\n\n(No page text is available for this event.)';
+  return lines.join('\n') + page;
+}
+
+function usedSearch(resp: Anthropic.Message): boolean {
+  return resp.content.some((b) => (b.type as string) === 'server_tool_use');
 }
 
 /**
@@ -73,8 +148,11 @@ export class AnthropicDescriber implements DescriptionClient {
  * the row to the keyword pass and the 'other' fallback.
  */
 export function parseReply(raw: string): { description: string | null; category: string | null } {
-  const category = raw.match(/^\s*CATEGORY:\s*(.+)$/im)?.[1]?.trim().toLowerCase() ?? null;
-  const described = raw.match(/^\s*DESCRIPTION:\s*([\s\S]*)$/im)?.[1];
+  // Unanchored: with web search on, the reply's text blocks are joined as
+  // they came, so a sentence the model wrote before searching can sit on the
+  // same line as the first label.
+  const category = raw.match(/CATEGORY:[ \t]*([a-z_]+)/i)?.[1]?.trim().toLowerCase() ?? null;
+  const described = raw.match(/DESCRIPTION:\s*([\s\S]*)$/i)?.[1];
   // No labels at all — treat the whole reply as the description, which is what
   // the pre-GOI-80 prompt produced.
   const body = described ?? (category ? '' : raw);

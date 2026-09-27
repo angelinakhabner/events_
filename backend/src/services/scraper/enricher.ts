@@ -29,6 +29,9 @@ import { fetchVenueHTML } from './fetcher.js';
 
 export interface EnrichableEvent {
   source_url: string;
+  /** What a show is called — how a row with no detail page of its own is
+   *  grouped, and what the writer searches for (GOI-131). */
+  title?: string;
   description: string | null;
   /** Set by enrichment when the model classified the page (GOI-80). The
    *  persister decides whether to use it — a keyword match outranks it. */
@@ -39,7 +42,19 @@ export interface EnrichableEvent {
  *  event extractor: different prompt, different output, and it needs token
  *  counts back for the run's cost record. */
 export interface DescriptionClient {
-  describe(args: { text: string; url: string }): Promise<DescriptionResult>;
+  describe(args: DescribeInput): Promise<DescriptionResult>;
+}
+
+export interface DescribeInput {
+  /** The detail page's readable text, or null when there is no page to read
+   *  (or it would not load) — the writer then works from the rest. */
+  text: string | null;
+  url: string;
+  title?: string;
+  /** What the listing itself said about the show. Often logistics rather than
+   *  a description (GOI-131), and often not in English (GOI-130). */
+  note?: string | null;
+  venue?: { name: string; city: string; category: string };
 }
 
 export interface DescriptionResult {
@@ -48,6 +63,25 @@ export interface DescriptionResult {
   category?: string | null;
   inputTokens: number;
   outputTokens: number;
+  /** True when the answer needed a web search (GOI-131). */
+  searched?: boolean;
+}
+
+/**
+ * The per-show description cache (GOI-130 / GOI-131). With it, and a client,
+ * enrichment switches from "fill the blanks" to "write every show once, in
+ * English": see `writeDescriptions`.
+ */
+export interface WrittenStore {
+  lookup(keys: string[]): Promise<Map<string, WrittenDetail>>;
+  save(entries: Array<WrittenDetail & { key: string }>): Promise<void>;
+}
+
+export interface WrittenDetail {
+  /** Null: the writer looked and found nothing to say. */
+  description: string | null;
+  contentCategory: string | null;
+  searched?: boolean;
 }
 
 export interface EnrichOptions {
@@ -72,6 +106,11 @@ export interface EnrichOptions {
   client?: DescriptionClient;
   /** Test seam for the inter-fetch delay. */
   sleep?: (ms: number) => Promise<void>;
+  /** Written-description cache. Given together with `client`, every show is
+   *  written in English once and remembered (GOI-130 / GOI-131). */
+  written?: WrittenStore;
+  /** Who is showing it — the writer needs it to search for the right thing. */
+  venue?: { name: string; city: string; category: string };
 }
 
 /** What a previous run already established about one detail page. */
@@ -92,6 +131,8 @@ export interface EnrichResult {
   failed: number;
   /** Detail pages actually fetched — the cost number. */
   fetched: number;
+  /** Shows whose description needed a web search (GOI-131). */
+  searched: number;
   /** URLs left unenriched because the cap was reached. */
   capped: number;
   inputTokens: number;
@@ -119,9 +160,14 @@ export async function enrichDescriptions(
 
   const venueTarget = normUrl(venueUrl);
   const result: EnrichResult = {
-    enriched: 0, backfilled: 0, skipped: 0, failed: 0, fetched: 0, capped: 0,
+    enriched: 0, backfilled: 0, skipped: 0, failed: 0, fetched: 0, capped: 0, searched: 0,
     inputTokens: 0, outputTokens: 0,
   };
+
+  if (client && opts.written) {
+    await writeDescriptions(events, { ...opts, client, written: opts.written }, venueTarget, result);
+    return result;
+  }
 
   // Group by detail URL. One entry per distinct page, however many showings
   // point at it.
@@ -205,6 +251,151 @@ export async function enrichDescriptions(
   }
 
   return result;
+}
+
+/**
+ * Every show gets one English description of the work (GOI-130 / GOI-131).
+ *
+ * "Fill the blanks" was the wrong rule once the blanks stopped being the
+ * problem. The rows that read worst on the site were not the empty ones but
+ * the ones that already carried text: an Italian paragraph from one of MSN's
+ * feeds, a Polish blurb on an English page, and — from the deterministic
+ * theatre scrapers — the listing's logistics standing in for a description
+ * ("spektakl z napisami w języku angielskim — Scena: scena duża"), which
+ * enrichment skipped precisely because it was not null.
+ *
+ * So with a writer available, no row's text is final until the writer has
+ * seen its show once: it gets the listing's note, the detail page when there
+ * is one, and a web search for when neither says what the work is. The answer
+ * — including "found nothing" — is kept per show in the written store, so a
+ * show costs one call in its life, not one per sweep, and the next sweep
+ * applies it to every showing for free.
+ *
+ * A show the writer has not reached (the cap, a failure) keeps whatever text
+ * it arrived with. That is the old behaviour, and it is retried next run.
+ */
+async function writeDescriptions(
+  events: EnrichableEvent[],
+  opts: EnrichOptions & { client: DescriptionClient; written: WrittenStore },
+  venueTarget: string,
+  result: EnrichResult,
+): Promise<void> {
+  const {
+    fetcher,
+    timeoutMs = 8_000,
+    delayMs = DEFAULT_DELAY_MS,
+    maxFetches = DEFAULT_MAX_DETAIL_FETCHES,
+    client,
+    written,
+    venue,
+    sleep = defaultSleep,
+  } = opts;
+
+  const shows = new Map<string, EnrichableEvent[]>();
+  for (const e of events) {
+    const key = showKey(e, venueTarget);
+    if (!key) { result.skipped++; continue; }
+    const list = shows.get(key) ?? [];
+    list.push(e);
+    shows.set(key, list);
+  }
+  const keys = [...shows.keys()];
+
+  let known = new Map<string, WrittenDetail>();
+  try {
+    known = await written.lookup(keys);
+  } catch (e) {
+    // Worst case the run re-writes shows it already paid for; it must not
+    // leave them unwritten.
+    console.warn('[enricher] written-description lookup failed, writing all:', message(e));
+  }
+
+  const answers = new Map(known);
+  const fresh: Array<WrittenDetail & { key: string }> = [];
+  const todo = keys.filter((k) => !known.has(k));
+
+  for (const [i, key] of todo.entries()) {
+    // One call per show, so the ceiling that bounded detail fetches now bounds
+    // shows written — a show with no page to fetch costs a model call too.
+    if (i >= maxFetches) {
+      result.capped = todo.length - i;
+      console.warn(
+        `[enricher] per-run description cap (${maxFetches}) reached — ` +
+        `${result.capped} show(s) left for the next run`,
+      );
+      break;
+    }
+
+    const first = shows.get(key)![0]!;
+    const hasPage = !key.startsWith(TITLE_KEY);
+    let text: string | null = null;
+    if (hasPage) {
+      if (result.fetched > 0) await sleep(delayMs);
+      try {
+        text = mainContentText(await fetchVenueHTML(first.source_url, { fetcher, timeoutMs }));
+      } catch (e) {
+        // A dead page is not a dead show: the note and a search may still say
+        // what it is.
+        console.warn(`[enricher] ${first.source_url}: ${message(e)}`);
+      }
+      result.fetched++;
+    }
+
+    try {
+      const out = await client.describe({
+        text,
+        url: first.source_url,
+        title: first.title,
+        note: first.description,
+        venue,
+      });
+      result.inputTokens += out.inputTokens;
+      result.outputTokens += out.outputTokens;
+      if (out.searched) result.searched++;
+      const answer: WrittenDetail = {
+        description: out.description ? clean(out.description) : null,
+        contentCategory: out.category ?? null,
+        searched: out.searched ?? false,
+      };
+      answers.set(key, answer);
+      fresh.push({ key, ...answer });
+    } catch (e) {
+      // Not remembered, so the next run tries again.
+      result.failed++;
+      console.warn(`[enricher] ${first.title ?? key}: description writing failed: ${message(e)}`);
+    }
+  }
+
+  if (fresh.length > 0) {
+    try {
+      await written.save(fresh);
+    } catch (e) {
+      console.warn('[enricher] could not store written descriptions:', message(e));
+    }
+  }
+
+  for (const [key, list] of shows) {
+    const answer = answers.get(key);
+    if (!answer) continue;
+    if (answer.contentCategory) for (const e of list) e.content_category = answer.contentCategory;
+    if (!answer.description) continue;
+    for (const e of list) e.description = answer.description;
+    if (known.has(key)) result.backfilled += list.length;
+    else result.enriched += list.length;
+  }
+}
+
+const TITLE_KEY = 'title:';
+
+/**
+ * Which show a row belongs to (GOI-131): its detail page, or — for a venue
+ * whose listing links nowhere more specific, like Teatr Żydowski — its title.
+ * Null for a row with neither, which there is nothing to write about.
+ */
+export function showKey(e: Pick<EnrichableEvent, 'source_url' | 'title'>, venueTarget: string): string | null {
+  if (e.source_url && normUrl(e.source_url) !== venueTarget) return e.source_url;
+  const title = e.title?.replace(/\s+/g, ' ').trim().toLowerCase();
+  return title ? `${TITLE_KEY}${title}` : null;
 }
 
 /**
