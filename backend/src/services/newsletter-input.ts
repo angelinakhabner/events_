@@ -33,6 +33,8 @@ export const newsletterCategoryRuleInput = z.object({
 
 export const newsletterSaveInput = z
   .object({
+    /** The newsletter to update (GOI-126). Absent: the reader's default. */
+    id: z.string().uuid().optional(),
     email: z.string().email(),
     /** Name the brief greets you by; blank greets you without one. */
     recipientName: z.string().trim().max(80).nullable().optional(),
