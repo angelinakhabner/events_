@@ -6,9 +6,11 @@ import {
   type DayFilter,
 } from '../lib/buckets';
 import { dayFilterPhrase } from '../lib/format';
+import { myVenueOptions, selectionFor, withSelection, type VenueSelection } from '../lib/venue-selection';
 import { EventBuckets } from './EventBuckets';
 import { CategoryBar } from './CategoryBar';
 import { DayBar } from './DayBar';
+import { VenueBar } from './VenueBar';
 import { PanelHeading } from './PanelHeading';
 import { EmptyState, ErrorState, NextUpNotice, SkeletonList } from './states';
 
@@ -17,11 +19,15 @@ const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
 /**
  * /my → "Events" (GOI-27): what's on at the venues you follow, not the shared
  * public listing. Scoped server-side to your active folder's venues, with the
- * same category/day filters as the public home.
+ * same category/day/venue filters as the public home (GOI-135).
  */
 export function MyEventsSection() {
   const [category, setCategory] = useState<Category | null>(null);
   const [day, setDay] = useState<DayFilter>(null);
+  // Remembered per category, as on Home (GOI-76 §5): two cinemas picked, a
+  // look at Theatre, and back to Cinema finds the two still picked.
+  const [venueSelection, setVenueSelection] = useState<VenueSelection>({});
+  const selectedVenues = selectionFor(venueSelection, category);
 
   const eventsQuery = trpc.my.events.list.useQuery(
     category ? { filters: { categories: [category] } } : undefined,
@@ -39,18 +45,32 @@ export function MyEventsSection() {
   // This list is small enough to arrive whole, so the window is applied here
   // rather than in SQL as the public feed's is.
   const range = useMemo(() => dayFilterRange(day), [day]);
-  const nearest = useMemo(() => {
-    const rows = eventsQuery.data ?? [];
-    return visibleEvents(range ? filterEventsFrom(rows, range.fromDay) : rows);
-  }, [eventsQuery.data, range]);
-  const selected = useMemo(
-    () => (range ? filterEventsByDay(nearest, day) : nearest),
-    [nearest, range, day],
+  const upcoming = useMemo(() => visibleEvents(eventsQuery.data ?? []), [eventsQuery.data]);
+  // Before the venue pick, because the chips count these: a chip's number is
+  // what that venue has in the window, not what is left once it is picked.
+  const nearestAll = useMemo(
+    () => (range ? filterEventsFrom(upcoming, range.fromDay) : upcoming),
+    [upcoming, range],
   );
+  const selectedAll = useMemo(
+    () => (range ? filterEventsByDay(nearestAll, day) : nearestAll),
+    [nearestAll, range, day],
+  );
+
+  // The venue row under the day strip (GOI-135), the public listing's own:
+  // cinema → Kinoteka, Muranów, and picking one narrows the list to it.
+  const venueOptions = useMemo(
+    () => (category ? myVenueOptions(venuesQuery.data ?? [], category, upcoming, selectedAll) : []),
+    [category, venuesQuery.data, upcoming, selectedAll],
+  );
+  const nearest = atVenues(nearestAll, selectedVenues);
+  const selected = atVenues(selectedAll, selectedVenues);
+
   const fallback = range !== null && selected.length === 0 && nearest.length > 0;
   const events = fallback ? nearest : selected;
 
   const noVenues = venuesQuery.data && venuesQuery.data.length === 0;
+  const narrowed = category !== null || day !== null || selectedVenues.length > 0;
 
   return (
     <section>
@@ -62,6 +82,14 @@ export function MyEventsSection() {
 
       <CategoryBar selected={category} onChange={setCategory} compact />
       <DayBar selected={day} onChange={setDay} />
+      <VenueBar
+        venues={venueOptions}
+        selected={selectedVenues}
+        onChange={(ids) => setVenueSelection((prev) => withSelection(prev, category, ids))}
+        category={category}
+        loading={venuesQuery.isLoading}
+        signedIn
+      />
 
       <div className="mt-2">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
@@ -73,14 +101,21 @@ export function MyEventsSection() {
             title={
               noVenues
                 ? 'No venues in this folder yet.'
-                : category || day
+                : narrowed
                   ? 'Nothing at your venues matches your selection.'
                   : 'Nothing coming up at your venues.'
             }
             hint={noVenues ? 'Add venues under "My venues" and their events show up here.' : undefined}
             action={
-              category || day
-                ? { label: 'Show all', onClick: () => { setCategory(null); setDay(null); } }
+              narrowed
+                ? {
+                    label: 'Show all',
+                    onClick: () => {
+                      setCategory(null);
+                      setDay(null);
+                      setVenueSelection({});
+                    },
+                  }
                 : undefined
             }
           />
@@ -99,4 +134,11 @@ export function MyEventsSection() {
       </div>
     </section>
   );
+}
+
+/** The rows at the picked venues; none picked means all of them. */
+function atVenues<T extends { venueId: string }>(rows: T[], venueIds: string[]): T[] {
+  if (venueIds.length === 0) return rows;
+  const wanted = new Set(venueIds);
+  return rows.filter((e) => wanted.has(e.venueId));
 }
