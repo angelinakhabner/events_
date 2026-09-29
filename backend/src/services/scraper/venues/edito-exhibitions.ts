@@ -19,12 +19,10 @@ import { scrapeEdito, type EditoRawEvent } from './edito.js';
  * validator drops every row" was true of every one of these museums, and why
  * they showed nothing.
  *
- * Each run is expanded to one all-day row per day it covers, clipped to the
- * scrape window. Per-day rows are how exhibitions already reach the app — the
- * edito calendar emits them that way and `dedupeAllDay` collapses the run back
- * into a single card (GOI-53). Emitting one row at the opening date instead
- * would read as "started in May", and a listing would drop it the next
- * morning; a museum you can walk into today has to appear under today.
+ * Each run becomes one `kind: 'exhibition'` row carrying its opening and
+ * closing dates — see `expandRun` for why it used to be one row per day, and
+ * why that stopped being right once the schema could say "a run over a date
+ * range" (GOI-67, GOI-113).
  *
  * Local midnight is what makes a row all-day: the validator accepts it for the
  * exhibition category, and the frontend keys "all-day" off exactly that.
@@ -178,10 +176,27 @@ export function parseExhibitionsListing(
 }
 
 /**
- * A run → one all-day row per day, clipped to `[fromDay, toDay]`.
+ * A run → one exhibition row carrying its opening and closing dates, or
+ * nothing when the run falls outside `[fromDay, toDay]`.
  *
- * `source_id` carries the day, so re-scraping updates each occurrence in place
- * instead of duplicating it — the same keying the edito calendar uses.
+ * It used to be one all-day row *per day*, because when this was written the
+ * schema had no way to say "a run over a date range" — every row was a timed
+ * occurrence, so a run had to be spelled out day by day for a listing to show
+ * it under today. GOI-67 gave the schema `kind` and `ends_at`, and everything
+ * downstream now expects a run to arrive as one row: `listUpcoming` selects it
+ * by its closing date, the listing files it under "Ongoing exhibitions", and
+ * the brief dates it by its run.
+ *
+ * Keeping the per-day expansion after that was what left those museums out of
+ * "Ongoing exhibitions" entirely — their runs reached the app as a heap of
+ * midnight *timed* rows, and only POLIN, whose listing is read by the model
+ * that does emit `kind`, ever appeared there (GOI-113). It also wrote ninety
+ * rows for a three-month run and re-wrote them on every sweep.
+ *
+ * `source_id` no longer carries the day, since there is one row rather than
+ * one per day. That is a new key, so the first sweep after this inserts each
+ * run afresh; the per-day rows it replaces are inside the scrape window and
+ * the runner's stale-prune clears them in the same pass.
  */
 export function expandRun(
   run: ExhibitionRun,
@@ -192,35 +207,32 @@ export function expandRun(
    *  been scraped — a new prefix re-inserts every row instead of updating it. */
   idPrefix = 'postermuseum',
 ): EditoRawEvent[] {
-  const first = run.start > fromDay ? run.start : fromDay;
-  const last = run.end < toDay ? run.end : toDay;
-  if (first > last) return [];
+  // Outside the window entirely: a run that closed before it opens, or one
+  // that has not opened by the end of it.
+  if (run.end < fromDay || run.start > toDay) return [];
 
-  const out: EditoRawEvent[] = [];
-  for (let day = first; day <= last; day = nextDay(day)) {
-    const starts_at = toStartsAt(day, '0:00', timeZone);
-    if (!starts_at) break;
-    out.push({
-      title: run.title,
-      starts_at,
-      duration_minutes: null,
-      language: null,
-      director: null,
-      cast: null,
-      description: run.description,
-      price_min: null,
-      price_max: null,
-      source_url: run.sourceUrl,
-      source_id: run.sourceId ? `${idPrefix}:wystawa:${run.sourceId}:${day}` : null,
-    });
-  }
-  return out;
-}
+  // Dated by the run itself, not by the window: clipping the opening to
+  // "today" would tell a reader a show that has been up since June started
+  // this morning, and the closing date is the whole reason to hurry.
+  const starts_at = toStartsAt(run.start, '0:00', timeZone);
+  const ends_at = toStartsAt(run.end, '23:59', timeZone);
+  if (!starts_at || !ends_at) return [];
 
-/** Calendar-day step, so a DST boundary can't skip or repeat a day. */
-function nextDay(day: string): string {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10);
+  return [{
+    title: run.title,
+    starts_at,
+    kind: 'exhibition',
+    ends_at,
+    duration_minutes: null,
+    language: null,
+    director: null,
+    cast: null,
+    description: run.description,
+    price_min: null,
+    price_max: null,
+    source_url: run.sourceUrl,
+    source_id: run.sourceId ? `${idPrefix}:wystawa:${run.sourceId}` : null,
+  }];
 }
 
 

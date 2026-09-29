@@ -79,13 +79,11 @@ UPDATE "newsletter_subscriptions" SET "send_weekday" = NULL WHERE "send_cadence"
 UPDATE "newsletter_subscriptions" SET "send_day_of_month" = 1
   WHERE "send_cadence" = 'monthly' AND "send_day_of_month" IS NULL;
 
--- One newsletter per folder. Two indexes rather than one constraint because
--- NULL never equals NULL in SQL: without the second, a reader could hold any
--- number of folderless configs and the app would pick one arbitrarily.
-CREATE UNIQUE INDEX IF NOT EXISTS "newsletter_subscriptions_user_folder_key"
-  ON "newsletter_subscriptions" ("user_id", "folder_id") WHERE "folder_id" IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS "newsletter_subscriptions_user_no_folder_key"
-  ON "newsletter_subscriptions" ("user_id") WHERE "folder_id" IS NULL;
+-- This file used to create two unique indexes here, one newsletter per folder
+-- and one folderless one per user. GOI-126 lets a reader hold several, and
+-- 0031 drops them; they are no longer created here either, because every file
+-- re-runs on every deploy and re-creating them over a reader's second
+-- newsletter would fail the deploy.
 
 -- ── 3. Category rules become a table ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "newsletter_category_rules" (

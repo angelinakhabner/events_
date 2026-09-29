@@ -313,6 +313,50 @@ describe('auth + /my flow (in-process)', () => {
     expect((await trpcCall('my.newsletter.get', { token: hana })).data).toBeNull();
   });
 
+  // GOI-126: several newsletters per reader — a daily one and a weekly one.
+  it('newsletters: create several, edit each by id, delete one, and keep them private', async () => {
+    const ines = await login(`ines-${RUN}@example.com`);
+    const email = `ines-${RUN}@example.com`;
+    const base = { email, venueIds: [], enabled: true };
+
+    const daily = (await trpcCall('my.newsletter.create', {
+      body: { ...base, name: 'Daily', sendCadence: 'daily', sendHour: 7 }, token: ines,
+    })).data as { id: string; name: string };
+    const weekly = (await trpcCall('my.newsletter.create', {
+      body: { ...base, name: 'Weekly', sendCadence: 'weekly', sendWeekday: 5 }, token: ines,
+    })).data as { id: string; name: string };
+    expect(daily.id).not.toBe(weekly.id);
+
+    let list = (await trpcCall('my.newsletter.list', { token: ines })).data as Array<{ id: string; name: string }>;
+    expect(list.map((n) => n.name)).toEqual(['Daily', 'Weekly']);
+
+    // Saving by id changes that newsletter and no other.
+    const saved = await trpcCall('my.newsletter.save', {
+      body: { ...base, id: weekly.id, name: 'Weekend', sendCadence: 'weekly', sendWeekday: 6 }, token: ines,
+    });
+    expect(saved.status).toBe(200);
+    const one = (await trpcCall('my.newsletter.get', { token: ines, query: JSON.stringify({ id: weekly.id }) }))
+      .data as { name: string; sendWeekday: number };
+    expect(one).toMatchObject({ name: 'Weekend', sendWeekday: 6 });
+    const other = (await trpcCall('my.newsletter.get', { token: ines, query: JSON.stringify({ id: daily.id }) }))
+      .data as { name: string; sendHour: number };
+    expect(other).toMatchObject({ name: 'Daily', sendHour: 7 });
+
+    // Somebody else's id is not found, for reading, saving and deleting alike.
+    const jan = await login(`jan-${RUN}@example.com`);
+    expect((await trpcCall('my.newsletter.get', { token: jan, query: JSON.stringify({ id: daily.id }) })).data).toBeNull();
+    const hijack = await trpcCall('my.newsletter.save', {
+      body: { ...base, email: `jan-${RUN}@example.com`, id: daily.id, sendCadence: 'daily' }, token: jan,
+    });
+    expect(hijack.status).toBe(404);
+    expect((await trpcCall('my.newsletter.remove', { body: { id: daily.id }, token: jan })).status).toBe(404);
+
+    // Deleting takes that one only.
+    expect((await trpcCall('my.newsletter.remove', { body: { id: daily.id }, token: ines })).status).toBe(200);
+    list = (await trpcCall('my.newsletter.list', { token: ines })).data as Array<{ id: string; name: string }>;
+    expect(list.map((n) => n.name)).toEqual(['Weekend']);
+  });
+
   it('logout kills the session', async () => {
     const t = await login(`c-${RUN}@example.com`);
     await trpcCall('auth.logout', { body: {}, token: t });

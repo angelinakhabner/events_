@@ -1,8 +1,8 @@
 /**
  * End-to-end-ish: mounts MyPage logged in against a real Hono backend,
- * in-process, and drives the "Want to go" tab (GOI-26) — one plain list, no
- * way to type a film in, and a seen mark that files an entry under "Seen"
- * rather than dropping it.
+ * in-process, and drives the "Want to go" tab (GOI-26) — one plain list, a
+ * search across venues rather than a bare "add a film" field (GOI-112), and a
+ * seen mark that files an entry under "Seen" rather than dropping it.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -79,22 +79,33 @@ beforeAll(async () => {
 });
 
 describe('MyPage — want to go end-to-end', () => {
-  it('has no way to type a film in — the list is fed from the screenings panel', async () => {
+  /**
+   * GOI-112 replaces the invariant this used to assert.
+   *
+   * The list had no way to type into it on purpose: a film arrived from a
+   * screenings panel you could only open from a screening you had already
+   * found. That is no help when the question is "is this on anywhere", and it
+   * is the one question a want-to-go list is for — so there is a box now, and
+   * it is a search rather than a text field, which is the distinction the old
+   * test was really protecting.
+   */
+  it('takes a title as a search across venues, not as a bare text field', async () => {
     const user = userEvent.setup();
     renderPage();
     const section = await openWantToGo(user);
 
     await within(section).findByRole('tab', { name: /want to go \(0\)/i });
-    expect(within(section).queryByLabelText(/film title/i)).not.toBeInTheDocument();
-    expect(within(section).queryByRole('textbox')).not.toBeInTheDocument();
-    // Instead it points you at where films actually come from.
-    expect(within(section).getAllByText(/track film/i).length).toBeGreaterThan(0);
+    expect(within(section).getByLabelText(/search across venues/i)).toBeInTheDocument();
+    // Nothing is added by typing: the search answers first, and only when it
+    // finds nothing does the title itself go on the list.
+    expect(within(section).getByRole('button', { name: /^search$/i })).toBeInTheDocument();
+    expect(within(section).queryByRole('button', { name: /^add$/i })).not.toBeInTheDocument();
   });
 
   it('marks a tracked film seen with venue + comment, then moves it back', async () => {
     const user = userEvent.setup();
-    // Films only ever arrive from the screenings panel, so seed one the way
-    // that panel would rather than reaching for a text field that isn't there.
+    // Seeded the way the search's "nothing on" branch would add it, so this
+    // test stays about the seen/unseen round trip rather than the search.
     await defaultFilmStore.add(userId, 'Perfect Days');
 
     renderPage();

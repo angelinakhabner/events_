@@ -330,6 +330,50 @@ describe('scrapeVenue runner', () => {
     expect(saved[0].description).toBe('Opis spektaklu.'); // enrichment ran
   });
 
+  it('writes each show in English through the written store when a describer is configured (GOI-130)', async () => {
+    state.venues = [{
+      ...VENUE,
+      id: 'klub-komediowy',
+      name: 'Klub Komediowy',
+      category: 'comedy',
+      url: 'https://komediowy.pl/repertuar/',
+    }];
+    const komediowyHtml = `
+      <div class=eventDay data-event-date=17.06.2026><div class=eventItem>
+        <div class=eventTime>19:00</div>
+        <h3 class=eventTitle><a href=https://komediowy.pl/spektakl/test/>Test Show</a></h3>
+        <div class=eventAction><a href=https://tixto.pl/s/111>KUP BILET</a></div>
+      </div></div>`;
+    const fetcher = vi.fn(async () =>
+      new Response('<html><body><article><p>' + 'Spektakl komediowy. '.repeat(10) + '</p></article></body></html>', { status: 200 }));
+    const describer = {
+      describe: vi.fn(async () => ({ description: 'An improvised comedy night.', inputTokens: 10, outputTokens: 5 })),
+    };
+    const saved: unknown[] = [];
+    const writtenStore = {
+      lookup: vi.fn(async () => new Map()),
+      save: vi.fn(async (entries: unknown[]) => { saved.push(...entries); }),
+    };
+
+    await scrapeVenue('klub-komediowy', {
+      htmlOverride: komediowyHtml,
+      extractor: { extract: vi.fn(async () => '[]') },
+      fetcher: fetcher as unknown as typeof fetch,
+      describer,
+      writtenStore,
+      enrichDelayMs: 0,
+    });
+
+    expect(describer.describe).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Test Show',
+      venue: { name: 'Klub Komediowy', city: 'Warsaw', category: 'comedy' },
+    }));
+    expect(saved).toEqual([expect.objectContaining({ key: 'https://komediowy.pl/spektakl/test/' })]);
+    const { saveEvents } = await import('./persister.js');
+    const rows = (saveEvents as any).mock.calls.at(-1)![1];
+    expect(rows[0].description).toBe('An improvised comedy night.');
+  });
+
   it('re-runs the pipeline when a prior success was stored under a different hash version', async () => {
     // Simulate a successful run cached under an old version's hash. Same HTML
     // arriving now should produce a NEW hash (because EXTRACTOR_VERSION is
@@ -383,6 +427,42 @@ describe('countCalendarFallbacks', () => {
         'https://v/repertuar',
       ),
     ).toBe(0);
+  });
+});
+
+/**
+ * The prune window is what the scrape *read*, not what it asked for (GOI-107).
+ *
+ * A multi-page scraper that loses a page mid-walk returns what it has. Pruning
+ * the full window on the strength of that deletes the days it never looked at
+ * — and cancels the saved ones, so a reader is told a film they bookmarked is
+ * off. Muranów's calendar is one month per page and the cinema window is a
+ * week, so every scrape near a month's end depends on a hop that can fail.
+ */
+describe('clampToCovered', () => {
+  const asked = new Date('2026-07-05T08:00:00Z');
+
+  it('leaves the asked-for window alone when the scrape covered it', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    expect(clampToCovered(asked, null, 'Europe/Warsaw')).toBe(asked);
+  });
+
+  it('pulls the window back to the last day the scrape read', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    const end = clampToCovered(asked, '2026-06-30', 'Europe/Warsaw');
+    // The last minute of that day in Warsaw, not its midnight: a run that read
+    // the whole of June is authoritative for June's last evening.
+    expect(end.toISOString()).toBe('2026-06-30T21:59:00.000Z');
+  });
+
+  it('never widens the window past what was asked for', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    expect(clampToCovered(asked, '2026-12-31', 'Europe/Warsaw')).toBe(asked);
+  });
+
+  it('falls back to the asked-for window on an unparseable day', async () => {
+    const { clampToCovered } = await import('./runner.js');
+    expect(clampToCovered(asked, 'not-a-day', 'Europe/Warsaw')).toBe(asked);
   });
 });
 

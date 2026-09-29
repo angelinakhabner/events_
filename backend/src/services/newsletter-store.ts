@@ -1,4 +1,5 @@
-import { and, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, asc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type {
   EventChangeType, NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail,
   NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
@@ -8,16 +9,19 @@ import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
 
 /**
- * Newsletter configs (GOI-8, reshaped by GOI-100).
+ * Newsletter configs (GOI-8, reshaped by GOI-100, then GOI-126).
  *
- * One config per folder rather than one per user: the venues a newsletter
- * covers are a folder's venues, and a reader has more than one folder. A
- * config with a null `folderId` is the pre-folder subscription, which covers
- * everything the reader follows — there is at most one of those per user, and
- * the store addresses it as the default.
+ * A reader may hold any number of them — a daily one for cinema and a weekly
+ * one for everything else is the case GOI-126 asked for — each addressed by
+ * its own id. The *oldest* folderless config is still "the default": the one
+ * the public API (GOI-87) and any caller that names no id reads and writes,
+ * which is every subscription that predates GOI-126.
  */
 
 export interface NewsletterSaveInput {
+  /** Which newsletter to update (GOI-126). Absent: the reader's default for
+   *  `folderId`, created if they have none. */
+  id?: string;
   email: string;
   recipientName?: string | null;
   /** Email, a filed PDF, or both. */
@@ -46,9 +50,17 @@ export interface NewsletterSubscription extends NewsletterSettings {
 export interface NewsletterStore {
   /** The reader's config for a folder, or the folderless default. */
   get(userId: string, folderId?: string | null): Promise<NewsletterSettings | null>;
-  /** Every config the reader holds. */
+  /** One of the reader's configs by id — null for someone else's (GOI-126). */
+  getById(userId: string, id: string): Promise<NewsletterSettings | null>;
+  /** Every config the reader holds, oldest first. */
   list(userId: string): Promise<NewsletterSettings[]>;
+  /** Update `input.id`, or upsert the default when no id is given. Throws
+   *  `NewsletterNotFoundError` for an id the reader does not hold. */
   save(userId: string, input: NewsletterSaveInput): Promise<NewsletterSettings>;
+  /** A new, additional config, whatever the reader already holds (GOI-126). */
+  create(userId: string, input: NewsletterSaveInput): Promise<NewsletterSettings>;
+  /** Delete one of the reader's configs; false when there was none. */
+  remove(userId: string, id: string): Promise<boolean>;
   /** Enabled configs — the sender's work list. */
   listEnabled(): Promise<NewsletterSubscription[]>;
   markSent(configId: string, at: Date): Promise<void>;
@@ -69,6 +81,14 @@ export interface NewsletterStore {
   /** Changes noticed to any of `eventIds` since `since` (GOI-101), oldest
    *  first — a rescheduled-then-cancelled event reports both. */
   changesFor(eventIds: string[], since: Date): Promise<EventChangeRow[]>;
+}
+
+/** An id that is not one of the reader's newsletters (GOI-126). */
+export class NewsletterNotFoundError extends Error {
+  constructor() {
+    super('No such newsletter');
+    this.name = 'NewsletterNotFoundError';
+  }
 }
 
 /** One row of `event_changes`, as the queue reads it. */
@@ -174,6 +194,22 @@ export class DbNewsletterStore implements NewsletterStore {
             : eq(schema.newsletterSubscriptions.folderId, folderId),
         ),
       )
+      // Several may share a folder now (GOI-126); the oldest is the default,
+      // so which one a caller without an id gets never changes under it.
+      .orderBy(asc(schema.newsletterSubscriptions.createdAt), asc(schema.newsletterSubscriptions.id))
+      .limit(1);
+    if (!row) return null;
+    return toSettings(row, await this.rulesFor(row.id));
+  }
+
+  async getById(userId: string, id: string): Promise<NewsletterSettings | null> {
+    const [row] = await getDb()
+      .select()
+      .from(schema.newsletterSubscriptions)
+      .where(and(
+        eq(schema.newsletterSubscriptions.userId, userId),
+        eq(schema.newsletterSubscriptions.id, id),
+      ))
       .limit(1);
     if (!row) return null;
     return toSettings(row, await this.rulesFor(row.id));
@@ -183,8 +219,25 @@ export class DbNewsletterStore implements NewsletterStore {
     const rows = await getDb()
       .select()
       .from(schema.newsletterSubscriptions)
-      .where(eq(schema.newsletterSubscriptions.userId, userId));
+      .where(eq(schema.newsletterSubscriptions.userId, userId))
+      .orderBy(asc(schema.newsletterSubscriptions.createdAt), asc(schema.newsletterSubscriptions.id));
     return Promise.all(rows.map(async (r) => toSettings(r, await this.rulesFor(r.id))));
+  }
+
+  async create(userId: string, input: NewsletterSaveInput): Promise<NewsletterSettings> {
+    return this.write(userId, input, 'create');
+  }
+
+  async remove(userId: string, id: string): Promise<boolean> {
+    // Rules and send state cascade from the config.
+    const gone = await getDb()
+      .delete(schema.newsletterSubscriptions)
+      .where(and(
+        eq(schema.newsletterSubscriptions.userId, userId),
+        eq(schema.newsletterSubscriptions.id, id),
+      ))
+      .returning({ id: schema.newsletterSubscriptions.id });
+    return gone.length > 0;
   }
 
   private async rulesFor(configId: string): Promise<NewsletterCategoryRule[]> {
@@ -196,6 +249,14 @@ export class DbNewsletterStore implements NewsletterStore {
   }
 
   async save(userId: string, input: NewsletterSaveInput): Promise<NewsletterSettings> {
+    return this.write(userId, input, 'save');
+  }
+
+  private async write(
+    userId: string,
+    input: NewsletterSaveInput,
+    mode: 'save' | 'create',
+  ): Promise<NewsletterSettings> {
     const norm = normalise(input);
     const values = {
       userId,
@@ -218,7 +279,14 @@ export class DbNewsletterStore implements NewsletterStore {
       updatedAt: new Date(),
     };
 
-    const existing = await this.get(userId, norm.folderId);
+    const existing =
+      mode === 'create' ? null
+      : input.id ? await this.getById(userId, input.id)
+      : await this.get(userId, norm.folderId);
+    // Naming an id is asking to update that newsletter. Quietly creating a
+    // new one instead would leave the reader with a copy they did not ask
+    // for and the original unchanged.
+    if (mode === 'save' && input.id && !existing) throw new NewsletterNotFoundError();
     const db = getDb();
     let configId: string;
     if (existing) {
@@ -253,7 +321,7 @@ export class DbNewsletterStore implements NewsletterStore {
       );
     }
 
-    const saved = await this.get(userId, norm.folderId);
+    const saved = await this.getById(userId, configId);
     return saved!;
   }
 
@@ -359,7 +427,6 @@ export class InMemoryNewsletterStore implements NewsletterStore {
   private configs: NewsletterSubscription[] = [];
   private urgentAt = new Map<string, string>();
   private sent = new Map<string, Date>();
-  private nextId = 1;
 
   private find(userId: string, folderId: string | null) {
     return this.configs.find((c) => c.userId === userId && (c.folderId ?? null) === folderId);
@@ -370,6 +437,22 @@ export class InMemoryNewsletterStore implements NewsletterStore {
     return sub ? stripUserId(structuredClone(sub)) : null;
   }
 
+  async getById(userId: string, id: string): Promise<NewsletterSettings | null> {
+    const sub = this.configs.find((c) => c.userId === userId && c.id === id);
+    return sub ? stripUserId(structuredClone(sub)) : null;
+  }
+
+  async create(userId: string, input: NewsletterSaveInput): Promise<NewsletterSettings> {
+    return this.write(userId, input, null);
+  }
+
+  async remove(userId: string, id: string): Promise<boolean> {
+    const i = this.configs.findIndex((c) => c.userId === userId && c.id === id);
+    if (i < 0) return false;
+    this.configs.splice(i, 1);
+    return true;
+  }
+
   async list(userId: string): Promise<NewsletterSettings[]> {
     return this.configs
       .filter((c) => c.userId === userId)
@@ -377,11 +460,23 @@ export class InMemoryNewsletterStore implements NewsletterStore {
   }
 
   async save(userId: string, input: NewsletterSaveInput): Promise<NewsletterSettings> {
+    const prev = input.id
+      ? this.configs.find((c) => c.userId === userId && c.id === input.id)
+      : this.find(userId, normalise(input).folderId);
+    if (input.id && !prev) throw new NewsletterNotFoundError();
+    return this.write(userId, input, prev ?? null);
+  }
+
+  private write(
+    userId: string,
+    input: NewsletterSaveInput,
+    prev: NewsletterSubscription | null,
+  ): NewsletterSettings {
     const norm = normalise(input);
-    const prev = this.find(userId, norm.folderId);
     const sub: NewsletterSubscription = {
       userId,
-      id: prev?.id ?? `nl-${this.nextId++}`,
+      // A real uuid, since the API validates ids as one (GOI-126).
+      id: prev?.id ?? randomUUID(),
       folderId: norm.folderId,
       name: norm.name,
       email: input.email.trim(),

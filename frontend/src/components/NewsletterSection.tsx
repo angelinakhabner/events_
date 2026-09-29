@@ -85,13 +85,39 @@ function ClockIcon() {
  * Generate to see exactly what the next brief would say.
  */
 export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
-  const settings = trpc.my.newsletter.get.useQuery();
+  /**
+   * Which newsletter the form is editing (GOI-126). A reader may hold several
+   * — a daily one for cinema, a weekly one for the rest — so the form edits
+   * one at a time, picked from the list above it. Null follows the reader's
+   * first newsletter, which is the only one anybody had before this; `NEW`
+   * is one that has not been saved yet.
+   */
+  const [selected, setSelected] = useState<string | null>(null);
+  /**
+   * Bumped when the reader picks another newsletter, and only then. Saving a
+   * new one also moves `selected` to its fresh id, but that is the same form
+   * carrying on — remounting it would drop the "Saved." it just earned.
+   */
+  const [formKey, setFormKey] = useState(0);
+  const pick = (next: string | null) => {
+    setSelected(next);
+    setFormKey((k) => k + 1);
+  };
+  const utils = trpc.useUtils();
+  const list = trpc.my.newsletter.list.useQuery();
+  const creating = selected === NEW;
+  const id = creating ? null : selected ?? list.data?.[0]?.id ?? null;
+  // Still read through `get`, by id, rather than off the list: `get` is the
+  // call whose shape says whether the API predates this page (GOI-105).
+  const settings = trpc.my.newsletter.get.useQuery(id ? { id } : undefined, {
+    enabled: !creating && !list.isLoading,
+  });
   // Straight from "My venues" — same source, same folders, same tags — so the
   // brief can only ever cover venues you actually follow.
   const venues = trpc.my.venues.listAll.useQuery();
   const folders = trpc.my.lists.list.useQuery();
 
-  if (settings.isLoading || venues.isLoading) {
+  if (list.isLoading || settings.isLoading || venues.isLoading) {
     return (
       <section>
         <PanelHeading title="Newsletter" />
@@ -110,16 +136,101 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
       </section>
     );
   }
+  const saved = creating ? null : settings.data ?? null;
+  const newsletters = list.data ?? [];
   return (
     <NewsletterForm
+      // A different newsletter is a different form: every field starts again
+      // from what that one has stored.
+      key={formKey}
       defaultEmail={defaultEmail}
-      saved={settings.data ?? null}
+      saved={saved}
       staleApi={newsletterApiIsStale(settings.data)}
       venues={venues.data ?? []}
       folders={folders.data ?? []}
+      onCreated={(created) => {
+        // Seeded so the switch to its id finds it in hand, not a skeleton.
+        utils.my.newsletter.get.setData({ id: created.id }, created);
+        setSelected(created.id);
+      }}
+      onDeleted={() => pick(null)}
+      picker={
+        newsletters.length > 0 || creating ? (
+          <NewsletterPicker
+            newsletters={newsletters}
+            current={creating ? NEW : saved?.id ?? null}
+            onPick={pick}
+          />
+        ) : null
+      }
     />
   );
 }
+
+/** The `selected` value of a newsletter that has not been saved yet. */
+const NEW = 'new';
+
+/**
+ * The reader's newsletters, as a row of folders to open one at a time
+ * (GOI-126).
+ *
+ * Shown only once there is something to choose between: a reader with no
+ * newsletter yet, or with just the one, is looking at the only form there is,
+ * and a picker holding a single entry would be a heading with a border round
+ * it. "New newsletter" is what makes a second one — which is the whole point
+ * of the row existing.
+ */
+export function NewsletterPicker({
+  newsletters,
+  current,
+  onPick,
+}: {
+  newsletters: Pick<NewsletterSettings, 'id' | 'name' | 'sendCadence' | 'enabled'>[];
+  /** Id being edited, `NEW` for an unsaved one. */
+  current: string | null;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <nav aria-label="Your newsletters" className="mb-6 flex flex-wrap gap-2.5">
+      {newsletters.map((n) => {
+        const active = n.id === current;
+        return (
+          <button
+            key={n.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onPick(n.id)}
+            className={`cursor-pointer border-2 border-ink px-4 py-2.5 text-left ${
+              active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'
+            }`}
+          >
+            <span className="block text-[13px] font-extrabold uppercase tracking-[0.5px]">{n.name}</span>
+            <span className={`block text-[11px] font-semibold ${active ? 'text-white/75' : 'text-faint'}`}>
+              {CADENCE_LABEL[n.sendCadence]}
+              {n.enabled ? '' : ' · paused'}
+            </span>
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        aria-pressed={current === NEW}
+        onClick={() => onPick(NEW)}
+        className={`cursor-pointer border-2 border-dashed border-ink px-4 py-2.5 text-[13px] font-extrabold uppercase tracking-[0.5px] ${
+          current === NEW ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'
+        }`}
+      >
+        + New newsletter
+      </button>
+    </nav>
+  );
+}
+
+const CADENCE_LABEL: Record<NewsletterSendCadence, string> = {
+  daily: 'Every day',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+};
 
 /**
  * The API predates this page, said before anything is clicked (GOI-105).
@@ -161,6 +272,9 @@ function NewsletterForm({
   staleApi,
   venues,
   folders,
+  picker,
+  onCreated,
+  onDeleted,
 }: {
   defaultEmail: string;
   saved: NewsletterSettings | null;
@@ -168,7 +282,13 @@ function NewsletterForm({
   staleApi: boolean;
   venues: PickableVenue[];
   folders: { id: string; name: string }[];
+  /** The row of the reader's newsletters, when there is one (GOI-126). */
+  picker?: React.ReactNode;
+  /** A newsletter that did not exist has been saved; this is it. */
+  onCreated?: (created: NewsletterSettings) => void;
+  onDeleted?: () => void;
 }) {
+  const [name, setName] = useState(saved?.name ?? (picker ? 'New newsletter' : 'Newsletter'));
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
   const [recipientName, setRecipientName] = useState(saved?.recipientName ?? '');
   const [delivery, setDelivery] = useState<NewsletterDelivery>(saved?.delivery ?? 'email');
@@ -188,7 +308,10 @@ function NewsletterForm({
    */
   const [wantToGo, setWantToGo] = useState<NewsletterWantToGo>({
     ...DEFAULT_WANT_TO_GO,
-    enabled: saved?.wantToGo?.enabled ?? DEFAULT_WANT_TO_GO.enabled,
+    // A newsletter made beside another starts without your saved events
+    // (GOI-126): each newsletter carries them, and their change alerts, on
+    // its own, so leaving it on would announce every one of them twice.
+    enabled: saved?.wantToGo?.enabled ?? (picker ? false : DEFAULT_WANT_TO_GO.enabled),
   });
   const [enabled, setEnabled] = useState(saved?.enabled ?? true);
   const [justSaved, setJustSaved] = useState(false);
@@ -267,13 +390,30 @@ function NewsletterForm({
   };
 
   const utils = trpc.useUtils();
-  const save = trpc.my.newsletter.save.useMutation({
-    onSuccess: async () => {
-      setJustSaved(true);
-      setReconciled([]);
-      await utils.my.newsletter.get.invalidate();
-    },
+  const refresh = async () => {
+    await Promise.all([utils.my.newsletter.get.invalidate(), utils.my.newsletter.list.invalidate()]);
+  };
+  const saved_ = () => {
+    setJustSaved(true);
+    setReconciled([]);
+  };
+  const update = trpc.my.newsletter.save.useMutation({
+    onSuccess: async () => { saved_(); await refresh(); },
   });
+  /**
+   * A newsletter the reader has never saved is *created*, never upserted
+   * (GOI-126): "save" without an id writes the reader's default, which for a
+   * reader who already has one is somebody else's newsletter — the daily one
+   * would be overwritten by the weekly one they were setting up beside it.
+   */
+  const create = trpc.my.newsletter.create.useMutation({
+    onSuccess: async (created) => { saved_(); await refresh(); onCreated?.(created); },
+  });
+  const remove = trpc.my.newsletter.remove.useMutation({
+    onSuccess: async () => { await refresh(); onDeleted?.(); },
+  });
+  // One status line for "did that save?", whichever of the two did the saving.
+  const save = saved ? update : create;
   // GOI-45: generating also drops the brief on disk, ready to attach to
   // whatever the user actually sends mail from. The PDF is what lands —
   // it is the same artefact the drive copy files (GOI-91), so what they
@@ -299,7 +439,8 @@ function NewsletterForm({
     email,
     recipientName,
     delivery,
-    name: saved?.name ?? 'Newsletter',
+    id: saved?.id,
+    name: name.trim() || 'Newsletter',
     sendCadence,
     sendHour,
     sendMinute,
@@ -360,7 +501,8 @@ function NewsletterForm({
           at once and was an example of neither — a fixed "Kino Muranów …
           every day at 08:00" printed over a form set to 15:00. */}
       <PanelHeading title="Newsletter" blurb={NEWSLETTER_BLURB} rule={false} />
-      <p className="-mt-3 mb-5 md:mb-6 max-w-[520px] text-sm md:text-base font-semibold text-ink">
+      {picker}
+      <p className={`${picker ? '' : '-mt-3 '}mb-5 md:mb-6 max-w-[520px] text-sm md:text-base font-semibold text-ink`}>
         <span className="label-form mr-2 text-faint">Yours</span>
         {summary}
       </p>
@@ -373,6 +515,22 @@ function NewsletterForm({
           save.mutate(body);
         }}
       >
+        {/* What tells two newsletters apart in the row above (GOI-126). */}
+        <div className="px-5 pt-4 pb-4 md:px-0 md:pt-5 md:pb-5">
+          <label className="label-form mb-1.5" htmlFor="newsletter-title">
+            Newsletter name
+          </label>
+          <input
+            id="newsletter-title"
+            type="text"
+            maxLength={60}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Daily cinema"
+            className="field max-w-[20rem]"
+          />
+        </div>
+
         <FormSection step={1} label="Where it goes">
           <DeliveryChoice value={delivery} onChange={setDelivery} />
 
@@ -400,7 +558,7 @@ function NewsletterForm({
                 type="text"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
-                placeholder="Ania"
+                placeholder="First name"
                 className="field"
               />
               <p className="mt-1.5 text-xs text-faint">
@@ -427,8 +585,8 @@ function NewsletterForm({
           label="Venues from my venues"
           note={
             venueIds.length === 0
-              ? 'None ticked — the newsletter covers every venue in the folders below. Ticking some narrows the newsletter only; your folders are not changed.'
-              : 'Ticking narrows the newsletter only. Your folders are not changed, and a venue removed here is still in the folder.'
+              ? 'These are the venues you follow, in their folders. Tick the specific ones you want briefed on; leave everything unticked and the newsletter covers all of them. Ticking narrows the newsletter only — your folders are not changed.'
+              : `Briefing on ${venueIds.length} of your venues. Ticking narrows the newsletter only: your folders are not changed, and a venue unticked here is still in the folder.`
           }
         >
           {byFolder.map((folder) => (
@@ -549,7 +707,7 @@ function NewsletterForm({
         <FormSection
           step={4}
           label="What goes in it, per category"
-          note="Give a category its own rhythm, depth and time of day — cinema in every issue in brief, museums once a month with the full write-up. Categories are your venues' own categories and any tags you added to them."
+          note="A category is a heading in the brief, and it comes from your venues — their own kind (cinema, theatre, museums) and any tag you put on them. Each one gets its own rhythm, depth and time of day: cinema in every issue in brief, museums once a month with the full write-up. Nothing you don't add a rule for is listed."
         >
           {/* Named rather than silent: the reader chose those values, and a
               form that rewrites a choice without saying so is one they stop
@@ -681,6 +839,27 @@ function NewsletterForm({
               {preview.isPending ? 'Generating…' : 'Generate now'}
             </button>
           </div>
+          {/* Only a saved newsletter has anything to delete; an unsaved one
+              is abandoned by picking another (GOI-126). */}
+          {saved ? (
+            <button
+              type="button"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (window.confirm(`Delete “${saved.name}”? Nothing more will be sent from it.`)) {
+                  remove.mutate({ id: saved.id });
+                }
+              }}
+              className="bg-transparent border-0 p-0 cursor-pointer text-xs font-bold uppercase tracking-[0.5px] text-muted hover:text-accent"
+            >
+              {remove.isPending ? 'Deleting…' : 'Delete this newsletter'}
+            </button>
+          ) : null}
+          {remove.error ? (
+            <p role="alert" className="text-xs font-semibold text-accent">
+              {readableApiError(remove.error.message)}
+            </p>
+          ) : null}
         </div>
 
         {/* GOI-102 §5: the screen used to give no sign that a dropdown change
@@ -734,7 +913,20 @@ function DeliveryChoice({
 
   return (
     <div>
-      <div role="radiogroup" aria-label="How to send it" className="flex border-2 border-ink">
+      {/*
+        Three buttons of one size (GOI-115).
+        They were sized by their own labels, so "Email", "Drive" and "Both"
+        came out three different widths — which reads as three options of
+        different weight, when they are one choice of three equal answers. A
+        three-column grid gives each the same cell whatever its label is, and
+        `w-full` on the buttons is what makes them fill it rather than sit
+        centred in it.
+      */}
+      <div
+        role="radiogroup"
+        aria-label="How to send it"
+        className="grid grid-cols-3 border-2 border-ink max-w-[420px]"
+      >
         {options.map((o, i) => {
           const active = value === o.value;
           return (
@@ -744,7 +936,7 @@ function DeliveryChoice({
               role="radio"
               aria-checked={active}
               onClick={() => onChange(o.value)}
-              className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+              className={`w-full cursor-pointer px-4 py-[9px] text-center text-xs font-extrabold uppercase tracking-[0.5px] ${
                 i < options.length - 1 ? 'border-r-2 border-ink' : ''
               } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
             >
@@ -753,6 +945,8 @@ function DeliveryChoice({
           );
         })}
       </div>
+      {/* One line under the row rather than three inside it: the hint answers
+          "what did I just pick", which only the chosen one has to say. */}
       <p className="mt-2 text-xs text-faint">{current?.hint}</p>
     </div>
   );
@@ -937,8 +1131,10 @@ function RuleRow({
       ) : null}
 
       {/* Collapsed by default: empty is correct almost always, and a field
-          every row carries invites a number nobody needed to choose. */}
-      <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
+          every row carries invites a number nobody needed to choose.
+          What it *means* is spelled out either way (GOI-119): a number of days
+          with no sentence beside it is a setting nobody can answer. */}
+      <span className="flex w-full flex-wrap items-center gap-2.5 pl-0 md:pl-[122px]">
         {showLookahead ? (
           <>
             <label className="text-xs text-faint" htmlFor={`rule-lookahead-${index}`}>
@@ -957,18 +1153,25 @@ function RuleRow({
               className="field w-[92px] py-1.5 text-[13px]"
             />
             <span className="text-xs text-faint">
-              days — leave empty for {derived}, which this cadence covers already
+              days of {label.toLowerCase()} each issue lists, counting from the day it
+              arrives. Leave it empty for {derived} — the span this cadence already
+              covers with no gaps and no repeats.
             </span>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => setShowLookahead(true)}
-            className="act act-sm"
-            aria-label={`Set how far ahead ${label} looks`}
-          >
-            Look ahead: {derived} days
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setShowLookahead(true)}
+              className="act act-sm"
+              aria-label={`Set how far ahead ${label} looks`}
+            >
+              Look ahead: {derived} days
+            </button>
+            <span className="text-xs text-faint">
+              of {label.toLowerCase()} in each issue. Change it to reach further.
+            </span>
+          </>
         )}
       </span>
     </li>

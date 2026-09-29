@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { clean, enrichDescriptions, extractDescription } from './enricher.js';
-import { normalize } from './describer.js';
+import {
+  clean, enrichDescriptions, extractDescription, showKey,
+  type DescribeInput, type WrittenDetail, type WrittenStore,
+} from './enricher.js';
+import { describePrompt, normalize, parseReply } from './describer.js';
 
 describe('extractDescription', () => {
   it('prefers OpenGraph og:description', () => {
@@ -391,5 +394,224 @@ describe('normalize (describer)', () => {
 
   it('keeps a real description', () => {
     expect(normalize('A play about a wedding.')).toBe('A play about a wedding.');
+  });
+});
+
+/**
+ * GOI-130 / GOI-131: with a writer and a written store, every show is written
+ * once in English — including the ones that arrived with text.
+ */
+describe('enrichDescriptions — writing every show once', () => {
+  const venueUrl = 'https://teatr.example/repertuar';
+  const venue = { name: 'Teatr Powszechny', city: 'Warsaw', category: 'theatre' };
+
+  function memoryStore(seed: Record<string, WrittenDetail> = {}) {
+    const rows = new Map(Object.entries(seed));
+    const saved: Array<WrittenDetail & { key: string }> = [];
+    const store: WrittenStore = {
+      lookup: async (keys) => new Map(keys.filter((k) => rows.has(k)).map((k) => [k, rows.get(k)!])),
+      save: async (entries) => {
+        saved.push(...entries);
+        for (const e of entries) rows.set(e.key, e);
+      },
+    };
+    return { store, saved };
+  }
+
+  const page = (body: string) =>
+    (async () => new Response(`<html><body><article><p>${body}</p></article></body></html>`, { status: 200 })) as unknown as typeof fetch;
+
+  it('rewrites a logistics-only note into a description of the work', async () => {
+    const events = [
+      { title: 'Trojanki', source_url: 'https://teatr.example/spektakl/trojanki',
+        description: 'spektakl z napisami w języku angielskim — Scena: scena duża' },
+      { title: 'Trojanki', source_url: 'https://teatr.example/spektakl/trojanki',
+        description: 'spektakl z napisami w języku angielskim — Scena: scena duża' },
+    ];
+    const describe_ = vi.fn(async (_input: DescribeInput) => ({
+      description: 'Euripides’ tragedy of the women of Troy, awaiting their fate after the city falls.',
+      category: 'performance', inputTokens: 300, outputTokens: 40, searched: true,
+    }));
+    const { store, saved } = memoryStore();
+
+    const r = await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: store,
+      fetcher: page('Trojanki ' + 'x'.repeat(100)),
+      client: { describe: describe_ },
+    });
+
+    // One show, one call, however many showings.
+    expect(describe_).toHaveBeenCalledTimes(1);
+    const sent = describe_.mock.calls[0]![0];
+    expect(sent.title).toBe('Trojanki');
+    expect(sent.note).toMatch(/Scena: scena duża/);
+    expect(sent.venue).toEqual(venue);
+    expect(sent.text).toMatch(/Trojanki/);
+
+    for (const e of events) expect(e.description).toMatch(/^Euripides/);
+    expect(r.enriched).toBe(2);
+    expect(r.searched).toBe(1);
+    expect(saved).toEqual([expect.objectContaining({
+      key: 'https://teatr.example/spektakl/trojanki', searched: true, contentCategory: 'performance',
+    })]);
+  });
+
+  it('applies a stored answer without fetching or calling the model', async () => {
+    const events = [{ title: 'Lisa', source_url: 'https://teatr.example/spektakl/lisa', description: 'dzień seniorski' }];
+    const { store } = memoryStore({
+      'https://teatr.example/spektakl/lisa': { description: 'A play about a woman called Lisa.', contentCategory: null },
+    });
+    const fetcher = vi.fn();
+    const describe_ = vi.fn();
+
+    const r = await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: store,
+      fetcher: fetcher as unknown as typeof fetch,
+      client: { describe: describe_ },
+    });
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(describe_).not.toHaveBeenCalled();
+    expect(events[0]!.description).toBe('A play about a woman called Lisa.');
+    expect(r.backfilled).toBe(1);
+  });
+
+  it('remembers "found nothing" and leaves the row’s own text alone', async () => {
+    const events = [{ title: 'X', source_url: 'https://teatr.example/spektakl/x', description: 'Scena: mała' }];
+    const { store, saved } = memoryStore();
+
+    await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: store, fetcher: page('y'.repeat(100)),
+      client: { describe: async () => ({ description: null, inputTokens: 1, outputTokens: 1, searched: true }) },
+    });
+
+    expect(events[0]!.description).toBe('Scena: mała');
+    expect(saved).toEqual([expect.objectContaining({ key: 'https://teatr.example/spektakl/x', description: null })]);
+  });
+
+  it('writes a show with no detail page from its title, without a fetch', async () => {
+    const events: Array<{ title: string; source_url: string; description: string | null }> = [
+      { title: 'Dybuk', source_url: venueUrl, description: null },
+      { title: '  DYBUK ', source_url: venueUrl, description: null },
+    ];
+    const fetcher = vi.fn();
+    const describe_ = vi.fn(async (_input: DescribeInput) => ({ description: 'A Yiddish classic of possession and love.', inputTokens: 1, outputTokens: 1 }));
+
+    const r = await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: memoryStore().store,
+      fetcher: fetcher as unknown as typeof fetch,
+      client: { describe: describe_ },
+    });
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(describe_).toHaveBeenCalledTimes(1);
+    expect(describe_.mock.calls[0]![0].text).toBeNull();
+    expect(events.every((e) => e.description?.startsWith('A Yiddish'))).toBe(true);
+    expect(r.fetched).toBe(0);
+  });
+
+  it('still asks the writer when the detail page will not load', async () => {
+    const events = [{ title: 'Z', source_url: 'https://teatr.example/spektakl/z', description: null }];
+    const describe_ = vi.fn(async (_input: DescribeInput) => ({ description: 'Found on the web.', inputTokens: 1, outputTokens: 1 }));
+
+    await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: memoryStore().store,
+      fetcher: (async () => new Response('', { status: 500 })) as unknown as typeof fetch,
+      client: { describe: describe_ },
+    });
+
+    expect(describe_.mock.calls[0]![0].text).toBeNull();
+    expect(events[0]!.description).toBe('Found on the web.');
+  });
+
+  it('does not remember a failed call, so the next run retries it', async () => {
+    const events = [{ title: 'Q', source_url: 'https://teatr.example/spektakl/q', description: 'Opis' }];
+    const { store, saved } = memoryStore();
+
+    const r = await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: store, fetcher: page('q'.repeat(100)),
+      client: { describe: async () => { throw new Error('overloaded'); } },
+    });
+
+    expect(r.failed).toBe(1);
+    expect(saved).toEqual([]);
+    expect(events[0]!.description).toBe('Opis');
+  });
+
+  it('caps the shows written per run and leaves the rest for later', async () => {
+    const events = ['a', 'b', 'c'].map((t) => ({
+      title: t, source_url: `https://teatr.example/spektakl/${t}`, description: null,
+    }));
+    const describe_ = vi.fn(async () => ({ description: 'Written.', inputTokens: 1, outputTokens: 1 }));
+
+    const r = await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, maxFetches: 2, written: memoryStore().store,
+      fetcher: page('p'.repeat(100)), client: { describe: describe_ },
+    });
+
+    expect(describe_).toHaveBeenCalledTimes(2);
+    expect(r.capped).toBe(1);
+    expect(events[2]!.description).toBeNull();
+  });
+
+  it('writes everything when the store lookup fails', async () => {
+    const events = [{ title: 'W', source_url: 'https://teatr.example/spektakl/w', description: null }];
+    const store: WrittenStore = {
+      lookup: async () => { throw new Error('db down'); },
+      save: async () => { throw new Error('db down'); },
+    };
+
+    await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: store, fetcher: page('w'.repeat(100)),
+      client: { describe: async () => ({ description: 'Still written.', inputTokens: 1, outputTokens: 1 }) },
+    });
+
+    expect(events[0]!.description).toBe('Still written.');
+  });
+});
+
+describe('showKey', () => {
+  const venueTarget = 'https://v.example/repertuar';
+  it('keys on the detail page when there is one', () => {
+    expect(showKey({ source_url: 'https://v.example/film/a', title: 'A' }, venueTarget)).toBe('https://v.example/film/a');
+  });
+  it('keys on the normalised title when the row points at the calendar', () => {
+    expect(showKey({ source_url: 'https://v.example/repertuar/', title: '  Dybuk  Nowy ' }, venueTarget))
+      .toBe('title:dybuk nowy');
+  });
+  it('has nothing to key on without either', () => {
+    expect(showKey({ source_url: '', title: ' ' }, venueTarget)).toBeNull();
+  });
+});
+
+describe('describer prompt and reply (GOI-130 / GOI-131)', () => {
+  it('hands the writer everything known about the show', () => {
+    const prompt = describePrompt({
+      text: 'Tekst strony.',
+      url: 'https://v.example/film/a',
+      title: 'Trojanki',
+      note: 'Scena: duża',
+      venue: { name: 'Teatr Powszechny', city: 'Warsaw', category: 'theatre' },
+    });
+    expect(prompt).toContain('Title: Trojanki');
+    expect(prompt).toContain('Venue: Teatr Powszechny, Warsaw (theatre)');
+    expect(prompt).toContain('Listing note: Scena: duża');
+    expect(prompt).toContain('Page text:\nTekst strony.');
+  });
+
+  it('says so when there is no page to read', () => {
+    const prompt = describePrompt({ text: null, url: 'https://v.example/', title: 'Dybuk' });
+    expect(prompt).toContain('No page text is available');
+    expect(prompt).not.toContain('Listing note');
+  });
+
+  it('finds the labels after text the model wrote before searching', () => {
+    const r = parseReply('Let me look this up.CATEGORY: performance\nDESCRIPTION: A tragedy of the women of Troy.');
+    expect(r).toEqual({ category: 'performance', description: 'A tragedy of the women of Troy.' });
+  });
+
+  it('does not swallow the description into the category when both share a line', () => {
+    const r = parseReply('CATEGORY: screening DESCRIPTION: A documentary about bees.');
+    expect(r).toEqual({ category: 'screening', description: 'A documentary about bees.' });
   });
 });

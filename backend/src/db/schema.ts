@@ -445,6 +445,28 @@ export const eventChanges = pgTable(
 );
 
 /**
+ * One English description per show, written once by the enrichment pass
+ * (GOI-130 / GOI-131). See 0030_event_descriptions.sql for why it is kept
+ * apart from the event rows.
+ */
+export const eventDescriptions = pgTable(
+  'event_descriptions',
+  {
+    venueId: uuid('venue_id').notNull().references(() => venues.id, { onDelete: 'cascade' }),
+    /** Detail-page URL, or `title:<normalised title>` when there is none. */
+    showKey: text('show_key').notNull(),
+    /** Null: looked, and found nothing to say. */
+    description: text('description'),
+    contentCategory: text('content_category'),
+    searched: boolean('searched').notNull().default(false),
+    writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.venueId, t.showKey] }),
+  }),
+);
+
+/**
  * Invite tokens for the pre-auth access gate (GOI-83).
  *
  * Temporary by construction: this table plus one middleware file is the whole

@@ -17,13 +17,15 @@ import { listFestivals } from '../data/festivals.js';
 import {
   festivalsAtVenues, venueSchedule,
   venueFilterStatus, venueSlug, MAX_DRIVE_FOLDER_NAME,
-  VENUE_SUGGEST_MAX_CANDIDATES, VENUE_SUGGEST_PER_HOUR,
+  VENUE_SEARCH_MAX_WINDOW_DAYS, VENUE_SUGGEST_MAX_CANDIDATES,
+  VENUE_SUGGEST_MAX_TYPES, VENUE_SUGGEST_PER_HOUR,
   type Category, type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
   type VenueFilterOption,
 } from '@afisz/shared';
 import {
-  briefFetchWindowDays, buildBriefSections, currentFestival, plannedFrequency,
-  resolveBriefVenues,
+  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection,
+  dropFestivalRestatements, fetchBriefEvents,
+  plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
 import { renderBriefHtml } from '../services/newsletter-render.js';
@@ -31,6 +33,7 @@ import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js'
 import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
 import { renameDriveFolder } from '../services/drive-delivery.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
+import { NewsletterNotFoundError } from '../services/newsletter-store.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -81,6 +84,21 @@ const venues = router({
 
 const dayKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+/** A calendar day a search may name: `dayKeySchema`'s shape, plus being a real
+ *  date. '2026-02-31' matches the pattern and is not a day. */
+const searchDaySchema = dayKeySchema.refine(
+  (v) => new Date(`${v}T00:00:00.000Z`).toISOString().slice(0, 10) === v,
+  'That is not a real date.',
+);
+
+/** Days from one ISO day to another (a one-day window is 0). Both ends are
+ *  midnight UTC, so this is arithmetic rather than a DST guess. */
+export function daysBetween(from: string, until: string): number {
+  return Math.round(
+    (Date.parse(`${until}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
+  );
+}
+
 /**
  * An inclusive Europe/Warsaw calendar-day window (GOI-88) — what the day
  * strip selects, whether it names one date or a whole week.
@@ -122,6 +140,16 @@ const events = router({
         filters: eventFiltersSchema.optional(),
         /** Start the listing at this Warsaw day instead of now — see below. */
         fromDay: dayKeySchema.optional(),
+        /**
+         * The venue selection, narrowed in SQL (GOI-94).
+         *
+         * A sibling of `fromDay` rather than a member of `filters`: those are
+         * the dimensions SQL does not cover and the browser finishes off, and
+         * this is the opposite — the whole point is that it happens before the
+         * limit. Empty and absent both mean "every venue"; an explicitly empty
+         * selection is what the picker's "All venues" sends.
+         */
+        venueIds: z.array(z.string()).optional(),
       }).optional(),
     )
     .query(async ({ input }) => {
@@ -155,9 +183,18 @@ const events = router({
       // selected day *and*, if it is empty, whatever comes after it — and
       // since these rows are ordered by start, the selected day's are at the
       // head of the response, where the limit can't reach them.
+      //
+      // The venue selection is narrowed here too, and for the same reason
+      // (GOI-94). It used to be applied in the browser, to whichever hundred
+      // rows came back — so picking the cinema that publishes eight screenings
+      // a day changed nothing visible, since it already filled the page, and
+      // picking a sparse one emptied the feed rather than narrowing it. Both
+      // read as "the picker doesn't work", and both are this cap.
+      const venueIds = input?.venueIds?.length ? input.venueIds : undefined;
       const rows = await defaultEventStore.listUpcomingWithCategoryFloor({
         city: 'Warsaw',
         categories: filters.categories,
+        venueIds,
         fromDay,
         limit: fromDay ? FROM_DAY_LIMIT : 100,
       });
@@ -243,13 +280,54 @@ const events = router({
       return { venues: await predefinedVenueOptions(ctx, input?.category) };
     }),
 
-  /** Upcoming screenings of one title across every venue, soonest first —
-   *  powers the "Nearest screenings" button on film cards. */
-  screenings: publicProcedure
-    .input(z.object({ title: z.string().min(1) }))
+  /**
+   * Search upcoming events by title, across venues (GOI-112).
+   *
+   * Across *every* venue, not the reader's own: the question being asked is
+   * "is this film on anywhere", and answering it from the follow list would
+   * report "no" for a film playing two streets away at a cinema they have not
+   * added. The results carry their venue, so what to do about that is the
+   * reader's to decide.
+   *
+   * Public, like `screenings` beside it: a logged-out reader can search. What
+   * needs an account is the half that happens when the answer is nothing —
+   * putting the title on a list so the next sweep can tell you.
+   */
+  search: publicProcedure
+    .input(z.object({
+      q: z.string().min(2).max(120),
+      limit: z.number().int().min(1).max(100).default(50),
+    }))
     .query(async ({ input }) => {
       if (!env.DATABASE_URL) return [];
-      return defaultEventStore.listUpcoming({ title: input.title, limit: 50 });
+      return defaultEventStore.listUpcoming({ titleQuery: input.q.trim(), limit: input.limit });
+    }),
+
+  /**
+   * Upcoming screenings of one title across every venue, soonest first —
+   * powers the "Nearest screenings" button on film cards.
+   *
+   * `match` picks how the title is read, because since GOI-112 two different
+   * kinds of string arrive here. A screening's own title is exact, and must
+   * stay exact: matching it loosely would fold two works whose names contain
+   * one another into one card. A *tracked* title is whatever the reader typed
+   * into a search that found nothing, so it is matched where it appears as
+   * whole words — otherwise the row that promises "it appears here as soon as
+   * it is announced" says "no upcoming screenings" for as long as the title
+   * is spelt any other way, which is for ever.
+   */
+  screenings: publicProcedure
+    .input(z.object({
+      title: z.string().min(1),
+      match: z.enum(['exact', 'words']).default('exact'),
+    }))
+    .query(async ({ input }) => {
+      if (!env.DATABASE_URL) return [];
+      return defaultEventStore.listUpcoming(
+        input.match === 'words'
+          ? { titleWords: input.title, limit: 50 }
+          : { title: input.title, limit: 50 },
+      );
     }),
 });
 
@@ -539,12 +617,20 @@ const my = router({
       }),
 
     /**
-     * "Propose me similar venues in city X, like the ones in folder Y, of
-     * type Z" (GOI-86).
+     * "Find me jazz concerts in Thessaloniki tomorrow" (GOI-86).
+     *
+     * A search is a city plus any of: what they are after in their own words,
+     * the venue types they want, the dates they will be there, and a folder of
+     * their own venues to match the character of. Only the city is required —
+     * every other field narrows an ask that is already answerable without it.
      *
      * A mutation rather than a query because it costs a model call: queries
      * are refetched on focus, on reconnect and on cache invalidation, and none
      * of those are moments the user asked to spend money.
+     *
+     * The dates are deliberately *not* trusted to the model, which cannot know
+     * what is on tomorrow. They travel with the answer so the caller can match
+     * them against each candidate's real programme, which the probe reads.
      *
      * Suggestions are returned, never subscribed. Adding one goes through the
      * ordinary `add` path, so it is probed like any pasted URL and a
@@ -553,21 +639,52 @@ const my = router({
      */
     suggestSimilar: userProcedure
       .input(
-        z.object({
-          /** Folder whose venues are the taste exemplars. */
-          listId: z.string().min(1),
-          /** Target city, as typed. */
-          city: z.string().trim().min(1).max(80),
-          /** Optional narrowing ("Museums"). Free text — the ticket's example
-           *  is a phrase, not an enum. */
-          type: z.string().trim().max(60).optional(),
-          limit: z
-            .number()
-            .int()
-            .min(1)
-            .max(VENUE_SUGGEST_MAX_CANDIDATES)
-            .default(VENUE_SUGGEST_MAX_CANDIDATES),
-        }),
+        z
+          .object({
+            /** Folder whose venues are the taste exemplars. Optional: a city
+             *  you have never been to has nothing to match against, and that
+             *  is a normal search rather than a broken one. */
+            listId: z.string().min(1).optional(),
+            /** Target city, as typed. */
+            city: z.string().trim().min(1).max(80),
+            /** What they are after: "jazz concerts". Free text — a genre is
+             *  not one of our categories, and it is the sharpest thing most
+             *  people can say about what they want. */
+            interest: z.string().trim().max(120).optional(),
+            /** Venue types wanted, as category labels. Empty means anything. */
+            types: z
+              .array(z.string().trim().min(1).max(40))
+              .max(VENUE_SUGGEST_MAX_TYPES)
+              .optional(),
+            /** Inclusive date window, `YYYY-MM-DD`. Either end may stand
+             *  alone: "from Friday" and "up to the 20th" are both real asks. */
+            from: searchDaySchema.optional(),
+            until: searchDaySchema.optional(),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(VENUE_SUGGEST_MAX_CANDIDATES)
+              .default(VENUE_SUGGEST_MAX_CANDIDATES),
+          })
+          .superRefine((input, ctx) => {
+            if (!input.from || !input.until) return;
+            if (input.until < input.from) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['until'],
+                message: 'The end of the window is before its start.',
+              });
+              return;
+            }
+            if (daysBetween(input.from, input.until) > VENUE_SEARCH_MAX_WINDOW_DAYS) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['until'],
+                message: `Dates can span at most ${VENUE_SEARCH_MAX_WINDOW_DAYS} days — few venues publish further ahead than that.`,
+              });
+            }
+          }),
       )
       .mutation(async ({ ctx, input }) => {
         // GOI-92: a search is a model call, and every candidate it returns is
@@ -580,13 +697,11 @@ const my = router({
           });
         }
 
-        const like = await ctx.userVenues.list(ctx.user.id, input.listId);
-        if (like.length === 0) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'That folder has no venues yet — add a couple first, so there is something to match against.',
-          });
-        }
+        // An empty folder is not an error any more: the city, the interest and
+        // the dates are a search on their own, and refusing one because the
+        // *optional* taste signal is empty would be refusing the ask that was
+        // actually made.
+        const like = input.listId ? await ctx.userVenues.list(ctx.user.id, input.listId) : [];
         // Everything the user follows, not just this folder: a venue already
         // in another folder is not a useful suggestion either.
         const followed = await ctx.userVenues.listAll(ctx.user.id);
@@ -596,7 +711,10 @@ const my = router({
           suggestions = await suggestSimilarVenues({
             like: like.map((v) => ({ name: v.name, city: v.city, category: v.category, tags: v.tags })),
             city: input.city,
-            type: input.type,
+            interest: input.interest,
+            types: input.types,
+            from: input.from,
+            until: input.until,
             limit: input.limit,
           });
         } catch (e) {
@@ -611,7 +729,10 @@ const my = router({
 
         return {
           city: input.city,
-          type: input.type ?? null,
+          interest: input.interest ?? null,
+          types: input.types ?? [],
+          from: input.from ?? null,
+          until: input.until ?? null,
           basedOn: like.length,
           suggestions: dedupeSuggestions(
             suggestions,
@@ -690,15 +811,43 @@ const my = router({
      * every existing subscription is.
      */
     get: userProcedure
-      .input(z.object({ folderId: z.string().uuid().nullable().default(null) }).optional())
-      .query(({ ctx, input }) => ctx.newsletter.get(ctx.user.id, input?.folderId ?? null)),
+      .input(z.object({
+        folderId: z.string().uuid().nullable().default(null),
+        /** One newsletter by id (GOI-126); wins over `folderId`. */
+        id: z.string().uuid().optional(),
+      }).optional())
+      .query(({ ctx, input }) =>
+        input?.id
+          ? ctx.newsletter.getById(ctx.user.id, input.id)
+          : ctx.newsletter.get(ctx.user.id, input?.folderId ?? null)),
 
-    /** Every newsletter the reader holds, for a picker across folders. */
+    /** Every newsletter the reader holds, oldest first — the list the
+     *  settings screen picks from (GOI-126). */
     list: userProcedure.query(({ ctx }) => ctx.newsletter.list(ctx.user.id)),
 
     save: userProcedure
       .input(newsletterSaveInput)
-      .mutation(({ ctx, input }) => ctx.newsletter.save(ctx.user.id, input)),
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await ctx.newsletter.save(ctx.user.id, input);
+        } catch (e) {
+          throw newsletterError(e);
+        }
+      }),
+
+    /** Another newsletter, beside the ones the reader has (GOI-126). */
+    create: userProcedure
+      .input(newsletterSaveInput)
+      .mutation(({ ctx, input }) => ctx.newsletter.create(ctx.user.id, { ...input, id: undefined })),
+
+    remove: userProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!(await ctx.newsletter.remove(ctx.user.id, input.id))) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No such newsletter' });
+        }
+        return { success: true };
+      }),
 
     /** "Generate" (GOI-28): render the brief the current settings would
      *  produce, without saving or sending anything. */
@@ -706,29 +855,59 @@ const my = router({
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
         const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
-        // Narrowed in SQL for the same reason the sender is: `limit` cuts the
-        // globally earliest rows, so a preview built from "the next 500 events"
-        // showed a short week once the database outgrew that. The window is the
-        // widest any section can ask for — the same call the sweep makes, so
-        // what Generate shows is what would actually be sent.
+        // The same fetch the sweep makes, so what Generate shows is what would
+        // actually be sent — including its per-rule top-ups, without which a
+        // preview of a cinema-heavy folder showed cinema and nothing else.
         const now = new Date();
-        const all = env.DATABASE_URL && venues.length > 0
-          ? await defaultEventStore.listUpcoming({
-            venueIds: venues.map((v) => v.id),
-            now,
-            until: new Date(now.getTime() + briefFetchWindowDays(input, now) * 24 * 3_600_000),
-            limit: 500,
-          })
+        const all = env.DATABASE_URL
+          ? await fetchBriefEvents(input, venues, now, defaultEventStore)
           : [];
         // The preview shows what would go out *now*, so a section whose
         // cadence isn't due today is genuinely absent from it — same rule the
         // sweep applies.
-        const sections = buildBriefSections(all, input, venues, now);
+        // Scoped like the send is (GOI-33), so Generate and the issue agree —
+        // unless the reader follows nothing yet, where scoping to an empty
+        // list would hide the band from the screen meant to show it.
+        const festivals = briefFestivals(
+          briefWindowDays(plannedFrequency(input)),
+          venues.length > 0 ? venues.map((v) => v.name) : undefined,
+          now,
+        );
+        // A row that only restates a festival the band names is the same fact
+        // printed twice in one issue (GOI-124).
+        const sections = dropFestivalRestatements(
+          buildBriefSections(all, input, venues, now),
+          festivals,
+        );
+        /**
+         * The saved-events queue, which the preview used to leave out entirely
+         * (GOI-110). It is the first block of a brief and the only one that
+         * asks the reader to do something, so a preview without it was missing
+         * the part of the design it was pressed to check.
+         *
+         * Built without send-state dedup — the substituted `sentStates`. A
+         * preview sends nothing, so it consumes no state; suppressing what a
+         * previous issue already announced would leave the reader looking at an
+         * empty block precisely because the feature has been working.
+         */
+        const wantToGo = await buildWantToGoSection(
+          { id: 'preview', userId: ctx.user.id, wantToGo: input.wantToGo, sendCadence: input.sendCadence },
+          {
+            sentStates: async () => new Set<string>(),
+            changesFor: (ids, since) => ctx.newsletter.changesFor(ids, since),
+          },
+          ctx.wantToGo,
+          now,
+          // A tracked title that has just been announced belongs in the
+          // preview for the same reason it belongs in the issue (GOI-112).
+          { films: ctx.films, events: defaultEventStore },
+        );
         const brief = {
           sections,
+          wantToGo,
           fallbackFrequency: plannedFrequency(input),
           recipientName: input.recipientName,
-          festival: currentFestival(),
+          festivals,
           now,
         };
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand
@@ -948,6 +1127,13 @@ function mapStoreError(e: unknown): TRPCError {
   if (/not found/i.test(msg)) return new TRPCError({ code: 'NOT_FOUND', message: msg });
   if (/already have/i.test(msg)) return new TRPCError({ code: 'CONFLICT', message: msg });
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: msg });
+}
+
+/** An id that is not the reader's newsletter reads as not found, never as a
+ *  server fault (GOI-126). */
+function newsletterError(e: unknown): unknown {
+  if (e instanceof NewsletterNotFoundError) return new TRPCError({ code: 'NOT_FOUND', message: e.message });
+  return e;
 }
 
 const festivalCategorySchema = z.enum(['cinema', 'theatre', 'music']);

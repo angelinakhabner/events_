@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { FestivalsSection, formatRange } from './FestivalsSection';
 
@@ -68,6 +68,17 @@ describe('FestivalsSection — which listing it belongs to', () => {
 });
 
 describe('FestivalsSection — the row', () => {
+  // Pinned well before the fixture's 9 October start. Against the real clock
+  // these started failing a fortnight out, the day the festival moved into the
+  // banner's window (GOI-99) and so, correctly, out of this block.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-01T10:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('heads the block "Coming soon"', () => {
     render(<FestivalsSection category="cinema" />);
     expect(screen.getByRole('heading', { name: 'Coming soon' })).toBeInTheDocument();

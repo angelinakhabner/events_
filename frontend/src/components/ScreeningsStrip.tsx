@@ -36,14 +36,19 @@ function label(event: Event, open: boolean): string {
  * leaves it on (its rows have no time of their own); event cards turn it off,
  * because the showing you are reading is printed directly above the strip.
  *
- * `canTrack` shows the "Track film" row — the only way a film reaches a
+ * `canTrack` shows the "Track film" row — one of the ways a film reaches a
  * want-to-go list (GOI-26). Off where the film is already on the list.
+ *
+ * `match` says how to read the title (GOI-112). A screening's own title is
+ * exact; a *tracked* title is what somebody typed into a search that found
+ * nothing, and is matched where it appears as whole words — see the procedure.
  */
 export function ScreeningsStrip({
   event,
   includeSelf = true,
   canTrack = false,
   defaultOpen = false,
+  match = 'exact',
 }: {
   event: Event;
   includeSelf?: boolean;
@@ -53,6 +58,7 @@ export function ScreeningsStrip({
    *  question you have about a film you saved is *where and when*, which was
    *  one click away on every row instead of simply on screen. */
   defaultOpen?: boolean;
+  match?: 'exact' | 'words';
 }) {
   const [open, setOpen] = useState(defaultOpen);
   // The button and the panel are siblings, not a wrapped pair (GOI-66).
@@ -82,7 +88,7 @@ export function ScreeningsStrip({
       </button>
       {open ? (
         <div className="w-full">
-          <Strip event={event} includeSelf={includeSelf} canTrack={canTrack} />
+          <Strip event={event} includeSelf={includeSelf} canTrack={canTrack} match={match} />
         </div>
       ) : null}
     </>
@@ -93,14 +99,16 @@ function Strip({
   event,
   includeSelf,
   canTrack,
+  match,
 }: {
   event: Event;
   includeSelf: boolean;
   canTrack: boolean;
+  match: 'exact' | 'words';
 }) {
   const [showAll, setShowAll] = useState(false);
   const screenings = trpc.events.screenings.useQuery(
-    { title: event.title },
+    { title: event.title, match },
     // Fail fast: with react-query's default 3 retries a dead endpoint keeps
     // the strip stuck on "Looking for…" for ~10s before the error shows.
     { retry: 1 },
@@ -157,9 +165,13 @@ function Strip({
 }
 
 /**
- * "Track film" (GOI-26): the only way a film reaches your "want to go" list —
- * there is no free-text field anywhere, so a tracked title always comes from a
- * real screening and matches how the venue spells it.
+ * "Track film" (GOI-26): a film reaches your "want to go" list from a real
+ * screening, so the title matches how the venue spells it.
+ *
+ * It stopped being the *only* way with the cross-venue search (GOI-112),
+ * which is the route that puts a title on the list before any venue has
+ * announced it — and so spelt however the reader typed it rather than however
+ * a venue does.
  */
 function TrackFilmButton({ title }: { title: string }) {
   const utils = trpc.useUtils();
