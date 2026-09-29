@@ -33,6 +33,7 @@ import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js'
 import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
 import { renameDriveFolder } from '../services/drive-delivery.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
+import { NewsletterNotFoundError } from '../services/newsletter-store.js';
 import { env } from '../config.js';
 
 const categorySchema = z.enum(['cinema', 'theatre', 'exhibition', 'comedy', 'music', 'other']);
@@ -810,15 +811,43 @@ const my = router({
      * every existing subscription is.
      */
     get: userProcedure
-      .input(z.object({ folderId: z.string().uuid().nullable().default(null) }).optional())
-      .query(({ ctx, input }) => ctx.newsletter.get(ctx.user.id, input?.folderId ?? null)),
+      .input(z.object({
+        folderId: z.string().uuid().nullable().default(null),
+        /** One newsletter by id (GOI-126); wins over `folderId`. */
+        id: z.string().uuid().optional(),
+      }).optional())
+      .query(({ ctx, input }) =>
+        input?.id
+          ? ctx.newsletter.getById(ctx.user.id, input.id)
+          : ctx.newsletter.get(ctx.user.id, input?.folderId ?? null)),
 
-    /** Every newsletter the reader holds, for a picker across folders. */
+    /** Every newsletter the reader holds, oldest first — the list the
+     *  settings screen picks from (GOI-126). */
     list: userProcedure.query(({ ctx }) => ctx.newsletter.list(ctx.user.id)),
 
     save: userProcedure
       .input(newsletterSaveInput)
-      .mutation(({ ctx, input }) => ctx.newsletter.save(ctx.user.id, input)),
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await ctx.newsletter.save(ctx.user.id, input);
+        } catch (e) {
+          throw newsletterError(e);
+        }
+      }),
+
+    /** Another newsletter, beside the ones the reader has (GOI-126). */
+    create: userProcedure
+      .input(newsletterSaveInput)
+      .mutation(({ ctx, input }) => ctx.newsletter.create(ctx.user.id, { ...input, id: undefined })),
+
+    remove: userProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!(await ctx.newsletter.remove(ctx.user.id, input.id))) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'No such newsletter' });
+        }
+        return { success: true };
+      }),
 
     /** "Generate" (GOI-28): render the brief the current settings would
      *  produce, without saving or sending anything. */
@@ -1098,6 +1127,13 @@ function mapStoreError(e: unknown): TRPCError {
   if (/not found/i.test(msg)) return new TRPCError({ code: 'NOT_FOUND', message: msg });
   if (/already have/i.test(msg)) return new TRPCError({ code: 'CONFLICT', message: msg });
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: msg });
+}
+
+/** An id that is not the reader's newsletter reads as not found, never as a
+ *  server fault (GOI-126). */
+function newsletterError(e: unknown): unknown {
+  if (e instanceof NewsletterNotFoundError) return new TRPCError({ code: 'NOT_FOUND', message: e.message });
+  return e;
 }
 
 const festivalCategorySchema = z.enum(['cinema', 'theatre', 'music']);

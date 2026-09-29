@@ -44,6 +44,8 @@ export const NEWSLETTER_BLURB =
  * form agreeing in advance, not the form deciding.
  */
 export interface NewsletterFormState {
+  /** The newsletter being edited (GOI-126); absent for one not saved yet. */
+  id?: string;
   email: string;
   recipientName: string;
   delivery: NewsletterDelivery;
@@ -61,6 +63,8 @@ export interface NewsletterFormState {
 
 export function newsletterPayload(form: NewsletterFormState) {
   return {
+    // Undefined for a new newsletter, which JSON then leaves out entirely.
+    id: form.id,
     email: form.email.trim(),
     recipientName: form.recipientName.trim() || null,
     delivery: form.delivery,

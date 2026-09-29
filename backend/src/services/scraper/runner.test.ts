@@ -330,6 +330,50 @@ describe('scrapeVenue runner', () => {
     expect(saved[0].description).toBe('Opis spektaklu.'); // enrichment ran
   });
 
+  it('writes each show in English through the written store when a describer is configured (GOI-130)', async () => {
+    state.venues = [{
+      ...VENUE,
+      id: 'klub-komediowy',
+      name: 'Klub Komediowy',
+      category: 'comedy',
+      url: 'https://komediowy.pl/repertuar/',
+    }];
+    const komediowyHtml = `
+      <div class=eventDay data-event-date=17.06.2026><div class=eventItem>
+        <div class=eventTime>19:00</div>
+        <h3 class=eventTitle><a href=https://komediowy.pl/spektakl/test/>Test Show</a></h3>
+        <div class=eventAction><a href=https://tixto.pl/s/111>KUP BILET</a></div>
+      </div></div>`;
+    const fetcher = vi.fn(async () =>
+      new Response('<html><body><article><p>' + 'Spektakl komediowy. '.repeat(10) + '</p></article></body></html>', { status: 200 }));
+    const describer = {
+      describe: vi.fn(async () => ({ description: 'An improvised comedy night.', inputTokens: 10, outputTokens: 5 })),
+    };
+    const saved: unknown[] = [];
+    const writtenStore = {
+      lookup: vi.fn(async () => new Map()),
+      save: vi.fn(async (entries: unknown[]) => { saved.push(...entries); }),
+    };
+
+    await scrapeVenue('klub-komediowy', {
+      htmlOverride: komediowyHtml,
+      extractor: { extract: vi.fn(async () => '[]') },
+      fetcher: fetcher as unknown as typeof fetch,
+      describer,
+      writtenStore,
+      enrichDelayMs: 0,
+    });
+
+    expect(describer.describe).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Test Show',
+      venue: { name: 'Klub Komediowy', city: 'Warsaw', category: 'comedy' },
+    }));
+    expect(saved).toEqual([expect.objectContaining({ key: 'https://komediowy.pl/spektakl/test/' })]);
+    const { saveEvents } = await import('./persister.js');
+    const rows = (saveEvents as any).mock.calls.at(-1)![1];
+    expect(rows[0].description).toBe('An improvised comedy night.');
+  });
+
   it('re-runs the pipeline when a prior success was stored under a different hash version', async () => {
     // Simulate a successful run cached under an old version's hash. Same HTML
     // arriving now should produce a NEW hash (because EXTRACTOR_VERSION is
