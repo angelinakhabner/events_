@@ -564,13 +564,11 @@ describe('MyPage — newsletter end-to-end', () => {
 
     // Every issue of a daily newsletter covers a day…
     await user.selectOptions(cadence, 'every_issue');
-    expect(within(section).getByRole('button', { name: /set how far ahead museums looks/i }))
-      .toHaveTextContent('Look ahead: 1 days');
+    expect(within(section).getByText('Each issue shows the next 1 day of museums.')).toBeInTheDocument();
 
     // …and a monthly section of one covers a month.
     await user.selectOptions(cadence, 'monthly');
-    expect(within(section).getByRole('button', { name: /set how far ahead museums looks/i }))
-      .toHaveTextContent('Look ahead: 30 days');
+    expect(within(section).getByText('Each issue shows the next 30 days of museums.')).toBeInTheDocument();
   });
 
   /**
@@ -587,12 +585,17 @@ describe('MyPage — newsletter end-to-end', () => {
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
     const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
 
-    expect(within(section).getByText(/of museums in each issue/i)).toBeInTheDocument();
+    expect(within(section).getByText(/each issue shows the next \d+ days? of museums/i)).toBeInTheDocument();
 
     await user.click(
-      within(section).getByRole('button', { name: /set how far ahead museums looks/i }),
+      within(section).getByRole('button', { name: /change how many days of museums each issue shows/i }),
     );
-    expect(within(section).getByText(/days of museums each issue lists/i)).toBeInTheDocument();
+    // GOI-137: the field sits inside one plain sentence — no "Look ahead"
+    // label and no paragraph about spans and repeats under it.
+    const field = within(section).getByLabelText(/each issue shows the next/i);
+    expect(field).toHaveAttribute('type', 'number');
+    expect(within(section).queryByText(/look ahead/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/no gaps and no repeats/i)).not.toBeInTheDocument();
   });
 
   it('says the venues are the reader\u2019s own, and what ticking one does', async () => {
