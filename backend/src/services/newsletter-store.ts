@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type {
   EventChangeType, NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail,
   NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
@@ -41,6 +41,9 @@ export interface NewsletterSaveInput {
 
 export interface NewsletterSubscription extends NewsletterSettings {
   userId: string;
+  /** Scheduled issues sent so far — the daily poster's "No. N" is this plus
+   *  one. Kept off `NewsletterSettings`: it is the sweep's, not the form's. */
+  issuesSent?: number;
 }
 
 export interface NewsletterStore {
@@ -263,14 +266,18 @@ export class DbNewsletterStore implements NewsletterStore {
       .from(schema.newsletterSubscriptions)
       .where(eq(schema.newsletterSubscriptions.enabled, true));
     return Promise.all(
-      rows.map(async (r) => ({ userId: r.userId, ...toSettings(r, await this.rulesFor(r.id)) })),
+      rows.map(async (r) => ({
+        userId: r.userId,
+        issuesSent: r.issuesSent,
+        ...toSettings(r, await this.rulesFor(r.id)),
+      })),
     );
   }
 
   async markSent(configId: string, at: Date): Promise<void> {
     await getDb()
       .update(schema.newsletterSubscriptions)
-      .set({ lastSentAt: at })
+      .set({ lastSentAt: at, issuesSent: sql`${schema.newsletterSubscriptions.issuesSent} + 1` })
       .where(eq(schema.newsletterSubscriptions.id, configId));
   }
 
@@ -351,6 +358,7 @@ export class DbNewsletterStore implements NewsletterStore {
 export function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
   const copy: Partial<NewsletterSubscription> = { ...sub };
   delete copy.userId;
+  delete copy.issuesSent;
   return copy as NewsletterSettings;
 }
 
@@ -400,6 +408,7 @@ export class InMemoryNewsletterStore implements NewsletterStore {
       categoryRules: norm.categoryRules,
       enabled: input.enabled,
       lastSentAt: prev?.lastSentAt ?? null,
+      ...(prev?.issuesSent ? { issuesSent: prev.issuesSent } : {}),
     };
     if (prev) this.configs[this.configs.indexOf(prev)] = sub;
     else this.configs.push(sub);
@@ -412,7 +421,10 @@ export class InMemoryNewsletterStore implements NewsletterStore {
 
   async markSent(configId: string, at: Date): Promise<void> {
     const sub = this.configs.find((c) => c.id === configId);
-    if (sub) sub.lastSentAt = at.toISOString();
+    if (sub) {
+      sub.lastSentAt = at.toISOString();
+      sub.issuesSent = (sub.issuesSent ?? 0) + 1;
+    }
   }
 
   async markUrgentSent(configId: string, at: Date): Promise<void> {

@@ -337,6 +337,8 @@ export const newsletterSubscriptions = pgTable(
       .default({ enabled: true, horizonDays: 7, changesEnabled: true, urgentSend: true }),
     enabled: boolean('enabled').notNull().default(true),
     lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+    /** Scheduled issues sent so far, for the daily poster's "No. N". */
+    issuesSent: integer('issues_sent').notNull().default(0),
     /** When an urgent, off-schedule change email last went out (GOI-101).
      *  Separate from `last_sent_at` so an urgent send neither counts as the
      *  scheduled issue nor suppresses the next one. */

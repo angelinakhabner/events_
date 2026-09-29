@@ -674,7 +674,8 @@ export async function sendNewsletterBriefs(
       // saved events tomorrow *is* worth sending — in August it is likely to
       // be the only thing carrying the newsletter, and that is the intended
       // behaviour rather than a degenerate case.
-      const wantToGo = await buildWantToGoSection(sub, store, opts.wantToGo ?? defaultWantToGoStore, now);
+      const wantToGoStore = opts.wantToGo ?? defaultWantToGoStore;
+      const wantToGo = await buildWantToGoSection(sub, store, wantToGoStore, now);
 
       if (sections.length === 0 && isEmptySection(wantToGo)) {
         outcomes.push({
@@ -701,6 +702,12 @@ export async function sendNewsletterBriefs(
         // Scoped to this subscriber's venues (GOI-33).
         festival: currentFestival(venues.map((v) => v.name)),
         now,
+        // The daily poster's "Want to go" and its masthead number. Only the
+        // filed PDF draws the poster, so an email-only reader costs no query.
+        savedEventIds: deliversToDrive(sub.delivery) && sub.wantToGo.enabled
+          ? (await wantToGoStore.list(sub.userId)).map((e) => e.id)
+          : [],
+        issueNo: (sub.issuesSent ?? 0) + 1,
       };
       if (deliversByEmail(sub.delivery)) {
         await (opts.send ?? sendEmail)({
