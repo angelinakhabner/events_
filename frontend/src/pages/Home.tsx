@@ -17,7 +17,6 @@ import { TimeBar } from '../components/TimeBar';
 import { VenueBar } from '../components/VenueBar';
 import { isLoggedIn } from '../lib/auth';
 import { EmptyState, ErrorState, NextUpNotice, SkeletonList } from '../components/states';
-import { FestivalsSection } from '../components/FestivalsSection';
 import { FestivalBanner } from '../components/FestivalBanner';
 
 const REFETCH_INTERVAL_MS = 5 * 60 * 1000;
@@ -225,11 +224,6 @@ export function HomePage() {
             />
           ) : null}
         </div>
-
-        {/* "Coming soon" sits at the foot of the listing it belongs to, so a
-            category's festivals arrive with its events rather than as cinema
-            news pinned to every page (GOI-68). */}
-        <FestivalsSection category={category} />
       </div>
     </section>
   );
