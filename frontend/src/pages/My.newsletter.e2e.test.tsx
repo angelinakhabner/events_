@@ -5,7 +5,7 @@
  * an after-hour window and the event-day scope, saving, and seeing the
  * settings persist.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -134,6 +134,36 @@ describe('MyPage — newsletter end-to-end', () => {
    * visual change has to keep — one selected option at a time, and the
    * selection actually reaching the payload.
    */
+  /**
+   * GOI-115: one choice of three equal answers, so three cells of one size.
+   *
+   * They were sized by their own labels — "Email", "Drive" and "Both" came out
+   * three different widths, which reads as three options of different weight.
+   */
+  it('lays the delivery choice out as three equal cells', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+
+    expect(group.className).toContain('grid-cols-3');
+    const options = within(group).getAllByRole('radio');
+    expect(options.map((o) => o.textContent)).toEqual(['Email', 'Drive', 'Both']);
+    for (const option of options) expect(option.className).toContain('w-full');
+  });
+
+  it('still says what the chosen delivery does', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+
+    await user.click(within(group).getByRole('radio', { name: 'Both' }));
+    expect(await screen.findByText(/emailed, and filed as a pdf as well/i)).toBeInTheDocument();
+  });
+
   it('shows the cadence as a segmented control with exactly one option selected', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -544,6 +574,50 @@ describe('MyPage — newsletter end-to-end', () => {
   });
 
   /**
+   * GOI-119: the setup form has to say what its own settings mean.
+   *
+   * "Look ahead: 30 days" is a number with no sentence beside it — the reader
+   * asked outright what it meant — and the venue step never said that the list
+   * it shows is their own venues, or that ticking picks specific ones.
+   */
+  it('says what looking ahead does, collapsed and expanded', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/of museums in each issue/i)).toBeInTheDocument();
+
+    await user.click(
+      within(section).getByRole('button', { name: /set how far ahead museums looks/i }),
+    );
+    expect(within(section).getByText(/days of museums each issue lists/i)).toBeInTheDocument();
+  });
+
+  it('says the venues are the reader\u2019s own, and what ticking one does', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/these are the venues you follow/i)).toBeInTheDocument();
+    expect(within(section).getByText(/leave everything unticked/i)).toBeInTheDocument();
+  });
+
+  it('says where a category comes from', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    expect(within(section).getByText(/a category is a heading in the brief/i))
+      .toBeInTheDocument();
+  });
+
+  /**
    * GOI-102 §3 / GOI-101. Saved events are not a category: they are a queue of
    * things the reader already chose, and they sit in their own block rather
    * than as a row in the table.
@@ -648,6 +722,79 @@ describe('MyPage — newsletter end-to-end', () => {
 
     expect((await defaultNewsletterStore.get(userId))!.categoryRules.map((r) => r.category))
       .toEqual(['museums']);
+  });
+
+  /**
+   * GOI-126: "I'll have daily and weekly newsletters". A second one is made
+   * beside the first, each is edited on its own, and deleting one leaves the
+   * other exactly as it was.
+   */
+  it('keeps a second newsletter beside the first, and deletes it again', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const picker = await screen.findByRole('navigation', { name: /your newsletters/i });
+    // Scoped to the row and anchored: the first is called "Newsletter", which
+    // half the buttons on this screen also say.
+    const tab = (label: string) =>
+      within(screen.getByRole('navigation', { name: /your newsletters/i }))
+        .getByRole('button', { name: new RegExp(`^${label}`, 'i') });
+    const before = await defaultNewsletterStore.list(userId);
+    expect(before).toHaveLength(1);
+    const first = before[0]!;
+
+    // The first is the one being edited, until another is picked.
+    expect(tab(first.name)).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(within(picker).getByRole('button', { name: /new newsletter/i }));
+    const name = (await screen.findByLabelText(/newsletter name/i)) as HTMLInputElement;
+    const section = name.closest('section')!;
+    expect(name.value).toBe('New newsletter');
+    await user.clear(name);
+    await user.type(name, 'Weekend');
+    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
+    await user.selectOptions(await within(section).findByLabelText(/^on$/i), '6');
+
+    // It starts with nothing in it: no categories, and not the saved events
+    // the first one already carries — so it has to be given something.
+    expect(within(section).getByLabelText(/include events i saved/i)).not.toBeChecked();
+    expect(within(section).getByRole('button', { name: /schedule newsletter/i })).toBeDisabled();
+    await user.selectOptions(await within(section).findByLabelText(/add a category/i), 'cinema');
+
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    // Created beside the first, not written over it.
+    const after = await defaultNewsletterStore.list(userId);
+    expect(after.map((n) => n.name)).toEqual([first.name, 'Weekend']);
+    expect(after[0]).toEqual(first);
+    expect(after[1]).toMatchObject({ sendCadence: 'weekly', sendWeekday: 6 });
+    expect(after[1]!.categoryRules.map((r) => r.category)).toEqual(['cinema']);
+    expect(after[1]!.wantToGo.enabled).toBe(false);
+    await waitFor(() => expect(tab('Weekend')).toHaveAttribute('aria-pressed', 'true'));
+
+    // Saving it again updates it in place.
+    await user.selectOptions(within(section).getByLabelText(/^on$/i), '0');
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await waitFor(async () => expect((await defaultNewsletterStore.list(userId))[1]?.sendWeekday).toBe(0));
+    expect(await defaultNewsletterStore.list(userId)).toHaveLength(2);
+
+    // Picking the first loads its own settings back.
+    await user.click(tab(first.name));
+    await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe(first.name));
+
+    // And the second goes again, leaving the first as it was.
+    await user.click(tab('Weekend'));
+    await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe('Weekend'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      await user.click(screen.getByRole('button', { name: /delete this newsletter/i }));
+    } finally {
+      confirm.mockRestore();
+    }
+    await waitFor(async () => expect(await defaultNewsletterStore.list(userId)).toEqual([first]));
+    await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe(first.name));
   });
 });
 

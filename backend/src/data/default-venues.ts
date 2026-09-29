@@ -149,6 +149,24 @@ export const DEFAULT_VENUES: Venue[] = [
     category: 'exhibition',
     ...PL,
   },
+  {
+    id: 'dsh',
+    name: 'Dom Spotkań z Historią',
+    // Filed under museums, which is what `exhibition` is labelled in the UI
+    // (GOI-129). The bare domain is a landing page; /en/events/ is the dated
+    // programme index — seeded on /en like MSN, POLIN and Ujazdowski already
+    // are. `language` is the language its events are *held* in, not the page's,
+    // so it stays `pl` and the row keeps its badge off.
+    //
+    // No deterministic scraper: this goes through the model like any other
+    // uncurated listing. That covers the talks, walks and screenings on
+    // /en/events/. The gallery runs are a second index (/en/exhibitions/) and
+    // a one-URL venue cannot reach both — worth a scraper if they turn out to
+    // be missed, which is the same shape as GOI-43 and GOI-57.
+    url: 'https://dsh.waw.pl/en/events/',
+    category: 'exhibition',
+    ...PL,
+  },
 
   // ─── Comedy ───────────────────────────────────────────────────────────────
   {

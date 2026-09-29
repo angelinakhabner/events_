@@ -18,16 +18,22 @@ export function SharedListPage() {
   const { token = '' } = useParams<{ token: string }>();
   const list = trpc.sharedList.get.useQuery({ token }, { retry: false, enabled: token.length > 0 });
 
+  // `match` travels with the row for the same reason it does on /my: a saved
+  // event carries a venue's own title, but a tracked one can be what the owner
+  // typed into a search that found nothing (GOI-112), and looking that up
+  // exactly leaves the row saying nothing is on when something is.
   const rows = [
     ...(list.data?.entries ?? []).map((entry) => ({
       key: `event-${entry.event.id}`,
       sortKey: entry.savedAt,
       event: entry.event,
+      match: 'exact' as const,
     })),
     ...(list.data?.films ?? []).map((film) => ({
       key: `film-${film.id}`,
       sortKey: film.createdAt,
       event: filmAsEvent(film),
+      match: 'words' as const,
     })),
   ].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 
@@ -62,7 +68,7 @@ export function SharedListPage() {
         <ul className="border-t-3 border-ink list-none m-0 p-0">
           {rows.map((row) => (
             <li key={row.key} className="py-5 rule-soft">
-              <SavedTitleRow event={row.event} />
+              <SavedTitleRow event={row.event} screeningsMatch={row.match} />
             </li>
           ))}
         </ul>

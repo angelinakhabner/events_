@@ -25,6 +25,7 @@ export function SavedTitleRow({
   meta,
   showScreenings = true,
   screeningsOpen = false,
+  screeningsMatch = 'exact',
   actions,
 }: {
   event: Event;
@@ -33,6 +34,10 @@ export function SavedTitleRow({
   showScreenings?: boolean;
   /** Show the times without asking (GOI-66) — see the strip's `defaultOpen`. */
   screeningsOpen?: boolean;
+  /** How the strip reads the title (GOI-112) — see the strip's `match`. A
+   *  saved *event* carries a venue's own spelling and stays exact; a tracked
+   *  title is whatever the reader typed, so it is matched as whole words. */
+  screeningsMatch?: 'exact' | 'words';
   actions?: ReactNode;
 }) {
   return (
@@ -56,7 +61,9 @@ export function SavedTitleRow({
           ) : null}
         </div>
         <div className="act-row-sm mt-3">
-          {showScreenings ? <ScreeningsStrip event={event} defaultOpen={screeningsOpen} /> : null}
+          {showScreenings ? (
+            <ScreeningsStrip event={event} defaultOpen={screeningsOpen} match={screeningsMatch} />
+          ) : null}
           {actions}
         </div>
       </div>

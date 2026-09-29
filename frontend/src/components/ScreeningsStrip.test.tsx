@@ -63,7 +63,27 @@ describe('ScreeningsStrip', () => {
     expect(useQueryMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
-    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Ojczyzna' }, expect.objectContaining({ retry: 1 }));
+    expect(useQueryMock).toHaveBeenCalledWith(
+      { title: 'Ojczyzna', match: 'exact' },
+      expect.objectContaining({ retry: 1 }),
+    );
+  });
+
+  /**
+   * GOI-112. The title in an event's own card is a venue's spelling, and has
+   * to stay exact: matched loosely, two works whose names contain one another
+   * fold into one card. A *tracked* title is the other thing entirely — what
+   * somebody typed into a search that found nothing — and asked exactly it
+   * would go on finding nothing for ever, so its caller says so.
+   */
+  it('asks for a tracked title by its words instead', () => {
+    render(<ScreeningsStrip event={makeEvent({ title: 'chungking' })} match="words" />);
+    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+
+    expect(useQueryMock).toHaveBeenCalledWith(
+      { title: 'chungking', match: 'words' },
+      expect.anything(),
+    );
   });
 
   it('stamps each stub with its day, Warsaw time, and venue', () => {
@@ -153,7 +173,7 @@ describe('ScreeningsStrip', () => {
     render(<ScreeningsStrip event={event} />);
     fireEvent.click(screen.getByRole('button', { name: /nearest dates/i }));
 
-    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Dziady' }, expect.anything());
+    expect(useQueryMock).toHaveBeenCalledWith({ title: 'Dziady', match: 'exact' }, expect.anything());
     expect(screen.getByText(/no upcoming dates/i)).toBeInTheDocument();
   });
 

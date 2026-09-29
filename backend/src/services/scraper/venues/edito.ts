@@ -27,6 +27,11 @@ const TZ_DEFAULT = 'Europe/Warsaw';
 export interface EditoRawEvent {
   title: string;
   starts_at: string;
+  /** A run over a date range rather than a single occurrence (GOI-67). The
+   *  calendar's own rows are all timed and leave it unset. */
+  kind?: 'timed' | 'exhibition';
+  /** Closing date, on an exhibition row only. */
+  ends_at?: string | null;
   duration_minutes: number | null;
   language: string | null;
   director: string | null;

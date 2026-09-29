@@ -137,6 +137,18 @@ describe('the newsletter form sends what the API accepts (GOI-105)', () => {
     expect(newsletterSaveInput.safeParse(monthly).success).toBe(true);
   });
 
+  /** GOI-126: the newsletter being edited travels with its settings. */
+  it('names the newsletter it is saving, and none for a new one', () => {
+    const id = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+    const existing = newsletterPayload(form({ id }));
+    expect(existing.id).toBe(id);
+    expect(newsletterSaveInput.parse(existing).id).toBe(id);
+
+    const fresh = newsletterPayload(form({}));
+    expect(JSON.parse(JSON.stringify(fresh))).not.toHaveProperty('id');
+    expect(newsletterSaveInput.parse(fresh).id).toBeUndefined();
+  });
+
   /** No `frequency` field anywhere — the name the stale API asked for. */
   it('sends no field the current schema does not know', () => {
     for (const sendCadence of SEND_CADENCES) {
@@ -144,7 +156,7 @@ describe('the newsletter form sends what the API accepts (GOI-105)', () => {
       expect(body).not.toHaveProperty('frequency');
       expect(body).not.toHaveProperty('afterHour');
       expect(Object.keys(body).sort()).toEqual([
-        'categoryRules', 'delivery', 'email', 'enabled', 'folderId', 'name',
+        'categoryRules', 'delivery', 'email', 'enabled', 'folderId', 'id', 'name',
         'recipientName', 'sendCadence', 'sendDayOfMonth', 'sendHour', 'sendMinute',
         'sendWeekday', 'venueIds', 'wantToGo',
       ]);

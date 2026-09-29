@@ -59,6 +59,10 @@ export function HomePage() {
 
   const [venueSelection, setVenueSelection] = useState<VenueSelection>({});
 
+  // The venue selection, read before the listing query because it is part of
+  // that query's key now (GOI-94).
+  const selectedVenues = selectionFor(venueSelection, category);
+
   // The day strip's selection as a Warsaw day window. Recomputed only when the
   // selection changes, so it stays referentially stable as a query key.
   const range = useMemo(() => dayFilterRange(day), [day]);
@@ -76,6 +80,12 @@ export function HomePage() {
     {
       ...(category ? { filters: { categories: [category] } } : {}),
       ...(range ? { fromDay: range.fromDay } : {}),
+      // In the key, so the selection narrows in SQL rather than in the browser
+      // (GOI-94). It costs a refetch per pick, which is the price of the pick
+      // meaning anything: applied here, to whichever hundred rows came back,
+      // choosing the cinema that publishes eight screenings a day changed
+      // nothing and choosing a sparse one emptied the feed.
+      ...(selectedVenues.length > 0 ? { venueIds: selectedVenues } : {}),
     },
     { refetchInterval: REFETCH_INTERVAL_MS, refetchOnWindowFocus: true },
   );
@@ -92,7 +102,6 @@ export function HomePage() {
     () => filterOptionsQuery.data?.venues ?? [],
     [filterOptionsQuery.data],
   );
-  const selectedVenues = selectionFor(venueSelection, category);
 
   // Restore a linked selection once the venues it names are known. Runs only
   // while nothing is selected, so it can't fight the user's own clicks.
@@ -228,32 +237,60 @@ export function HomePage() {
 
 /**
  * The full-bleed black band: "CO SIĘ DZIEJE" — Polish for "what's going on" —
- * stacked in Anton, with the middle line in red and the last one drawn as an
+ * set in Anton with the middle word in red and the last one drawn as an
  * outline. It is the app's only piece of poster-scale type, and it is Polish
  * on purpose: the wordmark and this headline are the brand, the rest of the
  * interface stays in English.
  */
+/**
+ * The masthead, on one line rather than three (GOI-114), and on desktop only
+ * (GOI-127).
+ *
+ * Three stacked lines at up to 110px, over a paragraph, put the intro at
+ * something near half the screen before the festival banner underneath it had
+ * said anything — so the listing, which is what the page is for, started below
+ * the fold. Asked for a quarter of the screen for the pair, and a quarter is
+ * not reachable with three lines of display type in it: at three lines the
+ * type has to come down to about 22px to fit, which is not a masthead any
+ * more. One line is what buys the size back — it keeps its weight, and the
+ * stroked word keeps the character of the stacked version.
+ *
+ * Sized against the viewport's *height*, not its width, because the promise
+ * being kept is about how much of the screen this takes. `vw` says nothing
+ * about that on a short laptop screen, which is exactly where it was worst.
+ *
+ * On a phone even one line is a line too many. A masthead earns its space by
+ * being the thing you see first on a screen that has room for more than one
+ * thing; at 393px it is instead the only thing, and it says what the wordmark
+ * two rows above it has already said. So below `md` the band goes and the page
+ * opens on the logo and then the festival — which is what was asked for — and
+ * the filters come up about 110px sooner.
+ *
+ * The heading itself stays. A page needs an `h1` whether or not it is drawn,
+ * and dropping the element rather than hiding it would leave the home page
+ * with none for a screen reader or a crawler on a phone-width viewport.
+ */
 function Hero() {
   return (
-    <div className="bg-ink text-white page-x pt-10 pb-9 md:pt-16 md:pb-14">
-      <div className="max-w-[900px]">
-        <h1
-          className="font-display leading-[0.94] tracking-[0.5px] md:tracking-[1px] m-0"
-          style={{ fontSize: 'clamp(44px, 9vw, 110px)' }}
-        >
-          <span className="block">CO</span>
-          <span className="block text-accent">SIĘ</span>
-          {/* Stroked in its own colour: the letterforms thicken rather than
-              hollow out, which is what gives the third line its weight. */}
-          <span className="block" style={{ WebkitTextStroke: '3px #fff' }}>
-            DZIEJE
-          </span>
-        </h1>
-        <p className="mt-4 md:mt-6 max-w-[520px] text-sm md:text-lg font-medium text-[#c9c4bc]">
-          Cinema, theatre, comedy, music and museums across Warsaw — one listing,
-          refreshed every few minutes.
-        </p>
+    <>
+      <h1 className="sr-only md:hidden">Co się dzieje &mdash; what&rsquo;s on in Warsaw</h1>
+      <div className="hidden md:block bg-ink text-white page-x py-7">
+        <div className="max-w-[900px]">
+          <h1
+            className="font-display leading-[1.02] tracking-[1px] m-0"
+            style={{ fontSize: 'clamp(30px, min(7vw, 8vh), 68px)' }}
+          >
+            CO <span className="text-accent">SIĘ</span>{' '}
+            {/* Stroked in its own colour: the letterforms thicken rather than
+                hollow out, which is what gave the third line its weight. */}
+            <span style={{ WebkitTextStroke: '2px #fff' }}>DZIEJE</span>
+          </h1>
+          <p className="mt-2 max-w-[520px] text-sm font-medium text-[#c9c4bc]">
+            Cinema, theatre, comedy, music and museums across Warsaw — one listing,
+            refreshed every few minutes.
+          </p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -62,6 +62,8 @@ async function setup() {
       // sweep reaches for the process-wide store, and the test's behaviour
       // starts depending on whether DATABASE_URL happens to be set (GOI-101).
       wantToGo: { list: async () => [] },
+      // …and the tracked titles beside them (GOI-112), for the same reason.
+      films: { list: async () => [] },
     },
   };
 }

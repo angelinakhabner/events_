@@ -26,18 +26,20 @@ describe('parsePosterMuseum', () => {
     });
   });
 
-  it('reads the exhibitions page as all-day runs', async () => {
+  it('reads the exhibitions page as one dated run each', async () => {
     const rows = parsePosterMuseum(
       await loadFixture('www.postermuseum.pl-wystawy-obecne.html'),
       'Europe/Warsaw',
       new Date('2026-08-07T09:00:00Z'),
     );
 
-    // 7 August → 13 September inclusive, all at local midnight.
-    expect(rows).toHaveLength(38);
-    expect(rows.every((r) => r.starts_at.includes('T00:00:00'))).toBe(true);
-    expect(rows[0]!.starts_at.slice(0, 10)).toBe('2026-08-07');
-    expect(rows.at(-1)!.starts_at.slice(0, 10)).toBe('2026-09-13');
+    // One row for the run, not one per day of it (GOI-113), dated 20 June to
+    // 13 September at local midnight.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'exhibition' });
+    expect(rows[0]!.starts_at.slice(0, 10)).toBe('2026-06-20');
+    expect(rows[0]!.ends_at?.slice(0, 10)).toBe('2026-09-13');
+    expect(rows[0]!.starts_at).toContain('T00:00:00');
   });
 });
 
@@ -74,22 +76,23 @@ describe('scrapePosterMuseum', () => {
   it('returns the calendar events and the exhibition runs together', async () => {
     const { events } = await scrapePosterMuseum(await args());
 
-    const timed = events.filter((e) => !e.starts_at.includes('T00:00:00'));
-    const allDay = events.filter((e) => e.starts_at.includes('T00:00:00'));
+    const timed = events.filter((e) => e.kind !== 'exhibition');
+    const runs = events.filter((e) => e.kind === 'exhibition');
 
     // Both curator tours, from August's page and September's.
     expect(timed.map((e) => e.starts_at)).toEqual([
       '2026-08-23T11:00:00+02:00',
       '2026-09-13T11:00:00+02:00',
     ]);
-    // The running exhibition through 13 September, then the planned one from
-    // 29 September to the window's edge.
-    expect(new Set(allDay.map((e) => e.title))).toEqual(
+    // The running exhibition through 13 September, then the planned one
+    // opening 29 September — one row each, carrying their own dates.
+    expect(new Set(runs.map((e) => e.title))).toEqual(
       new Set(['Plakat polski. Kolekcja / odsłona 2.', 'Plakat polski. Kolekcja / odsłona 3.']),
     );
-    expect(allDay.some((e) => e.starts_at.startsWith('2026-08-07'))).toBe(true);
-    // 60 days from 7 August is 6 October — nothing beyond it.
-    expect(allDay.every((e) => e.starts_at.slice(0, 10) <= '2026-10-06')).toBe(true);
+    expect(runs).toHaveLength(2);
+    expect(runs.every((e) => e.ends_at != null)).toBe(true);
+    // The planned one opens inside the 60-day window; nothing opening past it.
+    expect(runs.every((e) => e.starts_at.slice(0, 10) <= '2026-10-06')).toBe(true);
   });
 
   // Losing the exhibitions is bad; losing the whole museum because one extra
@@ -104,7 +107,7 @@ describe('scrapePosterMuseum', () => {
 
     const { events } = await scrapePosterMuseum({ ...(await args()), fetcher });
     expect(events.length).toBeGreaterThan(0);
-    expect(events.every((e) => !e.starts_at.includes('T00:00:00'))).toBe(true);
+    expect(events.every((e) => e.kind !== 'exhibition')).toBe(true);
   });
 
   it('changes its signature when a page changes, so unchanged runs skip', async () => {

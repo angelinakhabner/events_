@@ -165,7 +165,10 @@ export function createNewsletterApi(deps: NewsletterApiDeps = defaultDeps()) {
 
     const email = normalizeEmail(parsed.data.email);
     const user = await deps.auth.upsertUser(email);
-    const settings = await deps.newsletter.save(user.id, { ...parsed.data, email });
+    // The API addresses a subscription by its email and nothing else, so it
+    // always writes the reader's default newsletter — an `id` in the body is
+    // not the caller's to choose (GOI-126).
+    const settings = await deps.newsletter.save(user.id, { ...parsed.data, id: undefined, email });
     return c.json({ email, subscription: settings });
   });
 

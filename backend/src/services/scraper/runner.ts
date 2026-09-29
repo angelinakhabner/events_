@@ -9,9 +9,11 @@ import { extractEvents, EXTRACTOR_VERSION, modelFor, windowDaysForCategory, type
 import { getDeterministicScraper } from './deterministic.js';
 import { defaultUserVenueStore } from '../user-venue-store.js';
 import { validateEvents } from './validator.js';
-import { enrichDescriptions, type DescriptionClient } from './enricher.js';
+import { toStartsAt } from './venues/datetime.js';
+import { enrichDescriptions, type DescriptionClient, type WrittenStore } from './enricher.js';
 import { defaultDescriber } from './describer.js';
 import { defaultEventStore } from '../event-store.js';
+import { descriptionStore } from '../description-store.js';
 import { saveEvents, pruneStaleEvents } from './persister.js';
 import type { Venue, ScrapeRun } from '@afisz/shared';
 
@@ -32,6 +34,8 @@ export interface ScrapeOptions {
   maxDetailFetches?: number;
   /** Override the pause between detail fetches (tests use 0). */
   enrichDelayMs?: number;
+  /** Written-description cache (GOI-130). Defaults to the DB-backed one. */
+  writtenStore?: WrittenStore;
 }
 
 export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Promise<ScrapeRun> {
@@ -146,6 +150,11 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     const deterministic = getDeterministicScraper(venue.id, venue.url);
     let raw: unknown[];
     let rawHash: string;
+    /**
+     * The last day this run may be trusted for, when a multi-page scraper got
+     * less than it asked for. Null means the whole window (GOI-107).
+     */
+    let coveredThrough: string | null = null;
 
     // Effective scrape horizon: users can widen it per subscription (a venue
     // shared by many users is scraped once, at the widest window anyone
@@ -168,6 +177,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         });
         raw = res.events;
         rawHash = sha256(`v${EXTRACTOR_VERSION}\n${res.signature}`);
+        coveredThrough = res.coveredThrough ?? null;
       }
       if (await isUnchanged(rawHash)) {
         return await finalize({ status: 'skipped_unchanged', rawHash });
@@ -238,22 +248,31 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       console.warn(`[scraper] ${venue.name}: ${fallbackCount}/${valid.length} events used the venue calendar URL as source_url`);
     }
     // Enrich descriptions by fetching each per-event page. Grouped by URL so
-    // 80 unique films at Muranów costs ~80 GETs, not ~150. Concurrency-limited
-    // (3 parallel) so we stay polite to venue servers. Failures don't fail
-    // the scrape — title + time are still saved. Deterministic venues skip
-    // this by default (descriptions come inline) unless they opt in because
-    // their descriptions live on per-event pages (e.g. Komediowy).
-    if (!deterministic || deterministic.enrich) {
+    // 80 unique films at Muranów costs ~80 GETs, not ~150. Sequential and
+    // spaced so we stay polite to venue servers. Failures don't fail the
+    // scrape — title + time are still saved.
+    //
+    // With a model key, every venue takes this pass, deterministic ones
+    // included (GOI-130 / GOI-131): their inline text is Polish, and at the
+    // theatres it is the listing's logistics rather than a description, so it
+    // is the writer's input rather than the answer. Each show is written once
+    // and remembered. Without a key, deterministic venues skip the pass as
+    // before unless they opt in because their descriptions live on per-event
+    // pages (e.g. Komediowy).
+    const describer = opts.describer ?? defaultDescriber() ?? undefined;
+    if (describer || !deterministic || deterministic.enrich) {
       const enrich = await enrichDescriptions(valid, {
         venueUrl: fetchUrl,
         fetcher: opts.fetcher,
         delayMs: opts.enrichDelayMs,
         maxFetches: opts.maxDetailFetches ?? env.MAX_DETAIL_FETCHES,
-        client: opts.describer ?? defaultDescriber() ?? undefined,
+        client: describer,
         // Only pages we've never described get fetched (GOI-79); the rest are
         // filled from what that fetch already bought us (GOI-90). Scoped to
         // this venue.
         storedDetails: (urls) => defaultEventStore.storedDetails(venue.id, urls),
+        written: opts.writtenStore ?? descriptionStore(venue.id),
+        venue: { name: venue.name, city: venue.city, category: venue.category },
       });
       detailFetches = enrich.fetched;
       detailInputTokens = enrich.inputTokens;
@@ -261,7 +280,8 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
       if (enrich.enriched > 0 || enrich.backfilled > 0 || enrich.failed > 0 || enrich.capped > 0) {
         console.log(
           `[scraper] ${venue.name}: enriched ${enrich.enriched} description(s) from ` +
-          `${enrich.fetched} detail page(s), ${enrich.backfilled} reused from store ` +
+          `${enrich.fetched} detail page(s) and ${enrich.searched} web search(es), ` +
+          `${enrich.backfilled} reused from store ` +
           `(${enrich.failed} failed, ${enrich.skipped} skipped, ` +
           `${enrich.capped} over cap; ${enrich.inputTokens}+${enrich.outputTokens} tokens)`,
         );
@@ -275,7 +295,23 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     // in the DB forever — upserts alone never delete. Only after a non-empty
     // save: an empty/partial-failure run must not wipe a venue.
     if (valid.length > 0) {
-      const windowEnd = new Date(today.getTime() + effectiveWindowDays * 86_400_000);
+      const asked = new Date(today.getTime() + effectiveWindowDays * 86_400_000);
+      /**
+       * …for the window it actually *read*, which is not always the one it
+       * asked for. A multi-page scraper that loses a page mid-walk returns
+       * what it has; pruning the full window on the strength of that deletes
+       * the days it never looked at — and cancels the saved ones, so readers
+       * are told a film they bookmarked is off (GOI-107). Muranów's calendar
+       * is one month per page and the cinema window is a week, so every scrape
+       * within a few days of a month's end depends on a hop that can fail.
+       */
+      const windowEnd = clampToCovered(asked, coveredThrough, venue.timezone);
+      if (windowEnd < asked) {
+        console.warn(
+          `[scraper] ${venue.name}: scrape only reached ${coveredThrough}; ` +
+          'pruning that far and leaving the rest of the window alone',
+        );
+      }
       const pruned = await pruneStaleEvents(venue.id, {
         windowStart: today,
         windowEnd,
@@ -309,6 +345,26 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
     console.error(`[scraper] ${venue.name} failed:`, message);
     return await finalize({ status: 'failed', errorMessage: message });
   }
+}
+
+/**
+ * The end of the prune window: what was asked for, or how far the scrape got,
+ * whichever is nearer (GOI-107).
+ *
+ * `coveredThrough` is an inclusive calendar day in the venue's own zone, so it
+ * is taken to the last minute of that day — a run that read a whole month is
+ * authoritative for that month's last evening, not for its midnight.
+ */
+export function clampToCovered(
+  asked: Date,
+  coveredThrough: string | null,
+  timezone: string,
+): Date {
+  if (!coveredThrough) return asked;
+  const end = toStartsAt(coveredThrough, '23:59', timezone);
+  if (!end) return asked;
+  const covered = new Date(end);
+  return covered < asked ? covered : asked;
 }
 
 function sha256(input: string): string {

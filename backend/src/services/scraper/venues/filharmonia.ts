@@ -41,6 +41,9 @@ export interface FilharmoniaScrapeResult {
   events: FilharmoniaRawEvent[];
   /** Raw material the caller hashes for its skip-unchanged check. */
   signature: string;
+  /** Set only when a page failed to fetch and the walk stopped short of the
+   *  window — the last day this run may be trusted for (GOI-107). */
+  coveredThrough?: string;
 }
 
 /**
@@ -153,6 +156,12 @@ export async function scrapeFilharmonia(args: {
 
   const pages: string[] = [];
   const all: FilharmoniaRawEvent[] = [];
+  // A page that would not load stops the walk short of the window, and the
+  // runner has to be told: it prunes its whole window on the strength of a
+  // successful scrape, so unread days would be deleted as though this run had
+  // looked at them and found nothing (GOI-107). Running off the end of the
+  // listing or past the window is not truncation — those are complete.
+  let truncated = false;
 
   for (let p = 1; p <= MAX_PAGES; p++) {
     let html: string;
@@ -160,6 +169,7 @@ export async function scrapeFilharmonia(args: {
       html = await fetchVenueHTML(pageUrl(args.baseUrl, p), { fetcher: args.fetcher });
     } catch (e) {
       console.warn(`[filharmonia] failed to fetch page ${p}: ${e instanceof Error ? e.message : e}`);
+      truncated = true;
       break;
     }
     const rows = parseFilharmoniaListing(html, startDay, tz);
@@ -175,5 +185,18 @@ export async function scrapeFilharmonia(args: {
     const day = e.starts_at.slice(0, 10); // YYYY-MM-DD sorts lexically
     return day >= startDay && day <= endDay;
   });
-  return { events, signature: pages.join('\n\n') };
+  return {
+    events,
+    signature: pages.join('\n\n'),
+    // The pages sort ascending, so the last row read is as far as the walk got.
+    ...(truncated ? { coveredThrough: lastDayRead(all, startDay) } : {}),
+  };
+}
+
+/** The latest day among the rows a truncated walk managed to read. */
+function lastDayRead(rows: { starts_at: string }[], fallback: string): string {
+  return rows.reduce((max, e) => {
+    const day = e.starts_at.slice(0, 10);
+    return day > max ? day : max;
+  }, fallback);
 }
