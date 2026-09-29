@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
-import type { Event, EventKind, EventVenue, Category } from '@afisz/shared';
+import { collapseDuplicateExhibitions, type Event, type EventKind, type EventVenue, type Category } from '@afisz/shared';
 
 export interface EventListInput {
   city?: string;
@@ -209,7 +209,10 @@ export class EventStore {
       .orderBy(asc(schema.events.startsAt))
       .limit(limit);
 
-    return rows.map((r) =>
+    // One exhibition, once (GOI-133): rows already stored twice under
+    // different keys are folded here, so every listing — Home, /my and the
+    // newsletter — is clean without waiting for the prune to reach them.
+    return collapseDuplicateExhibitions(rows.map((r) =>
       rowToEvent(r.e, {
         venue: {
           id: r.venueId,
@@ -220,7 +223,7 @@ export class EventStore {
         },
         venueLanguage: r.venueLanguage,
       }),
-    );
+    ));
   }
 
 
