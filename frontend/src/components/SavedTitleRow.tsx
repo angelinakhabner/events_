@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import type { Event, Film } from '@afisz/shared';
+import type { Category, Event, Film } from '@afisz/shared';
+import { categoryLabel } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 import { ScreeningsStrip } from './ScreeningsStrip';
 
@@ -74,7 +75,7 @@ export function SavedTitleRow({
 /** The word stamped in front of a saved title. Films read as "FILM" rather
  *  than "CINEMA", which names the venue and not the thing you saved. */
 export function kindLabel(category: string): string {
-  return category === 'cinema' ? 'film' : category;
+  return category === 'cinema' ? 'film' : categoryLabel(category as Category);
 }
 
 /** The screenings strip expects an Event; a film is only a title, so build the

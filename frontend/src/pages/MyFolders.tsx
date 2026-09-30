@@ -32,25 +32,25 @@ export function MyFoldersPage() {
   return (
     <section>
       <PanelHeading
-        title="My folders"
-        blurb="Curated subsets of venues with persistent filters."
+        title="Moje foldery"
+        blurb="Wybrane zestawy miejsc z zapamiętanymi filtrami."
         action={
           <button type="button" onClick={() => setModalOpen(true)} className="act act-on">
-            New folder
+            Nowy folder
           </button>
         }
       />
 
       {foldersQuery.isLoading ? <SkeletonList rows={3} /> : null}
       {foldersQuery.error ? (
-        <ErrorState message="Couldn't load folders." onRetry={() => foldersQuery.refetch()} />
+        <ErrorState message="Nie udało się wczytać folderów." onRetry={() => foldersQuery.refetch()} />
       ) : null}
 
       {foldersQuery.data && foldersQuery.data.length === 0 ? (
         <EmptyState
-          title="You don&rsquo;t have any folders yet"
-          hint="Folders let you group venues with persistent filters."
-          action={{ label: 'Create your first folder', onClick: () => setModalOpen(true) }}
+          title="Nie masz jeszcze folderów"
+          hint="Foldery grupują miejsca z zapamiętanymi filtrami."
+          action={{ label: 'Utwórz pierwszy folder', onClick: () => setModalOpen(true) }}
         />
       ) : null}
 
@@ -84,7 +84,7 @@ export function MyFoldersPage() {
 function FolderEvents({ folderId, venueMap }: { folderId: string; venueMap: Map<string, import('@afisz/shared').Venue> }) {
   const q = trpc.folders.getEvents.useQuery({ folderId });
   if (q.isLoading) return <SkeletonList rows={2} />;
-  if (q.error) return <p className="text-sm text-muted">Couldn&rsquo;t load events.</p>;
-  if (!q.data || q.data.length === 0) return <p className="text-sm text-muted">No events match this folder.</p>;
+  if (q.error) return <p className="text-sm text-muted">Nie udało się wczytać wydarzeń.</p>;
+  if (!q.data || q.data.length === 0) return <p className="text-sm text-muted">Żadne wydarzenie nie pasuje do tego folderu.</p>;
   return <EventList events={q.data} venues={venueMap} />;
 }

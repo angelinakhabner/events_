@@ -274,18 +274,18 @@ export const ROBOTS_TXT = 'User-agent: *\nDisallow: /\n';
  * nothing that hints at what the site is.
  */
 export const GATE_HTML = `<!doctype html>
-<html lang="en"><head>
+<html lang="pl"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="${NOINDEX}">
-<title>Not available</title>
+<title>Niedostępne</title>
 <style>
   body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
          background:#f4f1ea; color:#141414;
          font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
   p { font-size: 15px; }
 </style>
-</head><body><p>Not available.</p></body></html>
+</head><body><p>Niedostępne.</p></body></html>
 `;
 
 /**

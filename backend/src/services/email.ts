@@ -53,8 +53,8 @@ export async function sendEmail(msg: EmailMessage): Promise<{ id: string }> {
 
 export function welcomeEmail(name: string): Omit<EmailMessage, 'to'> {
   return {
-    subject: `Welcome to AFISZ, ${name}`,
-    html: `<p>Hi ${escapeHtml(name)},</p><p>AFISZ is ready — start building folders of venues you actually care about.</p>`,
+    subject: `Witaj w AFISZ, ${name}`,
+    html: `<p>Cześć ${escapeHtml(name)},</p><p>AFISZ jest gotowy — zacznij układać foldery z miejscami, które naprawdę Cię interesują.</p>`,
   };
 }
 

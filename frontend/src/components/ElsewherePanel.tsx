@@ -6,7 +6,7 @@ import {
   VENUE_SUGGEST_PROBE_CONCURRENCY,
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import { categoryLabel } from '../lib/format';
+import { categoryLabel, plural } from '../lib/format';
 
 /**
  * "Elsewhere" — venue discovery for a city you don't follow yet (GOI-92).
@@ -48,12 +48,12 @@ export interface ElsewhereFolder {
 const METHOD_LABEL: Record<SourceMethod, string> = {
   jsonld: 'JSON-LD',
   ical: 'iCal',
-  wp_rest: 'WordPress events API',
-  wp_rest_posts: 'WordPress posts',
+  wp_rest: 'API wydarzeń WordPressa',
+  wp_rest_posts: 'Wpisy WordPressa',
   rss: 'RSS',
-  llm_extract: 'Read from the page',
-  firecrawl: 'Browser render',
-  manual: 'Configured by hand',
+  llm_extract: 'Odczyt ze strony',
+  firecrawl: 'Render w przeglądarce',
+  manual: 'Konfiguracja ręczna',
 };
 
 /** The venue types a search may ask for. The app's own category vocabulary
@@ -77,14 +77,14 @@ export function candidateStatus(outcome: ProbeOutcome | undefined): CandidateSta
  * and this passes it through rather than flattening it.
  */
 export function candidateNote(outcome: ProbeOutcome | undefined): string {
-  if (!outcome) return 'Checking…';
+  if (!outcome) return 'Sprawdzanie…';
   if (outcome.status === 'success') {
     return outcome.shared
-      ? `Already tracked — ${METHOD_LABEL[outcome.method]}`
+      ? `Już śledzone — ${METHOD_LABEL[outcome.method]}`
       : METHOD_LABEL[outcome.method];
   }
   if (outcome.code === 'JS_RENDERED_NEEDS_PAID') {
-    return 'Only a paid browser render would read this — not run here.';
+    return 'Odczyta to tylko płatny render w przeglądarce — tutaj go nie uruchamiamy.';
   }
   return outcome.message;
 }
@@ -161,19 +161,19 @@ export function daysBetween(from: string, until: string): number {
  *  time anyone hears about it. */
 export function windowProblem(from: string, until: string): string | null {
   if (!from || !until) return null;
-  if (until < from) return 'The end of the window is before its start.';
+  if (until < from) return 'Koniec zakresu jest przed jego początkiem.';
   if (daysBetween(from, until) > VENUE_SEARCH_MAX_WINDOW_DAYS) {
-    return `Dates can span at most ${VENUE_SEARCH_MAX_WINDOW_DAYS} days — few venues publish further ahead.`;
+    return `Zakres dat może obejmować najwyżej ${VENUE_SEARCH_MAX_WINDOW_DAYS} dni — mało które miejsce publikuje program dalej.`;
   }
   return null;
 }
 
-const DAY_LABEL_FMT = new Intl.DateTimeFormat('en-GB', {
+const DAY_LABEL_FMT = new Intl.DateTimeFormat('pl-PL', {
   weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
 });
 
 /**
- * "Fri 11 Sep", from either an ISO day or a full timestamp.
+ * "pt., 11 wrz", from either an ISO day or a full timestamp.
  *
  * The date part of the string is taken as written and rendered in UTC rather
  * than converted into the app's Warsaw clock. A listing in Thessaloniki says
@@ -224,12 +224,12 @@ export function windowNote(
   const hits = eventsInWindow(outcome, from, until);
   if (hits.length > 0) {
     const shown = hits.slice(0, 3).map((e) => `${e.title} — ${dayLabel(e.startsAt!)}`);
-    return `In your dates: ${shown.join(' · ')}${hits.length > shown.length ? ` (+${hits.length - shown.length} more)` : ''}`;
+    return `W Twoich datach: ${shown.join(' · ')}${hits.length > shown.length ? ` (+${hits.length - shown.length} więcej)` : ''}`;
   }
   if (outcome.sampleEvents.length === 0) {
-    return 'Readable, but no dated listing came back to check your dates against.';
+    return 'Da się odczytać, ale nie znaleźliśmy wydarzeń z datami, które można porównać z Twoimi.';
   }
-  return 'Nothing in your dates among the listings we sampled — its programme may still be worth a look.';
+  return 'W sprawdzonych wydarzeniach nie ma nic w Twoich datach — ale program i tak może być wart uwagi.';
 }
 
 /**
@@ -261,7 +261,7 @@ export async function probeWithConcurrency(
           normalizedUrl: null,
           code: 'UNREACHABLE',
           severity: 'retryable',
-          message: e instanceof Error ? e.message : 'This venue could not be checked.',
+          message: e instanceof Error ? e.message : 'Nie udało się sprawdzić tego miejsca.',
         });
       }
     }
@@ -272,10 +272,10 @@ export async function probeWithConcurrency(
 }
 
 const PRESETS: { key: WindowPreset; label: string }[] = [
-  { key: 'today', label: 'Today' },
-  { key: 'tomorrow', label: 'Tomorrow' },
-  { key: 'weekend', label: 'This weekend' },
-  { key: 'week', label: 'Next 7 days' },
+  { key: 'today', label: 'Dzisiaj' },
+  { key: 'tomorrow', label: 'Jutro' },
+  { key: 'weekend', label: 'Ten weekend' },
+  { key: 'week', label: 'Najbliższe 7 dni' },
 ];
 
 export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
@@ -376,7 +376,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
   };
 
   const results = suggest.data?.suggestions ?? [];
-  const destinationLabel = city.trim() || 'the city';
+  const destinationLabel = city.trim() || 'miasto';
   const hasWindow = Boolean(searched.from || searched.until);
   const withHits = hasWindow
     ? results.filter((s) => eventsInWindow(probes[s.url], searched.from, searched.until).length > 0)
@@ -394,18 +394,18 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
         onClick={() => setOpen((v) => !v)}
         className="act act-on act-sm min-w-0 truncate text-xs"
       >
-        Elsewhere
+        Gdzie indziej
       </button>
       {open ? (
     <div className="mt-4 w-full border-3 border-ink p-5">
       <div className="flex items-baseline justify-between gap-4">
-        <h4 className="label-caps m-0">Find venues elsewhere</h4>
+        <h4 className="label-caps m-0">Znajdź miejsca gdzie indziej</h4>
         <button
           type="button"
           onClick={() => setOpen(false)}
           className="text-xs font-extrabold uppercase text-muted hover:text-accent cursor-pointer bg-transparent border-0 p-0"
         >
-          Close
+          Zamknij
         </button>
       </div>
 
@@ -413,30 +413,30 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
           the screen it was reported from. */}
       <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
-          <span className="label-caps mb-2">City</span>
+          <span className="label-caps mb-2">Miasto</span>
           <input
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            placeholder="Thessaloniki"
+            placeholder="Saloniki"
             className="field text-sm"
           />
         </label>
 
         <label className="block">
-          <span className="label-caps mb-2">Looking for</span>
+          <span className="label-caps mb-2">Czego szukasz</span>
           {/* The free-text half of the ask. "Jazz" is not a venue category and
               never will be — a dropdown alone cannot hold what people are
               actually after. */}
           <input
             value={interest}
             onChange={(e) => setInterest(e.target.value)}
-            placeholder="Jazz concerts"
+            placeholder="Koncerty jazzowe"
             className="field text-sm"
           />
         </label>
 
         <fieldset className="sm:col-span-2 m-0 border-0 p-0">
-          <legend className="label-caps mb-2 p-0">Venue types</legend>
+          <legend className="label-caps mb-2 p-0">Rodzaje miejsc</legend>
           {/* Checkboxes, not a single select: someone after live music will
               happily take a jazz club *and* a concert hall, and the old
               one-of-five control made them choose. */}
@@ -454,12 +454,12 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
             ))}
           </div>
           <p className="mt-2 mb-0 text-xs text-muted">
-            {types.length === 0 ? 'Nothing ticked — anything goes.' : 'Only these types are proposed.'}
+            {types.length === 0 ? 'Nic nie zaznaczono — pasuje wszystko.' : 'Proponujemy tylko te rodzaje.'}
           </p>
         </fieldset>
 
         <div className="sm:col-span-2">
-          <span className="label-caps mb-2 block">Dates</span>
+          <span className="label-caps mb-2 block">Daty</span>
           <div className="act-row-sm mb-3">
             {PRESETS.map((p) => (
               <button
@@ -478,13 +478,13 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
                 onClick={() => { setFrom(''); setUntil(''); }}
                 className="act act-inherit"
               >
-                Any dates
+                Dowolne daty
               </button>
             ) : null}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="label-caps mb-2">From</span>
+              <span className="label-caps mb-2">Od</span>
               <input
                 type="date"
                 value={from}
@@ -493,7 +493,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
               />
             </label>
             <label className="block">
-              <span className="label-caps mb-2">Until</span>
+              <span className="label-caps mb-2">Do</span>
               <input
                 type="date"
                 value={until}
@@ -508,7 +508,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
         </div>
 
         <label className="block">
-          <span className="label-caps mb-2">Match against</span>
+          <span className="label-caps mb-2">Porównaj z</span>
           {/* The folder is a taste signal, not the premise: it sharpens a
               search when you have one worth matching, and searching a city you
               have never been to is a perfectly good ask without it. */}
@@ -517,7 +517,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
             onChange={(e) => setMatchChoice(e.target.value)}
             className="select-flat w-full py-2 text-sm"
           >
-            <option value="">Nothing — just the search</option>
+            <option value="">Z niczym — tylko wyszukiwanie</option>
             {folders.map((f) => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
@@ -525,7 +525,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
         </label>
 
         <label className="block">
-          <span className="label-caps mb-2">Destination</span>
+          <span className="label-caps mb-2">Gdzie dodać</span>
           {/* Every folder here is one the user owns — this project has no
               curated system folders, so "Warsaw" is just the folder their
               account was seeded with and is as writable as any other. */}
@@ -534,7 +534,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
             onChange={(e) => setDestination(e.target.value)}
             className="select-flat w-full py-2 text-sm"
           >
-            <option value="">New folder: {destinationLabel}</option>
+            <option value="">Nowy folder: {destinationLabel}</option>
             {folders.map((f) => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
@@ -547,15 +547,15 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
             disabled={!city.trim() || Boolean(dateProblem) || suggest.isPending}
             className="btn-fill"
           >
-            {suggest.isPending ? 'Thinking…' : 'Propose'}
+            {suggest.isPending ? 'Myślimy…' : 'Zaproponuj'}
           </button>
         </div>
       </form>
 
       <p className="mt-3 mb-0 text-xs text-muted">
-        Up to {VENUE_SUGGEST_MAX_CANDIDATES} venues, each checked for whether we can read its
-        programme — and, when you give dates, for what it has on then. Nothing is created until
-        you add something.
+        Do {VENUE_SUGGEST_MAX_CANDIDATES} miejsc, a przy każdym sprawdzamy, czy potrafimy odczytać
+        jego program — a jeśli podasz daty, co ma wtedy w programie. Nic nie zostanie utworzone,
+        dopóki czegoś nie dodasz.
       </p>
 
       {suggest.error ? (
@@ -564,7 +564,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
 
       {suggest.isSuccess && results.length === 0 ? (
         <p className="mt-4 text-sm text-muted">
-          Nothing came back — try fewer venue types, a wider date range, or a bigger city.
+          Nic nie znaleźliśmy — spróbuj mniej rodzajów miejsc, szerszego zakresu dat albo większego miasta.
         </p>
       ) : null}
 
@@ -572,15 +572,15 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
         <>
           <p className="mt-4 mb-0 text-xs text-muted">
             {matchFolder
-              ? `Based on ${suggest.data?.basedOn} venue${suggest.data?.basedOn === 1 ? '' : 's'} in “${matchFolder.name}”. `
+              ? `Na podstawie ${suggest.data?.basedOn} ${plural(suggest.data?.basedOn ?? 0, 'miejsca', 'miejsc', 'miejsc')} z „${matchFolder.name}”. `
               : ''}
-            A venue we can’t read is still addable — it keeps the reason.
+            Miejsce, którego nie potrafimy odczytać, też można dodać — zapamięta powód.
             {hasWindow ? (
               <>
                 {' '}
                 <span data-testid="window-summary">
-                  {withHits.length} of {results.length} had something in your dates in the listings
-                  we sampled.
+                  {withHits.length} z {results.length} ma coś w Twoich datach wśród
+                  sprawdzonych wydarzeń.
                 </span>
               </>
             ) : null}
@@ -645,7 +645,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
                     }
                     className="btn-outline shrink-0 text-xs"
                   >
-                    {isAdded ? 'Added' : 'Add'}
+                    {isAdded ? 'Dodano' : 'Dodaj'}
                   </button>
                 </li>
               );
@@ -653,7 +653,7 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
           </ul>
           {add.error ? (
             <p role="alert" className="mt-3 text-sm font-bold text-accent">
-              Couldn&rsquo;t add it: {add.error.message}
+              Nie udało się dodać: {add.error.message}
             </p>
           ) : null}
         </>

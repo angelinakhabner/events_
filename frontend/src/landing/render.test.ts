@@ -29,10 +29,17 @@ describe('landing page markup', () => {
     expect(body).toContain(escapeHtml(DESCRIPTION));
   });
 
+  // The headings are Polish now, and a link anchor has to survive them.
+  it('folds Polish letters out of a section slug', () => {
+    expect(slug('Przekazywanie danych poza Europę')).toBe('przekazywanie-danych-poza-europe');
+    expect(slug('Pliki cookie i dane zapisywane w przeglądarce')).toBe('pliki-cookie-i-dane-zapisywane-w-przegladarce');
+    expect(slug('Kto jeszcze ma do nich dostęp, łącznie')).toBe('kto-jeszcze-ma-do-nich-dostep-lacznie');
+  });
+
   it('says access is by invitation, visibly', () => {
     expect(body).toContain(ACCESS_HEADING);
-    expect(body).toMatch(/closed testing/i);
-    expect(body).toMatch(/no public sign-up/i);
+    expect(body).toMatch(/zamkniętych testach/i);
+    expect(body).toMatch(/nie ma publicznej rejestracji/i);
   });
 
   it('gives a contact address that can be clicked', () => {

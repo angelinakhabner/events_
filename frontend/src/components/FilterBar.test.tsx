@@ -37,7 +37,7 @@ describe('FilterBar', () => {
   it('updates startHour from the select', async () => {
     const spy = vi.fn();
     render(<Harness onChange={spy} />);
-    await userEvent.selectOptions(screen.getByLabelText('Start hour'), '18');
+    await userEvent.selectOptions(screen.getByLabelText('Od godziny'), '18');
     expect(spy).toHaveBeenLastCalledWith({ startHour: 18 });
   });
 });

@@ -64,15 +64,15 @@ describe('venueFilterStatus', () => {
 describe('venueStatusNote', () => {
   it('explains each non-obvious state, and says nothing when all is well', () => {
     expect(venueStatusNote('active', 4, null, NOW)).toBeNull();
-    expect(venueStatusNote('active', 0, null, NOW)).toMatch(/nothing on in this period/i);
-    expect(venueStatusNote('empty', 0, null, NOW)).toMatch(/no events listed/i);
-    expect(venueStatusNote('dark', 0, null, NOW)).toMatch(/can.t currently read/i);
-    expect(venueStatusNote('stale', 2, daysAgo(3), NOW)).toBe('Last updated 3 days ago');
+    expect(venueStatusNote('active', 0, null, NOW)).toMatch(/nic w tym okresie/i);
+    expect(venueStatusNote('empty', 0, null, NOW)).toMatch(/nie ma teraz żadnych wydarzeń/i);
+    expect(venueStatusNote('dark', 0, null, NOW)).toMatch(/nie możemy teraz odczytać/i);
+    expect(venueStatusNote('stale', 2, daysAgo(3), NOW)).toBe('Ostatnia aktualizacja 3 dni temu');
   });
 
   it('reads correctly at one day, and without a date', () => {
-    expect(venueStatusNote('stale', 1, daysAgo(1), NOW)).toBe('Last updated 1 day ago');
-    expect(venueStatusNote('stale', 1, null, NOW)).toMatch(/a while ago/i);
+    expect(venueStatusNote('stale', 1, daysAgo(1), NOW)).toBe('Ostatnia aktualizacja wczoraj');
+    expect(venueStatusNote('stale', 1, null, NOW)).toMatch(/dawno temu/i);
   });
 });
 

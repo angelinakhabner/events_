@@ -48,7 +48,7 @@ describe('AnthropicDescriber', () => {
     const out = await new AnthropicDescriber('key', 'model-x').describe(INPUT);
 
     const req = create.mock.calls[0]![0];
-    expect(req.system).toMatch(/Always write the description in English/);
+    expect(req.system).toMatch(/Always write the description in Polish/);
     expect(req.system).toMatch(/Never describe logistics/);
     expect(req.tools).toEqual([expect.objectContaining({ type: 'web_search_20260209', name: 'web_search' })]);
     expect(req.messages[0].content).toContain('Listing note: Scena: scena duża');

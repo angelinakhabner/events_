@@ -130,15 +130,15 @@ function setupLoading() {
 }
 
 function open() {
-  fireEvent.click(screen.getByRole('button', { name: /^elsewhere$/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^gdzie indziej$/i }));
 }
 
 /** Open, type a city, submit — and let the probe round-trips settle. */
 async function search(city = 'Berlin') {
   open();
-  fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: city } });
+  fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: city } });
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^zaproponuj$/i }));
   });
 }
 
@@ -154,29 +154,29 @@ beforeEach(() => {
 describe('the trigger', () => {
   it('starts collapsed behind one button — a search costs a model call', () => {
     setup();
-    expect(screen.getByRole('button', { name: /^elsewhere$/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^gdzie indziej$/i })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
-    expect(screen.queryByLabelText(/^city$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^miasto$/i)).not.toBeInTheDocument();
   });
 
   it('opens to the whole ask: city, interest, types, dates, folder, destination', () => {
     setup();
     open();
-    expect(screen.getByLabelText(/^city$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/looking for/i)).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: /venue types/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/^from$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^until$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/match against/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/destination/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^miasto$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/czego szukasz/i)).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /rodzaje miejsc/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^od$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^do$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/porównaj z/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/gdzie dodać/i)).toBeInTheDocument();
   });
 
   it('matches against the folder you are in, by default', () => {
     setup();
     open();
-    expect(screen.getByLabelText(/match against/i)).toHaveValue('folder-1');
+    expect(screen.getByLabelText(/porównaj z/i)).toHaveValue('folder-1');
   });
 
   /**
@@ -190,15 +190,15 @@ describe('the trigger', () => {
   it('follows the folder you are in once the folders arrive', () => {
     const { loaded } = setupLoading();
     open();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Berlin' } });
     // The button no longer waits on a folder — the search stands on its own —
     // but the control must still catch up with the tab it was opened from.
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^zaproponuj$/i })).toBeEnabled();
 
     loaded();
 
-    expect(screen.getByLabelText(/match against/i)).toHaveValue('folder-1');
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeEnabled();
+    expect(screen.getByLabelText(/porównaj z/i)).toHaveValue('folder-1');
+    expect(screen.getByRole('button', { name: /^zaproponuj$/i })).toBeEnabled();
   });
 
   it('searches with the folder the select is showing, not an empty id', async () => {
@@ -207,9 +207,9 @@ describe('the trigger', () => {
     loaded();
     suggestMutateAsync.mockResolvedValue({ suggestions: [] });
 
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Berlin' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^zaproponuj$/i }));
     });
 
     expect(suggestMutateAsync).toHaveBeenCalledWith(
@@ -220,8 +220,8 @@ describe('the trigger', () => {
   it('keeps the reader\u2019s own choice once they make one', () => {
     setup();
     open();
-    fireEvent.change(screen.getByLabelText(/match against/i), { target: { value: 'folder-2' } });
-    expect(screen.getByLabelText(/match against/i)).toHaveValue('folder-2');
+    fireEvent.change(screen.getByLabelText(/porównaj z/i), { target: { value: 'folder-2' } });
+    expect(screen.getByLabelText(/porównaj z/i)).toHaveValue('folder-2');
   });
 
   /**
@@ -232,12 +232,12 @@ describe('the trigger', () => {
   it('searches with no folders at all', async () => {
     render(<ElsewherePanel folders={[]} activeFolderId={null} onAdded={vi.fn()} />);
     open();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Berlin' } });
+    expect(screen.getByRole('button', { name: /^zaproponuj$/i })).toBeEnabled();
 
     suggestMutateAsync.mockResolvedValue({ suggestions: [] });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^zaproponuj$/i }));
     });
     expect(suggestMutateAsync).toHaveBeenCalledWith({ city: 'Berlin', limit: 8 });
   });
@@ -245,16 +245,16 @@ describe('the trigger', () => {
   it('will not search without a city', () => {
     setup();
     open();
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: '   ' } });
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^zaproponuj$/i })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: '   ' } });
+    expect(screen.getByRole('button', { name: /^zaproponuj$/i })).toBeDisabled();
   });
 
   it('names the folder it would create, so the default destination is not a mystery', () => {
     setup();
     open();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
-    expect(screen.getByRole('option', { name: /new folder: berlin/i })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Berlin' } });
+    expect(screen.getByRole('option', { name: /nowy folder: berlin/i })).toBeInTheDocument();
   });
 
   // Venue *types* must come from the categories the rest of the tab uses —
@@ -262,7 +262,7 @@ describe('the trigger', () => {
   it('offers the existing category vocabulary as the venue types', () => {
     setup();
     open();
-    for (const label of ['Cinema', 'Theatre', 'Museums', 'Comedy', 'Music']) {
+    for (const label of ['Kino', 'Teatr', 'Muzea', 'Stand-up', 'Muzyka']) {
       expect(screen.getByRole('checkbox', { name: label })).not.toBeChecked();
     }
   });
@@ -272,20 +272,20 @@ describe('the trigger', () => {
   it('takes several types at once', () => {
     setup();
     open();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Music' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Theatre' }));
-    expect(screen.getByRole('checkbox', { name: 'Music' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Theatre' })).toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Muzyka' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Teatr' }));
+    expect(screen.getByRole('checkbox', { name: 'Muzyka' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Teatr' })).toBeChecked();
   });
 
   it('will not search a window that ends before it starts', () => {
     setup();
     open();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
-    fireEvent.change(screen.getByLabelText(/^from$/i), { target: { value: '2026-09-14' } });
-    fireEvent.change(screen.getByLabelText(/^until$/i), { target: { value: '2026-09-11' } });
-    expect(screen.getByRole('alert')).toHaveTextContent(/before its start/i);
-    expect(screen.getByRole('button', { name: /^propose$/i })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Berlin' } });
+    fireEvent.change(screen.getByLabelText(/^od$/i), { target: { value: '2026-09-14' } });
+    fireEvent.change(screen.getByLabelText(/^do$/i), { target: { value: '2026-09-11' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/przed jego początkiem/i);
+    expect(screen.getByRole('button', { name: /^zaproponuj$/i })).toBeDisabled();
   });
 
   // "Tomorrow" is the ask this panel exists for; making someone type two dates
@@ -293,27 +293,27 @@ describe('the trigger', () => {
   it('fills both dates from one preset', () => {
     setup();
     open();
-    fireEvent.click(screen.getByRole('button', { name: /^tomorrow$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^jutro$/i }));
     const tomorrow = presetWindow('tomorrow').from;
-    expect(screen.getByLabelText(/^from$/i)).toHaveValue(tomorrow);
-    expect(screen.getByLabelText(/^until$/i)).toHaveValue(tomorrow);
-    expect(screen.getByRole('button', { name: /^tomorrow$/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText(/^od$/i)).toHaveValue(tomorrow);
+    expect(screen.getByLabelText(/^do$/i)).toHaveValue(tomorrow);
+    expect(screen.getByRole('button', { name: /^jutro$/i })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('clears the dates again', () => {
     setup();
     open();
-    fireEvent.click(screen.getByRole('button', { name: /^tomorrow$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^any dates$/i }));
-    expect(screen.getByLabelText(/^from$/i)).toHaveValue('');
-    expect(screen.getByLabelText(/^until$/i)).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: /^jutro$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^dowolne daty$/i }));
+    expect(screen.getByLabelText(/^od$/i)).toHaveValue('');
+    expect(screen.getByLabelText(/^do$/i)).toHaveValue('');
   });
 
   // A city you have never been to has nothing to match against.
   it('can search without matching a folder at all', () => {
     setup();
     open();
-    expect(screen.getByRole('option', { name: /nothing — just the search/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /z niczym — tylko wyszukiwanie/i })).toBeInTheDocument();
   });
 });
 
@@ -328,19 +328,19 @@ describe('searching and probing', () => {
   it('asks with the whole sentence: city, interest, types, dates, folder, cap', async () => {
     setup();
     open();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Thessaloniki' } });
-    fireEvent.change(screen.getByLabelText(/looking for/i), { target: { value: 'jazz concerts' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Music' }));
-    fireEvent.click(screen.getByRole('button', { name: /^tomorrow$/i }));
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Thessaloniki' } });
+    fireEvent.change(screen.getByLabelText(/czego szukasz/i), { target: { value: 'jazz concerts' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Muzyka' }));
+    fireEvent.click(screen.getByRole('button', { name: /^jutro$/i }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^zaproponuj$/i }));
     });
     const tomorrow = presetWindow('tomorrow').from;
     expect(suggestMutateAsync).toHaveBeenCalledWith({
       listId: 'folder-1',
       city: 'Thessaloniki',
       interest: 'jazz concerts',
-      types: ['Music'],
+      types: ['Muzyka'],
       from: tomorrow,
       until: tomorrow,
       limit: 8,
@@ -362,10 +362,10 @@ describe('searching and probing', () => {
   it('drops the folder from the ask when none is matched against', async () => {
     setup();
     open();
-    fireEvent.change(screen.getByLabelText(/match against/i), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
+    fireEvent.change(screen.getByLabelText(/porównaj z/i), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Berlin' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^zaproponuj$/i }));
     });
     expect(suggestMutateAsync).toHaveBeenCalledWith({ city: 'Berlin', limit: 8 });
   });
@@ -408,7 +408,7 @@ describe('searching and probing', () => {
     await waitFor(() =>
       expect(screen.getByTestId(`probe-${volksbuehne.url}`)).toHaveTextContent('refused'),
     );
-    const rows = screen.getAllByRole('button', { name: /^add$/i });
+    const rows = screen.getAllByRole('button', { name: /^dodaj$/i });
     expect(rows).toHaveLength(2);
     fireEvent.click(rows[1]!);
     expect(addMutate).toHaveBeenCalledWith(
@@ -424,8 +424,8 @@ describe('searching and probing', () => {
     suggestState = { ...idle, isSuccess: true, data: { basedOn: 3, suggestions: [bahnhof] } };
     setup();
     await search();
-    fireEvent.change(screen.getByLabelText(/destination/i), { target: { value: 'folder-2' } });
-    fireEvent.click(screen.getAllByRole('button', { name: /^add$/i })[0]!);
+    fireEvent.change(screen.getByLabelText(/gdzie dodać/i), { target: { value: 'folder-2' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /^dodaj$/i })[0]!);
     const call = addMutate.mock.calls[0]![0];
     expect(call.listId).toBe('folder-2');
     expect(call.listName).toBeUndefined();
@@ -435,9 +435,9 @@ describe('searching and probing', () => {
     suggestState = { ...idle, isSuccess: true, data: { basedOn: 3, suggestions: [bahnhof] } };
     const { onAdded } = setup();
     await search();
-    fireEvent.click(screen.getAllByRole('button', { name: /^add$/i })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: /^dodaj$/i })[0]!);
     act(() => addOnSuccess?.(null, { url: bahnhof.url }));
-    expect(screen.getByRole('button', { name: /added/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /dodano/i })).toBeDisabled();
     expect(onAdded).toHaveBeenCalled();
   });
 
@@ -454,7 +454,7 @@ describe('searching and probing', () => {
     suggestMutateAsync.mockResolvedValue({ basedOn: 3, suggestions: [] });
     setup();
     await search();
-    expect(screen.getByText(/Nothing came back/)).toBeInTheDocument();
+    expect(screen.getByText(/Nic nie znaleźliśmy/)).toBeInTheDocument();
   });
 });
 
@@ -467,11 +467,11 @@ describe('the dates are checked, not claimed', () => {
   /** Search Berlin for a fixed two-day window. */
   async function searchDates() {
     open();
-    fireEvent.change(screen.getByLabelText(/^city$/i), { target: { value: 'Berlin' } });
-    fireEvent.change(screen.getByLabelText(/^from$/i), { target: { value: '2026-09-11' } });
-    fireEvent.change(screen.getByLabelText(/^until$/i), { target: { value: '2026-09-12' } });
+    fireEvent.change(screen.getByLabelText(/^miasto$/i), { target: { value: 'Berlin' } });
+    fireEvent.change(screen.getByLabelText(/^od$/i), { target: { value: '2026-09-11' } });
+    fireEvent.change(screen.getByLabelText(/^do$/i), { target: { value: '2026-09-12' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^propose$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^zaproponuj$/i }));
     });
   }
 
@@ -499,7 +499,7 @@ describe('the dates are checked, not claimed', () => {
     setup();
     await searchDates();
     await waitFor(() =>
-      expect(screen.getByTestId(`dates-${bahnhof.url}`)).toHaveTextContent(/listings we sampled/i),
+      expect(screen.getByTestId(`dates-${bahnhof.url}`)).toHaveTextContent(/sprawdzonych wydarzeniach/i),
     );
   });
 
@@ -512,7 +512,7 @@ describe('the dates are checked, not claimed', () => {
     setup();
     await searchDates();
     await waitFor(() =>
-      expect(screen.getByTestId('window-summary')).toHaveTextContent('1 of 2'),
+      expect(screen.getByTestId('window-summary')).toHaveTextContent('1 z 2'),
     );
   });
 
@@ -560,9 +560,9 @@ describe('eventsInWindow / windowNote', () => {
   });
 
   it('distinguishes "read nothing dated" from "read nothing matching"', () => {
-    expect(windowNote(withProgramme([]), window.from, window.until)).toMatch(/no dated listing/i);
+    expect(windowNote(withProgramme([]), window.from, window.until)).toMatch(/wydarzeń z datami/i);
     expect(windowNote(withProgramme(['2026-10-02T20:00:00.000Z']), window.from, window.until))
-      .toMatch(/nothing in your dates/i);
+      .toMatch(/nie ma nic w Twoich datach/i);
   });
 
   it('caps the titles it names and counts the rest', () => {
@@ -576,7 +576,7 @@ describe('eventsInWindow / windowNote', () => {
     )!;
     expect(note).toMatch(/Gig 3/);
     expect(note).not.toMatch(/Gig 4/);
-    expect(note).toMatch(/\+1 more/);
+    expect(note).toMatch(/\+1 więcej/);
   });
 });
 
@@ -605,8 +605,8 @@ describe('presetWindow / windowProblem', () => {
   });
 
   it('holds a backwards or over-long window, and passes everything else', () => {
-    expect(windowProblem('2026-09-14', '2026-09-11')).toMatch(/before its start/i);
-    expect(windowProblem('2026-01-01', '2026-06-01')).toMatch(/at most/i);
+    expect(windowProblem('2026-09-14', '2026-09-11')).toMatch(/przed jego początkiem/i);
+    expect(windowProblem('2026-01-01', '2026-06-01')).toMatch(/najwyżej/i);
     expect(windowProblem('2026-09-11', '2026-09-11')).toBeNull();
     expect(windowProblem('', '2026-09-11')).toBeNull();
     expect(windowProblem('2026-09-11', '')).toBeNull();
@@ -616,7 +616,7 @@ describe('presetWindow / windowProblem', () => {
 describe('candidateStatus / candidateNote', () => {
   it('is checking until the probe lands', () => {
     expect(candidateStatus(undefined)).toBe('checking');
-    expect(candidateNote(undefined)).toMatch(/checking/i);
+    expect(candidateNote(undefined)).toMatch(/sprawdzanie/i);
   });
 
   it('reports the method for a readable venue', () => {
@@ -628,7 +628,7 @@ describe('candidateStatus / candidateNote', () => {
   // note has to say the cost is why nothing happened.
   it('flags a paid-render-only venue without running anything', () => {
     expect(candidateStatus(needsPaid)).toBe('needs_paid');
-    expect(candidateNote(needsPaid)).toMatch(/not run here/i);
+    expect(candidateNote(needsPaid)).toMatch(/tutaj go nie uruchamiamy/i);
   });
 
   it('passes a failure through as its own specific sentence', () => {

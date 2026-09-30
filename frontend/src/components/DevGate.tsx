@@ -50,21 +50,21 @@ export function DevGate({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-full flex items-center justify-center px-5">
       <form onSubmit={handleSubmit} className="w-full max-w-xs space-y-4 text-center">
-        <p className="font-display text-3xl uppercase">AFISZ — dev preview</p>
+        <p className="font-display text-3xl uppercase">AFISZ — podgląd deweloperski</p>
         <input
           type="password"
           name="password"
-          aria-label="Dev access password"
-          placeholder="Dev access password"
+          aria-label="Hasło do podglądu"
+          placeholder="Hasło do podglądu"
           autoFocus
           className="field"
         />
         <button type="submit" className="btn-fill w-full">
-          Enter
+          Wejdź
         </button>
         {error && (
           <p role="alert" className="text-sm font-bold text-accent">
-            Wrong password.
+            Błędne hasło.
           </p>
         )}
       </form>

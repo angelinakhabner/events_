@@ -38,7 +38,7 @@ export function FestivalBanner({
   festivals,
   now,
   /** Named for a screen reader; /my says whose venues these are. */
-  label = 'Festivals on now',
+  label = 'Trwające festiwale',
 }: {
   festivals: Festival[] | undefined;
   now?: Date;
@@ -90,7 +90,7 @@ function FestivalBannerCard({ festival }: { festival: Festival }) {
             {/* "Now on" and "Coming soon" are the two things a festival can be
                 worth a banner for, and they are not the same news. */}
             <span className={on ? 'text-accent' : 'text-[#c9c4bc]'}>
-              {on ? 'Now on' : 'Coming soon'}
+              {on ? 'Trwa' : 'Wkrótce'}
             </span>
             <span aria-hidden className="text-[#6f6a63]">·</span>
             <span className="text-white tabular-nums">
@@ -115,7 +115,7 @@ function FestivalBannerCard({ festival }: { festival: Festival }) {
           <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 m-0 text-[11px] md:text-xs font-extrabold uppercase tracking-[1px]">
             <span className="text-[#8d8b87]">{venueLine(festival)}</span>
             {festival.url ? (
-              <span className="text-accent group-hover:underline">Festival site →</span>
+              <span className="text-accent group-hover:underline">Strona festiwalu →</span>
             ) : null}
           </p>
         </div>

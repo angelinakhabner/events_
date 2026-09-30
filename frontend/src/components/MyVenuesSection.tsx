@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Category, ScrapeRun } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
-import { categoryLabel, formatEventTime, formatShortDate } from '../lib/format';
+import { categoryLabel, formatEventTime, formatShortDate, plural } from '../lib/format';
 import type { VenueSchedule } from '@afisz/shared';
 import { AddVenueForm, CATEGORIES } from './AddVenueForm';
 import { ElsewherePanel } from './ElsewherePanel';
@@ -63,7 +63,7 @@ export function MyVenuesSection() {
     }));
     const unfiled = byFolder.get(null);
     if (unfiled?.length) {
-      sections.push({ id: null, name: 'Unfiled', active: false, venues: unfiled });
+      sections.push({ id: null, name: 'Bez folderu', active: false, venues: unfiled });
     }
     return sections;
   }, [venueRows, folders]);
@@ -71,8 +71,8 @@ export function MyVenuesSection() {
   return (
     <section>
       <PanelHeading
-        title="My venues"
-        blurb="Venues you follow — upcoming events surface first in your feed. Rename one, change its category or add your own tags; those changes are only visible to you."
+        title="Moje miejsca"
+        blurb="Miejsca, które obserwujesz — ich nadchodzące wydarzenia są na górze Twojego programu. Możesz zmienić nazwę, kategorię albo dodać własne tagi; te zmiany widzisz tylko Ty."
         rule={false}
       />
 
@@ -109,7 +109,7 @@ export function MyVenuesSection() {
           onClick={() => setAdding((v) => !v)}
           className={`shrink-0 ${adding ? 'btn-outline' : 'pill-accent'}`}
         >
-          {adding ? 'Cancel' : '+ Add venue'}
+          {adding ? 'Anuluj' : '+ Dodaj miejsce'}
         </button>
       </div>
 
@@ -123,7 +123,7 @@ export function MyVenuesSection() {
 
       {venuesQuery.isLoading ? <SkeletonList rows={4} /> : null}
       {venuesQuery.error ? (
-        <ErrorState message="Couldn't load your venues." onRetry={() => venuesQuery.refetch()} />
+        <ErrorState message="Nie udało się wczytać Twoich miejsc." onRetry={() => venuesQuery.refetch()} />
       ) : null}
       {venueRows && venueRows.length === 0 && !adding ? (
         /* An empty tab shouldn't answer "what now?" by naming a control and
@@ -131,10 +131,10 @@ export function MyVenuesSection() {
            the button itself. */
         <div className="border-3 border-ink px-5 py-8 text-center">
           <p className="mt-0 mb-4 text-sm text-muted">
-            No venues yet. Add one by URL and it starts getting scraped.
+            Nie masz jeszcze miejsc. Dodaj jakieś po adresie, a zaczniemy czytać jego program.
           </p>
           <button type="button" onClick={() => setAdding(true)} className="btn-accent">
-            + Add venue
+            + Dodaj miejsce
           </button>
         </div>
       ) : null}
@@ -143,13 +143,13 @@ export function MyVenuesSection() {
         <div key={folder.id ?? 'unfiled'} className="mb-10">
           <h3 className="mb-0 flex items-baseline gap-3 tag pb-2">
             {folder.name}
-            {folder.active ? <span className="text-accent">active</span> : null}
+            {folder.active ? <span className="text-accent">aktywny</span> : null}
             <span>
-              {folder.venues.length} venue{folder.venues.length === 1 ? '' : 's'}
+              {folder.venues.length} {plural(folder.venues.length, 'miejsce', 'miejsca', 'miejsc')}
             </span>
           </h3>
           {folder.venues.length === 0 ? (
-            <p className="text-sm text-muted border-t-3 border-ink pt-4">Nothing filed here yet.</p>
+            <p className="text-sm text-muted border-t-3 border-ink pt-4">Nic tu jeszcze nie ma.</p>
           ) : (
             <ul className="border-t-3 border-ink list-none m-0 p-0">
               {folder.venues.map((v) => (
@@ -230,29 +230,29 @@ function FoldersBar() {
               if (newName.trim()) create.mutate({ name: newName.trim() });
             }}
           >
-            <label className="sr-only" htmlFor="new-folder-name">Folder name</label>
+            <label className="sr-only" htmlFor="new-folder-name">Nazwa folderu</label>
             <input
               id="new-folder-name"
               autoFocus
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Poznan"
+              placeholder="np. Poznań"
               className="field-sm"
             />
             <button type="submit" disabled={create.isPending} className="act act-on">
-              Create
+              Utwórz
             </button>
             <button
               type="button"
               onClick={() => { setCreating(false); setNewName(''); }}
               className="act"
             >
-              Cancel
+              Anuluj
             </button>
           </form>
         ) : (
           <button type="button" onClick={() => setCreating(true)} className="act act-on act-sm text-xs">
-            + New folder
+            + Nowy folder
           </button>
         )}
 
@@ -265,7 +265,7 @@ function FoldersBar() {
                 if (renameValue.trim()) rename.mutate({ listId: active.id, name: renameValue.trim() });
               }}
             >
-              <label className="sr-only" htmlFor="rename-folder">New folder name</label>
+              <label className="sr-only" htmlFor="rename-folder">Nowa nazwa folderu</label>
               <input
                 id="rename-folder"
                 autoFocus
@@ -274,10 +274,10 @@ function FoldersBar() {
                 className="field-sm"
               />
               <button type="submit" disabled={rename.isPending} className="act act-sm act-on text-xs">
-                Save
+                Zapisz
               </button>
               <button type="button" onClick={() => setRenaming(false)} className="act act-sm text-xs">
-                Cancel
+                Anuluj
               </button>
             </form>
           ) : (
@@ -287,18 +287,18 @@ function FoldersBar() {
                 onClick={() => { setRenameValue(active.name); setRenaming(true); }}
                 className="act act-sm text-xs"
               >
-                Rename folder
+                Zmień nazwę folderu
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm(`Delete "${active.name}" and its ${active.venueCount} venue subscription(s)?`)) {
+                  if (window.confirm(`Usunąć „${active.name}” razem z obserwowanymi w nim miejscami (${active.venueCount})?`)) {
                     remove.mutate({ listId: active.id });
                   }
                 }}
                 className="act act-sm text-xs"
               >
-                Delete folder
+                Usuń folder
               </button>
             </>
           )
@@ -307,8 +307,8 @@ function FoldersBar() {
 
       {mutationError ? <p className="mt-2 text-sm text-accent">{mutationError}</p> : null}
       <p className="mt-3.5 text-xs text-muted max-w-[640px]">
-        Only the active folder is kept fresh — venues in your other folders aren&rsquo;t
-        scraped until you make their folder active.
+        Aktualizujemy tylko aktywny folder — miejsc z innych folderów nie czytamy,
+        dopóki nie ustawisz ich folderu jako aktywnego.
       </p>
     </div>
   );
@@ -391,7 +391,7 @@ function VenueRow({
               <h4 className="m-0 text-lg md:text-[22px] font-bold text-ink">
                 {venue.name}
                 {venue.customized ? (
-                  <span className="ml-2 text-[11px] font-medium text-faint">(edited)</span>
+                  <span className="ml-2 text-[11px] font-medium text-faint">(zmienione)</span>
                 ) : null}
               </h4>
               {/* The design's "{TAG} · {N} UPCOMING" line — the category the
@@ -399,9 +399,9 @@ function VenueRow({
               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 tag text-[12px]">
                 <span>{categoryLabel(venue.category)}</span>
                 <span aria-hidden>·</span>
-                <span>{schedule?.upcomingCount ?? 0} upcoming</span>
+                <span>{schedule?.upcomingCount ?? 0} nadchodzących</span>
                 <span aria-hidden>·</span>
-                <span>{venue.windowDays ? `${venue.windowDays}d window` : 'default window'}</span>
+                <span>{venue.windowDays ? `okno ${venue.windowDays} dni` : 'domyślne okno'}</span>
                 <VenueScheduleNote schedule={schedule} />
               </div>
             </div>
@@ -429,7 +429,7 @@ function VenueRow({
                     disabled={update.isPending}
                     className="select-flat md:mr-4 py-1 text-[11px] font-bold"
                   >
-                    {venue.listId === null ? <option value="">Unfiled</option> : null}
+                    {venue.listId === null ? <option value="">Bez folderu</option> : null}
                     {folders.map((f) => (
                       <option key={f.id} value={f.id}>{f.name}</option>
                     ))}
@@ -444,7 +444,7 @@ function VenueRow({
                 disabled={refresh.isPending}
                 className="act act-sm md:w-[104px] md:text-left"
               >
-                {refresh.isPending ? 'Refreshing…' : 'Refresh'}
+                {refresh.isPending ? 'Odświeżanie…' : 'Odśwież'}
               </button>
               <button
                 type="button"
@@ -452,21 +452,21 @@ function VenueRow({
                 onClick={() => setShowUpcoming((v) => !v)}
                 className={`act act-sm md:w-[130px] md:text-left ${showUpcoming ? 'act-on' : ''}`}
               >
-                {showUpcoming ? 'Hide upcoming' : 'Show upcoming'}
+                {showUpcoming ? 'Ukryj program' : 'Pokaż program'}
               </button>
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="act act-sm md:w-[46px] md:text-left"
+                className="act act-sm md:w-[60px] md:text-left"
               >
-                Edit
+                Edytuj
               </button>
               <button
                 type="button"
                 onClick={() => remove.mutate({ venueId: venue.id })}
                 className="act act-sm md:w-[66px] md:text-left"
               >
-                Remove
+                Usuń
               </button>
             </div>
           </div>
@@ -499,14 +499,14 @@ function VenueRow({
   return (
     <li className="py-5 rule-soft">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="sr-only" htmlFor={`name-${venue.id}`}>Name</label>
+        <label className="sr-only" htmlFor={`name-${venue.id}`}>Nazwa</label>
         <input
           id={`name-${venue.id}`}
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="field-sm flex-1 min-w-[12rem]"
         />
-        <label className="sr-only" htmlFor={`category-${venue.id}`}>Category</label>
+        <label className="sr-only" htmlFor={`category-${venue.id}`}>Kategoria</label>
         <select
           id={`category-${venue.id}`}
           value={category}
@@ -527,18 +527,18 @@ function VenueRow({
           max={90}
           value={windowDays}
           onChange={(e) => setWindowDays(e.target.value)}
-          placeholder="default"
+          placeholder="domyślne"
           className="field-sm w-20"
         />
         <button type="button" onClick={save} className="act act-on">
-          Save
+          Zapisz
         </button>
         <button
           type="button"
           onClick={() => { setEditing(false); setName(venue.name); setCategory(venue.category); }}
           className="act"
         >
-          Cancel
+          Anuluj
         </button>
       </div>
     </li>
@@ -555,21 +555,21 @@ function VenueRow({
 export function probeErrorNote(code: string): string {
   switch (code) {
     case 'NO_EVENTS_FOUND':
-      return 'Nothing listed here at the moment.';
+      return 'Na razie nic tu nie ma.';
     case 'PAST_EVENTS_ONLY':
-      return 'Only past events are listed here.';
+      return 'Są tu tylko minione wydarzenia.';
     case 'JS_RENDERED_NEEDS_PAID':
-      return 'Won’t populate — this site only renders in a browser, and we don’t pay for that automatically.';
+      return 'Nie zapełni się — ta strona działa tylko w przeglądarce, a za to nie płacimy automatycznie.';
     case 'NO_LISTING_PAGE_FOUND':
-      return 'Won’t populate — no programme page found. Try adding the Repertuar/Program page directly.';
+      return 'Nie zapełni się — nie znaleziono strony z programem. Spróbuj dodać bezpośrednio stronę Repertuar/Program.';
     case 'SOCIAL_ONLY':
-      return 'Won’t populate — this venue only posts on social media.';
+      return 'Nie zapełni się — to miejsce publikuje tylko w mediach społecznościowych.';
     case 'BLOCKED':
-      return 'Won’t populate — the site refuses our requests.';
+      return 'Nie zapełni się — strona odrzuca nasze zapytania.';
     case 'UNREACHABLE':
-      return 'Won’t populate — the site couldn’t be reached.';
+      return 'Nie zapełni się — nie udało się połączyć ze stroną.';
     default:
-      return 'Won’t populate — we can’t read this venue’s listings.';
+      return 'Nie zapełni się — nie potrafimy odczytać programu tego miejsca.';
   }
 }
 
@@ -587,15 +587,15 @@ const UPCOMING_SHOWN = 8;
 export function scrapeRunSummary(run: ScrapeRun): string {
   switch (run.status) {
     case 'success':
-      return `Found ${run.eventsFound ?? 0} event${run.eventsFound === 1 ? '' : 's'}.`;
+      return `Znaleziono ${run.eventsFound ?? 0} ${plural(run.eventsFound ?? 0, 'wydarzenie', 'wydarzenia', 'wydarzeń')}.`;
     case 'success_empty':
-      return 'Scraped fine, but no events could be read off the page.';
+      return 'Strona odczytana, ale nie znaleźliśmy na niej wydarzeń.';
     case 'skipped_unchanged':
-      return 'The page hasn’t changed since the last scrape — nothing new to read.';
+      return 'Strona nie zmieniła się od ostatniego odczytu — nic nowego.';
     case 'failed':
-      return `Scrape failed: ${run.errorMessage ?? 'unknown error'}`;
+      return `Odczyt nie powiódł się: ${run.errorMessage ?? 'nieznany błąd'}`;
     default:
-      return 'Scrape still running…';
+      return 'Odczyt wciąż trwa…';
   }
 }
 
@@ -610,12 +610,12 @@ function UpcomingList({ venueId }: { venueId: string }) {
   // leave a dead endpoint stuck on "Loading…" for ~10s.
   const events = trpc.events.listByVenue.useQuery({ venueId }, { retry: 1 });
 
-  if (events.isLoading) return <Note>Loading upcoming events…</Note>;
-  if (events.isError) return <Note>Couldn’t load this venue’s events.</Note>;
+  if (events.isLoading) return <Note>Wczytywanie nadchodzących wydarzeń…</Note>;
+  if (events.isError) return <Note>Nie udało się wczytać wydarzeń tego miejsca.</Note>;
 
   const all = events.data ?? [];
   if (all.length === 0) {
-    return <Note>Nothing upcoming — try Refresh to scrape this venue now.</Note>;
+    return <Note>Nic nie nadchodzi — kliknij „Odśwież”, żeby od razu odczytać to miejsce.</Note>;
   }
 
   const shown = all.slice(0, UPCOMING_SHOWN);
@@ -680,7 +680,7 @@ function VenueTags({
           {tag}
           <button
             type="button"
-            aria-label={`Remove tag ${tag} from ${venue.name}`}
+            aria-label={`Usuń tag ${tag} z ${venue.name}`}
             onClick={() => onSave(venue.tags.filter((t) => t !== tag))}
             disabled={saving}
             className="act act-sm leading-none"
@@ -694,34 +694,34 @@ function VenueTags({
           className="flex items-center gap-2"
           onSubmit={(e) => { e.preventDefault(); addTag(); }}
         >
-          <label className="sr-only" htmlFor={`tag-${venue.id}`}>New tag for {venue.name}</label>
+          <label className="sr-only" htmlFor={`tag-${venue.id}`}>Nowy tag dla {venue.name}</label>
           <input
             id={`tag-${venue.id}`}
             autoFocus
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="e.g. date night"
+            placeholder="np. randka"
             className="field-sm py-0.5 text-[11px]"
           />
           <button type="submit" disabled={saving} className="act act-sm act-on">
-            Add
+            Dodaj
           </button>
           <button
             type="button"
             onClick={() => { setAdding(false); setValue(''); }}
             className="act act-sm"
           >
-            Cancel
+            Anuluj
           </button>
         </form>
       ) : (
         <button
           type="button"
-          aria-label={`Add tag to ${venue.name}`}
+          aria-label={`Dodaj tag do ${venue.name}`}
           onClick={() => setAdding(true)}
           className="act act-sm act-on text-xs"
         >
-          + Add tag
+          + Dodaj tag
         </button>
       )}
     </div>

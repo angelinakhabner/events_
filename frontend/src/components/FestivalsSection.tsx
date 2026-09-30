@@ -39,7 +39,7 @@ export function FestivalsSection({ category }: { category: Category | null }) {
 
   return (
     <section className="mt-12">
-      <h2 className="font-display text-[28px] md:text-[36px] m-0 mb-3">Coming soon</h2>
+      <h2 className="font-display text-[28px] md:text-[36px] m-0 mb-3">Wkrótce</h2>
       <div className="rule-ink" />
       <ul className="list-none m-0 p-0">
         {upcoming.map((f) => (
@@ -73,7 +73,7 @@ export function FestivalsSection({ category }: { category: Category | null }) {
                 </h3>
                 <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] md:text-[13px] font-bold uppercase tracking-[1px]">
                   <span className={f.status === 'ongoing' ? 'text-accent' : 'text-muted'}>
-                    {f.status === 'ongoing' ? 'Now on' : 'Upcoming'}
+                    {f.status === 'ongoing' ? 'Trwa' : 'Nadchodzi'}
                   </span>
                   <span className="text-ink">{f.venues.join(' · ')}</span>
                 </div>
@@ -87,9 +87,9 @@ export function FestivalsSection({ category }: { category: Category | null }) {
   );
 }
 
-const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+const dayFmt = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' });
 
-/** "9–18 Oct" / "19 Jun – 30 Aug" from inclusive ISO dates. */
+/** "9–18 paź" / "19 cze – 30 sie" from inclusive ISO dates. */
 export function formatRange(startDate: string, endDate: string): string {
   const start = new Date(`${startDate}T12:00:00Z`);
   const end = new Date(`${endDate}T12:00:00Z`);

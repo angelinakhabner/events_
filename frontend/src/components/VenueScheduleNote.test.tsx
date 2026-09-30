@@ -13,12 +13,12 @@ const quiet: VenueSchedule = {
 describe('VenueScheduleNote', () => {
   it('names the date a quiet venue comes back', () => {
     render(<VenueScheduleNote schedule={quiet} />);
-    expect(screen.getByText(/dark until 19 Sep/i)).toBeInTheDocument();
+    expect(screen.getByText(/przerwa do 19 wrz/i)).toBeInTheDocument();
   });
 
   it('explains the gap on hover rather than in the row', () => {
     render(<VenueScheduleNote schedule={quiet} />);
-    expect(screen.getByTitle(/53 more days/)).toBeInTheDocument();
+    expect(screen.getByTitle(/przez 53 dni/i)).toBeInTheDocument();
   });
 
   it('formats the date in Warsaw time, not the viewer\'s', () => {
@@ -28,7 +28,7 @@ describe('VenueScheduleNote', () => {
         schedule={{ ...quiet, nextStartsAt: '2026-09-18T22:30:00.000Z' }}
       />,
     );
-    expect(screen.getByText(/19 Sep/)).toBeInTheDocument();
+    expect(screen.getByText(/19 wrz/)).toBeInTheDocument();
   });
 
   it('says "nothing listed" when there is no next date to name', () => {
@@ -37,10 +37,10 @@ describe('VenueScheduleNote', () => {
         schedule={{ state: 'dark', nextStartsAt: null, upcomingCount: 0, daysUntilNext: null }}
       />,
     );
-    expect(screen.getByText('nothing listed')).toBeInTheDocument();
+    expect(screen.getByText('brak wydarzeń')).toBeInTheDocument();
     // The copy must not claim the venue is closed — an unpublished programme
     // looks identical from here.
-    expect(screen.getByTitle(/may be closed, or its programme may not be published/i)).toBeInTheDocument();
+    expect(screen.getByTitle(/może być zamknięte albo program nie został jeszcze opublikowany/i)).toBeInTheDocument();
   });
 
   it('renders nothing for a running venue, or before the data arrives', () => {

@@ -25,10 +25,10 @@ export function MyFestivalsSection() {
 
   return (
     <section className="mt-12">
-      <h2 className="font-display text-[28px] md:text-[36px] m-0 mb-1.5">Coming soon at your venues</h2>
+      <h2 className="font-display text-[28px] md:text-[36px] m-0 mb-1.5">Wkrótce w Twoich miejscach</h2>
       <p className="mb-5 max-w-[520px] text-sm md:text-base text-body">
-        Special programmes running at venues you follow — these usually replace the
-        normal repertoire, so they may not show up as ordinary listings.
+        Specjalne programy w miejscach, które obserwujesz — zwykle zastępują
+        stały repertuar, więc mogą nie pojawić się wśród zwykłych wydarzeń.
       </p>
       <div className="rule-ink" />
       <ul className="list-none m-0 p-0">
@@ -61,7 +61,7 @@ export function MyFestivalsSection() {
                 </h3>
                 <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] md:text-[13px] font-bold uppercase tracking-[1px]">
                   <span className={f.status === 'ongoing' ? 'text-accent' : 'text-muted'}>
-                    {f.status === 'ongoing' ? 'Now on' : 'Upcoming'}
+                    {f.status === 'ongoing' ? 'Trwa' : 'Nadchodzi'}
                   </span>
                   {/* The reader's *own* venues, named as they name them — the
                       point of the section is recognising your list, not the

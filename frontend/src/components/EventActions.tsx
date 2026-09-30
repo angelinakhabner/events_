@@ -64,8 +64,8 @@ function WantToGoButton({ event }: { event: Event }) {
   );
 }
 
-const WANT_TO_GO = '♡ Want to go';
-const GOING = '♥ Going';
+const WANT_TO_GO = '♡ Chcę iść';
+const GOING = '♥ Idę';
 
 /**
  * A label that keeps its width when its text changes (GOI-62).
@@ -110,9 +110,9 @@ function ShareButton({ event }: { event: Event }) {
   };
 
   const flash =
-    outcome === 'copied' ? 'Link copied' :
-    outcome === 'shared' ? 'Shared' :
-    outcome === 'failed' ? "Couldn't share" :
+    outcome === 'copied' ? 'Skopiowano link' :
+    outcome === 'shared' ? 'Udostępniono' :
+    outcome === 'failed' ? 'Nie udało się udostępnić' :
     null;
 
   return (
@@ -122,7 +122,7 @@ function ShareButton({ event }: { event: Event }) {
         onClick={onClick}
         className="act act-inherit"
       >
-        Share
+        Udostępnij
       </button>
       {flash ? (
         <span role="status" aria-live="polite" className="text-[11px] text-faint">

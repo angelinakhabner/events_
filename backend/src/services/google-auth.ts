@@ -145,24 +145,24 @@ export async function exchangeGoogleCode(
       grant_type: 'authorization_code',
     }).toString(),
   });
-  if (!res.ok) throw new Error(`Google sign-in failed (token exchange HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Logowanie przez Google nie powiodło się (wymiana tokenu, HTTP ${res.status})`);
 
   const body = (await res.json()) as { id_token?: string };
-  if (!body.id_token) throw new Error('Google sign-in failed (no id_token in response)');
+  if (!body.id_token) throw new Error('Logowanie przez Google nie powiodło się (brak id_token w odpowiedzi)');
 
   const claims = decodeJwtPayload(body.id_token);
-  if (!claims) throw new Error('Google sign-in failed (malformed id_token)');
+  if (!claims) throw new Error('Logowanie przez Google nie powiodło się (nieprawidłowy id_token)');
 
   const iss = claims.iss;
   if (iss !== 'https://accounts.google.com' && iss !== 'accounts.google.com') {
-    throw new Error('Google sign-in failed (unexpected issuer)');
+    throw new Error('Logowanie przez Google nie powiodło się (nieoczekiwany wystawca)');
   }
-  if (claims.aud !== cfg.clientId) throw new Error('Google sign-in failed (audience mismatch)');
+  if (claims.aud !== cfg.clientId) throw new Error('Logowanie przez Google nie powiodło się (niezgodny odbiorca)');
   const exp = typeof claims.exp === 'number' ? claims.exp : 0;
-  if (exp * 1000 <= now.getTime()) throw new Error('Google sign-in failed (expired token)');
+  if (exp * 1000 <= now.getTime()) throw new Error('Logowanie przez Google nie powiodło się (token wygasł)');
   const email = typeof claims.email === 'string' ? claims.email : '';
   if (!email || claims.email_verified !== true) {
-    throw new Error('Google sign-in failed (no verified email on the account)');
+    throw new Error('Logowanie przez Google nie powiodło się (konto nie ma zweryfikowanego adresu e-mail)');
   }
   return { email };
 }

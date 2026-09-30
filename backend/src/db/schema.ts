@@ -459,6 +459,9 @@ export const eventDescriptions = pgTable(
     description: text('description'),
     contentCategory: text('content_category'),
     searched: boolean('searched').notNull().default(false),
+    /** Language the description is written in. Only the site's own is read
+     *  back (0032); anything else is rewritten in place. */
+    lang: text('lang').notNull().default('en'),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

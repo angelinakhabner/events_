@@ -47,7 +47,7 @@ export function ExpandableText({ text, clampLines = 2, className }: Props) {
           onClick={() => setExpanded((v) => !v)}
           className="mt-1.5 act act-sm act-on"
         >
-          {expanded ? 'Show less' : 'Read more'}
+          {expanded ? 'Zwiń' : 'Czytaj dalej'}
         </button>
       ) : null}
     </div>

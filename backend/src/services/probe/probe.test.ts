@@ -443,10 +443,12 @@ describe('locale', () => {
     expect(res.status === 'failure' && res.message).toMatch(/Facebooku/);
   });
 
-  it('and the English one for an English form', async () => {
+  // The locale tunes how an English page is read, not the language the
+  // verdict is written in: the site is Polish, so the reader gets Polish.
+  it('and the Polish one for an English form too', async () => {
     const { impl } = routedFetch({});
     const res = await probeVenueUrl('facebook.com/teatr', { fetchImpl: impl, now: NOW, locale: 'en' });
-    expect(res.status === 'failure' && res.message).toMatch(/Facebook or Instagram/);
+    expect(res.status === 'failure' && res.message).toMatch(/Facebooku/);
   });
 
   it('refuses a social URL without making any request at all', async () => {

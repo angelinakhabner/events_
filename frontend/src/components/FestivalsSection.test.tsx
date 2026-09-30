@@ -51,7 +51,7 @@ describe('FestivalsSection — which listing it belongs to', () => {
   it.each(['exhibition', 'other'] as const)('asks for nothing under %s', (category) => {
     render(<FestivalsSection category={category} />);
     expect(useQuery).toHaveBeenCalledWith(undefined, expect.objectContaining({ enabled: false }));
-    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
+    expect(screen.queryByText('Wkrótce')).not.toBeInTheDocument();
   });
 
   it('renders nothing at all when the listing has no festivals', () => {
@@ -81,37 +81,37 @@ describe('FestivalsSection — the row', () => {
 
   it('heads the block "Coming soon"', () => {
     render(<FestivalsSection category="cinema" />);
-    expect(screen.getByRole('heading', { name: 'Coming soon' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Wkrótce' })).toBeInTheDocument();
   });
 
   it('shows the festival as a linked title with its dates, hosts and blurb', () => {
     render(<FestivalsSection category="cinema" />);
     expect(screen.getByRole('link', { name: 'Warsaw Film Festival' })).toHaveAttribute('href', 'https://wff.pl');
-    expect(screen.getByText('9–18 Oct')).toBeInTheDocument();
+    expect(screen.getByText('9–18 paź')).toBeInTheDocument();
     expect(screen.getByText('Kinoteka · Kino Muranów')).toBeInTheDocument();
     expect(screen.getByText('Premieres and competitions.')).toBeInTheDocument();
   });
 
   it('marks an upcoming festival as upcoming and an ongoing one as now on', () => {
     render(<FestivalsSection category="cinema" />);
-    expect(screen.getByText('Upcoming')).toBeInTheDocument();
+    expect(screen.getByText('Nadchodzi')).toBeInTheDocument();
 
     data = [{ ...FESTIVAL, status: 'ongoing' as const }];
     render(<FestivalsSection category="cinema" />);
-    expect(screen.getByText('Now on')).toBeInTheDocument();
+    expect(screen.getByText('Trwa')).toBeInTheDocument();
   });
 });
 
 describe('formatRange', () => {
   it('collapses same-month ranges', () => {
-    expect(formatRange('2026-10-09', '2026-10-18')).toBe('9–18 Oct');
+    expect(formatRange('2026-10-09', '2026-10-18')).toBe('9–18 paź');
   });
 
   it('spells out cross-month ranges', () => {
-    expect(formatRange('2026-06-19', '2026-08-30')).toBe('19 Jun – 30 Aug');
+    expect(formatRange('2026-06-19', '2026-08-30')).toBe('19 cze – 30 sie');
   });
 
   it('shows a single day once', () => {
-    expect(formatRange('2026-11-11', '2026-11-11')).toBe('11 Nov');
+    expect(formatRange('2026-11-11', '2026-11-11')).toBe('11 lis');
   });
 });

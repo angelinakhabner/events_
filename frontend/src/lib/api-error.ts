@@ -28,7 +28,7 @@ const NO_PROCEDURE = /^No procedure found on path "([^"]+)"/;
 /** What a version mismatch means and what fixes it, in one clause. Shared so
  *  the banner and the two button errors cannot word it differently. */
 export const OLDER_API =
-  'the API is running an older build than this page — deploy the backend and retry.';
+  'API działa na starszej wersji niż ta strona — wdróż backend i spróbuj ponownie.';
 
 /**
  * Does the newsletter this API served predate this build? (GOI-105)
@@ -71,14 +71,14 @@ export function readableApiError(
 
   const route = NO_PROCEDURE.exec(message);
   if (route) {
-    return `This page asked the server for “${route[1]}”, which it does not have, so `
+    return `Ta strona poprosiła serwer o „${route[1]}”, którego serwer nie zna, więc `
       + OLDER_API;
   }
 
   const issues = parseIssues(message);
   if (issues.length === 0) return message;
 
-  const lines = issues.map((i) => `${fieldLabel(i.path ?? [])}: ${i.message ?? 'is not valid'}`);
+  const lines = issues.map((i) => `${fieldLabel(i.path ?? [])}: ${i.message ?? 'nieprawidłowa wartość'}`);
   // A complaint about a field this build cannot send at all is not something
   // touching the form can fix — the two sides disagree about the shape.
   const stale = known !== undefined && known.size > 0 && issues.some((i) => {
@@ -87,7 +87,7 @@ export function readableApiError(
   });
 
   return stale
-    ? `${lines.join('\n')}\n\nThose fields are not part of this version of the form, so `
+    ? `${lines.join('\n')}\n\nTych pól nie ma w tej wersji formularza, więc `
       + OLDER_API
     : lines.join('\n');
 }
@@ -108,7 +108,7 @@ function parseIssues(message: string): ZodIssueLike[] {
 
 /** `["categoryRules", 1, "cadence"]` → `Category 2 — cadence`. */
 function fieldLabel(path: (string | number)[]): string {
-  if (path.length === 0) return 'This newsletter';
+  if (path.length === 0) return 'Ten newsletter';
   const parts: string[] = [];
   for (const segment of path) {
     // Array indices read as positions, and one-based: "categoryRules 1" is the
@@ -133,8 +133,34 @@ function leafName(path: (string | number)[]): string | null {
 }
 
 /** `categoryRules` → `category rules`, `sendWeekday` → `send weekday`. */
+/** What the reader calls each field the newsletter form sends. A key missing
+ *  here is shown as its own words, which is the version-mismatch case: a field
+ *  this page does not know is also one it has no name for. */
+const FIELD_NAMES: Record<string, string> = {
+  email: 'adres e-mail',
+  recipientName: 'imię',
+  delivery: 'sposób wysyłki',
+  name: 'nazwa newslettera',
+  sendCadence: 'częstotliwość',
+  sendHour: 'godzina wysyłki',
+  sendMinute: 'minuta wysyłki',
+  sendWeekday: 'dzień tygodnia wysyłki',
+  sendDayOfMonth: 'dzień miesiąca wysyłki',
+  venueIds: 'miejsca',
+  categoryRules: 'reguły kategorii',
+  category: 'kategoria',
+  cadence: 'częstotliwość',
+  cadenceWeekday: 'dzień tygodnia',
+  detail: 'szczegółowość',
+  timeFilter: 'pora dnia',
+  lookaheadDays: 'zasięg w dniach',
+  wantToGo: 'chcę iść',
+  enabled: 'włączony',
+  timezone: 'strefa czasowa',
+};
+
 function words(key: string): string {
-  return key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  return FIELD_NAMES[key] ?? key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
 }
 
 function capitalise(text: string): string {

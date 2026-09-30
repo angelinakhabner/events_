@@ -130,7 +130,7 @@ describe('MyVenuesSection — refresh / show upcoming (GOI-75)', () => {
     }));
 
     render(<MyVenuesSection />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Odśwież' }));
 
     expect(mutate).toHaveBeenCalledWith({ venueId: 'v1' });
     expect(invalidateActivity).toHaveBeenCalled();
@@ -141,30 +141,30 @@ describe('MyVenuesSection — refresh / show upcoming (GOI-75)', () => {
     render(<MyVenuesSection />);
     expect(screen.queryByText('Wesele')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Odśwież' }));
 
     expect(screen.getByText('Wesele')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Hide upcoming' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ukryj program' })).toBeInTheDocument();
   });
 
   it('toggles the venue’s upcoming events on demand', () => {
     render(<MyVenuesSection />);
-    const toggle = screen.getByRole('button', { name: 'Show upcoming' });
+    const toggle = screen.getByRole('button', { name: 'Pokaż program' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(toggle);
     const link = screen.getByRole('link', { name: 'Wesele' });
     expect(link).toHaveAttribute('href', 'https://teatrstudio.pl/wesele');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide upcoming' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ukryj program' }));
     expect(screen.queryByText('Wesele')).not.toBeInTheDocument();
   });
 
   it('points an empty venue at the Refresh button rather than leaving a blank panel', () => {
     byVenueMock.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<MyVenuesSection />);
-    fireEvent.click(screen.getByRole('button', { name: 'Show upcoming' }));
-    expect(screen.getByText(/nothing upcoming/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Pokaż program' }));
+    expect(screen.getByText(/nic nie nadchodzi/i)).toBeInTheDocument();
   });
 
   it('reports a failed scrape on the row it belongs to', () => {
@@ -177,13 +177,13 @@ describe('MyVenuesSection — refresh / show upcoming (GOI-75)', () => {
       }),
     );
     render(<MyVenuesSection />);
-    expect(screen.getByText(/scrape failed: http 403/i)).toBeInTheDocument();
+    expect(screen.getByText(/odczyt nie powiódł się: http 403/i)).toBeInTheDocument();
   });
 
   it('disables Refresh while the scrape is in flight', () => {
     refreshMock.mockImplementation(refreshState({ isPending: true }));
     render(<MyVenuesSection />);
-    expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Odświeżanie…' })).toBeDisabled();
     expect(screen.getByText(/scraping teatr studio/i)).toBeInTheDocument();
   });
 });
@@ -191,16 +191,16 @@ describe('MyVenuesSection — refresh / show upcoming (GOI-75)', () => {
 describe('MyVenuesSection — "Add venue" prominence (GOI-73)', () => {
   it('draws "Add venue" as the screen’s one loud button, not as another text action', () => {
     render(<MyVenuesSection />);
-    const add = screen.getByRole('button', { name: '+ Add venue' });
+    const add = screen.getByRole('button', { name: '+ Dodaj miejsce' });
     expect(add).toHaveClass('pill-accent');
     // The control it used to be indistinguishable from.
-    expect(screen.getByRole('button', { name: '+ New folder' })).toHaveClass('act');
+    expect(screen.getByRole('button', { name: '+ Nowy folder' })).toHaveClass('act');
   });
 
   it('steps the button down to outline once the form it opens is on screen', () => {
     render(<MyVenuesSection />);
-    fireEvent.click(screen.getByRole('button', { name: '+ Add venue' }));
-    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    fireEvent.click(screen.getByRole('button', { name: '+ Dodaj miejsce' }));
+    const cancel = screen.getByRole('button', { name: 'Anuluj' });
     expect(cancel).toHaveClass('btn-outline');
     expect(cancel).not.toHaveClass('btn-accent');
   });
@@ -208,14 +208,14 @@ describe('MyVenuesSection — "Add venue" prominence (GOI-73)', () => {
   it('gives an empty tab its own button rather than naming one to go find', () => {
     venuesMock.mockReturnValue({ data: [], isLoading: false, error: null });
     render(<MyVenuesSection />);
-    expect(screen.getByText(/no venues yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/nie masz jeszcze miejsc/i)).toBeInTheDocument();
 
     // Two now: the heading's and the empty state's. Clicking the empty
     // state's opens the form and retires it.
-    const buttons = screen.getAllByRole('button', { name: '+ Add venue' });
+    const buttons = screen.getAllByRole('button', { name: '+ Dodaj miejsce' });
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[1]!);
-    expect(screen.queryByText(/no venues yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/nie masz jeszcze miejsc/i)).not.toBeInTheDocument();
   });
 });
 
@@ -227,18 +227,18 @@ describe('scrapeRunSummary', () => {
   });
 
   it('counts what a successful run found, singular and plural', () => {
-    expect(scrapeRunSummary(run({ eventsFound: 1 }))).toBe('Found 1 event.');
-    expect(scrapeRunSummary(run({ eventsFound: 12 }))).toBe('Found 12 events.');
+    expect(scrapeRunSummary(run({ eventsFound: 1 }))).toBe('Znaleziono 1 wydarzenie.');
+    expect(scrapeRunSummary(run({ eventsFound: 12 }))).toBe('Znaleziono 12 wydarzeń.');
   });
 
   it('distinguishes "read nothing" from "nothing to re-read" and from an error', () => {
-    expect(scrapeRunSummary(run({ status: 'success_empty' }))).toMatch(/no events could be read/i);
-    expect(scrapeRunSummary(run({ status: 'skipped_unchanged' }))).toMatch(/hasn’t changed/i);
-    expect(scrapeRunSummary(run({ status: 'failed', errorMessage: 'boom' }))).toBe('Scrape failed: boom');
+    expect(scrapeRunSummary(run({ status: 'success_empty' }))).toMatch(/nie znaleźliśmy na niej wydarzeń/i);
+    expect(scrapeRunSummary(run({ status: 'skipped_unchanged' }))).toMatch(/nie zmieniła się/i);
+    expect(scrapeRunSummary(run({ status: 'failed', errorMessage: 'boom' }))).toBe('Odczyt nie powiódł się: boom');
   });
 
   it('names the error even when the run recorded none', () => {
-    expect(scrapeRunSummary(run({ status: 'failed' }))).toBe('Scrape failed: unknown error');
+    expect(scrapeRunSummary(run({ status: 'failed' }))).toBe('Odczyt nie powiódł się: nieznany błąd');
   });
 });
 
@@ -251,11 +251,11 @@ describe('scrapeRunSummary', () => {
 describe('MyVenuesSection — the Elsewhere row (GOI-92)', () => {
   it('renders Elsewhere exactly once, beside + Add venue, beneath the folder bar', () => {
     render(<MyVenuesSection />);
-    const elsewhere = screen.getAllByRole('button', { name: /^elsewhere$/i });
+    const elsewhere = screen.getAllByRole('button', { name: /^gdzie indziej$/i });
     expect(elsewhere).toHaveLength(1);
 
     const row = elsewhere[0]!.parentElement!;
-    expect(row).toContainElement(screen.getByRole('button', { name: /\+ Add venue/i }));
+    expect(row).toContainElement(screen.getByRole('button', { name: /\+ dodaj miejsce/i }));
 
     // Beneath the folder bar: the folder pill comes first in document order.
     const folderPill = screen.getByRole('button', { name: /Warsaw/ });
@@ -272,7 +272,7 @@ describe('MyVenuesSection — the Elsewhere row (GOI-92)', () => {
       ],
     });
     render(<MyVenuesSection />);
-    expect(screen.getAllByRole('button', { name: /^elsewhere$/i })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^gdzie indziej$/i })).toHaveLength(1);
   });
 
   it('says on the row why a venue added despite a failed probe will not populate', () => {
@@ -282,15 +282,15 @@ describe('MyVenuesSection — the Elsewhere row (GOI-92)', () => {
       error: null,
     });
     render(<MyVenuesSection />);
-    expect(screen.getByText(/refuses our requests/i)).toBeInTheDocument();
+    expect(screen.getByText(/odrzuca nasze zapytania/i)).toBeInTheDocument();
   });
 
   it('does not call an empty programme a failure', () => {
     // Two of the probe codes mean "nothing on", not "we can't read this" —
     // showing those in red is what makes people delete working venues.
-    expect(probeErrorNote('NO_EVENTS_FOUND')).not.toMatch(/won.t populate/i);
-    expect(probeErrorNote('PAST_EVENTS_ONLY')).not.toMatch(/won.t populate/i);
-    expect(probeErrorNote('JS_RENDERED_NEEDS_PAID')).toMatch(/won.t populate/i);
-    expect(probeErrorNote('SOMETHING_NEW')).toMatch(/won.t populate/i);
+    expect(probeErrorNote('NO_EVENTS_FOUND')).not.toMatch(/nie zapełni się/i);
+    expect(probeErrorNote('PAST_EVENTS_ONLY')).not.toMatch(/nie zapełni się/i);
+    expect(probeErrorNote('JS_RENDERED_NEEDS_PAID')).toMatch(/nie zapełni się/i);
+    expect(probeErrorNote('SOMETHING_NEW')).toMatch(/nie zapełni się/i);
   });
 });

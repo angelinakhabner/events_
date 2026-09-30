@@ -74,7 +74,7 @@ beforeEach(() => {
 
 /** The "Ongoing exhibitions" section, or null when it isn't rendered. */
 function exhibitionsSection(): HTMLElement | null {
-  const heading = screen.queryByRole('heading', { name: 'Ongoing exhibitions' });
+  const heading = screen.queryByRole('heading', { name: 'Trwające wystawy' });
   return heading ? (heading.closest('section') as HTMLElement) : null;
 }
 
@@ -83,7 +83,7 @@ describe('museums view (GOI-67)', () => {
     render(<HomePage />);
 
     // The workshop is in a time bucket…
-    expect(screen.getByRole('heading', { name: 'Later today' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Później dzisiaj' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Warsztaty rysunku' })).toBeInTheDocument();
 
     // …and the run is in its own section below, not in a bucket.
@@ -91,23 +91,23 @@ describe('museums view (GOI-67)', () => {
     expect(section).toBeTruthy();
     expect(within(section).getByRole('heading', { name: 'Trzy przestrzenie podziemne' }))
       .toBeInTheDocument();
-    expect(within(section).getByText('1 event')).toBeInTheDocument();
+    expect(within(section).getByText('1 wydarzenie')).toBeInTheDocument();
   });
 
   it('an exhibition row shows its date range, no clock, and no "nearest dates"', () => {
     render(<HomePage />);
     const section = exhibitionsSection()!;
 
-    expect(within(section).getByText('UNTIL 14 SEPT')).toBeInTheDocument();
+    expect(within(section).getByText('DO 14 WRZ')).toBeInTheDocument();
     // Neither a real hour nor the "All day" placeholder the old rows carried.
     expect(within(section).queryByText(/^\d{2}:\d{2}$/)).not.toBeInTheDocument();
-    expect(within(section).queryByText('All day')).not.toBeInTheDocument();
+    expect(within(section).queryByText('Cały dzień')).not.toBeInTheDocument();
     // A continuous run has no "other dates" to offer.
-    expect(within(section).queryByRole('button', { name: /nearest (dates|screenings)/i }))
+    expect(within(section).queryByRole('button', { name: /najbliższe (terminy|seanse)/i }))
       .not.toBeInTheDocument();
     // The actions that do make sense are still there.
-    expect(within(section).getByRole('button', { name: /add to calendar/i })).toBeInTheDocument();
-    expect(within(section).getByRole('button', { name: /share/i })).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: /dodaj do kalendarza/i })).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: /udostępnij/i })).toBeInTheDocument();
   });
 
   it('applying a time filter removes exhibitions from the DOM entirely', async () => {
@@ -115,7 +115,7 @@ describe('museums view (GOI-67)', () => {
     render(<HomePage />);
     expect(exhibitionsSection()).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: 'After 18:00' }));
+    await user.click(screen.getByRole('button', { name: 'Po 18:00' }));
 
     expect(exhibitionsSection()).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Trzy przestrzenie podziemne' })).not.toBeInTheDocument();
@@ -129,7 +129,7 @@ describe('museums view (GOI-67)', () => {
 
     // 11 Aug 2026 is a Tuesday, so two days out is Thu 13 Aug: the workshop is
     // long over, the run is still on.
-    await user.click(screen.getByRole('button', { name: 'Thu 13 Aug' }));
+    await user.click(screen.getByRole('button', { name: 'czw., 13 sie' }));
 
     expect(exhibitionsSection()).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Warsztaty rysunku' })).not.toBeInTheDocument();
@@ -144,7 +144,7 @@ describe('museums view (GOI-67)', () => {
       expect(screen.queryByRole('heading', { name: label })).not.toBeInTheDocument();
     }
     // …and not the "nothing matches" state either — there *is* something on.
-    expect(screen.queryByText(/No upcoming events/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No upcoming wydarzeń/)).not.toBeInTheDocument();
   });
 });
 
@@ -166,19 +166,19 @@ describe('museums view: ongoing exhibitions lead the tab (GOI-104)', () => {
 
   it('puts the exhibitions under the timed buckets on the ALL tab', () => {
     render(<HomePage />);
-    expect(sectionOrder()).toEqual(['Later today', 'Ongoing exhibitions']);
+    expect(sectionOrder()).toEqual(['Później dzisiaj', 'Trwające wystawy']);
   });
 
   it('puts them above the schedule once Museums is selected', async () => {
     const user = userEvent.setup();
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'Museums' }));
+    await user.click(screen.getByRole('button', { name: 'Muzea' }));
 
     // The runs first, with the closing date and nothing else…
-    expect(sectionOrder()).toEqual(['Ongoing exhibitions', 'Later today']);
+    expect(sectionOrder()).toEqual(['Trwające wystawy', 'Później dzisiaj']);
     const section = exhibitionsSection()!;
-    expect(within(section).getByText('UNTIL 14 SEPT')).toBeInTheDocument();
+    expect(within(section).getByText('DO 14 WRZ')).toBeInTheDocument();
 
     // …and the museum's other events still below, in the ordinary schedule.
     expect(screen.getByRole('heading', { name: 'Warsztaty rysunku' })).toBeInTheDocument();

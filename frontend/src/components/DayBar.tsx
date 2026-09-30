@@ -26,10 +26,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 function buildOptions(now: Date): Option[] {
   const options: Option[] = [
-    { label: 'Any day', value: null },
-    { label: 'Today', value: warsawDayKey(now) },
-    { label: 'Tomorrow', value: warsawDayKey(new Date(now.getTime() + DAY_MS)) },
-    { label: 'This week', value: WEEK_FILTER },
+    { label: 'Każdy dzień', value: null },
+    { label: 'Dzisiaj', value: warsawDayKey(now) },
+    { label: 'Jutro', value: warsawDayKey(new Date(now.getTime() + DAY_MS)) },
+    { label: 'W tym tygodniu', value: WEEK_FILTER },
   ];
   // From the day after tomorrow to the end of the same seven-day window "This
   // week" covers, so every offered day is inside a scope the strip can also
@@ -46,7 +46,7 @@ function buildOptions(now: Date): Option[] {
 export function DayBar({ selected, onChange, now = new Date() }: Props) {
   return (
     <nav
-      aria-label="Filter by day"
+      aria-label="Filtruj według dnia"
       className="flex scroll-x md:flex-wrap gap-5 md:gap-7 py-3.5 md:py-[18px] rule-soft"
     >
       {buildOptions(now).map((opt) => {

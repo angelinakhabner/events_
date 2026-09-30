@@ -34,8 +34,8 @@ describe('FestivalBanner', () => {
   it('announces a festival opening inside the fortnight', () => {
     render(<FestivalBanner festivals={[fest()]} now={NOW} />);
     expect(screen.getByRole('heading', { name: /skrzyżowanie kultur/i })).toBeInTheDocument();
-    expect(screen.getByText('Coming soon')).toBeInTheDocument();
-    expect(screen.getByText(/^11–13 Sept?$/)).toBeInTheDocument();
+    expect(screen.getByText('Wkrótce')).toBeInTheDocument();
+    expect(screen.getByText(/^11–13 wrz$/)).toBeInTheDocument();
     expect(screen.getByText('Teatr Dramatyczny')).toBeInTheDocument();
   });
 
@@ -46,8 +46,8 @@ describe('FestivalBanner', () => {
         now={NOW}
       />,
     );
-    expect(screen.getByText('Now on')).toBeInTheDocument();
-    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
+    expect(screen.getByText('Trwa')).toBeInTheDocument();
+    expect(screen.queryByText('Wkrótce')).not.toBeInTheDocument();
   });
 
   it('links to the festival\'s own site, opened away from the listing', () => {
@@ -69,7 +69,7 @@ describe('FestivalBanner', () => {
     it('still announces it, in full', () => {
       render(<FestivalBanner festivals={[fest({ url: null })]} now={NOW} />);
       expect(screen.getByRole('heading', { name: /skrzyżowanie kultur/i })).toBeInTheDocument();
-      expect(screen.getByText('Coming soon')).toBeInTheDocument();
+      expect(screen.getByText('Wkrótce')).toBeInTheDocument();
       expect(screen.getByText('Teatr Dramatyczny')).toBeInTheDocument();
       expect(screen.getByText(/world music and stage work/i)).toBeInTheDocument();
     });

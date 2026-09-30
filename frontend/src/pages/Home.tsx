@@ -186,7 +186,7 @@ export function HomePage() {
           {eventsQuery.isLoading ? <SkeletonList /> : null}
           {eventsQuery.error ? (
             <ErrorState
-              message="Couldn't load events."
+              message="Nie udało się wczytać wydarzeń."
               onRetry={() => eventsQuery.refetch()}
             />
           ) : null}
@@ -194,13 +194,13 @@ export function HomePage() {
             <EmptyState
               title={
                 category || day || fromHour !== null || selectedVenues.length > 0
-                  ? 'No upcoming events match your selection.'
-                  : 'No upcoming events.'
+                  ? 'Żadne nadchodzące wydarzenie nie pasuje do wybranych filtrów.'
+                  : 'Brak nadchodzących wydarzeń.'
               }
               action={
                 category || day || fromHour !== null || selectedVenues.length > 0
                   ? {
-                      label: 'Show all',
+                      label: 'Pokaż wszystko',
                       onClick: () => {
                         setCategory(null);
                         setDay(null);
@@ -273,7 +273,7 @@ export function HomePage() {
 function Hero() {
   return (
     <>
-      <h1 className="sr-only md:hidden">Co się dzieje &mdash; what&rsquo;s on in Warsaw</h1>
+      <h1 className="sr-only md:hidden">Co się dzieje &mdash; wydarzenia kulturalne w Warszawie</h1>
       <div className="hidden md:block bg-ink text-white page-x py-7">
         <div className="max-w-[900px]">
           <h1
@@ -286,8 +286,8 @@ function Hero() {
             <span style={{ WebkitTextStroke: '2px #fff' }}>DZIEJE</span>
           </h1>
           <p className="mt-2 max-w-[520px] text-sm font-medium text-[#c9c4bc]">
-            Cinema, theatre, comedy, music and museums across Warsaw — one listing,
-            refreshed every few minutes.
+            Kino, teatr, stand-up, muzyka i muzea w całej Warszawie — jeden program,
+            odświeżany co kilka minut.
           </p>
         </div>
       </div>

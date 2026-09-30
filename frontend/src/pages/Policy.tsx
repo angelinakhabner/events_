@@ -15,8 +15,8 @@ export function PolicyPage() {
       title={POLICY_HEADING}
       updated={POLICY_UPDATED}
       sections={POLICY_SECTIONS}
-      seeAlso={{ to: '/terms', label: 'terms of use' }}
-      intro={`How ${NAME} handles your personal data, under the GDPR (RODO) and Polish law. In short: an email address to sign you in, whatever you choose to save, and nothing sold, profiled or advertised against.`}
+      seeAlso={{ to: '/terms', label: 'regulamin' }}
+      intro={`Jak ${NAME} przetwarza Twoje dane osobowe zgodnie z RODO i polskim prawem. W skrócie: adres e-mail do logowania, to, co sam(a) zapiszesz, i nic, co byłoby sprzedawane, profilowane albo wykorzystywane do reklam.`}
     />
   );
 }

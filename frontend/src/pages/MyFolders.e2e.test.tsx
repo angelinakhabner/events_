@@ -59,15 +59,15 @@ describe('MyFoldersPage — end-to-end create flow', () => {
   it('clicking New folder → Create folder creates the folder, closes the modal, and shows it in the list', async () => {
     renderPage();
     // Wait for initial listMine to resolve (empty state).
-    await waitFor(() => expect(screen.getByText(/you.+have any folders yet/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/nie masz jeszcze folderów/i)).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: /^new folder$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^nowy folder$/i }));
 
     // Modal is open
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText(/name/i), 'My e2e folder');
-    await userEvent.click(screen.getByRole('button', { name: /create folder/i }));
+    await userEvent.type(screen.getByLabelText(/nazwa/i), 'My e2e folder');
+    await userEvent.click(screen.getByRole('button', { name: /utwórz folder/i }));
 
     // Modal should close
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
