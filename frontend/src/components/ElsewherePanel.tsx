@@ -282,7 +282,8 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
   folders: ElsewhereFolder[];
   /** The folder whose venues seed the search by default. */
   activeFolderId: string | null;
-  onAdded: () => void;
+  /** Called with the venue as stored, so the caller can scrape it (GOI-132). */
+  onAdded: (venue: { id: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [city, setCity] = useState('');
@@ -323,9 +324,9 @@ export function ElsewherePanel({ folders, activeFolderId, onAdded }: {
   const utils = trpc.useUtils();
   const suggest = trpc.my.venues.suggestSimilar.useMutation();
   const add = trpc.my.venues.add.useMutation({
-    onSuccess: (_data, vars) => {
+    onSuccess: (venue, vars) => {
       setAdded((prev) => [...prev, vars.url]);
-      onAdded();
+      onAdded(venue);
     },
   });
 

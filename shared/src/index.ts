@@ -78,6 +78,59 @@ export function isExhibition(event: Pick<Event, 'kind'>): boolean {
   return eventKind(event) === 'exhibition';
 }
 
+/**
+ * A title reduced to what two scrapes of the same page agree on (GOI-133):
+ * case, accents' composed form, quote style and punctuation all vary between
+ * the model's readings of one listing, so none of them may tell two rows apart.
+ */
+export function titleKey(title: string): string {
+  return title
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Drop repeat listings of one exhibition (GOI-133).
+ *
+ * A run is one thing on for weeks, so "POLIN · Betty Q: Morte · until 30 Sep"
+ * printed twice is the same fact twice — it happens when a listing is read
+ * more than once (two calendar pages, two passes of the model) and the copies
+ * land under different keys, each with its own paraphrase of the blurb.
+ *
+ * Keyed on venue and normalised title only. The closing date is deliberately
+ * not part of the key: two readings that disagree about it are still one show,
+ * and two different exhibitions sharing a title at one venue at the same time
+ * does not happen. Timed rows pass through untouched — a play on three nights
+ * is three performances, and folding those is the newsletter's job, not this.
+ *
+ * The first copy wins, so a caller that sorted by opening keeps the earliest;
+ * a later copy only lends it a description it was missing.
+ */
+export function collapseDuplicateExhibitions<
+  T extends Pick<Event, 'venueId' | 'title' | 'kind' | 'description'>,
+>(events: T[]): T[] {
+  const kept = new Map<string, number>();
+  const out: T[] = [];
+  for (const e of events) {
+    if (!isExhibition(e)) {
+      out.push(e);
+      continue;
+    }
+    const key = `${e.venueId}::${titleKey(e.title)}`;
+    const at = kept.get(key);
+    if (at === undefined) {
+      kept.set(key, out.length);
+      out.push(e);
+    } else if (!out[at]!.description && e.description) {
+      out[at] = { ...out[at]!, description: e.description };
+    }
+  }
+  return out;
+}
+
 /** Subset of Venue carried inline on Event responses. */
 export interface EventVenue {
   id: string;

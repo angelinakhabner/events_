@@ -1,11 +1,11 @@
-import { isExhibition } from '@afisz/shared';
+import { isExhibition, titleKey } from '@afisz/shared';
 import type {
   Event, Festival, NewsletterDetail, NewsletterFrequency,
 } from '@afisz/shared';
 import type { QueuedChange, QueuedEvent, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
+  PL, ROMAN, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
   time, weekday,
 } from './newsletter-copy.js';
 
@@ -70,6 +70,12 @@ function fmt(iso: string, opts: Intl.DateTimeFormatOptions): string {
 
 const fmtDayKey = (iso: string) => fmt(iso, { year: 'numeric', month: '2-digit', day: '2-digit' });
 
+/** `2026-09-07` — the Warsaw day as a sortable ISO date. */
+const isoDayKey = (iso: string) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(iso));
+
 /** One-line descriptions only — the design gives each pick a single line. */
 function oneLine(text: string, max = 120): string {
   const flat = text.replace(/\s+/g, ' ').trim();
@@ -85,12 +91,13 @@ export interface ShowingVenue {
 }
 
 /**
- * A title on one day, however many times and wherever it is on (GOI-36) — or
- * across the whole window, for a category collapsed that way (GOI-120).
+ * A title across the whole window, however many times and wherever it is on
+ * (GOI-36, GOI-120, GOI-138).
  *
  * A film playing three cinemas on Saturday used to occupy three cards, which
  * pushed everything else out of a brief that only shows a handful of picks and
- * read as if the newsletter were repeating itself.
+ * read as if the newsletter were repeating itself. The same went for a play on
+ * three nights running or a talk every Monday: one card per date.
  */
 export interface Pick {
   /** The event that supplies the title, category, link and description —
@@ -98,8 +105,8 @@ export interface Pick {
   lead: Event;
   /** Earliest start across every showing; the list sorts on this. */
   startsAt: string;
-  /** Latest start across every showing. Equal to `startsAt` for a pick that
-   *  covers one day, which is every pick outside a collapsed category. */
+  /** Latest start across every showing. Equal to `startsAt` for a pick with
+   *  one showing, or several on one day. */
   lastStartsAt: string;
   venues: ShowingVenue[];
   /** Total showings across all venues — 1 for an ordinary pick. */
@@ -107,33 +114,25 @@ export interface Pick {
 }
 
 /**
- * Whether a category's picks collapse across the whole window rather than
- * per day (GOI-120).
+ * Collapse events into one Pick per title across the whole window (GOI-138).
  *
- * A cinema runs the same film several times a day for a fortnight, so a weekly
- * brief printed it as seven near-identical cards and the section read as the
- * newsletter repeating itself — the reader wants the film, what it is, and
- * which cinemas have it. A theatre run is a handful of performances a reader
- * chooses between, and each of those dates is the point, so it stays per day.
- */
-export function collapsesAcrossDays(category: string): boolean {
-  return category === 'cinema';
-}
-
-/**
- * Collapse events into one Pick per title per Warsaw day — or one per title
- * outright when `acrossDays` is set.
+ * The rule is "we aggregate": an event on three days in a row, every Monday,
+ * or nightly until some date is printed once, with every date inside the
+ * section's window listed on its venue line (`venueLines`). It used to be one
+ * card per title per day everywhere but cinema (GOI-120), so a play on four
+ * nights read as four different plays.
  *
- * Grouped on the day *in Warsaw*, not the UTC date: a 00:30 show belongs to
- * the evening a reader would call it, and a UTC key would split a single
- * evening across two cards. Titles match case-insensitively and ignore
- * surrounding whitespace, since they come from different venues' markup.
+ * Titles match on `titleKey` — case, whitespace, quotes and punctuation vary
+ * between venues' markup. An exhibition also keys on its venue: two museums
+ * each running a show of the same name are two places with two different
+ * runs, and a run's row names one venue only. The same instant listed twice at
+ * one venue is counted once — a duplicate row is not a second showing.
  */
-export function groupPicks(events: Event[], acrossDays = false): Pick[] {
+export function groupPicks(events: Event[]): Pick[] {
   const byKey = new Map<string, Event[]>();
   for (const e of events) {
-    const title = e.title.trim().toLowerCase();
-    const key = acrossDays ? title : `${fmtDayKey(e.startsAt)}|${title}`;
+    const title = titleKey(e.title);
+    const key = isExhibition(e) ? `${e.venueId}|${title}` : title;
     const list = byKey.get(key);
     if (list) list.push(e);
     else byKey.set(key, [e]);
@@ -150,9 +149,12 @@ export function groupPicks(events: Event[], acrossDays = false): Pick[] {
     for (const e of sorted) {
       const name = e.venue?.name ?? '';
       const existing = byVenue.get(name);
-      if (existing) existing.startsAt.push(e.startsAt);
-      else byVenue.set(name, { name, startsAt: [e.startsAt] });
+      if (!existing) byVenue.set(name, { name, startsAt: [e.startsAt] });
+      else if (!existing.startsAt.some((s) => Date.parse(s) === Date.parse(e.startsAt))) {
+        existing.startsAt.push(e.startsAt);
+      }
     }
+    const venues = [...byVenue.values()];
 
     picks.push({
       // A later showing may carry the description the earliest one lacks —
@@ -162,8 +164,8 @@ export function groupPicks(events: Event[], acrossDays = false): Pick[] {
         : lead,
       startsAt: lead.startsAt,
       lastStartsAt: sorted[sorted.length - 1]!.startsAt,
-      venues: [...byVenue.values()],
-      count: sorted.length,
+      venues,
+      count: venues.reduce((n, v) => n + v.startsAt.length, 0),
     });
   }
 
@@ -191,18 +193,86 @@ export function venueLines(pick: Pick): string[] {
 }
 
 /**
- * What a venue line says after the name: the showtimes, or the run.
+ * What a venue line says after the name: the times, and on which dates
+ * (GOI-120, GOI-138).
  *
- * A cinema with four showings tonight is answering "when tonight"; the same
- * cinema holding a film over for a fortnight is answering "until when", and
- * listing thirty times would bury the one line of the row that matters
- * (GOI-120). The two cases are told apart by the Warsaw days the showings fall
- * on, not by the category, so nothing has to be threaded down here.
+ * - One day: its times — `18:00, 20:30`.
+ * - Several days at the same times: the dates once, then the times —
+ *   `7–9 IX · 19:00` for three nights running, `PN 7, 14, 21 IX · 19:00` for
+ *   every Monday.
+ * - A few days at different times: each day with its own —
+ *   `WT 8 IX 18:00; CZ 10 IX 20:30`.
+ * - More than that: the dates alone. A cinema holding a film over for a month
+ *   has thirty-odd showtimes, and printing them all would bury the line.
  */
-function venueWhen(v: ShowingVenue): string {
-  const days = [...new Set(v.startsAt.map(fmtDayKey))];
+export function venueWhen(v: ShowingVenue): string {
+  const byDay = new Map<string, string[]>();
+  for (const iso of v.startsAt) {
+    const day = fmtDayKey(iso);
+    const list = byDay.get(day);
+    if (list) list.push(iso);
+    else byDay.set(day, [iso]);
+  }
+  const days = [...byDay.values()];
   if (days.length <= 1) return v.startsAt.map(time).join(', ');
-  return daySpan(v.startsAt[0]!, v.startsAt[v.startsAt.length - 1]!);
+
+  const timesOf = (isos: string[]) => isos.map(time).join(', ');
+  const firstTimes = timesOf(days[0]!);
+  if (days.every((isos) => timesOf(isos) === firstTimes)) {
+    return `${dayList(days.map((isos) => isos[0]!))} \u00b7 ${firstTimes}`;
+  }
+  if (days.length <= MAX_DAYS_WITH_TIMES) {
+    return days.map((isos) => `${shortDate(isos[0]!)} ${timesOf(isos)}`).join('; ');
+  }
+  return dayList(days.map((isos) => isos[0]!));
+}
+
+/** Past this many days with differing times, a venue line gives the dates only. */
+const MAX_DAYS_WITH_TIMES = 4;
+
+/**
+ * `7–9, 14 IX; 2 X` — a set of Warsaw days, as compactly as it can be read
+ * (GOI-138).
+ *
+ * Three or more consecutive days close up into a span; anything shorter is
+ * listed, since "7–8" reads as a range with something missing. The month is
+ * Roman and printed once per month, as `daySpan` writes it. Dates that all
+ * fall on one weekday lead with it — `PN 7, 14, 21 IX` is "every Monday"
+ * without having to count.
+ */
+export function dayList(isos: string[]): string {
+  const days = [...new Set(isos.map(isoDayKey))].sort();
+  const byMonth = new Map<string, number[]>();
+  for (const key of days) {
+    const month = key.slice(0, 7);
+    const day = Number(key.slice(8, 10));
+    const list = byMonth.get(month);
+    if (list) list.push(day);
+    else byMonth.set(month, [day]);
+  }
+
+  const parts: string[] = [];
+  let spans = false;
+  for (const [month, nums] of byMonth) {
+    const chunks: string[] = [];
+    for (let i = 0; i < nums.length;) {
+      let j = i;
+      while (j + 1 < nums.length && nums[j + 1] === nums[j]! + 1) j++;
+      if (j - i >= 2) {
+        chunks.push(`${nums[i]}\u2013${nums[j]}`);
+        spans = true;
+      } else {
+        for (let k = i; k <= j; k++) chunks.push(String(nums[k]));
+      }
+      i = j + 1;
+    }
+    parts.push(`${chunks.join(', ')} ${ROMAN[Number(month.slice(5, 7)) - 1]}`);
+  }
+
+  const list = parts.join('; ');
+  // Noon UTC is the same calendar day in Warsaw whatever the season.
+  const weekdays = new Set(days.map((key) => weekday(`${key}T12:00:00Z`)));
+  return days.length > 1 && weekdays.size === 1 && !spans ? `${[...weekdays][0]} ${list}` : list;
 }
 
 /**
@@ -215,7 +285,7 @@ function venueWhen(v: ShowingVenue): string {
  * written, and "5 SIERPNIA, ŚRODA" for something also on all week is the same
  * mistake in longer words.
  */
-function pickWhen(pick: Pick, longForm: boolean): string {
+export function pickWhen(pick: Pick, longForm: boolean): string {
   if (fmtDayKey(pick.startsAt) !== fmtDayKey(pick.lastStartsAt)) {
     return daySpan(pick.startsAt, pick.lastStartsAt);
   }
@@ -522,10 +592,10 @@ function picksTable(sections: BriefSection[]): string {
   const named = sections.length > 1 || (sections[0]?.category ?? '') !== '';
 
   for (const section of sections) {
-    // One card per title per day, however many venues and times it runs at
-    // (GOI-36) — or one per title across the window, where the category
-    // collapses that way (GOI-120). Already sorted by first showing.
-    const picks = groupPicks(section.events, collapsesAcrossDays(section.category));
+    // One card per title across the section's window, however many venues,
+    // days and times it runs at (GOI-36, GOI-138). Already sorted by first
+    // showing.
+    const picks = groupPicks(section.events);
 
     if (named && section.category) {
       rows.push(sectionHeadingRow(section, rows.length === 0));
@@ -715,7 +785,7 @@ export function renderBriefHtml(content: BriefContent): string {
   // "N picks" counts cards, not showings: after GOI-36 a film at three
   // cinemas is one pick, and claiming three would contradict the list below.
   const pickCount = sections.reduce(
-    (n, s) => n + groupPicks(s.events, collapsesAcrossDays(s.category)).length,
+    (n, s) => n + groupPicks(s.events).length,
     0,
   );
   const venueCount = new Set(events.map((e) => e.venueId)).size;

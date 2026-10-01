@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { bannerFestivals, type Festival } from '@afisz/shared';
-import { formatRange } from './FestivalsSection';
+import { formatRange } from '../lib/format';
 
 /**
  * A festival announcing itself at the top of the page (GOI-99).
@@ -18,8 +18,10 @@ import { formatRange } from './FestivalsSection';
  * fortnight (`bannerFestivals`). A banner for something in November, printed
  * over the top of a page opened to find out what is on tonight, is an
  * advertisement — and once the top of the page is an advertisement, it stops
- * being read at all. Everything outside that window stays in the listing's own
- * "Coming soon", which is the right place for it.
+ * being read at all. Everything outside that window waits until it is inside
+ * it: the "Coming soon" list that used to catch the rest at the foot of the
+ * page is gone (GOI-134) — it named festivals at venues the listing above it
+ * had been filtered away from.
  *
  * The artwork is the festival's own, taken from its site. Where there is none
  * — or where the URL has since died, which is why `onError` matters — the

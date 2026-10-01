@@ -272,7 +272,9 @@ describe('collapsed cinema picks (GOI-120)', () => {
 
     const { flat } = await textOf(pdf);
     expect(flat.split(squash('Chungking Express'))).toHaveLength(2);
-    expect(flat).toContain(squash('KINO MURANÓW · 8–10 IX'));
+    // Both dates, each with its time (GOI-138), rather than an "8–10" span
+    // that reads as if the 9th were included.
+    expect(flat).toContain(squash('KINO MURANÓW · WT 8 IX 18:00; CZW 10 IX 20:30'));
     expect(flat).toContain(squash('KINOTEKA · 19:00'));
     expect(flat).toContain(squash('Dwie historie'));
   });

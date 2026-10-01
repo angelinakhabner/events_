@@ -1,7 +1,7 @@
 import { sql, and, eq, gte, inArray, lte, lt } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index.js';
 import type { ValidatedEvent } from './validator.js';
-import { classifyEvent, type Venue } from '@afisz/shared';
+import { classifyEvent, titleKey, type Venue } from '@afisz/shared';
 
 export interface PersistResult {
   inserted: number;
@@ -41,7 +41,7 @@ export async function saveEvents(
   let inserted = 0;
   let updated = 0;
 
-  for (const e of events) {
+  for (const e of uniqueExhibitions(events)) {
     const values = {
       venueId: venue.id,
       title: e.title,
@@ -160,6 +160,36 @@ export async function saveEvents(
   }
 
   return { inserted, updated };
+}
+
+/**
+ * One row per exhibition in a batch (GOI-133).
+ *
+ * A listing read by the model can return the same run twice — the calendar
+ * repeats it on every day it is open, and each reading paraphrases the blurb
+ * differently — and the copies miss each other's upsert key when their
+ * `source_url` or opening date differ. Stored, they printed as two identical
+ * "until 30 Sep" rows. The first copy is kept; a later one only lends it a
+ * description it lacked. Timed rows are untouched.
+ */
+export function uniqueExhibitions(events: ValidatedEvent[]): ValidatedEvent[] {
+  const seen = new Map<string, number>();
+  const out: ValidatedEvent[] = [];
+  for (const e of events) {
+    if (e.kind !== 'exhibition') {
+      out.push(e);
+      continue;
+    }
+    const key = titleKey(e.title);
+    const at = seen.get(key);
+    if (at === undefined) {
+      seen.set(key, out.length);
+      out.push(e);
+    } else if (!out[at]!.description && e.description) {
+      out[at] = { ...out[at]!, description: e.description };
+    }
+  }
+  return out;
 }
 
 /**
