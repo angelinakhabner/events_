@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
   NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterGroupBy,
@@ -64,6 +64,11 @@ function deriveWindowDays(
   const { from, to } = deriveWindow({ sendCadence }, { ...rule, lookaheadDays: null }, new Date());
   return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
+
+/** How long the form waits after the last change before autosaving (GOI-142):
+ *  long enough not to save every keystroke of a name, short enough that
+ *  leaving the page straight after a change rarely loses it. */
+const AUTOSAVE_DELAY_MS = 800;
 
 /** "1 day" / "7 days". */
 function daysPhrase(n: number): string {
@@ -521,6 +526,44 @@ function NewsletterForm({
    */
   const emptyByConstruction = rules.length === 0 && !wantToGo.enabled;
 
+  /**
+   * Autosave (GOI-142).
+   *
+   * A newsletter that already exists saves itself a moment after the reader
+   * stops changing it — no button between a dropdown and the stored setting.
+   * A new one is still created by its button: creating it is what starts the
+   * emails, and a form being filled in for the first time should not begin
+   * mailing someone the moment its email field happens to look valid.
+   *
+   * What was last stored is remembered as the payload it came from, so an
+   * autosave only fires for a real difference, and a payload the server just
+   * refused is not re-sent in a loop — the next edit is.
+   */
+  const bodyKey = JSON.stringify(body);
+  const storedKey = useRef<string | null>(saved ? bodyKey : null);
+  const refusedKey = useRef<string | null>(null);
+  const pendingRef = useRef(false);
+  pendingRef.current = save.isPending;
+  const sendSave = () => {
+    const sent = bodyKey;
+    save.mutate(body, {
+      onSuccess: () => { storedKey.current = sent; refusedKey.current = null; },
+      onError: () => { refusedKey.current = sent; },
+    });
+  };
+  const autosaves = !!saved && !staleApi;
+  const latest = useRef(sendSave);
+  latest.current = sendSave;
+  useEffect(() => {
+    if (!autosaves || save.isPending) return;
+    if (bodyKey === storedKey.current || bodyKey === refusedKey.current) return;
+    if (emptyByConstruction || !/^\S+@\S+\.\S+$/.test(email.trim())) return;
+    const t = setTimeout(() => {
+      if (!pendingRef.current) latest.current();
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [autosaves, bodyKey, save.isPending, emptyByConstruction, email]);
+
   return (
     <section>
       {staleApi ? <StaleApiBanner /> : null}
@@ -541,7 +584,7 @@ function NewsletterForm({
         onSubmit={(e) => {
           e.preventDefault();
           if (emptyByConstruction) return;
-          save.mutate(body);
+          sendSave();
         }}
       >
         {/* What tells two newsletters apart in the row above (GOI-126). */}
@@ -928,7 +971,8 @@ function NewsletterForm({
         {/* GOI-102 §5: the screen used to give no sign that a dropdown change
             had persisted, so "did that save?" had no answer but reloading. */}
         <SaveState
-          dirty={!justSaved && (save.isIdle || save.isSuccess)}
+          dirty={!justSaved && (save.isIdle || save.isSuccess) && bodyKey !== storedKey.current}
+          autosaves={autosaves}
           pending={save.isPending}
           justSaved={justSaved}
           error={readableApiError(save.error?.message, NEWSLETTER_FIELDS)}
@@ -1280,11 +1324,15 @@ function Check({
  */
 function SaveState({
   dirty,
+  autosaves,
   pending,
   justSaved,
   error,
 }: {
   dirty: boolean;
+  /** Changes save themselves (GOI-142) — only a new newsletter waits for the
+   *  button. */
+  autosaves: boolean;
   pending: boolean;
   justSaved: boolean;
   error: string | null;
@@ -1296,10 +1344,14 @@ function SaveState({
   }
   if (pending) return <p role="status" className="mt-3 text-sm text-muted">Saving…</p>;
   if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Saved.</p>;
+  if (autosaves) {
+    return <p className="mt-3 text-sm text-faint">Changes are saved automatically.</p>;
+  }
   if (dirty) {
     return (
       <p className="mt-3 text-sm text-faint">
-        Changes here are not saved until you press <strong>Schedule newsletter</strong>.
+        Nothing is sent until you press <strong>Schedule newsletter</strong>. After that, changes
+        save automatically.
       </p>
     );
   }

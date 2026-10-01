@@ -72,6 +72,34 @@ beforeAll(async () => {
 });
 
 describe('MyPage — newsletter end-to-end', () => {
+  /** GOI-142: a newsletter that exists saves its changes by itself. */
+  it('autosaves a change to a saved newsletter, with no button pressed', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const form = async () => (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    // Created by its button the first time: nothing is sent before that. The
+    // form is mounted afresh for the newsletter it created.
+    if (!(await defaultNewsletterStore.get(userId))) {
+      const first = await form();
+      expect(within(first).getByText(/nothing is sent until you press/i)).toBeInTheDocument();
+      await user.click(within(first).getByRole('button', { name: /schedule newsletter/i }));
+      await waitFor(async () => expect(await defaultNewsletterStore.get(userId)).not.toBeNull());
+    }
+    expect(await screen.findByText(/changes are saved automatically/i, {}, { timeout: 4000 })).toBeInTheDocument();
+    const section = await form();
+
+    await user.selectOptions(within(section).getByLabelText(/^hour$/i), '21');
+
+    await waitFor(
+      async () => expect((await defaultNewsletterStore.get(userId))?.sendHour).toBe(21),
+      { timeout: 4000 },
+    );
+    expect(await within(section).findByText('Saved.')).toBeInTheDocument();
+  });
+
   /** GOI-140 / GOI-141: the reader's venue order, and venue-first listing. */
   it('reorders venues and lists by venue, and saves both', async () => {
     const user = userEvent.setup();
