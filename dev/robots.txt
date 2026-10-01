@@ -1,0 +1,9 @@
+# The landing page at / is the only public page: it describes what AFISZ.KA is
+# and how to ask for an invitation. Everything the app itself serves needs an
+# invite cookie, so there is nothing else here for a crawler to reach.
+User-agent: *
+Allow: /$
+# The password-gated staging preview. Same landing copy, not the canonical one.
+Disallow: /dev/
+
+Sitemap: https://afisz.cc/sitemap.xml
