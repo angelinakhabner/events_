@@ -32,6 +32,9 @@ const EventFields = z.object({
   director: z.string().min(1).nullable(),
   cast: z.array(z.string()).nullable(),
   description: z.string().nullable(),
+  /** Written by enrichment (GOI-139), never by the extractor; optional so a
+   *  row that never reached the writer validates as before. */
+  long_description: z.string().nullable().optional().transform((v) => v ?? null),
   price_min: z.number().int().nonnegative().nullable(),
   price_max: z.number().int().nonnegative().nullable(),
   source_url: z.string().url(),

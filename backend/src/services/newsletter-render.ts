@@ -157,11 +157,13 @@ export function groupPicks(events: Event[]): Pick[] {
     const venues = [...byVenue.values()];
 
     picks.push({
-      // A later showing may carry the description the earliest one lacks —
+      // A later showing may carry the descriptions the earliest one lacks —
       // enrichment is per-page, so coverage is uneven across venues.
-      lead: sorted.find((e) => e.description)
-        ? { ...lead, description: sorted.find((e) => e.description)!.description }
-        : lead,
+      lead: {
+        ...lead,
+        description: sorted.find((e) => e.description)?.description ?? lead.description,
+        descriptionLong: sorted.find((e) => e.descriptionLong)?.descriptionLong ?? lead.descriptionLong,
+      },
       startsAt: lead.startsAt,
       lastStartsAt: sorted[sorted.length - 1]!.startsAt,
       venues,
@@ -390,10 +392,17 @@ function titleLink(event: Event): string {
     : escapeHtml(event.title);
 }
 
-/** "Full" keeps the whole blurb; "short" trims it to the design's one line. */
+/**
+ * "Full" prints the long description where the writer produced one (GOI-139)
+ * — it used to print the short one untrimmed, which was the same text as
+ * "short" whenever the short one fitted its line. "Short" trims to the
+ * design's one line.
+ */
 function blurb(event: Event, detail: NewsletterDetail): string {
   if (!event.description || detail === 'line') return '';
-  return detail === 'full' ? oneLine(event.description, 600) : oneLine(event.description);
+  return detail === 'full'
+    ? oneLine(event.descriptionLong ?? event.description, 1_200)
+    : oneLine(event.description);
 }
 
 /**

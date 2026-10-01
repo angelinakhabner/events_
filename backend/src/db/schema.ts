@@ -61,6 +61,10 @@ export const events = pgTable(
     venueId: uuid('venue_id').notNull().references(() => venues.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     description: text('description'),
+    /** A fuller paragraph about the work, for the newsletter's "full"
+     *  description and the expanded card (GOI-139). Null when the writer had
+     *  nothing to add to the short one. */
+    descriptionLong: text('description_long'),
     /** For an exhibition this is the opening date at local midnight — the
      *  range's left edge, not a showtime. See `kind`. */
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
@@ -459,8 +463,14 @@ export const eventDescriptions = pgTable(
     showKey: text('show_key').notNull(),
     /** Null: looked, and found nothing to say. */
     description: text('description'),
+    /** The fuller paragraph (GOI-139). Null: nothing more to say, or written
+     *  before the writer produced one — see `writerVersion`. */
+    longDescription: text('long_description'),
     contentCategory: text('content_category'),
     searched: boolean('searched').notNull().default(false),
+    /** Which prompt wrote this answer. Older answers are applied but rewritten
+     *  once to catch up (GOI-139). */
+    writerVersion: integer('writer_version').notNull().default(1),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

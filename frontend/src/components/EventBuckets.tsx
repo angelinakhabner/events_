@@ -3,7 +3,7 @@ import { bucketEvents, splitExhibitions, type Bucket, type BucketKey } from '../
 import { categoryLabel, formatEventTime, formatExhibitionRange, formatShortDate } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 import { EventActions } from './EventActions';
-import { ExpandableText } from './ExpandableText';
+import { EventDescription } from './EventDescription';
 
 interface Props {
   events: Event[];
@@ -140,9 +140,7 @@ function ExhibitionRow({
           <span className="text-muted">{categoryLabel(event.category)}</span>
         </div>
 
-        {event.description ? (
-          <ExpandableText text={event.description} className="mt-2.5" />
-        ) : null}
+        <EventDescription event={event} venueName={venue?.name ?? event.venue?.name} />
         <EventActions event={event} />
       </div>
     </div>
@@ -267,9 +265,7 @@ function EventRow({
           {showLang ? <span className="text-muted">{lang}</span> : null}
         </div>
 
-        {event.description ? (
-          <ExpandableText text={event.description} className="mt-2.5" />
-        ) : null}
+        <EventDescription event={event} venueName={venue?.name} />
         <EventActions event={event} />
       </div>
     </div>

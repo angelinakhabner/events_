@@ -586,6 +586,7 @@ function rowToEvent(
     venue: ctx.venue,
     title: row.title,
     description: row.description,
+    descriptionLong: row.descriptionLong ?? null,
     startsAt: row.startsAt.toISOString(),
     endsAt: row.endsAt ? row.endsAt.toISOString() : null,
     kind: row.kind === 'exhibition' ? 'exhibition' : ('timed' as EventKind),

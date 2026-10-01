@@ -866,3 +866,33 @@ describe('dayList', () => {
     expect(dayList(['2026-09-07T22:30:00Z', '2026-09-09T12:00:00Z'])).toBe('8, 9 IX');
   });
 });
+
+/** GOI-139: "full" and "short" used to print the same sentence. */
+describe('renderBriefHtml — the description a section asks for', () => {
+  const show = makeEvent({
+    title: 'Trojanki',
+    description: 'A tragedy of the women of Troy.',
+    descriptionLong: 'After Troy falls, its women wait to learn which Greek will take them.',
+  });
+  const at = (detail: BriefSection['detail']) =>
+    render({ sections: [section({ detail, events: [show] })] });
+
+  it('prints the long description for "full"', () => {
+    const html = at('full');
+    expect(html).toContain('After Troy falls');
+    expect(html).not.toContain('A tragedy of the women of Troy.');
+  });
+
+  it('prints the short one for "short", and none for "one line"', () => {
+    expect(at('short')).toContain('A tragedy of the women of Troy.');
+    expect(at('short')).not.toContain('After Troy falls');
+    expect(at('line')).not.toContain('A tragedy');
+  });
+
+  it('falls back to the short one for "full" when there is no long one', () => {
+    const html = render({
+      sections: [section({ detail: 'full', events: [{ ...show, descriptionLong: null }] })],
+    });
+    expect(html).toContain('A tragedy of the women of Troy.');
+  });
+});

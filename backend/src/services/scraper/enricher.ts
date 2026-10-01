@@ -33,6 +33,8 @@ export interface EnrichableEvent {
    *  grouped, and what the writer searches for (GOI-131). */
   title?: string;
   description: string | null;
+  /** The writer's fuller paragraph (GOI-139). Set only by enrichment. */
+  long_description?: string | null;
   /** Set by enrichment when the model classified the page (GOI-80). The
    *  persister decides whether to use it — a keyword match outranks it. */
   content_category?: string | null;
@@ -59,6 +61,9 @@ export interface DescribeInput {
 
 export interface DescriptionResult {
   description: string | null;
+  /** A fuller paragraph about the work, or null when the sources support no
+   *  more than the short one (GOI-139). */
+  longDescription?: string | null;
   /** Content type from the same call (GOI-80). Never a second request. */
   category?: string | null;
   inputTokens: number;
@@ -80,9 +85,21 @@ export interface WrittenStore {
 export interface WrittenDetail {
   /** Null: the writer looked and found nothing to say. */
   description: string | null;
+  /** The fuller paragraph (GOI-139); null when there was nothing more. */
+  longDescription?: string | null;
   contentCategory: string | null;
   searched?: boolean;
+  /** Written by an older prompt: applied as it stands, and rewritten when the
+   *  run has budget for it (GOI-139). */
+  stale?: boolean;
 }
+
+/**
+ * The writer's prompt generation. Bump it when the prompt starts returning
+ * something stored answers lack, and every stored answer is rewritten once.
+ * 2: the long description (GOI-139).
+ */
+export const WRITER_VERSION = 2;
 
 export interface EnrichOptions {
   /** Venue's calendar URL. A row pointing here has no detail page of its own
@@ -312,7 +329,12 @@ async function writeDescriptions(
 
   const answers = new Map(known);
   const fresh: Array<WrittenDetail & { key: string }> = [];
-  const todo = keys.filter((k) => !known.has(k));
+  // Never-written shows first, then ones an older prompt wrote (GOI-139): a
+  // blank row matters more than a short one gaining its long paragraph.
+  const todo = [
+    ...keys.filter((k) => !known.has(k)),
+    ...keys.filter((k) => known.get(k)?.stale),
+  ];
 
   for (const [i, key] of todo.entries()) {
     // One call per show, so the ceiling that bounded detail fetches now bounds
@@ -354,6 +376,7 @@ async function writeDescriptions(
       if (out.searched) result.searched++;
       const answer: WrittenDetail = {
         description: out.description ? clean(out.description) : null,
+        longDescription: out.longDescription ? clean(out.longDescription) : null,
         contentCategory: out.category ?? null,
         searched: out.searched ?? false,
       };
@@ -379,8 +402,11 @@ async function writeDescriptions(
     if (!answer) continue;
     if (answer.contentCategory) for (const e of list) e.content_category = answer.contentCategory;
     if (!answer.description) continue;
-    for (const e of list) e.description = answer.description;
-    if (known.has(key)) result.backfilled += list.length;
+    for (const e of list) {
+      e.description = answer.description;
+      if (answer.longDescription) e.long_description = answer.longDescription;
+    }
+    if (known.get(key) === answer) result.backfilled += list.length;
     else result.enriched += list.length;
   }
 }

@@ -42,6 +42,10 @@ export interface Event {
   venue?: EventVenue;
   title: string;
   description: string | null;
+  /** A fuller paragraph about the work (GOI-139) — the newsletter's "full"
+   *  description and the card's "Read more". Optional on the wire, like
+   *  `kind`, so fixtures predating it still typecheck. */
+  descriptionLong?: string | null;
   startsAt: string;
   endsAt: string | null;
   /** See EventKind. Optional on the wire so older clients and the many test

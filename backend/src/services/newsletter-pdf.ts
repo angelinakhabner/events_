@@ -493,7 +493,8 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
 function blurbFor(pick: Pick, detail: BriefSection['detail']): string | null {
   const text = pick.lead.description;
   if (!text || detail === 'line') return null;
-  return detail === 'full' ? text : firstSentence(text);
+  // The long description where there is one (GOI-139), as the email prints it.
+  return detail === 'full' ? pick.lead.descriptionLong ?? text : firstSentence(text);
 }
 
 /**
