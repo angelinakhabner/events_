@@ -6,7 +6,7 @@ import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
 import {
-  groupPicks, pickWhen, sectionLabel, splitByShape, venueLines,
+  groupPicks, pickWhen, sectionGroups, sectionLabel, venueLines,
   type BriefSection, type Pick,
 } from './newsletter-render.js';
 import {
@@ -476,15 +476,15 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
     sectionHeading(doc, sectionLabel(section.category), rowHeight(doc, picks[0]!, section));
   }
 
-  // A museums section is listed in its two halves — runs, then what is on
-  // besides them (GOI-122).
-  for (const group of splitByShape(section, picks)) {
+  // The same arrangement the email draws: by event, a museums section in its
+  // two halves (GOI-122); by venue, a block per venue (GOI-141).
+  for (const group of sectionGroups(section)) {
     if (group.label) subHeading(doc, group.label);
     for (const pick of group.picks) {
       // An exhibition has no showtime worth putting in a gutter — it is on all
       // day for months — so it is dated by its run instead (GOI-67, GOI-122).
-      if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail);
-      else drawPick(doc, pick, section);
+      if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail, !group.venue);
+      else drawPick(doc, pick, section, !group.venue);
     }
   }
 }
@@ -529,7 +529,7 @@ function rowHeight(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): 
  * break — a title stranded at the foot of one page with its times at the head
  * of the next is the sort of thing that makes a generated PDF look generated.
  */
-function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): void {
+function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection, withVenueName = true): void {
   const title = pick.lead.title;
   const blurb = blurbFor(pick, section.detail);
   // A section spanning more than a day has to date each row; a single-day one
@@ -554,7 +554,7 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   // One line per venue, so two cinemas showing the same film read as two
   // places rather than as one run-on string. Shared with the email so the two
   // renderings cannot disagree about what a venue line says.
-  for (const line of venueLines(pick)) {
+  for (const line of venueLines(pick, withVenueName)) {
     doc.font('bold').fontSize(7.5).fillColor(C.body)
       .text(line.toUpperCase(), BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
   }
@@ -579,13 +579,15 @@ function pickDateLine(pick: Pick, section: BriefSection): string {
 }
 
 /** An exhibition: dated by its run, with no gutter time. */
-function drawExhibition(doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail']): void {
+function drawExhibition(
+  doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail'], withVenueName = true,
+): void {
   const title = pick.lead.title;
   const blurb = blurbFor(pick, detail);
   // From when till when, not only till when (GOI-122): a reader deciding
   // whether to go this month wants both ends of the run.
   const run = runSpan(pick.lead.startsAt, pick.lead.endsAt ?? null);
-  const eyebrow = [run, pick.venues[0]?.name.toUpperCase()].filter(Boolean).join(' · ');
+  const eyebrow = [run, withVenueName ? pick.venues[0]?.name.toUpperCase() : null].filter(Boolean).join(' · ');
 
   ensureSpace(doc, rowHeight(doc, pick, { detail, windowDays: 1, category: '', events: [] }));
 

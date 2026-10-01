@@ -1,6 +1,6 @@
 import { isExhibition, titleKey } from '@afisz/shared';
 import type {
-  Event, Festival, NewsletterDetail, NewsletterFrequency,
+  Event, Festival, NewsletterDetail, NewsletterFrequency, NewsletterGrouping,
 } from '@afisz/shared';
 import type { QueuedChange, QueuedEvent, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
@@ -85,6 +85,8 @@ function oneLine(text: string, max = 120): string {
 
 /** One venue's showings of a title, within whatever a pick covers. */
 export interface ShowingVenue {
+  /** Absent on events built without one (tests, mock data). */
+  venueId?: string;
   name: string;
   /** ISO starts, ascending. */
   startsAt: string[];
@@ -149,7 +151,7 @@ export function groupPicks(events: Event[]): Pick[] {
     for (const e of sorted) {
       const name = e.venue?.name ?? '';
       const existing = byVenue.get(name);
-      if (!existing) byVenue.set(name, { name, startsAt: [e.startsAt] });
+      if (!existing) byVenue.set(name, { venueId: e.venueId, name, startsAt: [e.startsAt] });
       else if (!existing.startsAt.some((s) => Date.parse(s) === Date.parse(e.startsAt))) {
         existing.startsAt.push(e.startsAt);
       }
@@ -189,10 +191,10 @@ export function groupPicks(events: Event[]): Pick[] {
  * parse it. Two cinemas showing the same film are two places you could go, and
  * the design sets them as two lines.
  */
-export function venueLines(pick: Pick): string[] {
+export function venueLines(pick: Pick, withName = true): string[] {
   return pick.venues.map((v) => {
     const detail = venueWhen(v);
-    return v.name ? `${v.name} \u00b7 ${detail}` : detail;
+    return v.name && withName ? `${v.name} \u00b7 ${detail}` : detail;
   });
 }
 
@@ -304,10 +306,12 @@ function pickRow(
    *  The time still leads it, in the gutter, since that is what a museum
    *  event asks a reader to be somewhere for. */
   longForm = false,
+  /** False under a venue's own heading (GOI-141), which already names it. */
+  withVenueName = true,
 ): string {
   // An exhibition has no showtime worth putting in a gutter — it is on all day
   // for months — so it is dated by when it closes instead (GOI-67, GOI-110).
-  if (isExhibition(pick.lead)) return exhibitionRow(pick, top, detail);
+  if (isExhibition(pick.lead)) return exhibitionRow(pick, top, detail, withVenueName);
 
   const event = pick.lead;
   const border =
@@ -334,7 +338,7 @@ function pickRow(
         `<div style="font-family:${FONT};font-weight:800;font-size:16px;line-height:1.25;color:${C.ink}">` +
           titleLink(event) +
         `</div>` +
-        venueLines(pick).map((line) =>
+        venueLines(pick, withVenueName).map((line) =>
           `<div style="font-family:${FONT};font-weight:700;font-size:11px;line-height:1.35;` +
           `text-transform:uppercase;letter-spacing:.06em;color:${C.body};margin-top:3px">` +
           `${escapeHtml(line.toUpperCase())}</div>`).join('') +
@@ -355,7 +359,7 @@ function pickRow(
  * one fact about it that does not matter. The PDF has dated these by their
  * closing since it was redrawn; this is the email catching up (GOI-110).
  */
-function exhibitionRow(pick: Pick, top: boolean, detail: NewsletterDetail): string {
+function exhibitionRow(pick: Pick, top: boolean, detail: NewsletterDetail, withVenueName = true): string {
   const event = pick.lead;
   const border =
     (top ? `border-top:2px solid ${C.divider};` : '') + `border-bottom:2px solid ${C.divider};`;
@@ -365,7 +369,7 @@ function exhibitionRow(pick: Pick, top: boolean, detail: NewsletterDetail): stri
   // its own says nothing about whether it has opened.
   const eyebrow = [
     runSpan(event.startsAt, event.endsAt ?? null),
-    pick.venues[0]?.name.toUpperCase(),
+    withVenueName ? pick.venues[0]?.name.toUpperCase() : null,
   ].filter(Boolean).join(' \u00b7 ');
 
   return (
@@ -564,9 +568,62 @@ export function sectionLabel(category: string): string {
 }
 
 /** A run of picks under one optional subheading. */
-interface PickGroup {
+export interface PickGroup {
   label: string | null;
   picks: Pick[];
+  /** The group is one venue's block (GOI-141): its heading names the venue,
+   *  so its rows leave the name off their venue lines. */
+  venue?: boolean;
+}
+
+/**
+ * Where a venue falls in the reader's order (GOI-140): its index there, and
+ * anything the order leaves out after all of those, in the order it came.
+ */
+function venueRanker(order: string[] | undefined): (venueId: string | undefined) => number {
+  const rank = new Map((order ?? []).map((id, i) => [id, i]));
+  return (id) => (id !== undefined && rank.has(id) ? rank.get(id)! : rank.size);
+}
+
+/**
+ * What a section lists, in order, as runs of picks under optional headings —
+ * the one arrangement the email and the PDF both draw.
+ *
+ * By event (the default): one card per title, each card's venue lines in the
+ * reader's venue order, and the museums section in its two halves.
+ *
+ * By venue (GOI-141): a block per venue, headed with its name, holding that
+ * venue's own titles — the order of the blocks is the reader's (GOI-140), and
+ * venues they never placed follow by their first showing.
+ */
+export function sectionGroups(section: BriefSection): PickGroup[] {
+  const rank = venueRanker(section.venueOrder);
+  if (section.groupBy !== 'venue') {
+    const picks = groupPicks(section.events);
+    if (section.venueOrder?.length) {
+      for (const p of picks) {
+        // Stable, so venues the order leaves out keep their chronological place.
+        p.venues = [...p.venues].sort((a, b) => rank(a.venueId) - rank(b.venueId));
+      }
+    }
+    return splitByShape(section, picks);
+  }
+
+  const byVenue = new Map<string, Event[]>();
+  for (const e of section.events) {
+    const list = byVenue.get(e.venueId);
+    if (list) list.push(e);
+    else byVenue.set(e.venueId, [e]);
+  }
+  return [...byVenue.entries()]
+    .map(([venueId, events]) => ({ venueId, events, picks: groupPicks(events) }))
+    // Events arrive sorted by start, so insertion order is first showing.
+    .sort((a, b) => rank(a.venueId) - rank(b.venueId))
+    .map((g) => ({
+      label: g.events[0]!.venue?.name ?? '',
+      picks: g.picks,
+      venue: true,
+    }));
 }
 
 /**
@@ -602,18 +659,16 @@ function picksTable(sections: BriefSection[]): string {
     // One card per title across the section's window, however many venues,
     // days and times it runs at (GOI-36, GOI-138). Already sorted by first
     // showing.
-    const picks = groupPicks(section.events);
-
     if (named && section.category) {
       rows.push(sectionHeadingRow(section, rows.length === 0));
     }
-    for (const group of splitByShape(section, picks)) {
+    for (const group of sectionGroups(section)) {
       if (group.label) rows.push(subHeadingRow(group.label, false));
       for (const pick of group.picks) {
         // Only whatever lands first carries the rule that opens the list.
         rows.push(pickRow(
           pick, rows.length === 0, section.detail, section.windowDays,
-          section.category === 'exhibition',
+          section.category === 'exhibition', !group.venue,
         ));
       }
     }
@@ -754,6 +809,10 @@ export interface BriefSection {
   windowDays: number;
   detail: NewsletterDetail;
   events: Event[];
+  /** The newsletter's arrangement (GOI-141); absent lists by event. */
+  groupBy?: NewsletterGrouping;
+  /** The newsletter's venue order (GOI-140), by id. */
+  venueOrder?: string[];
 }
 
 export interface BriefContent {

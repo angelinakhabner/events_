@@ -1,6 +1,6 @@
 import type {
   Category, Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
-  NewsletterRuleCadence, NewsletterSendCadence,
+  NewsletterGrouping, NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
 import {
   collapseDuplicateExhibitions, deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues,
@@ -449,10 +449,14 @@ export function buildBriefSections(
     sendCadence: NewsletterSendCadence;
     categoryRules: NewsletterCategoryRule[];
     beforeHour?: number | null;
+    groupBy?: NewsletterGrouping;
+    venueOrder?: string[];
   },
   venues: UserVenue[],
   now: Date = new Date(),
 ): BriefSection[] {
+  // Carried on every section so both renderers arrange it alike (GOI-140/141).
+  const layout = { groupBy: sub.groupBy ?? 'event', venueOrder: sub.venueOrder ?? [] } as const;
   const venueIds = venues.map((v) => v.id);
   const venueTags = new Map(venues.map((v) => [v.id, v.tags]));
   events = dropDuplicateEvents(events);
@@ -470,6 +474,7 @@ export function buildBriefSections(
             windowDays: sendCadenceDays(sub.sendCadence),
             detail: 'short',
             events: picked,
+            ...layout,
           },
         ]
       : [];
@@ -501,6 +506,7 @@ export function buildBriefSections(
       windowDays,
       detail: rule.detail,
       events: picked,
+      ...layout,
     });
   }
   return sections;

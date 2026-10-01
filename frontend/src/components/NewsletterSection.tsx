@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterGrouping, NewsletterRuleCadence,
   NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
 } from '@afisz/shared';
 import {
@@ -16,6 +16,7 @@ const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 import {
   briefSummary, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
 } from '../lib/newsletter';
+import { NewsletterLayout } from './NewsletterLayout';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -311,6 +312,8 @@ function NewsletterForm({
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
   const [sendDayOfMonth, setSendDayOfMonth] = useState(saved?.sendDayOfMonth ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
+  const [groupBy, setGroupBy] = useState<NewsletterGrouping>(saved?.groupBy ?? 'event');
+  const [venueOrder, setVenueOrder] = useState<string[]>(saved?.venueOrder ?? []);
   const [rules, setRules] = useState<NewsletterCategoryRule[]>(saved?.categoryRules ?? []);
   /**
    * The only thing left to decide about the saved-events queue is whether it
@@ -460,6 +463,8 @@ function NewsletterForm({
     sendWeekday,
     sendDayOfMonth,
     venueIds,
+    groupBy,
+    venueOrder,
     rules,
     wantToGo,
     enabled,
@@ -628,7 +633,17 @@ function NewsletterForm({
           ))}
           {venues.length === 0 ? (
             <span className="text-sm text-muted">Najpierw dodaj miejsca w sekcji &bdquo;Moje miejsca&rdquo;.</span>
-          ) : null}
+          ) : (
+            <NewsletterLayout
+              groupBy={groupBy}
+              onGroupBy={setGroupBy}
+              // What the newsletter covers: the ticked venues, or all of them.
+              venues={byFolder.flatMap((f) => f.venues)
+                .filter((v) => venueIds.length === 0 || venueIds.includes(v.id))}
+              order={venueOrder}
+              onOrder={setVenueOrder}
+            />
+          )}
         </FormSection>
 
         {/* GOI-102 §1. The envelope, stated on its own and before the

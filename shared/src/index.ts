@@ -355,6 +355,13 @@ export const DEFAULT_WANT_TO_GO: NewsletterWantToGo = {
  */
 export type NewsletterDelivery = 'email' | 'drive' | 'both';
 
+/**
+ * How a category's listing is arranged (GOI-141): one entry per title with
+ * every venue showing it underneath (`event`), or a block per venue with what
+ * is on there (`venue`).
+ */
+export type NewsletterGrouping = 'event' | 'venue';
+
 /** Does this delivery choice involve sending an email? */
 export function deliversByEmail(delivery: NewsletterDelivery): boolean {
   return delivery === 'email' || delivery === 'both';
@@ -403,6 +410,15 @@ export interface NewsletterSettings {
   timezone: string;
   /** Venues within the folder this newsletter covers; empty = all of them. */
   venueIds: string[];
+  /** How each category's listing is arranged (GOI-141). */
+  groupBy: NewsletterGrouping;
+  /**
+   * The reader's own order of venues (GOI-140), by id: venue blocks follow it
+   * when grouped by venue, and a title's venue lines when grouped by event.
+   * Venues it leaves out come after, in the issue's own order. Empty: no
+   * preference.
+   */
+  venueOrder: string[];
   /** Only include events starting before this hour (0-23). No UI; the
    *  after-hour half of this pair became `NewsletterCategoryRule.timeFilter`. */
   beforeHour: number | null;
