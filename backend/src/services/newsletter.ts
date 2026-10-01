@@ -3,8 +3,8 @@ import type {
   NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
 import {
-  deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, isExhibition,
-  sendCadenceDays, timeFilterHour,
+  collapseDuplicateExhibitions, deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues,
+  isExhibition, sendCadenceDays, timeFilterHour, titleKey,
 } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
 import { renderBriefHtml } from './newsletter-render.js';
@@ -402,6 +402,33 @@ export interface BriefSection {
 }
 
 /**
+ * The candidate events with every duplicate taken out (GOI-138).
+ *
+ * The brief is assembled from a wide query plus per-category top-ups, over
+ * rows that different scrapes may have stored twice, so the same thing can
+ * arrive more than once under different ids: an exhibition read twice
+ * (GOI-133), or one performance stored under two keys. Aggregation then prints
+ * each title once with its dates, and a date listed twice there would be the
+ * same repetition one level down — so the double check happens here, before
+ * any section is built.
+ *
+ * Same id, or same venue, title (`titleKey`) and start instant, is one event.
+ */
+export function dropDuplicateEvents(events: Event[]): Event[] {
+  const seenIds = new Set<string>();
+  const seenShowings = new Set<string>();
+  return collapseDuplicateExhibitions(events).filter((e) => {
+    if (seenIds.has(e.id)) return false;
+    seenIds.add(e.id);
+    if (isExhibition(e)) return true;
+    const showing = `${e.venueId}|${titleKey(e.title)}|${Date.parse(e.startsAt)}`;
+    if (seenShowings.has(showing)) return false;
+    seenShowings.add(showing);
+    return true;
+  });
+}
+
+/**
  * Split the candidate events into the sections due in this issue.
  *
  * With no rules the brief is one unnamed section covering everything on the
@@ -428,6 +455,7 @@ export function buildBriefSections(
 ): BriefSection[] {
   const venueIds = venues.map((v) => v.id);
   const venueTags = new Map(venues.map((v) => [v.id, v.tags]));
+  events = dropDuplicateEvents(events);
 
   if (sub.categoryRules.length === 0) {
     const picked = selectBriefEvents(
@@ -952,8 +980,9 @@ export async function sendNewsletterBriefs(
       // which meant a reader following no venues was skipped as `no-venues`
       // however much they had saved — the queue reads their saved events, not
       // a venue listing, and needs no venue to have something to say (GOI-125).
+      const wantToGoStore = opts.wantToGo ?? defaultWantToGoStore;
       const wantToGo = await buildWantToGoSection(
-        sub, store, opts.wantToGo ?? defaultWantToGoStore, now,
+        sub, store, wantToGoStore, now,
         { films: opts.films ?? defaultFilmStore, events: eventStore },
       );
 
@@ -1011,6 +1040,12 @@ export async function sendNewsletterBriefs(
         recipientName: sub.recipientName,
         festivals,
         now,
+        // The daily poster's "Want to go" and its masthead number. Only the
+        // filed PDF draws the poster, so an email-only reader costs no query.
+        savedEventIds: deliversToDrive(sub.delivery) && sub.wantToGo.enabled
+          ? (await wantToGoStore.list(sub.userId)).map((e) => e.id)
+          : [],
+        issueNo: (sub.issuesSent ?? 0) + 1,
       };
       if (deliversByEmail(sub.delivery)) {
         await (opts.send ?? sendEmail)({

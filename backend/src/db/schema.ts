@@ -337,6 +337,8 @@ export const newsletterSubscriptions = pgTable(
       .default({ enabled: true, horizonDays: 7, changesEnabled: true, urgentSend: true }),
     enabled: boolean('enabled').notNull().default(true),
     lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+    /** Scheduled issues sent so far, for the daily poster's "No. N". */
+    issuesSent: integer('issues_sent').notNull().default(0),
     /** When an urgent, off-schedule change email last went out (GOI-101).
      *  Separate from `last_sent_at` so an urgent send neither counts as the
      *  scheduled issue nor suppresses the next one. */
@@ -460,7 +462,7 @@ export const eventDescriptions = pgTable(
     contentCategory: text('content_category'),
     searched: boolean('searched').notNull().default(false),
     /** Language the description is written in. Only the site's own is read
-     *  back (0032); anything else is rewritten in place. */
+     *  back (0033); anything else is rewritten in place. */
     lang: text('lang').notNull().default('en'),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
   },

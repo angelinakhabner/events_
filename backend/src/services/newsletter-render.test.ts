@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Event, Festival } from '@afisz/shared';
-import { groupPicks, listSentence, renderBriefHtml, type BriefSection } from './newsletter-render.js';
+import {
+  dayList, groupPicks, listSentence, renderBriefHtml, venueWhen, type BriefSection,
+} from './newsletter-render.js';
 
 // A Wednesday noon in Warsaw (CEST = UTC+2).
 const NOW = new Date('2026-07-22T10:00:00Z');
@@ -248,26 +250,39 @@ describe('groupPicks', () => {
     expect(picks[0]!.venues[0]!.startsAt[0]).toBe('2026-07-22T14:00:00+02:00');
   });
 
-  it('keeps different days apart', () => {
+  // GOI-138: we aggregate — one title is one card across the whole window.
+  it('folds the same title on different days into one card', () => {
     const picks = groupPicks([
       at('2026-07-22T18:00:00+02:00', 'Kinoteka'),
       at('2026-07-23T18:00:00+02:00', 'Kinoteka'),
     ]);
-    expect(picks).toHaveLength(2);
+    expect(picks).toHaveLength(1);
+    expect(picks[0]!.count).toBe(2);
+    expect(picks[0]!.lastStartsAt).toBe('2026-07-23T18:00:00+02:00');
   });
 
-  it('groups by the Warsaw day, so a small-hours show joins its own evening', () => {
-    // 23:00 and 00:30 are the same night out, but different UTC dates.
+  it('counts the same showing listed twice once', () => {
     const picks = groupPicks([
-      at('2026-07-22T23:00:00+02:00', 'Kinoteka'),
-      at('2026-07-22T22:30:00+02:00', 'Muranów'),
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka'),
+      at('2026-07-22T16:00:00Z', 'Kinoteka'),
+    ]);
+    expect(picks[0]!.count).toBe(1);
+    expect(picks[0]!.venues[0]!.startsAt).toHaveLength(1);
+  });
+
+  it('keeps same-titled exhibitions at two museums apart', () => {
+    const run = (venue: string) => at('2026-07-01T00:00:00+02:00', venue, {
+      venueId: venue, kind: 'exhibition', title: 'Kolekcja', endsAt: '2026-09-30T00:00:00+02:00',
+    });
+    expect(groupPicks([run('MSN'), run('Zachęta')])).toHaveLength(2);
+  });
+
+  it('matches titles whatever their punctuation', () => {
+    const picks = groupPicks([
+      at('2026-07-22T18:00:00+02:00', 'Kinoteka', { title: 'Betty Q: Morte' }),
+      at('2026-07-23T18:00:00+02:00', 'Kinoteka', { title: 'Betty Q — "Morte"' }),
     ]);
     expect(picks).toHaveLength(1);
-    // …while 00:30 the next morning is a different Warsaw day, and stays apart.
-    expect(groupPicks([
-      at('2026-07-22T23:00:00+02:00', 'Kinoteka'),
-      at('2026-07-23T00:30:00+02:00', 'Muranów'),
-    ])).toHaveLength(2);
   });
 
   it('matches titles case- and whitespace-insensitively', () => {
@@ -366,7 +381,7 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
     expect(html).toContain('1 wydarzenie z Twoich');
   });
 
-  it('keeps the same title on different days as separate cards in a weekly brief', () => {
+  it('prints the same title on different days once, with both dates (GOI-138)', () => {
     const html = render({
       sections: [section({
         windowDays: 7,
@@ -376,10 +391,8 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
         ],
       })],
     });
-    expect(html.match(/Chungking Express/g)).toHaveLength(2);
-    // Each card carries its own date now that the day headings are gone.
-    expect(html).toContain('ŚR 22 VII');
-    expect(html).toContain('PT 24 VII');
+    expect(html.match(/Chungking Express/g)).toHaveLength(1);
+    expect(html).toContain('KINOTEKA · 22, 24 VII · 18:00');
   });
 
   it('escapes venue names in the aggregated line', () => {
@@ -489,9 +502,9 @@ describe('renderBriefHtml — collapsed cinema picks (GOI-120)', () => {
     // The run, not whichever showing happens to be first: a card reading
     // "PN 20 VII" for a film also on all week is worse than no date at all.
     expect(html).toContain('20–22 VII');
-    // Thirty showtimes would bury the line, so a venue holding a film over
-    // says how long for instead.
-    expect(html).toContain('MURANÓW · 20–22 VII');
+    // Every date it is on, each with its own time (GOI-138) — not a span that
+    // reads as if the 21st were included.
+    expect(html).toContain('MURANÓW · PON 20 VII 18:00; ŚR 22 VII 20:30');
   });
 
   it('still prints the times when a cinema has the film for one day', () => {
@@ -504,9 +517,9 @@ describe('renderBriefHtml — collapsed cinema picks (GOI-120)', () => {
     expect(html).toContain('ŚR 22 VII');
   });
 
-  it('leaves a theatre run as one card per performance', () => {
-    // Two performances of a play are two evenings a reader chooses between,
-    // and each of those dates is the point.
+  it('prints a theatre run once, with every performance date (GOI-138)', () => {
+    // Four nights of one play are one play: the dates are the point, so they
+    // are all listed — once, on the row, not as four rows.
     const play = (iso: string) =>
       makeEvent({
         title: 'Dziady',
@@ -518,11 +531,15 @@ describe('renderBriefHtml — collapsed cinema picks (GOI-120)', () => {
       sections: [section({
         category: 'theatre',
         windowDays: 7,
-        events: [play('2026-07-20T19:00:00+02:00'), play('2026-07-23T19:00:00+02:00')],
+        events: [
+          play('2026-07-20T19:00:00+02:00'), play('2026-07-21T19:00:00+02:00'),
+          play('2026-07-22T19:00:00+02:00'), play('2026-07-25T19:00:00+02:00'),
+        ],
       })],
     });
 
-    expect(html.split('Dziady')).toHaveLength(3);
+    expect(html.split('Dziady')).toHaveLength(2);
+    expect(html).toContain('POWSZECHNY · 20–22, 25 VII · 19:00');
   });
 });
 
@@ -797,5 +814,55 @@ describe('renderBriefHtml — the span the masthead names (GOI-110)', () => {
   it('reaches a month when the issue itself is monthly', () => {
     const html = render({ now, fallbackFrequency: 'monthly', sections: [monthly] });
     expect(html).toContain('10–8 WRZEŚNIA');
+  });
+});
+
+/**
+ * GOI-138: "if we have event 3 days in a row, or every Monday or until some
+ * date, it should be shown ONCE with all the available dates".
+ */
+describe('venueWhen — every date, once', () => {
+  const v = (...startsAt: string[]) => ({ name: 'Powszechny', startsAt });
+
+  it('gives the times alone for one day', () => {
+    expect(venueWhen(v('2026-09-07T18:00:00+02:00', '2026-09-07T20:30:00+02:00'))).toBe('18:00, 20:30');
+  });
+
+  it('closes three days in a row into a span', () => {
+    expect(venueWhen(v(
+      '2026-09-07T19:00:00+02:00', '2026-09-08T19:00:00+02:00', '2026-09-09T19:00:00+02:00',
+    ))).toBe('7–9 IX · 19:00');
+  });
+
+  it('says "every Monday" by leading with the weekday', () => {
+    expect(venueWhen(v(
+      '2026-09-07T19:00:00+02:00', '2026-09-14T19:00:00+02:00',
+      '2026-09-21T19:00:00+02:00', '2026-09-28T19:00:00+02:00',
+    ))).toBe('PON 7, 14, 21, 28 IX · 19:00');
+  });
+
+  it('gives each of a few days its own times when they differ', () => {
+    expect(venueWhen(v('2026-09-08T18:00:00+02:00', '2026-09-10T20:30:00+02:00')))
+      .toBe('WT 8 IX 18:00; CZW 10 IX 20:30');
+  });
+
+  it('gives the dates alone for a long run at changing times', () => {
+    const isos = [7, 8, 9, 10, 11, 14].map(
+      (d, i) => `2026-09-${String(d).padStart(2, '0')}T${i % 2 ? '18' : '20'}:00:00+02:00`,
+    );
+    expect(venueWhen(v(...isos))).toBe('7–11, 14 IX');
+  });
+});
+
+describe('dayList', () => {
+  it('prints each month once, across a month boundary', () => {
+    expect(dayList([
+      '2026-09-29T19:00:00+02:00', '2026-09-30T19:00:00+02:00', '2026-10-02T19:00:00+02:00',
+    ])).toBe('29, 30 IX; 2 X');
+  });
+
+  it('files a small-hours showing under its Warsaw day', () => {
+    // 00:30 on the 8th in Warsaw is still the 7th in UTC.
+    expect(dayList(['2026-09-07T22:30:00Z', '2026-09-09T12:00:00Z'])).toBe('8, 9 IX');
   });
 });

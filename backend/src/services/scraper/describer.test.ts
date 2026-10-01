@@ -40,7 +40,7 @@ const INPUT = {
 beforeEach(() => create.mockReset());
 
 describe('AnthropicDescriber', () => {
-  it('asks for English, offers web search, and returns the description', async () => {
+  it('asks for Polish, offers web search, and returns the description', async () => {
     create.mockResolvedValueOnce(reply([
       text('CATEGORY: performance\nDESCRIPTION: Euripides’ tragedy of the women of Troy.'),
     ]));

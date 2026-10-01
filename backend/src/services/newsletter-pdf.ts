@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,15 +6,19 @@ import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
 import {
-  collapsesAcrossDays, groupPicks, sectionLabel, splitByShape, venueLines,
+  groupPicks, pickWhen, sectionLabel, splitByShape, venueLines,
   type BriefSection, type Pick,
 } from './newsletter-render.js';
 import {
   isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
 } from './want-to-go-queue.js';
 import { env } from '../config.js';
+import { resolveFontDir } from './pdf-fonts.js';
+import { isDailyIssue, renderDailyPosterPdf } from './newsletter-poster-pdf.js';
+
+export { resolveFontDir } from './pdf-fonts.js';
 import {
-  PL, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
+  PL, closingDate, dateRange, festivalSpan, runSpan,
   time, weekday,
 } from './newsletter-copy.js';
 
@@ -82,40 +86,6 @@ const BAND_PAD = 20;
 const FONT_REGULAR_FILE = 'DejaVuSans.subset.ttf';
 const FONT_BOLD_FILE = 'DejaVuSans-Bold.subset.ttf';
 
-/**
- * Where `backend/assets/fonts` actually is, found by walking up (GOI-96).
- *
- * It used to be `../../assets/fonts` from this module, which is right when
- * this file runs as TypeScript out of `backend/src/services` and wrong
- * everywhere else. `tsc` emits to `backend/dist/backend/src/services`, and
- * nothing copies `assets/` into `dist`, so in production that same relative
- * path pointed at `backend/dist/backend/assets/fonts` — a directory that has
- * never existed. The only symptom was the brief refusing to render, with
- * "ENOENT: no such file or directory" naming a path deep inside `dist` that
- * gives no hint the fonts are sitting unbuilt two levels above it.
- *
- * Walking up until the directory turns up is indifferent to how deep the
- * compiler nests its output, so dev, `dist`, and the test runner all resolve
- * to the one copy of the fonts in the repo instead of three guesses at it.
- */
-export function resolveFontDir(startDir: string): string {
-  let dir = startDir;
-  // `backend/dist/backend/src/services` is five levels below `backend/`, so
-  // the bound is generous rather than tight; the loop stops at the filesystem
-  // root regardless.
-  for (let i = 0; i < 8; i++) {
-    const candidate = path.join(dir, 'assets', 'fonts');
-    if (existsSync(path.join(candidate, FONT_REGULAR_FILE))) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(
-    `Could not find ${FONT_REGULAR_FILE}: no assets/fonts directory above ` +
-      `${startDir}. The brief needs the embedded DejaVu subset to set Polish text.`,
-  );
-}
-
 /** Read once, not per brief — the sweep renders one of these per subscriber. */
 let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
 
@@ -161,6 +131,14 @@ export interface BriefPdfContent {
   /** Festivals on now or opening soon — see `briefFestivals`. */
   festivals?: Festival[];
   now?: Date;
+  /**
+   * Ids of the events the reader saved. The daily poster lists today's under
+   * "Want to go"; the weekly brief carries its queue in `wantToGo` instead.
+   */
+  savedEventIds?: string[];
+  /** This config's running issue number, for the daily poster's masthead.
+   *  Left off when unknown (a preview), rather than guessed. */
+  issueNo?: number | null;
 }
 
 /**
@@ -191,6 +169,11 @@ function cadenceDays(frequency: NewsletterFrequency): number {
 }
 
 export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
+  // A daily issue is drawn as the poster (the "AFISZ.KA Daily" handoff): a
+  // front page of picks for today, then the whole day's listing. The list
+  // layout below stays for everything that spans more than one day.
+  if (isDailyIssue(content.sections)) return renderDailyPosterPdf(content);
+
   const now = content.now ?? new Date();
   const sections = content.sections;
   const events: Event[] = sections.flatMap((s) => s.events);
@@ -269,7 +252,7 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
 
 function countPicks(sections: BriefSection[]): number {
   return sections.reduce(
-    (n, s) => n + groupPicks(s.events, collapsesAcrossDays(s.category)).length,
+    (n, s) => n + groupPicks(s.events).length,
     0,
   );
 }
@@ -476,9 +459,9 @@ function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
 // ─── Category sections ───────────────────────────────────────────────────────
 
 function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
-  // One card per title per day (GOI-36), or one per title across the window
-  // where the category collapses that way (GOI-120).
-  const picks = groupPicks(section.events, collapsesAcrossDays(section.category));
+  // One card per title across the section's window, every date on its venue
+  // lines (GOI-36, GOI-138).
+  const picks = groupPicks(section.events);
   if (picks.length === 0) return;
 
   // The heading is kept with the row it opens. A "TEATR" alone at the foot of
@@ -528,7 +511,13 @@ function rowHeight(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): 
   const body = blurb ? doc.font('body').fontSize(9).heightOfString(blurb, { width }) : 0;
   if (exhibition) return title + body + 34;
   const dated = section.windowDays > 1 ? 12 : 0;
-  return title + body + pick.venues.length * 12 + dated + 30;
+  // Measured, not counted: a venue line listing every date (GOI-138) can wrap.
+  const venues = venueLines(pick).reduce(
+    (h, line) => h + 2 + doc.font('bold').fontSize(7.5)
+      .heightOfString(line.toUpperCase(), { width: BODY_WIDTH, characterSpacing: 0.8 }),
+    0,
+  );
+  return title + body + venues + dated + 30;
 }
 
 /**
@@ -580,17 +569,12 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
 }
 
 /**
- * The date over a row, as `pickWhen` decides it for the email.
- *
- * A collapsed pick is a film held over, so it is dated by its run rather than
- * by whichever showing happens to be first (GOI-120); a museum event is dated
- * "5 SIERPNIA, ŚRODA" (GOI-122), with the time still leading it in the gutter,
- * since that is what it asks a reader to turn up for. A run outranks the long
- * form: a row spanning days is a span whichever way it is written.
+ * The date over a row — the email's `pickWhen`, so the two cannot disagree: a
+ * pick spanning days is dated by its span (GOI-120), a museum event
+ * "5 SIERPNIA, ŚRODA" (GOI-122), anything else "WT 11 VIII".
  */
 function pickDateLine(pick: Pick, section: BriefSection): string {
-  if (pick.startsAt !== pick.lastStartsAt) return daySpan(pick.startsAt, pick.lastStartsAt);
-  return section.category === 'exhibition' ? longDate(pick.startsAt) : shortDate(pick.startsAt);
+  return pickWhen(pick, section.category === 'exhibition');
 }
 
 /** An exhibition: dated by its run, with no gutter time. */

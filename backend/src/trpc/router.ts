@@ -909,6 +909,11 @@ const my = router({
           recipientName: input.recipientName,
           festivals,
           now,
+          // For a daily issue's poster PDF. Its issue number is left off: a
+          // preview is not an issue.
+          savedEventIds: input.wantToGo?.enabled === false
+            ? []
+            : (await ctx.wantToGo.list(ctx.user.id)).map((e) => e.id),
         };
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand
         // the user a file to send by hand, and so what they download is

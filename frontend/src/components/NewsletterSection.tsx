@@ -62,13 +62,18 @@ const CADENCE_ADJECTIVE: Record<NewsletterSendCadence, string> = {
 };
 
 /** How many days a rule's section will cover, given the envelope carrying it
- *  — the number the LOOK AHEAD field shows as its placeholder. */
+ *  — the number the days field shows as its placeholder. */
 function deriveWindowDays(
   sendCadence: NewsletterSendCadence,
   rule: Pick<NewsletterCategoryRule, 'cadence' | 'lookaheadDays'>,
 ): number {
   const { from, to } = deriveWindow({ sendCadence }, { ...rule, lookaheadDays: null }, new Date());
   return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+/** "1 day" / "7 days". */
+function daysPhrase(n: number): string {
+  return `${n} ${plural(n, 'dzień', 'dni', 'dni')}`;
 }
 
 /** Small inline clock, so the send time reads as a time at a glance. */
@@ -1140,14 +1145,13 @@ function RuleRow({
 
       {/* Collapsed by default: empty is correct almost always, and a field
           every row carries invites a number nobody needed to choose.
-          What it *means* is spelled out either way (GOI-119): a number of days
-          with no sentence beside it is a setting nobody can answer. */}
-      <span className="flex w-full flex-wrap items-center gap-2.5 pl-0 md:pl-[122px]">
+          One plain sentence either way (GOI-119, GOI-137): "Look ahead" and a
+          paragraph about spans and repeats was read as not understandable, so
+          the field sits inside the sentence it answers. */}
+      <span className="flex w-full flex-wrap items-center gap-2 pl-0 md:pl-[122px] text-xs text-faint">
         {showLookahead ? (
           <>
-            <label className="text-xs text-faint" htmlFor={`rule-lookahead-${index}`}>
-              Zasięg
-            </label>
+            <label htmlFor={`rule-lookahead-${index}`}>Każde wydanie pokazuje najbliższe</label>
             <input
               id={`rule-lookahead-${index}`}
               type="number"
@@ -1158,27 +1162,23 @@ function RuleRow({
               onChange={(e) =>
                 onPatch({ lookaheadDays: e.target.value === '' ? null : Number(e.target.value) })
               }
-              className="field w-[92px] py-1.5 text-[13px]"
+              className="field w-[72px] py-1.5 text-[13px]"
             />
-            <span className="text-xs text-faint">
-              dni programu ({label.toLowerCase()}) w każdym wydaniu, licząc od dnia, w którym
-              przychodzi. Zostaw puste, żeby było {derived} — tyle, ile ten rytm już obejmuje,
-              bez luk i powtórzeń.
-            </span>
+            <span>{plural(Number(rule.lookaheadDays ?? derived), 'dzień', 'dni', 'dni')} programu ({label.toLowerCase()}).</span>
           </>
         ) : (
           <>
+            <span>
+              Każde wydanie pokazuje najbliższe {daysPhrase(derived)} programu ({label.toLowerCase()}).
+            </span>
             <button
               type="button"
               onClick={() => setShowLookahead(true)}
               className="act act-sm"
-              aria-label={`Ustaw zasięg: ${label}`}
+              aria-label={`Zmień, ile dni programu (${label}) pokazuje każde wydanie`}
             >
-              Zasięg: {derived} {plural(derived, 'dzień', 'dni', 'dni')}
+              Zmień
             </button>
-            <span className="text-xs text-faint">
-              programu ({label.toLowerCase()}) w każdym wydaniu. Zmień, żeby sięgać dalej.
-            </span>
           </>
         )}
       </span>

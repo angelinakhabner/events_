@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   filterSummary, categoryLabel, categoryOrTagLabel, formatDayKey, formatEventTime,
-  formatExhibitionRange,
+  formatExhibitionRange, formatRange,
 } from './format';
 
 describe('format helpers', () => {
@@ -125,5 +125,19 @@ describe('plural', () => {
       'miejsce', 'miejsca', 'miejsca', 'miejsc', 'miejsc', 'miejsc', 'miejsc',
       'miejsc', 'miejsca', 'miejsc', 'miejsca', 'miejsc',
     ]);
+  });
+});
+
+describe('formatRange', () => {
+  it('collapses same-month ranges', () => {
+    expect(formatRange('2026-10-09', '2026-10-18')).toBe('9–18 paź');
+  });
+
+  it('spells out cross-month ranges', () => {
+    expect(formatRange('2026-06-19', '2026-08-30')).toBe('19 cze – 30 sie');
+  });
+
+  it('shows a single day once', () => {
+    expect(formatRange('2026-11-11', '2026-11-11')).toBe('11 lis');
   });
 });

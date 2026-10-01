@@ -160,3 +160,17 @@ export function plural(n: number, one: string, few: string, many: string): strin
 export function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
+
+const festivalDayFmt = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short' });
+
+/** "9–18 paź" / "19 cze – 30 sie" from a festival's inclusive ISO dates. */
+export function formatRange(startDate: string, endDate: string): string {
+  const start = new Date(`${startDate}T12:00:00Z`);
+  const end = new Date(`${endDate}T12:00:00Z`);
+  const startStr = festivalDayFmt.format(start);
+  const endStr = festivalDayFmt.format(end);
+  const sameMonth = startDate.slice(0, 7) === endDate.slice(0, 7);
+  if (startDate === endDate) return startStr;
+  if (sameMonth) return `${start.getUTCDate()}–${endStr}`;
+  return `${startStr} – ${endStr}`;
+}

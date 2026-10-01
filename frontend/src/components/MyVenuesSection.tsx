@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Category, ScrapeRun } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { categoryLabel, formatEventTime, formatShortDate, plural } from '../lib/format';
@@ -38,8 +38,14 @@ export function MyVenuesSection() {
     utils.my.venues.list.invalidate();
     utils.my.lists.list.invalidate();
   };
+  // GOI-132: a venue just added is scraped straight away, by its own row, so
+  // its events turn up without a trip to the Refresh button. Held here until
+  // the row has started that refresh, then dropped.
+  const [toRefresh, setToRefresh] = useState<string[]>([]);
+  const refreshWhenListed = (venueId: string) =>
+    setToRefresh((prev) => (prev.includes(venueId) ? prev : [...prev, venueId]));
   const add = trpc.my.venues.add.useMutation({
-    onSuccess: () => { invalidate(); setAdding(false); },
+    onSuccess: (venue) => { invalidate(); setAdding(false); refreshWhenListed(venue.id); },
   });
 
   const venueRows = venuesQuery.data;
@@ -102,7 +108,7 @@ export function MyVenuesSection() {
         <ElsewherePanel
           folders={folders.map((f) => ({ id: f.id, name: f.name }))}
           activeFolderId={folders.find((f) => f.active)?.id ?? null}
-          onAdded={invalidate}
+          onAdded={(venue) => { invalidate(); refreshWhenListed(venue.id); }}
         />
         <button
           type="button"
@@ -159,6 +165,10 @@ export function MyVenuesSection() {
                   folders={folders}
                   schedule={scheduleByVenue.get(v.id)}
                   onChanged={invalidate}
+                  autoRefresh={toRefresh.includes(v.id)}
+                  onAutoRefreshStarted={() =>
+                    setToRefresh((prev) => prev.filter((id) => id !== v.id))
+                  }
                 />
               ))}
             </ul>
@@ -343,11 +353,17 @@ function VenueRow({
   folders,
   schedule,
   onChanged,
+  autoRefresh = false,
+  onAutoRefreshStarted,
 }: {
   venue: VenueRowVenue;
   folders: FolderOption[];
   schedule: VenueSchedule | undefined;
   onChanged: () => void;
+  /** Scrape this venue as soon as the row mounts — set for a venue that was
+   *  just added (GOI-132). */
+  autoRefresh?: boolean;
+  onAutoRefreshStarted?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
@@ -363,11 +379,27 @@ function VenueRow({
       // Both the "N upcoming" line and the panel below it are now stale.
       utils.my.venues.activity.invalidate();
       utils.events.listByVenue.invalidate({ venueId: venue.id });
+      // …and so is /my → Events, which the new rows belong in too.
+      utils.my.events.list.invalidate();
       // A refresh that found something is only worth reading if you can see
       // what it found, so open the panel rather than making it a second click.
       setShowUpcoming(true);
     },
   });
+
+  // GOI-132: adding a venue used to leave it empty until someone pressed
+  // Refresh (or the nightly sweep came round). The row runs that same refresh
+  // itself, once, the first time it appears after the add — same pipeline,
+  // same "Scraping…" line and run summary as the button. The ref keeps a
+  // re-render (or StrictMode's double effect) from scraping twice.
+  const autoStarted = useRef(false);
+  const refreshNow = refresh.mutate;
+  useEffect(() => {
+    if (!autoRefresh || autoStarted.current) return;
+    autoStarted.current = true;
+    refreshNow({ venueId: venue.id });
+    onAutoRefreshStarted?.();
+  }, [autoRefresh, refreshNow, venue.id, onAutoRefreshStarted]);
 
   const save = () => {
     const patch: { name?: string; category?: Category; windowDays?: number | null } = {};

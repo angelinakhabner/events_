@@ -12,6 +12,7 @@ import {
   resolveBriefVenues,
   sendNewsletterBriefs,
   buildBriefSections,
+  dropDuplicateEvents,
   dropFestivalRestatements,
   eventInCategory,
   briefSubject,
@@ -442,6 +443,29 @@ describe('buildBriefSections', () => {
     ];
   }
 
+  /** GOI-138: the double check — nothing reaches a section twice. */
+  it('drops the same showing stored twice, and an exhibition read twice', () => {
+    const sections = buildBriefSections(
+      [
+        makeEvent({ id: 'a', title: 'Dziady', startsAt: '2026-07-22T19:00:00+02:00' }),
+        makeEvent({ id: 'b', title: 'DZIADY', startsAt: '2026-07-22T17:00:00Z' }),
+        makeEvent({ id: 'a', title: 'Dziady', startsAt: '2026-07-22T19:00:00+02:00' }),
+        makeEvent({
+          id: 'run-1', title: 'Betty Q: Morte', kind: 'exhibition',
+          startsAt: '2026-06-01T00:00:00+02:00', endsAt: '2026-09-30T00:00:00+02:00',
+        }),
+        makeEvent({
+          id: 'run-2', title: 'Betty Q — Morte', kind: 'exhibition',
+          startsAt: '2026-07-01T00:00:00+02:00', endsAt: '2026-09-30T00:00:00+02:00',
+        }),
+      ],
+      makeSub({ sendCadence: 'weekly', categoryRules: [makeRule({ category: 'cinema' })] }),
+      VENUES,
+      NOW,
+    );
+    expect(sections[0]!.events.map((e) => e.id).sort()).toEqual(['a', 'run-1']);
+  });
+
   /** GOI-121, at the level a section is actually built. */
   it('orders every section earliest first, whatever order the fetch returned', () => {
     const shuffled = [
@@ -846,5 +870,23 @@ describe('InMemoryNewsletterStore', () => {
 
     const subs = await store.listEnabled();
     expect(subs.map((s) => s.userId)).toEqual(['on']);
+  });
+});
+
+describe('dropDuplicateEvents (GOI-138)', () => {
+  it('keeps a play on different nights — those are dates, not duplicates', () => {
+    const out = dropDuplicateEvents([
+      makeEvent({ id: 'a', startsAt: '2026-07-22T19:00:00+02:00' }),
+      makeEvent({ id: 'b', startsAt: '2026-07-23T19:00:00+02:00' }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('keeps one title at the same minute at two venues', () => {
+    const out = dropDuplicateEvents([
+      makeEvent({ id: 'a' }),
+      makeEvent({ id: 'b', venueId: 'v2' }),
+    ]);
+    expect(out).toHaveLength(2);
   });
 });

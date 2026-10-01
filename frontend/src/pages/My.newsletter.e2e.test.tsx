@@ -564,13 +564,11 @@ describe('MyPage — newsletter end-to-end', () => {
 
     // Every issue of a daily newsletter covers a day…
     await user.selectOptions(cadence, 'every_issue');
-    expect(within(section).getByRole('button', { name: /ustaw zasięg: museums/i }))
-      .toHaveTextContent('Zasięg: 1 dzień');
+    expect(within(section).getByText('Każde wydanie pokazuje najbliższe 1 dzień programu (museums).')).toBeInTheDocument();
 
     // …and a monthly section of one covers a month.
     await user.selectOptions(cadence, 'monthly');
-    expect(within(section).getByRole('button', { name: /ustaw zasięg: museums/i }))
-      .toHaveTextContent('Zasięg: 30 dni');
+    expect(within(section).getByText('Każde wydanie pokazuje najbliższe 30 dni programu (museums).')).toBeInTheDocument();
   });
 
   /**
@@ -587,12 +585,17 @@ describe('MyPage — newsletter end-to-end', () => {
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
     const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    expect(within(section).getByText(/programu \(museums\) w każdym wydaniu/i)).toBeInTheDocument();
+    expect(within(section).getByText(/każde wydanie pokazuje najbliższe \d+ (dzień|dni) programu \(museums\)/i)).toBeInTheDocument();
 
     await user.click(
-      within(section).getByRole('button', { name: /ustaw zasięg: museums/i }),
+      within(section).getByRole('button', { name: /zmień, ile dni programu \(museums\) pokazuje każde wydanie/i }),
     );
-    expect(within(section).getByText(/dni programu \(museums\) w każdym wydaniu/i)).toBeInTheDocument();
+    // GOI-137: the field sits inside one plain sentence — no "Zasięg"
+    // label and no paragraph about spans and repeats under it.
+    const field = within(section).getByLabelText(/każde wydanie pokazuje najbliższe/i);
+    expect(field).toHaveAttribute('type', 'number');
+    expect(within(section).queryByText(/^zasięg$/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/bez luk i powtórzeń/i)).not.toBeInTheDocument();
   });
 
   it('says the venues are the reader\u2019s own, and what ticking one does', async () => {

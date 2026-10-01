@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import { MyVenuesSection, probeErrorNote, scrapeRunSummary } from './MyVenuesSection';
 import type { Event, ScrapeRun } from '@afisz/shared';
 
@@ -11,6 +11,17 @@ const refreshMock = vi.fn();
 
 const invalidateActivity = vi.fn();
 const invalidateByVenue = vi.fn();
+const invalidateMyEvents = vi.fn();
+type AddOpts = { onSuccess?: (venue: { id: string }, vars: { url: string }) => void };
+/** Every add mutation's options, newest last: the section's own and the
+ *  Elsewhere panel's, render by render. Lets a test resolve an add as the
+ *  server would. */
+const addOpts: AddOpts[] = [];
+/** Resolve the latest render's add: the "+ Add venue" form's, or Elsewhere's. */
+function resolveAdd(from: 'form' | 'elsewhere', id = 'v1') {
+  const opts = addOpts[addOpts.length - (from === 'form' ? 2 : 1)];
+  act(() => opts?.onSuccess?.({ id }, { url: 'https://teatrstudio.pl' }));
+}
 
 /** A mutation stub that records its input and runs onSuccess synchronously. */
 function stubMutation() {
@@ -38,6 +49,7 @@ vi.mock('../lib/trpc', () => {
             activity: { invalidate: invalidateActivity },
           },
           lists: { list: { invalidate } },
+          events: { list: { invalidate: invalidateMyEvents } },
         },
         events: { listByVenue: { invalidate: invalidateByVenue } },
       }),
@@ -46,7 +58,12 @@ vi.mock('../lib/trpc', () => {
         venues: {
           listAll: { useQuery: () => venuesMock() },
           activity: { useQuery: () => activityMock() },
-          add: stubMutation(),
+          add: {
+            useMutation: (opts: AddOpts = {}) => {
+              addOpts.push(opts);
+              return { mutate: vi.fn(), isPending: false, error: null };
+            },
+          },
           // GOI-92: the Elsewhere discovery panel renders in the row beneath
           // the folder bar, so its hooks must exist here even though this
           // suite is about the venue rows.
@@ -112,6 +129,7 @@ function refreshState(over: Partial<{ isPending: boolean; data: ScrapeRun | unde
 
 beforeEach(() => {
   vi.clearAllMocks();
+  addOpts.length = 0;
   venuesMock.mockReturnValue({ data: [venue], isLoading: false, error: null });
   listsMock.mockReturnValue({ data: [{ id: 'l1', name: 'Warsaw', active: true, venueCount: 1 }] });
   activityMock.mockReturnValue({ data: [] });
@@ -185,6 +203,64 @@ describe('MyVenuesSection — refresh / show upcoming (GOI-75)', () => {
     render(<MyVenuesSection />);
     expect(screen.getByRole('button', { name: 'Odświeżanie…' })).toBeDisabled();
     expect(screen.getByText(/scraping teatr studio/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * GOI-132: "after adding new venue I need to refresh it manually". The new
+ * venue's row now runs that refresh itself, once.
+ */
+describe('MyVenuesSection — a venue just added is scraped straight away (GOI-132)', () => {
+  function recordRefreshes() {
+    const mutate = vi.fn();
+    refreshMock.mockImplementation((opts?: { onSuccess?: () => void }) => ({
+      mutate: (input: unknown) => { mutate(input); opts?.onSuccess?.(); },
+      isPending: false,
+      data: undefined,
+      error: null,
+    }));
+    return mutate;
+  }
+
+  it('does not scrape a venue that was already there', () => {
+    const mutate = recordRefreshes();
+    render(<MyVenuesSection />);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the new venue once, and puts its events on /my → Events', () => {
+    const mutate = recordRefreshes();
+    const view = render(<MyVenuesSection />);
+
+    resolveAdd('form');
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate).toHaveBeenCalledWith({ venueId: 'v1' });
+    expect(invalidateMyEvents).toHaveBeenCalled();
+    // What the scrape found is opened, as after a click on Refresh.
+    expect(screen.getByText('Wesele')).toBeInTheDocument();
+
+    view.rerender(<MyVenuesSection />);
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does the same for a venue added from Elsewhere', () => {
+    const mutate = recordRefreshes();
+    render(<MyVenuesSection />);
+    resolveAdd('elsewhere');
+    expect(mutate).toHaveBeenCalledWith({ venueId: 'v1' });
+  });
+
+  it('waits for the new venue to be listed before refreshing it', () => {
+    const mutate = recordRefreshes();
+    venuesMock.mockReturnValue({ data: [], isLoading: false, error: null });
+    const view = render(<MyVenuesSection />);
+
+    resolveAdd('form');
+    expect(mutate).not.toHaveBeenCalled();
+
+    venuesMock.mockReturnValue({ data: [venue], isLoading: false, error: null });
+    view.rerender(<MyVenuesSection />);
+    expect(mutate).toHaveBeenCalledWith({ venueId: 'v1' });
   });
 });
 
