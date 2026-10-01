@@ -1040,6 +1040,9 @@ export async function sendNewsletterBriefs(
         recipientName: sub.recipientName,
         festivals,
         now,
+        // Event-first or venue-first, in the reader's venue order (GOI-140/141).
+        groupBy: sub.groupBy,
+        venueOrder: sub.venueOrder,
         // The daily poster's "Want to go" and its masthead number. Only the
         // filed PDF draws the poster, so an email-only reader costs no query.
         savedEventIds: deliversToDrive(sub.delivery) && sub.wantToGo.enabled

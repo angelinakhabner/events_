@@ -19,6 +19,10 @@ const Env = z.object({
   /** Per-run ceiling on detail-page fetches during description enrichment
    *  (GOI-79). Each one is an HTTP request plus a model call. */
   MAX_DETAIL_FETCHES: z.coerce.number().int().min(0).default(50),
+  /** The same ceiling for a theatre (GOI-136). Higher because theatre is where
+   *  shows were left undescribed when a run ran out, and a show is written
+   *  once in its life, so the extra budget is only spent on new shows. */
+  THEATRE_MAX_DETAIL_FETCHES: z.coerce.number().int().min(0).default(150),
   /**
    * The pre-auth invite gate (GOI-83). Default TRUE: the site is closed unless
    * a deployment says otherwise, so forgetting to set it fails closed. Set to

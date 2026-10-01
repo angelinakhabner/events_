@@ -2,7 +2,7 @@ import { isExhibition, type Event, type Venue } from '@afisz/shared';
 import { categoryLabel, formatEventTime, formatExhibitionRange } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 import { EventActions } from './EventActions';
-import { ExpandableText } from './ExpandableText';
+import { EventDescription } from './EventDescription';
 
 interface Props {
   event: Event;
@@ -42,9 +42,7 @@ export function EventCard({ event, venue }: Props) {
           <span className="text-ink">{v?.name ?? 'Nieznane miejsce'}</span>
           {v ? <span className="text-muted">{categoryLabel(v.category)}</span> : null}
         </div>
-        {event.description ? (
-          <ExpandableText text={event.description} className="mt-2.5" />
-        ) : null}
+        <EventDescription event={event} venueName={v?.name} />
         <EventActions event={event} />
       </div>
     </article>

@@ -61,6 +61,10 @@ export const events = pgTable(
     venueId: uuid('venue_id').notNull().references(() => venues.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     description: text('description'),
+    /** A fuller paragraph about the work, for the newsletter's "full"
+     *  description and the expanded card (GOI-139). Null when the writer had
+     *  nothing to add to the short one. */
+    descriptionLong: text('description_long'),
     /** For an exhibition this is the opening date at local midnight — the
      *  range's left edge, not a showtime. See `kind`. */
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
@@ -311,6 +315,10 @@ export const newsletterSubscriptions = pgTable(
     /** Venues within the folder the brief covers; empty = all of them. It
      *  narrows the folder and never writes back to it. */
     venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+    /** event | venue — what the brief lists things under (GOI-141). */
+    groupBy: text('group_by').notNull().default('event'),
+    /** The reader's own venue order, first first (GOI-140). */
+    venueOrder: text('venue_order').array().notNull().default(sql`ARRAY[]::text[]`),
     /** The after-hour half of this pair moved onto each category rule in 0026
      *  — see NewsletterTimeFilter for why. This half has no UI and stays. */
     beforeHour: integer('before_hour'),
@@ -459,8 +467,14 @@ export const eventDescriptions = pgTable(
     showKey: text('show_key').notNull(),
     /** Null: looked, and found nothing to say. */
     description: text('description'),
+    /** The fuller paragraph (GOI-139). Null: nothing more to say, or written
+     *  before the writer produced one — see `writerVersion`. */
+    longDescription: text('long_description'),
     contentCategory: text('content_category'),
     searched: boolean('searched').notNull().default(false),
+    /** Which prompt wrote this answer. Older answers are applied but rewritten
+     *  once to catch up (GOI-139). */
+    writerVersion: integer('writer_version').notNull().default(1),
     /** Language the description is written in. Only the site's own is read
      *  back (0033); anything else is rewritten in place. */
     lang: text('lang').notNull().default('en'),

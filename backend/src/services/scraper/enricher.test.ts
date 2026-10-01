@@ -554,6 +554,67 @@ describe('enrichDescriptions — writing every show once', () => {
     expect(events[2]!.description).toBeNull();
   });
 
+  /** GOI-139: the long description rides on every showing, like the short. */
+  it('puts the long description on every showing of a show', async () => {
+    const url = 'https://teatr.example/spektakl/trojanki';
+    const events = [1, 2].map(() => ({ title: 'Trojanki', source_url: url, description: null }) as
+      { title: string; source_url: string; description: string | null; long_description?: string | null });
+    const { store, saved } = memoryStore();
+
+    await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: store, fetcher: page('t'.repeat(100)),
+      client: {
+        describe: async () => ({
+          description: 'A tragedy.', longDescription: 'A longer account of the tragedy.',
+          inputTokens: 1, outputTokens: 1,
+        }),
+      },
+    });
+
+    expect(events.map((e) => e.long_description)).toEqual([
+      'A longer account of the tragedy.', 'A longer account of the tragedy.',
+    ]);
+    expect(saved[0]!.longDescription).toBe('A longer account of the tragedy.');
+  });
+
+  /**
+   * GOI-139: answers written before the long description existed are applied
+   * as they stand and rewritten once — after every never-written show, so a
+   * blank row is never left waiting behind a short one gaining a paragraph.
+   */
+  it('applies an older answer, and rewrites it after the never-written shows', async () => {
+    const old = 'https://teatr.example/spektakl/old';
+    const fresh = 'https://teatr.example/spektakl/new';
+    const events = [
+      { title: 'Old', source_url: old, description: null },
+      { title: 'New', source_url: fresh, description: null },
+    ] as Array<{ title: string; source_url: string; description: string | null; long_description?: string | null }>;
+    const { store } = memoryStore({
+      [old]: { description: 'Short only.', contentCategory: null, stale: true },
+    });
+    const describe_ = vi.fn(async (args: { title?: string }) => ({
+      description: `${args.title} short.`, longDescription: `${args.title} long.`,
+      inputTokens: 1, outputTokens: 1,
+    }));
+
+    // Budget for one: the new show is written, the old one keeps its answer.
+    await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, maxFetches: 1, written: store,
+      fetcher: page('o'.repeat(100)), client: { describe: describe_ },
+    });
+    expect(describe_.mock.calls.map((c) => c[0].title)).toEqual(['New']);
+    expect(events[0]!.description).toBe('Short only.');
+    expect(events[1]!.long_description).toBe('New long.');
+
+    // With budget, the old one is rewritten and gains its long description.
+    await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, written: store,
+      fetcher: page('o'.repeat(100)), client: { describe: describe_ },
+    });
+    expect(events[0]!.description).toBe('Old short.');
+    expect(events[0]!.long_description).toBe('Old long.');
+  });
+
   it('writes everything when the store lookup fails', async () => {
     const events = [{ title: 'W', source_url: 'https://teatr.example/spektakl/w', description: null }];
     const store: WrittenStore = {
@@ -607,11 +668,30 @@ describe('describer prompt and reply (GOI-130 / GOI-131)', () => {
 
   it('finds the labels after text the model wrote before searching', () => {
     const r = parseReply('Let me look this up.CATEGORY: performance\nDESCRIPTION: A tragedy of the women of Troy.');
-    expect(r).toEqual({ category: 'performance', description: 'A tragedy of the women of Troy.' });
+    expect(r).toEqual({
+      category: 'performance', description: 'A tragedy of the women of Troy.', longDescription: null,
+    });
   });
 
   it('does not swallow the description into the category when both share a line', () => {
     const r = parseReply('CATEGORY: screening DESCRIPTION: A documentary about bees.');
-    expect(r).toEqual({ category: 'screening', description: 'A documentary about bees.' });
+    expect(r).toEqual({ category: 'screening', description: 'A documentary about bees.', longDescription: null });
+  });
+
+  // GOI-139: the third line.
+  it('reads the long description off its own line', () => {
+    const r = parseReply(
+      'CATEGORY: performance\nDESCRIPTION: A tragedy of the women of Troy.\n' +
+      'LONG: Euripides\u2019 play follows the women of Troy after the city falls. Directed by Maja Kleczewska.',
+    );
+    expect(r.description).toBe('A tragedy of the women of Troy.');
+    expect(r.longDescription).toBe(
+      'Euripides\u2019 play follows the women of Troy after the city falls. Directed by Maja Kleczewska.',
+    );
+  });
+
+  it('takes LONG: NONE, or a long one that repeats the short, as no long description', () => {
+    expect(parseReply('CATEGORY: other\nDESCRIPTION: A talk.\nLONG: NONE').longDescription).toBeNull();
+    expect(parseReply('CATEGORY: other\nDESCRIPTION: A talk.\nLONG: A talk.').longDescription).toBeNull();
   });
 });

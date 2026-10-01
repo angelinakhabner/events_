@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type {
   EventChangeType, NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail,
-  NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
+  NewsletterGroupBy, NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
   NewsletterWantToGo,
 } from '@afisz/shared';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
@@ -31,6 +31,8 @@ export interface NewsletterSaveInput {
   name?: string;
   sendCadence: NewsletterSendCadence;
   venueIds: string[];
+  groupBy?: NewsletterGroupBy;
+  venueOrder?: string[];
   beforeHour?: number | null;
   sendHour?: number;
   sendMinute?: number;
@@ -137,6 +139,8 @@ function toSettings(row: Row, rules: NewsletterCategoryRule[]): NewsletterSettin
     sendMinute: row.sendMinute,
     timezone: row.timezone,
     venueIds: row.venueIds,
+    groupBy: row.groupBy === 'venue' ? 'venue' : 'event',
+    venueOrder: row.venueOrder ?? [],
     beforeHour: row.beforeHour,
     suppressEmptyIssues: row.suppressEmptyIssues,
     wantToGo: { ...DEFAULT_WANT_TO_GO, ...(row.wantToGo ?? {}) },
@@ -270,6 +274,8 @@ export class DbNewsletterStore implements NewsletterStore {
       delivery: input.delivery ?? 'email',
       sendCadence: input.sendCadence,
       venueIds: input.venueIds,
+      groupBy: input.groupBy ?? 'event',
+      venueOrder: input.venueOrder ?? [],
       beforeHour: input.beforeHour ?? null,
       sendHour: norm.sendHour,
       sendMinute: norm.sendMinute,
@@ -497,6 +503,8 @@ export class InMemoryNewsletterStore implements NewsletterStore {
       sendMinute: norm.sendMinute,
       timezone: norm.timezone,
       venueIds: [...input.venueIds],
+      groupBy: input.groupBy ?? 'event',
+      venueOrder: [...(input.venueOrder ?? [])],
       beforeHour: input.beforeHour ?? null,
       suppressEmptyIssues: norm.suppressEmptyIssues,
       wantToGo: norm.wantToGo,

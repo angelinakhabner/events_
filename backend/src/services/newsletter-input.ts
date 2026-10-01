@@ -54,6 +54,10 @@ export const newsletterSaveInput = z
     sendCadence: sendCadence,
     /** Venues within the folder; empty = all of them. */
     venueIds: z.array(z.string()).default([]),
+    /** Event-first or venue-first (GOI-141). */
+    groupBy: z.enum(['event', 'venue']).default('event'),
+    /** The reader's own venue order (GOI-140). */
+    venueOrder: z.array(z.string()).max(200).default([]),
     beforeHour: z.number().int().min(0).max(23).nullable().optional(),
     /** Hour the issue is sent at. */
     sendHour: z.number().int().min(0).max(23).default(8),

@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
-  NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterGroupBy,
+  NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
+  NewsletterWantToGo,
 } from '@afisz/shared';
 import {
-  allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
+  allowedRuleCadences, byVenueOrder, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive,
+  deriveWindow,
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { newsletterApiIsStale, OLDER_API, readableApiError } from '../lib/api-error';
@@ -70,6 +72,11 @@ function deriveWindowDays(
   const { from, to } = deriveWindow({ sendCadence }, { ...rule, lookaheadDays: null }, new Date());
   return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
+
+/** How long the form waits after the last change before autosaving (GOI-142):
+ *  long enough not to save every keystroke of a name, short enough that
+ *  leaving the page straight after a change rarely loses it. */
+const AUTOSAVE_DELAY_MS = 800;
 
 /** "1 day" / "7 days". */
 function daysPhrase(n: number): string {
@@ -311,6 +318,8 @@ function NewsletterForm({
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
   const [sendDayOfMonth, setSendDayOfMonth] = useState(saved?.sendDayOfMonth ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
+  const [groupBy, setGroupBy] = useState<NewsletterGroupBy>(saved?.groupBy ?? 'event');
+  const [venueOrder, setVenueOrder] = useState<string[]>(saved?.venueOrder ?? []);
   const [rules, setRules] = useState<NewsletterCategoryRule[]>(saved?.categoryRules ?? []);
   /**
    * The only thing left to decide about the saved-events queue is whether it
@@ -331,17 +340,35 @@ function NewsletterForm({
   /** What changing the send cadence did to the rules, shown once (GOI-102). */
   const [reconciled, setReconciled] = useState<string[]>([]);
 
-  /** Venues grouped under their folder, mirroring the "My venues" tab. */
+  /** Venues grouped under their folder, mirroring the "My venues" tab — each
+   *  folder in the reader's own order (GOI-140). */
   const byFolder = useMemo(() => {
+    const ordered = byVenueOrder(venues, (v) => v.id, venueOrder);
     const groups = folders.map((f) => ({
       id: f.id as string | null,
       name: f.name,
-      venues: venues.filter((v) => v.listId === f.id),
+      venues: ordered.filter((v) => v.listId === f.id),
     }));
-    const unfiled = venues.filter((v) => !folders.some((f) => f.id === v.listId));
+    const unfiled = ordered.filter((v) => !folders.some((f) => f.id === v.listId));
     if (unfiled.length) groups.push({ id: null, name: 'Bez folderu', venues: unfiled });
     return groups.filter((g) => g.venues.length > 0);
-  }, [venues, folders]);
+  }, [venues, folders, venueOrder]);
+
+  /**
+   * Move a venue one place up or down among its folder's venues (GOI-140).
+   * The whole order is written out each time, so a venue that was never
+   * placed gets a position the moment any venue moves.
+   */
+  const moveVenue = (folderVenues: PickableVenue[], id: string, by: -1 | 1) => {
+    const at = folderVenues.findIndex((v) => v.id === id);
+    const other = folderVenues[at + by];
+    if (!other) return;
+    const all = byFolder.flatMap((f) => f.venues.map((v) => v.id));
+    const i = all.indexOf(id);
+    const j = all.indexOf(other.id);
+    [all[i], all[j]] = [all[j]!, all[i]!];
+    setVenueOrder(all);
+  };
 
   /**
    * Everything a rule can name: the built-in event categories your venues
@@ -460,6 +487,8 @@ function NewsletterForm({
     sendWeekday,
     sendDayOfMonth,
     venueIds,
+    groupBy,
+    venueOrder,
     rules,
     wantToGo,
     enabled,
@@ -505,6 +534,44 @@ function NewsletterForm({
    */
   const emptyByConstruction = rules.length === 0 && !wantToGo.enabled;
 
+  /**
+   * Autosave (GOI-142).
+   *
+   * A newsletter that already exists saves itself a moment after the reader
+   * stops changing it — no button between a dropdown and the stored setting.
+   * A new one is still created by its button: creating it is what starts the
+   * emails, and a form being filled in for the first time should not begin
+   * mailing someone the moment its email field happens to look valid.
+   *
+   * What was last stored is remembered as the payload it came from, so an
+   * autosave only fires for a real difference, and a payload the server just
+   * refused is not re-sent in a loop — the next edit is.
+   */
+  const bodyKey = JSON.stringify(body);
+  const storedKey = useRef<string | null>(saved ? bodyKey : null);
+  const refusedKey = useRef<string | null>(null);
+  const pendingRef = useRef(false);
+  pendingRef.current = save.isPending;
+  const sendSave = () => {
+    const sent = bodyKey;
+    save.mutate(body, {
+      onSuccess: () => { storedKey.current = sent; refusedKey.current = null; },
+      onError: () => { refusedKey.current = sent; },
+    });
+  };
+  const autosaves = !!saved && !staleApi;
+  const latest = useRef(sendSave);
+  latest.current = sendSave;
+  useEffect(() => {
+    if (!autosaves || save.isPending) return;
+    if (bodyKey === storedKey.current || bodyKey === refusedKey.current) return;
+    if (emptyByConstruction || !/^\S+@\S+\.\S+$/.test(email.trim())) return;
+    const t = setTimeout(() => {
+      if (!pendingRef.current) latest.current();
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [autosaves, bodyKey, save.isPending, emptyByConstruction, email]);
+
   return (
     <section>
       {staleApi ? <StaleApiBanner /> : null}
@@ -525,7 +592,7 @@ function NewsletterForm({
         onSubmit={(e) => {
           e.preventDefault();
           if (emptyByConstruction) return;
-          save.mutate(body);
+          sendSave();
         }}
       >
         {/* What tells two newsletters apart in the row above (GOI-126). */}
@@ -611,24 +678,58 @@ function NewsletterForm({
                     second way to do it that could disagree. */}
                 <a href="/my?tab=venues" className="act act-sm">Dodaj miejsca</a>
               </p>
-              <div className="flex flex-wrap gap-x-5 gap-y-2.5">
-                {folder.venues.map((v) => (
-                  <label key={v.id} className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={venueIds.includes(v.id)}
-                      onChange={() => toggleVenue(v.id)}
-                      className="checkbox"
-                    />
-                    {v.name}
-                  </label>
+              {/* A list rather than a wrapping row since GOI-140: "up" and
+                  "down" only mean something when the order reads top to
+                  bottom. */}
+              <ol className="list-none m-0 p-0">
+                {folder.venues.map((v, i) => (
+                  <li key={v.id} className="flex items-center gap-3 py-1">
+                    <label className="flex flex-1 items-center gap-2 text-[13px] font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={venueIds.includes(v.id)}
+                        onChange={() => toggleVenue(v.id)}
+                        className="checkbox"
+                      />
+                      {v.name}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => moveVenue(folder.venues, v.id, -1)}
+                      disabled={i === 0}
+                      aria-label={`Przesuń ${v.name} w górę`}
+                      className="act act-sm disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveVenue(folder.venues, v.id, 1)}
+                      disabled={i === folder.venues.length - 1}
+                      aria-label={`Przesuń ${v.name} w dół`}
+                      className="act act-sm disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ol>
             </div>
           ))}
           {venues.length === 0 ? (
             <span className="text-sm text-muted">Najpierw dodaj miejsca w sekcji &bdquo;Moje miejsca&rdquo;.</span>
           ) : null}
+
+          {/* GOI-141: what the brief lists things under. */}
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+            <span className="label-caps">Układ</span>
+            <GroupByToggle value={groupBy} onChange={setGroupBy} />
+            <span className="text-xs text-faint">
+              {groupBy === 'venue'
+                ? 'Każde miejsce raz, w kolejności powyżej, z tym, co się w nim dzieje.'
+                : 'Każde wydarzenie raz, ze wszystkimi miejscami i terminami. Miejsca w kolejności powyżej.'}
+            </span>
+          </div>
         </FormSection>
 
         {/* GOI-102 §1. The envelope, stated on its own and before the
@@ -878,7 +979,8 @@ function NewsletterForm({
         {/* GOI-102 §5: the screen used to give no sign that a dropdown change
             had persisted, so "did that save?" had no answer but reloading. */}
         <SaveState
-          dirty={!justSaved && (save.isIdle || save.isSuccess)}
+          dirty={!justSaved && (save.isIdle || save.isSuccess) && bodyKey !== storedKey.current}
+          autosaves={autosaves}
           pending={save.isPending}
           justSaved={justSaved}
           error={readableApiError(save.error?.message, NEWSLETTER_FIELDS)}
@@ -1230,11 +1332,15 @@ function Check({
  */
 function SaveState({
   dirty,
+  autosaves,
   pending,
   justSaved,
   error,
 }: {
   dirty: boolean;
+  /** Changes save themselves (GOI-142) — only a new newsletter waits for the
+   *  button. */
+  autosaves: boolean;
   pending: boolean;
   justSaved: boolean;
   error: string | null;
@@ -1246,10 +1352,14 @@ function SaveState({
   }
   if (pending) return <p role="status" className="mt-3 text-sm text-muted">Zapisywanie…</p>;
   if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Zapisano.</p>;
+  if (autosaves) {
+    return <p className="mt-3 text-sm text-faint">Zmiany zapisują się automatycznie.</p>;
+  }
   if (dirty) {
     return (
       <p className="mt-3 text-sm text-faint">
-        Zmiany nie są zapisane, dopóki nie klikniesz <strong>Zaplanuj newsletter</strong>.
+        Nic nie zostanie wysłane, dopóki nie klikniesz <strong>Zaplanuj newsletter</strong>. Potem
+        zmiany zapisują się automatycznie.
       </p>
     );
   }
@@ -1270,6 +1380,41 @@ function SaveState({
  * among mutually exclusive options, which is what a radio group means, and it
  * gets arrow-key navigation from the platform for free.
  */
+/** Event-first or venue-first (GOI-141), drawn like the schedule toggle. */
+function GroupByToggle({
+  value,
+  onChange,
+}: {
+  value: NewsletterGroupBy;
+  onChange: (v: NewsletterGroupBy) => void;
+}) {
+  const options: { value: NewsletterGroupBy; label: string }[] = [
+    { value: 'event', label: 'Według wydarzeń' },
+    { value: 'venue', label: 'Według miejsc' },
+  ];
+  return (
+    <div role="radiogroup" aria-label="Układ" className="flex border-2 border-ink">
+      {options.map((o, i) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.value)}
+            className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+              i < options.length - 1 ? 'border-r-2 border-ink' : ''
+            } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ScheduleToggle({
   value,
   onChange,

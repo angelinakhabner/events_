@@ -72,6 +72,64 @@ beforeAll(async () => {
 });
 
 describe('MyPage — newsletter end-to-end', () => {
+  /** GOI-142: a newsletter that exists saves its changes by itself. */
+  it('autosaves a change to a saved newsletter, with no button pressed', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const form = async () => (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+
+    // Created by its button the first time: nothing is sent before that. The
+    // form is mounted afresh for the newsletter it created.
+    if (!(await defaultNewsletterStore.get(userId))) {
+      const first = await form();
+      expect(within(first).getByText(/nic nie zostanie wysłane, dopóki nie klikniesz/i)).toBeInTheDocument();
+      await user.click(within(first).getByRole('button', { name: /zaplanuj newsletter/i }));
+      await waitFor(async () => expect(await defaultNewsletterStore.get(userId)).not.toBeNull());
+    }
+    expect(await screen.findByText(/zmiany zapisują się automatycznie/i, {}, { timeout: 4000 })).toBeInTheDocument();
+    const section = await form();
+
+    await user.selectOptions(within(section).getByLabelText(/^godzina$/i), '21');
+
+    await waitFor(
+      async () => expect((await defaultNewsletterStore.get(userId))?.sendHour).toBe(21),
+      { timeout: 4000 },
+    );
+    expect(await within(section).findByText('Zapisano.')).toBeInTheDocument();
+  });
+
+  /** GOI-140 / GOI-141: the reader's venue order, and venue-first listing. */
+  it('reorders venues and lists by venue, and saves both', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+
+    const downs = await within(section).findAllByRole('button', { name: /^przesuń .* w dół$/i });
+    const first = downs[0]!.getAttribute('aria-label')!.replace(/^Przesuń | w dół$/g, '');
+    await user.click(downs[0]!);
+    // It is second now: it can go up, and the first row's "up" is disabled.
+    expect(within(section).getByRole('button', { name: `Przesuń ${first} w górę` })).toBeEnabled();
+    expect(within(section).getAllByRole('button', { name: /^przesuń .* w górę$/i })[0]).toBeDisabled();
+    const second = within(section).getAllByRole('button', { name: /^przesuń .* w dół$/i })[1]!;
+    expect(second).toHaveAccessibleName(`Przesuń ${first} w dół`);
+
+    await user.click(within(section).getByRole('radio', { name: 'Według miejsc' }));
+    expect(within(section).getByText(/każde miejsce raz, w kolejności powyżej/i)).toBeInTheDocument();
+
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
+
+    const saved = await defaultNewsletterStore.get(userId);
+    expect(saved?.groupBy).toBe('venue');
+    // The whole order is written out, with the moved venue second.
+    expect(saved?.venueOrder.length).toBeGreaterThan(1);
+    expect(new Set(saved?.venueOrder).size).toBe(saved?.venueOrder.length);
+  });
+
   it('prefills the login email, saves settings, and persists them', async () => {
     const user = userEvent.setup();
     renderPage();

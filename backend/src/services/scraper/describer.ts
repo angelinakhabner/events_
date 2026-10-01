@@ -3,14 +3,22 @@ import { env } from '../../config.js';
 import { MODEL } from './extractor.js';
 import type { DescribeInput, DescriptionClient, DescriptionResult } from './enricher.js';
 
-/** Two sentences is comfortably under this even with a search's tool calls
- *  in the reply. The ceiling exists to bound the bill, not to shape the
- *  answer. */
-const MAX_TOKENS = 1_500;
+/** Two sentences and a paragraph (GOI-139) are comfortably under this even
+ *  with a search's tool calls in the reply. The ceiling exists to bound the
+ *  bill, not to shape the answer. */
+const MAX_TOKENS = 2_000;
 
 /** Searches one show may spend. One usually finds it; the second is for a
  *  title that needs the venue or the director beside it to disambiguate. */
 const MAX_SEARCHES = 2;
+
+/**
+ * A theatre's show gets one more (GOI-136). Theatre pages are the ones most
+ * often silent about the work — a cast list, a running time and the stage —
+ * and a play's premise usually sits in a review or the publisher's note
+ * rather than the first result, so theatre is where the blanks were left.
+ */
+const THEATRE_SEARCHES = 3;
 
 /** `pause_turn` continuations before giving up on a show (it is retried next
  *  run, not lost). */
@@ -20,17 +28,19 @@ const SYSTEM = `You write event descriptions for a Polish-language listings app 
 
 You are given what is known about one event: its title, the venue, the venue's own listing note, and usually the text of the event's page. These are usually in Polish, sometimes in English or another language.
 
-Reply with exactly two lines and nothing else:
+Reply with exactly three lines and nothing else:
 
 CATEGORY: <one of: exhibition, guided_tour, workshop, screening, lecture, concert, performance, festival, other>
-DESCRIPTION: <in Polish: what the work itself is about>
+DESCRIPTION: <in Polish: what the work itself is about, short>
+LONG: <in Polish: a fuller paragraph about the work>
 
 Rules:
-- Always write the description in Polish, whatever language the sources are in. Translate; never copy sentences in another language. Keep proper names (titles, people, places) as they are.
-- Describe the work — what the film, play, concert or exhibition is about, and who made it. At most 2 sentences, ideally 1.
+- Always write both descriptions in Polish, whatever language the sources are in. Translate; never copy sentences in another language. Keep proper names (titles, people, places) as they are.
+- DESCRIPTION: describe the work — what the film, play, concert or exhibition is about, and who made it. At most 2 sentences, ideally 1.
+- LONG: 3 to 6 sentences on one line, for a reader deciding whether to go: the story or premise, the themes, who wrote, directed, performs or curated it, and what is distinctive about it. Use only what the sources support; it must not repeat DESCRIPTION word for word. If the sources say no more than DESCRIPTION already does, write: LONG: NONE.
 - Never describe logistics: the stage or room, subtitles or surtitles, the language it is performed in, ticket prices, discounts, booking, opening hours, accessibility, the address. "Spektakl na Dużej Scenie z angielskimi napisami" is not a description.
 - If the material you were given does not say what the work is about, search the web for it (the title with the venue, or the work itself — a film's synopsis, a play's premise, an artist's show) and describe it from what you find. Use only results that are clearly about this same work.
-- If you still cannot tell what it is about, write: DESCRIPTION: NONE. Never invent.
+- If you still cannot tell what it is about, write: DESCRIPTION: NONE and LONG: NONE. Never invent.
 - CATEGORY must be one of the listed values exactly. Use "other" if unsure.`;
 
 /**
@@ -40,11 +50,18 @@ Rules:
  * itself takes the block as written, and the rest of this file only ever
  * reads the reply's text blocks, which the old types do describe.
  */
-const WEB_SEARCH = {
-  type: 'web_search_20260209',
-  name: 'web_search',
-  max_uses: MAX_SEARCHES,
-} as unknown as Anthropic.Tool;
+function webSearch(maxUses: number): Anthropic.Tool {
+  return {
+    type: 'web_search_20260209',
+    name: 'web_search',
+    max_uses: maxUses,
+  } as unknown as Anthropic.Tool;
+}
+
+/** How many searches a show may spend: theatre gets one more (GOI-136). */
+export function searchBudget(venue?: { category: string }): number {
+  return venue?.category === 'theatre' ? THEATRE_SEARCHES : MAX_SEARCHES;
+}
 
 /**
  * Writes one show's description (GOI-79, then GOI-130 / GOI-131).
@@ -69,14 +86,15 @@ export class AnthropicDescriber implements DescriptionClient {
 
   async describe(input: DescribeInput): Promise<DescriptionResult> {
     const messages: Anthropic.MessageParam[] = [{ role: 'user', content: describePrompt(input) }];
+    const searches = searchBudget(input.venue);
     let resp: Anthropic.Message;
     try {
-      resp = await this.create(messages);
+      resp = await this.create(messages, searches);
     } catch (e) {
       if (!(this.searchAvailable && e instanceof Anthropic.BadRequestError)) throw e;
       // Only blame the tool if the same request goes through without it; a
       // 400 about something else must not switch search off for the process.
-      resp = await this.create(messages, false);
+      resp = await this.create(messages, 0);
       console.warn(`[describer] web search rejected, describing from the page alone: ${e.message}`);
       this.searchAvailable = false;
     }
@@ -89,7 +107,7 @@ export class AnthropicDescriber implements DescriptionClient {
     // the turn back resumes it where it stopped.
     for (let n = 0; (resp.stop_reason as string) === 'pause_turn' && n < MAX_CONTINUATIONS; n++) {
       messages.push({ role: 'assistant', content: resp.content });
-      resp = await this.create(messages);
+      resp = await this.create(messages, searches);
       inputTokens += resp.usage.input_tokens;
       outputTokens += resp.usage.output_tokens;
       searched ||= usedSearch(resp);
@@ -103,6 +121,9 @@ export class AnthropicDescriber implements DescriptionClient {
     const parsed = parseReply(raw);
     return {
       description: parsed.description,
+      // Only alongside a short one: a long paragraph about a show the writer
+      // could not describe in a sentence would be invention.
+      longDescription: parsed.description ? parsed.longDescription : null,
       // GOI-80 step 2: the classification rides along on this call rather than
       // costing a second one. `classifyEvent` ignores it whenever the keyword
       // pass already answered, so an unnecessary value here is harmless.
@@ -113,13 +134,14 @@ export class AnthropicDescriber implements DescriptionClient {
     };
   }
 
-  private create(messages: Anthropic.MessageParam[], search = this.searchAvailable): Promise<Anthropic.Message> {
+  private create(messages: Anthropic.MessageParam[], searches: number): Promise<Anthropic.Message> {
+    const search = this.searchAvailable && searches > 0;
     return this.client.messages.create({
       model: this.model,
       max_tokens: MAX_TOKENS,
       system: SYSTEM,
       messages,
-      ...(search ? { tools: [WEB_SEARCH] } : {}),
+      ...(search ? { tools: [webSearch(searches)] } : {}),
     });
   }
 }
@@ -143,20 +165,35 @@ function usedSearch(resp: Anthropic.Message): boolean {
 }
 
 /**
- * Split the two-line reply. Tolerant on purpose: a model that answers with
- * only a description still yields one, and a missing category simply leaves
- * the row to the keyword pass and the 'other' fallback.
+ * Split the three-line reply. Tolerant on purpose: a model that answers with
+ * only a description still yields one, a missing LONG leaves the long
+ * description empty (GOI-139), and a missing category simply leaves the row to
+ * the keyword pass and the 'other' fallback.
  */
-export function parseReply(raw: string): { description: string | null; category: string | null } {
+export function parseReply(raw: string): {
+  description: string | null;
+  longDescription: string | null;
+  category: string | null;
+} {
   // Unanchored: with web search on, the reply's text blocks are joined as
   // they came, so a sentence the model wrote before searching can sit on the
   // same line as the first label.
   const category = raw.match(/CATEGORY:[ \t]*([a-z_]+)/i)?.[1]?.trim().toLowerCase() ?? null;
-  const described = raw.match(/DESCRIPTION:\s*([\s\S]*)$/i)?.[1];
+  const longAt = raw.search(/\bLONG:/i);
+  const head = longAt >= 0 ? raw.slice(0, longAt) : raw;
+  const long = longAt >= 0 ? raw.slice(longAt).replace(/^LONG:/i, '') : null;
+  const described = head.match(/DESCRIPTION:\s*([\s\S]*)$/i)?.[1];
   // No labels at all — treat the whole reply as the description, which is what
   // the pre-GOI-80 prompt produced.
-  const body = described ?? (category ? '' : raw);
-  return { description: normalize(body), category: category || null };
+  const body = described ?? (category || long !== null ? '' : raw);
+  const description = normalize(body);
+  const longDescription = long === null ? null : normalize(long);
+  return {
+    description,
+    // A "long" one that only repeats the short one adds nothing.
+    longDescription: longDescription && longDescription !== description ? longDescription : null,
+    category: category || null,
+  };
 }
 
 /**

@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
-import type { WrittenDetail, WrittenStore } from './scraper/enricher.js';
+import { WRITER_VERSION, type WrittenDetail, type WrittenStore } from './scraper/enricher.js';
 
 /**
  * How long "found nothing" is believed (GOI-131).
@@ -30,7 +30,9 @@ export function descriptionStore(venueId: string): WrittenStore {
         .select({
           showKey: schema.eventDescriptions.showKey,
           description: schema.eventDescriptions.description,
+          longDescription: schema.eventDescriptions.longDescription,
           contentCategory: schema.eventDescriptions.contentCategory,
+          writerVersion: schema.eventDescriptions.writerVersion,
         })
         .from(schema.eventDescriptions)
         .where(
@@ -45,7 +47,12 @@ export function descriptionStore(venueId: string): WrittenStore {
           ),
         );
       for (const r of rows) {
-        out.set(r.showKey, { description: r.description, contentCategory: r.contentCategory });
+        out.set(r.showKey, {
+          description: r.description,
+          longDescription: r.longDescription,
+          contentCategory: r.contentCategory,
+          stale: r.writerVersion < WRITER_VERSION,
+        });
       }
       return out;
     },
@@ -59,8 +66,10 @@ export function descriptionStore(venueId: string): WrittenStore {
           venueId,
           showKey: e.key,
           description: e.description,
+          longDescription: e.longDescription ?? null,
           contentCategory: e.contentCategory,
           searched: e.searched ?? false,
+          writerVersion: WRITER_VERSION,
           lang: DESCRIPTION_LANG,
           writtenAt: now,
         })))
@@ -68,6 +77,8 @@ export function descriptionStore(venueId: string): WrittenStore {
           target: [schema.eventDescriptions.venueId, schema.eventDescriptions.showKey],
           set: {
             description: sql`excluded.description`,
+            longDescription: sql`excluded.long_description`,
+            writerVersion: sql`excluded.writer_version`,
             contentCategory: sql`excluded.content_category`,
             searched: sql`excluded.searched`,
             lang: sql`excluded.lang`,

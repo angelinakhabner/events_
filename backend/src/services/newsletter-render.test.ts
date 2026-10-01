@@ -822,7 +822,7 @@ describe('renderBriefHtml — the span the masthead names (GOI-110)', () => {
  * date, it should be shown ONCE with all the available dates".
  */
 describe('venueWhen — every date, once', () => {
-  const v = (...startsAt: string[]) => ({ name: 'Powszechny', startsAt });
+  const v = (...startsAt: string[]) => ({ name: 'Powszechny', venueId: 'v9', startsAt });
 
   it('gives the times alone for one day', () => {
     expect(venueWhen(v('2026-09-07T18:00:00+02:00', '2026-09-07T20:30:00+02:00'))).toBe('18:00, 20:30');
@@ -864,5 +864,81 @@ describe('dayList', () => {
   it('files a small-hours showing under its Warsaw day', () => {
     // 00:30 on the 8th in Warsaw is still the 7th in UTC.
     expect(dayList(['2026-09-07T22:30:00Z', '2026-09-09T12:00:00Z'])).toBe('8, 9 IX');
+  });
+});
+
+/** GOI-139: "full" and "short" used to print the same sentence. */
+describe('renderBriefHtml — the description a section asks for', () => {
+  const show = makeEvent({
+    title: 'Trojanki',
+    description: 'A tragedy of the women of Troy.',
+    descriptionLong: 'After Troy falls, its women wait to learn which Greek will take them.',
+  });
+  const at = (detail: BriefSection['detail']) =>
+    render({ sections: [section({ detail, events: [show] })] });
+
+  it('prints the long description for "full"', () => {
+    const html = at('full');
+    expect(html).toContain('After Troy falls');
+    expect(html).not.toContain('A tragedy of the women of Troy.');
+  });
+
+  it('prints the short one for "short", and none for "one line"', () => {
+    expect(at('short')).toContain('A tragedy of the women of Troy.');
+    expect(at('short')).not.toContain('After Troy falls');
+    expect(at('line')).not.toContain('A tragedy');
+  });
+
+  it('falls back to the short one for "full" when there is no long one', () => {
+    const html = render({
+      sections: [section({ detail: 'full', events: [{ ...show, descriptionLong: null }] })],
+    });
+    expect(html).toContain('A tragedy of the women of Troy.');
+  });
+});
+
+/**
+ * GOI-141: grouped by venue rather than by event — and GOI-140: in the
+ * reader's own venue order.
+ */
+describe('renderBriefHtml — venue-first, in the reader’s order', () => {
+  const v = (id: string, name: string) => ({ id, name, category: 'cinema' as const, city: 'Warsaw', country: 'PL' });
+  const muranow = v('v-mur', 'Muranów');
+  const kinoteka = v('v-kin', 'Kinoteka');
+  const film = (title: string, venue: ReturnType<typeof v>, iso: string) =>
+    makeEvent({ title, venueId: venue.id, venue, startsAt: iso });
+  const events = [
+    film('Chungking Express', kinoteka, '2026-07-22T18:00:00+02:00'),
+    film('Chungking Express', muranow, '2026-07-22T20:00:00+02:00'),
+    film('Perfect Days', muranow, '2026-07-22T21:00:00+02:00'),
+  ];
+  const brief = (layout: Parameters<typeof render>[0]) =>
+    render({ sections: [section({ category: 'cinema', events })], ...layout });
+
+  it('lists each venue once, with its own events under it', () => {
+    const html = brief({ groupBy: 'venue' });
+    // A heading per venue, in first-event order when no order was chosen.
+    expect(html.indexOf('KINOTEKA')).toBeLessThan(html.indexOf('MURANÓW'));
+    // The film at both is under both.
+    expect(html.match(/Chungking Express/g)).toHaveLength(2);
+    // The venue is the heading, so the card says only when.
+    expect(html).not.toContain('KINOTEKA · 18:00');
+    expect(html).toContain('>18:00</div>');
+  });
+
+  it('puts the venues in the reader’s order', () => {
+    const html = brief({ groupBy: 'venue', venueOrder: ['v-mur', 'v-kin'] });
+    expect(html.indexOf('MURANÓW')).toBeLessThan(html.indexOf('KINOTEKA'));
+  });
+
+  it('orders an event-first card’s venue lines the same way', () => {
+    const html = brief({ venueOrder: ['v-mur'] });
+    expect(html.match(/Chungking Express/g)).toHaveLength(1);
+    expect(html.indexOf('MURANÓW · 20:00')).toBeLessThan(html.indexOf('KINOTEKA · 18:00'));
+  });
+
+  it('counts the cards as they are laid out', () => {
+    expect(brief({ groupBy: 'venue' })).toContain('3 wydarzenia');
+    expect(brief({})).toContain('2 wydarzenia');
   });
 });

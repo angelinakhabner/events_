@@ -40,6 +40,46 @@ const INPUT = {
 beforeEach(() => create.mockReset());
 
 describe('AnthropicDescriber', () => {
+  /** GOI-139: "full" in the newsletter needs more than the short sentence. */
+  it('asks for a long description and returns it beside the short one', async () => {
+    create.mockResolvedValueOnce(reply([
+      text(
+        'CATEGORY: performance\nDESCRIPTION: Euripides’ tragedy of the women of Troy.\n' +
+        'LONG: After Troy falls, its women wait to learn which Greek will take them. ' +
+        'Kleczewska stages Euripides as a chorus of survivors.',
+      ),
+    ]));
+
+    const out = await new AnthropicDescriber('key', 'model-x').describe(INPUT);
+
+    expect(create.mock.calls[0]![0].system).toMatch(/LONG: <in Polish: a fuller paragraph/);
+    expect(out.longDescription).toBe(
+      'After Troy falls, its women wait to learn which Greek will take them. ' +
+      'Kleczewska stages Euripides as a chorus of survivors.',
+    );
+  });
+
+  it('drops a long description when there is no short one — that would be invention', async () => {
+    create.mockResolvedValueOnce(reply([
+      text('CATEGORY: other\nDESCRIPTION: NONE\nLONG: Something it made up.'),
+    ]));
+    const out = await new AnthropicDescriber('key', 'model-x').describe(INPUT);
+    expect(out.description).toBeNull();
+    expect(out.longDescription).toBeNull();
+  });
+
+  /** GOI-136: theatre is where the blanks were, so it may search once more. */
+  it('gives a theatre show three searches and anything else two', async () => {
+    create.mockResolvedValue(reply([text('CATEGORY: other\nDESCRIPTION: A show.')]));
+    const describer = new AnthropicDescriber('key', 'model-x');
+
+    await describer.describe(INPUT);
+    await describer.describe({ ...INPUT, venue: { ...INPUT.venue, category: 'cinema' } });
+
+    expect(create.mock.calls[0]![0].tools[0].max_uses).toBe(3);
+    expect(create.mock.calls[1]![0].tools[0].max_uses).toBe(2);
+  });
+
   it('asks for Polish, offers web search, and returns the description', async () => {
     create.mockResolvedValueOnce(reply([
       text('CATEGORY: performance\nDESCRIPTION: Euripides’ tragedy of the women of Troy.'),
@@ -48,12 +88,13 @@ describe('AnthropicDescriber', () => {
     const out = await new AnthropicDescriber('key', 'model-x').describe(INPUT);
 
     const req = create.mock.calls[0]![0];
-    expect(req.system).toMatch(/Always write the description in Polish/);
+    expect(req.system).toMatch(/Always write both descriptions in Polish/);
     expect(req.system).toMatch(/Never describe logistics/);
     expect(req.tools).toEqual([expect.objectContaining({ type: 'web_search_20260209', name: 'web_search' })]);
     expect(req.messages[0].content).toContain('Listing note: Scena: scena duża');
     expect(out).toEqual({
       description: 'Euripides’ tragedy of the women of Troy.',
+      longDescription: null,
       category: 'performance',
       inputTokens: 100,
       outputTokens: 20,
