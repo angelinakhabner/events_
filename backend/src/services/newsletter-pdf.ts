@@ -6,8 +6,8 @@ import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
 import {
-  groupPicks, pickWhen, sectionLabel, splitByShape, venueLines,
-  type BriefSection, type Pick,
+  countPicks, pickWhen, sectionGroups, sectionLabel, venueLines,
+  type BriefLayout, type BriefSection, type Pick,
 } from './newsletter-render.js';
 import {
   isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
@@ -115,7 +115,7 @@ function fonts(): { regular: Uint8Array; bold: Uint8Array } {
 }
 
 
-export interface BriefPdfContent {
+export interface BriefPdfContent extends BriefLayout {
   sections: BriefSection[];
   /**
    * The saved-events queue (GOI-101), at the top of the brief.
@@ -226,7 +226,7 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
    */
   drawMasthead(doc, { now, days: cadenceDays(content.fallbackFrequency ?? frequency) });
   drawSummary(doc, {
-    picks: countPicks(sections),
+    picks: countPicks(sections, content),
     venues: countVenues(sections),
     name: content.recipientName?.trim() || null,
   });
@@ -235,7 +235,7 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   drawFestivals(doc, content.festivals ?? []);
 
   for (const section of sections) {
-    drawSection(doc, section);
+    drawSection(doc, section, content);
   }
 
   if (events.length === 0 && (!queue || isEmptySection(queue))) {
@@ -248,13 +248,6 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
 
   doc.end();
   return done;
-}
-
-function countPicks(sections: BriefSection[]): number {
-  return sections.reduce(
-    (n, s) => n + groupPicks(s.events).length,
-    0,
-  );
 }
 
 /** How many of the reader's venues the brief actually drew on. */
@@ -458,11 +451,12 @@ function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
 
 // ─── Category sections ───────────────────────────────────────────────────────
 
-function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
-  // One card per title across the section's window, every date on its venue
-  // lines (GOI-36, GOI-138).
-  const picks = groupPicks(section.events);
-  if (picks.length === 0) return;
+function drawSection(doc: PDFKit.PDFDocument, section: BriefSection, layout: BriefLayout): void {
+  // Laid out as the email lays it out — event-first or venue-first, in the
+  // reader's venue order (GOI-36, GOI-138, GOI-140, GOI-141).
+  const groups = sectionGroups(section, layout);
+  const first = groups[0]?.picks[0];
+  if (!first) return;
 
   // The heading is kept with the row it opens. A "TEATR" alone at the foot of
   // a page, with the first play at the head of the next, is worse than a page
@@ -473,12 +467,12 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
   // two renderings of one issue disagreed about what its sections are called
   // (GOI-123). Shared rather than reimplemented, so they cannot drift again.
   if (section.category) {
-    sectionHeading(doc, sectionLabel(section.category), rowHeight(doc, picks[0]!, section));
+    sectionHeading(doc, sectionLabel(section.category), rowHeight(doc, first, section));
   }
 
-  // A museums section is listed in its two halves — runs, then what is on
-  // besides them (GOI-122).
-  for (const group of splitByShape(section, picks)) {
+  // Under subheadings where the layout has them: a museums section's two
+  // halves (GOI-122), or one per venue (GOI-141).
+  for (const group of groups) {
     if (group.label) subHeading(doc, group.label);
     for (const pick of group.picks) {
       // An exhibition has no showtime worth putting in a gutter — it is on all

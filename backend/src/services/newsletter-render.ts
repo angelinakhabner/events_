@@ -1,6 +1,6 @@
-import { isExhibition, titleKey } from '@afisz/shared';
+import { byVenueOrder, isExhibition, titleKey } from '@afisz/shared';
 import type {
-  Event, Festival, NewsletterDetail, NewsletterFrequency,
+  Event, Festival, NewsletterDetail, NewsletterFrequency, NewsletterGroupBy,
 } from '@afisz/shared';
 import type { QueuedChange, QueuedEvent, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
@@ -85,7 +85,9 @@ function oneLine(text: string, max = 120): string {
 
 /** One venue's showings of a title, within whatever a pick covers. */
 export interface ShowingVenue {
+  /** Empty when the venue is already the heading above the row (GOI-141). */
   name: string;
+  venueId: string;
   /** ISO starts, ascending. */
   startsAt: string[];
 }
@@ -149,7 +151,7 @@ export function groupPicks(events: Event[]): Pick[] {
     for (const e of sorted) {
       const name = e.venue?.name ?? '';
       const existing = byVenue.get(name);
-      if (!existing) byVenue.set(name, { name, startsAt: [e.startsAt] });
+      if (!existing) byVenue.set(name, { name, venueId: e.venueId, startsAt: [e.startsAt] });
       else if (!existing.startsAt.some((s) => Date.parse(s) === Date.parse(e.startsAt))) {
         existing.startsAt.push(e.startsAt);
       }
@@ -566,7 +568,7 @@ export function sectionLabel(category: string): string {
 }
 
 /** A run of picks under one optional subheading. */
-interface PickGroup {
+export interface PickGroup {
   label: string | null;
   picks: Pick[];
 }
@@ -596,20 +598,74 @@ export function splitByShape(section: BriefSection, picks: Pick[]): PickGroup[] 
   ];
 }
 
-function picksTable(sections: BriefSection[]): string {
+/** How a brief lays out its sections: what it groups by, and the reader's
+ *  venue order (GOI-140, GOI-141). Absent: event-first, venues as they come. */
+export interface BriefLayout {
+  groupBy?: NewsletterGroupBy;
+  venueOrder?: string[];
+}
+
+/**
+ * A section's rows, under whatever subheadings its layout calls for.
+ *
+ * - Event-first (the default): one card per title across the window, however
+ *   many venues, days and times it runs at (GOI-36, GOI-138) — museums split
+ *   into runs and events (GOI-122). A card's venue lines follow the reader's
+ *   venue order (GOI-140).
+ * - Venue-first (GOI-141): one subheading per venue, in the reader's order,
+ *   then the venues they did not place in the order their first event comes;
+ *   under each, that venue's own cards, runs first. The venue is the heading,
+ *   so the card's venue line keeps only the dates and times.
+ *
+ * Shared by the email and the PDF so the two cannot lay one issue out two ways.
+ */
+export function sectionGroups(section: BriefSection, layout: BriefLayout = {}): PickGroup[] {
+  const order = layout.venueOrder ?? [];
+  if (layout.groupBy !== 'venue') {
+    const picks = groupPicks(section.events).map((p) => ({
+      ...p,
+      venues: byVenueOrder(p.venues, (v) => v.venueId, order),
+    }));
+    return splitByShape(section, picks);
+  }
+
+  // Map order is first-event order: the section arrives sorted by start.
+  const byVenue = new Map<string, Event[]>();
+  for (const e of section.events) {
+    const list = byVenue.get(e.venueId);
+    if (list) list.push(e);
+    else byVenue.set(e.venueId, [e]);
+  }
+  return byVenueOrder([...byVenue.entries()], ([id]) => id, order).map(([, events]) => {
+    const picks = groupPicks(events).map((p) => ({
+      ...p,
+      venues: p.venues.map((v) => ({ ...v, name: '' })),
+    }));
+    return {
+      label: events[0]!.venue?.name ?? '',
+      picks: [...picks.filter((p) => isExhibition(p.lead)), ...picks.filter((p) => !isExhibition(p.lead))],
+    };
+  });
+}
+
+/** Cards in the brief — the masthead's count. A film at two venues is one card
+ *  event-first and two venue-first, so it is counted the way it is laid out. */
+export function countPicks(sections: BriefSection[], layout: BriefLayout = {}): number {
+  return sections.reduce(
+    (n, s) => n + sectionGroups(s, layout).reduce((m, g) => m + g.picks.length, 0),
+    0,
+  );
+}
+
+function picksTable(sections: BriefSection[], layout: BriefLayout): string {
   const rows: string[] = [];
   const named = sections.length > 1 || (sections[0]?.category ?? '') !== '';
 
   for (const section of sections) {
-    // One card per title across the section's window, however many venues,
-    // days and times it runs at (GOI-36, GOI-138). Already sorted by first
-    // showing.
-    const picks = groupPicks(section.events);
-
     if (named && section.category) {
       rows.push(sectionHeadingRow(section, rows.length === 0));
     }
-    for (const group of splitByShape(section, picks)) {
+    for (const group of sectionGroups(section, layout)) {
       if (group.label) rows.push(subHeadingRow(group.label, false));
       for (const pick of group.picks) {
         // Only whatever lands first carries the rule that opens the list.
@@ -758,7 +814,7 @@ export interface BriefSection {
   events: Event[];
 }
 
-export interface BriefContent {
+export interface BriefContent extends BriefLayout {
   sections: BriefSection[];
   /** The saved-events queue (GOI-101). Rendered above every category section:
    *  it is the only part of a brief that asks the reader to do something. */
@@ -793,10 +849,7 @@ export function renderBriefHtml(content: BriefContent): string {
   const events = sections.flatMap((s) => s.events);
   // "N picks" counts cards, not showings: after GOI-36 a film at three
   // cinemas is one pick, and claiming three would contradict the list below.
-  const pickCount = sections.reduce(
-    (n, s) => n + groupPicks(s.events).length,
-    0,
-  );
+  const pickCount = countPicks(sections, content);
   const venueCount = new Set(events.map((e) => e.venueId)).size;
   // The widest cadence present sets how many days the masthead names — a brief
   // carrying a monthly section does not cover today. With nothing on, fall
@@ -819,7 +872,7 @@ export function renderBriefHtml(content: BriefContent): string {
 
   const queue = content.wantToGo ? wantToGoBlock(content.wantToGo) : '';
   const body = events.length
-    ? picksTable(sections)
+    ? picksTable(sections, content)
     : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
       `style="border-collapse:collapse"><tr><td style="border-top:2px solid ${C.divider};padding:24px 0;` +
       `font-family:${FONT};font-size:13px;line-height:1.5;color:${C.body}">` +

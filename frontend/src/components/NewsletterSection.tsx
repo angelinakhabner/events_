@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
-  NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterGroupBy,
+  NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
+  NewsletterWantToGo,
 } from '@afisz/shared';
 import {
-  allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
+  allowedRuleCadences, byVenueOrder, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive,
+  deriveWindow,
 } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { newsletterApiIsStale, OLDER_API, readableApiError } from '../lib/api-error';
@@ -303,6 +305,8 @@ function NewsletterForm({
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
   const [sendDayOfMonth, setSendDayOfMonth] = useState(saved?.sendDayOfMonth ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
+  const [groupBy, setGroupBy] = useState<NewsletterGroupBy>(saved?.groupBy ?? 'event');
+  const [venueOrder, setVenueOrder] = useState<string[]>(saved?.venueOrder ?? []);
   const [rules, setRules] = useState<NewsletterCategoryRule[]>(saved?.categoryRules ?? []);
   /**
    * The only thing left to decide about the saved-events queue is whether it
@@ -323,17 +327,35 @@ function NewsletterForm({
   /** What changing the send cadence did to the rules, shown once (GOI-102). */
   const [reconciled, setReconciled] = useState<string[]>([]);
 
-  /** Venues grouped under their folder, mirroring the "My venues" tab. */
+  /** Venues grouped under their folder, mirroring the "My venues" tab — each
+   *  folder in the reader's own order (GOI-140). */
   const byFolder = useMemo(() => {
+    const ordered = byVenueOrder(venues, (v) => v.id, venueOrder);
     const groups = folders.map((f) => ({
       id: f.id as string | null,
       name: f.name,
-      venues: venues.filter((v) => v.listId === f.id),
+      venues: ordered.filter((v) => v.listId === f.id),
     }));
-    const unfiled = venues.filter((v) => !folders.some((f) => f.id === v.listId));
+    const unfiled = ordered.filter((v) => !folders.some((f) => f.id === v.listId));
     if (unfiled.length) groups.push({ id: null, name: 'Unfiled', venues: unfiled });
     return groups.filter((g) => g.venues.length > 0);
-  }, [venues, folders]);
+  }, [venues, folders, venueOrder]);
+
+  /**
+   * Move a venue one place up or down among its folder's venues (GOI-140).
+   * The whole order is written out each time, so a venue that was never
+   * placed gets a position the moment any venue moves.
+   */
+  const moveVenue = (folderVenues: PickableVenue[], id: string, by: -1 | 1) => {
+    const at = folderVenues.findIndex((v) => v.id === id);
+    const other = folderVenues[at + by];
+    if (!other) return;
+    const all = byFolder.flatMap((f) => f.venues.map((v) => v.id));
+    const i = all.indexOf(id);
+    const j = all.indexOf(other.id);
+    [all[i], all[j]] = [all[j]!, all[i]!];
+    setVenueOrder(all);
+  };
 
   /**
    * Everything a rule can name: the built-in event categories your venues
@@ -452,6 +474,8 @@ function NewsletterForm({
     sendWeekday,
     sendDayOfMonth,
     venueIds,
+    groupBy,
+    venueOrder,
     rules,
     wantToGo,
     enabled,
@@ -603,24 +627,58 @@ function NewsletterForm({
                     second way to do it that could disagree. */}
                 <a href="/my?tab=venues" className="act act-sm">Add venues</a>
               </p>
-              <div className="flex flex-wrap gap-x-5 gap-y-2.5">
-                {folder.venues.map((v) => (
-                  <label key={v.id} className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={venueIds.includes(v.id)}
-                      onChange={() => toggleVenue(v.id)}
-                      className="checkbox"
-                    />
-                    {v.name}
-                  </label>
+              {/* A list rather than a wrapping row since GOI-140: "up" and
+                  "down" only mean something when the order reads top to
+                  bottom. */}
+              <ol className="list-none m-0 p-0">
+                {folder.venues.map((v, i) => (
+                  <li key={v.id} className="flex items-center gap-3 py-1">
+                    <label className="flex flex-1 items-center gap-2 text-[13px] font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={venueIds.includes(v.id)}
+                        onChange={() => toggleVenue(v.id)}
+                        className="checkbox"
+                      />
+                      {v.name}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => moveVenue(folder.venues, v.id, -1)}
+                      disabled={i === 0}
+                      aria-label={`Move ${v.name} up`}
+                      className="act act-sm disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveVenue(folder.venues, v.id, 1)}
+                      disabled={i === folder.venues.length - 1}
+                      aria-label={`Move ${v.name} down`}
+                      className="act act-sm disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ol>
             </div>
           ))}
           {venues.length === 0 ? (
             <span className="text-sm text-muted">Add venues under &ldquo;My venues&rdquo; first.</span>
           ) : null}
+
+          {/* GOI-141: what the brief lists things under. */}
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+            <span className="label-caps">List by</span>
+            <GroupByToggle value={groupBy} onChange={setGroupBy} />
+            <span className="text-xs text-faint">
+              {groupBy === 'venue'
+                ? 'Each venue once, in the order above, with what is on there under it.'
+                : 'Each event once, with every venue and date it is on. Venues are named in the order above.'}
+            </span>
+          </div>
         </FormSection>
 
         {/* GOI-102 §1. The envelope, stated on its own and before the
@@ -1262,6 +1320,41 @@ function SaveState({
  * among mutually exclusive options, which is what a radio group means, and it
  * gets arrow-key navigation from the platform for free.
  */
+/** Event-first or venue-first (GOI-141), drawn like the schedule toggle. */
+function GroupByToggle({
+  value,
+  onChange,
+}: {
+  value: NewsletterGroupBy;
+  onChange: (v: NewsletterGroupBy) => void;
+}) {
+  const options: { value: NewsletterGroupBy; label: string }[] = [
+    { value: 'event', label: 'By event' },
+    { value: 'venue', label: 'By venue' },
+  ];
+  return (
+    <div role="radiogroup" aria-label="List by" className="flex border-2 border-ink">
+      {options.map((o, i) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.value)}
+            className={`cursor-pointer px-4 py-[9px] text-xs font-extrabold uppercase tracking-[0.5px] ${
+              i < options.length - 1 ? 'border-r-2 border-ink' : ''
+            } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ScheduleToggle({
   value,
   onChange,

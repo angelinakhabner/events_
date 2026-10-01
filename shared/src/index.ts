@@ -366,6 +366,16 @@ export function deliversToDrive(delivery: NewsletterDelivery): boolean {
   return delivery === 'drive' || delivery === 'both';
 }
 
+/**
+ * What a brief lists things under (GOI-141).
+ *
+ * - `event`: each event once, with every venue and date it is on under it —
+ *   "is that film on anywhere this week".
+ * - `venue`: each venue once, with what is on there under it — "what's on at
+ *   Muranów this week".
+ */
+export type NewsletterGroupBy = 'event' | 'venue';
+
 export interface NewsletterSettings {
   /** The config's own id. A reader may have one per folder (GOI-100). */
   id: string;
@@ -404,6 +414,11 @@ export interface NewsletterSettings {
   timezone: string;
   /** Venues within the folder this newsletter covers; empty = all of them. */
   venueIds: string[];
+  /** Event-first or venue-first (GOI-141). */
+  groupBy: NewsletterGroupBy;
+  /** The reader's own order for their venues, first first (GOI-140). A venue
+   *  missing from it follows the ones that are listed. */
+  venueOrder: string[];
   /** Only include events starting before this hour (0-23). No UI; the
    *  after-hour half of this pair became `NewsletterCategoryRule.timeFilter`. */
   beforeHour: number | null;
@@ -1233,4 +1248,18 @@ export function normalizeDriveFolderName(raw: string): string {
     throw new Error('Folder name cannot contain "/" \u2014 briefs go in one folder, not a path.');
   }
   return name;
+}
+
+/**
+ * Sort venues by the reader's own order (GOI-140): the ones they placed first,
+ * in their order, then the rest as they came. Stable, so "as they came" stays
+ * whatever order the caller had — chronological, usually.
+ */
+export function byVenueOrder<T>(items: T[], idOf: (item: T) => string, order: string[]): T[] {
+  if (order.length === 0) return [...items];
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return items
+    .map((item, i) => ({ item, i, r: rank.get(idOf(item)) ?? order.length }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.item);
 }

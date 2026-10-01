@@ -822,7 +822,7 @@ describe('renderBriefHtml — the span the masthead names (GOI-110)', () => {
  * date, it should be shown ONCE with all the available dates".
  */
 describe('venueWhen — every date, once', () => {
-  const v = (...startsAt: string[]) => ({ name: 'Powszechny', startsAt });
+  const v = (...startsAt: string[]) => ({ name: 'Powszechny', venueId: 'v9', startsAt });
 
   it('gives the times alone for one day', () => {
     expect(venueWhen(v('2026-09-07T18:00:00+02:00', '2026-09-07T20:30:00+02:00'))).toBe('18:00, 20:30');
@@ -894,5 +894,51 @@ describe('renderBriefHtml — the description a section asks for', () => {
       sections: [section({ detail: 'full', events: [{ ...show, descriptionLong: null }] })],
     });
     expect(html).toContain('A tragedy of the women of Troy.');
+  });
+});
+
+/**
+ * GOI-141: grouped by venue rather than by event — and GOI-140: in the
+ * reader's own venue order.
+ */
+describe('renderBriefHtml — venue-first, in the reader’s order', () => {
+  const v = (id: string, name: string) => ({ id, name, category: 'cinema' as const, city: 'Warsaw', country: 'PL' });
+  const muranow = v('v-mur', 'Muranów');
+  const kinoteka = v('v-kin', 'Kinoteka');
+  const film = (title: string, venue: ReturnType<typeof v>, iso: string) =>
+    makeEvent({ title, venueId: venue.id, venue, startsAt: iso });
+  const events = [
+    film('Chungking Express', kinoteka, '2026-07-22T18:00:00+02:00'),
+    film('Chungking Express', muranow, '2026-07-22T20:00:00+02:00'),
+    film('Perfect Days', muranow, '2026-07-22T21:00:00+02:00'),
+  ];
+  const brief = (layout: Parameters<typeof render>[0]) =>
+    render({ sections: [section({ category: 'cinema', events })], ...layout });
+
+  it('lists each venue once, with its own events under it', () => {
+    const html = brief({ groupBy: 'venue' });
+    // A heading per venue, in first-event order when no order was chosen.
+    expect(html.indexOf('KINOTEKA')).toBeLessThan(html.indexOf('MURANÓW'));
+    // The film at both is under both.
+    expect(html.match(/Chungking Express/g)).toHaveLength(2);
+    // The venue is the heading, so the card says only when.
+    expect(html).not.toContain('KINOTEKA · 18:00');
+    expect(html).toContain('>18:00</div>');
+  });
+
+  it('puts the venues in the reader’s order', () => {
+    const html = brief({ groupBy: 'venue', venueOrder: ['v-mur', 'v-kin'] });
+    expect(html.indexOf('MURANÓW')).toBeLessThan(html.indexOf('KINOTEKA'));
+  });
+
+  it('orders an event-first card’s venue lines the same way', () => {
+    const html = brief({ venueOrder: ['v-mur'] });
+    expect(html.match(/Chungking Express/g)).toHaveLength(1);
+    expect(html.indexOf('MURANÓW · 20:00')).toBeLessThan(html.indexOf('KINOTEKA · 18:00'));
+  });
+
+  it('counts the cards as they are laid out', () => {
+    expect(brief({ groupBy: 'venue' })).toContain('3 wydarzenia');
+    expect(brief({})).toContain('2 wydarzenia');
   });
 });

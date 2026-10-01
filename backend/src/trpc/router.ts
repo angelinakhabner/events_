@@ -909,6 +909,8 @@ const my = router({
           recipientName: input.recipientName,
           festivals,
           now,
+          groupBy: input.groupBy,
+          venueOrder: input.venueOrder,
           // For a daily issue's poster PDF. Its issue number is left off: a
           // preview is not an issue.
           savedEventIds: input.wantToGo?.enabled === false

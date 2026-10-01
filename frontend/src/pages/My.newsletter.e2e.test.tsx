@@ -72,6 +72,36 @@ beforeAll(async () => {
 });
 
 describe('MyPage — newsletter end-to-end', () => {
+  /** GOI-140 / GOI-141: the reader's venue order, and venue-first listing. */
+  it('reorders venues and lists by venue, and saves both', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    const downs = await within(section).findAllByRole('button', { name: /^move .* down$/i });
+    const first = downs[0]!.getAttribute('aria-label')!.replace(/^Move | down$/g, '');
+    await user.click(downs[0]!);
+    // It is second now: it can go up, and the first row's "up" is disabled.
+    expect(within(section).getByRole('button', { name: `Move ${first} up` })).toBeEnabled();
+    expect(within(section).getAllByRole('button', { name: /^move .* up$/i })[0]).toBeDisabled();
+    const second = within(section).getAllByRole('button', { name: /^move .* down$/i })[1]!;
+    expect(second).toHaveAccessibleName(`Move ${first} down`);
+
+    await user.click(within(section).getByRole('radio', { name: 'By venue' }));
+    expect(within(section).getByText(/each venue once, in the order above/i)).toBeInTheDocument();
+
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    const saved = await defaultNewsletterStore.get(userId);
+    expect(saved?.groupBy).toBe('venue');
+    // The whole order is written out, with the moved venue second.
+    expect(saved?.venueOrder.length).toBeGreaterThan(1);
+    expect(new Set(saved?.venueOrder).size).toBe(saved?.venueOrder.length);
+  });
+
   it('prefills the login email, saves settings, and persists them', async () => {
     const user = userEvent.setup();
     renderPage();

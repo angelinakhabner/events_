@@ -315,6 +315,10 @@ export const newsletterSubscriptions = pgTable(
     /** Venues within the folder the brief covers; empty = all of them. It
      *  narrows the folder and never writes back to it. */
     venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+    /** event | venue — what the brief lists things under (GOI-141). */
+    groupBy: text('group_by').notNull().default('event'),
+    /** The reader's own venue order, first first (GOI-140). */
+    venueOrder: text('venue_order').array().notNull().default(sql`ARRAY[]::text[]`),
     /** The after-hour half of this pair moved onto each category rule in 0026
      *  — see NewsletterTimeFilter for why. This half has no UI and stays. */
     beforeHour: integer('before_hour'),
