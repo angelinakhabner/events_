@@ -188,3 +188,36 @@ describe('the sweep and the drive copy', () => {
     expect(res.outcomes[0]!.detail).toContain('dry run');
   });
 });
+
+describe('the daily poster on the drive', () => {
+  it('files the poster, with the reader’s saved event and a running issue number', async () => {
+    const { pdfText, squash } = await import('../__tests__/pdf-text.js');
+    const { store, deps } = await setup();
+    const drives = new InMemoryDriveStore();
+    await drives.connect('u1', { provider: 'google', refreshToken: 'rt', accountEmail: 'ada@example.com' });
+    const bodies: Buffer[] = [];
+    const { provider } = fakeProvider({
+      async upload({ file }: { file: { body: Buffer } }) {
+        bodies.push(file.body);
+        return { fileId: 'f1', webUrl: null };
+      },
+    } as unknown as Partial<DriveProvider>);
+    const opts = {
+      ...deps,
+      wantToGo: { list: async () => [event()] },
+      drive: { store: drives, providers: { google: provider } },
+      force: true,
+    };
+
+    await sendNewsletterBriefs(store, NOW, opts);
+    await sendNewsletterBriefs(store, NOW, opts);
+
+    expect(bodies).toHaveLength(2);
+    const first = await pdfText(bodies[0]!);
+    const second = await pdfText(bodies[1]!);
+    expect(first.flat).toContain(squash('DAILY NO. 1'));
+    expect(first.flat).toContain(squash('WANT TO GO'));
+    expect(first.flat).toContain(squash('Zimna wojna'));
+    expect(second.flat).toContain(squash('DAILY NO. 2'));
+  });
+});

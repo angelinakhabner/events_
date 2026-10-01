@@ -980,8 +980,9 @@ export async function sendNewsletterBriefs(
       // which meant a reader following no venues was skipped as `no-venues`
       // however much they had saved — the queue reads their saved events, not
       // a venue listing, and needs no venue to have something to say (GOI-125).
+      const wantToGoStore = opts.wantToGo ?? defaultWantToGoStore;
       const wantToGo = await buildWantToGoSection(
-        sub, store, opts.wantToGo ?? defaultWantToGoStore, now,
+        sub, store, wantToGoStore, now,
         { films: opts.films ?? defaultFilmStore, events: eventStore },
       );
 
@@ -1039,6 +1040,12 @@ export async function sendNewsletterBriefs(
         recipientName: sub.recipientName,
         festivals,
         now,
+        // The daily poster's "Want to go" and its masthead number. Only the
+        // filed PDF draws the poster, so an email-only reader costs no query.
+        savedEventIds: deliversToDrive(sub.delivery) && sub.wantToGo.enabled
+          ? (await wantToGoStore.list(sub.userId)).map((e) => e.id)
+          : [],
+        issueNo: (sub.issuesSent ?? 0) + 1,
       };
       if (deliversByEmail(sub.delivery)) {
         await (opts.send ?? sendEmail)({
