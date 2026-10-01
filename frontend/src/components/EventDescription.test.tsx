@@ -19,24 +19,24 @@ describe('EventDescription', () => {
       />,
     );
     expect(screen.getByText('A tragedy.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Read more' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Czytaj dalej' }));
     expect(screen.getByText('After Troy falls, its women wait.')).toBeInTheDocument();
     expect(screen.queryByText('A tragedy.')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zwiń' }));
     expect(screen.getByText('A tragedy.')).toBeInTheDocument();
   });
 
   it('shows only the short one when there is nothing longer', () => {
     render(<EventDescription event={{ ...base, description: 'A tragedy.' }} />);
     expect(screen.getByText('A tragedy.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Read more' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Czytaj dalej' })).not.toBeInTheDocument();
   });
 
   /** GOI-136: a bare theatre row points at the venue's page for the show. */
   it('points an undescribed theatre show at the venue’s page', () => {
     render(<EventDescription event={base} venueName="Teatr Powszechny" />);
-    expect(screen.getByText(/no description yet/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /teatr powszechny’s page/i }))
+    expect(screen.getByText(/brak opisu/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /na stronie teatr powszechny/i }))
       .toHaveAttribute('href', 'https://teatr.example/trojanki');
   });
 

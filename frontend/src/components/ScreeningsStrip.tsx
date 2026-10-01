@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Event } from '@afisz/shared';
 import { trpc } from '../lib/trpc';
 import { isLoggedIn } from '../lib/auth';
-import { formatDayKey, formatShortDate, formatTime } from '../lib/format';
+import { formatDayKey, formatShortDate, formatTime, plural } from '../lib/format';
 import { AddToCalendar } from './AddToCalendar';
 
 /** Ticket blocks shown before the strip caps itself with a "+N". */
@@ -10,8 +10,8 @@ const BLOCKS = 3;
 
 /** "Screenings" for films; plays/concerts/exhibitions get the generic word. */
 function label(event: Event, open: boolean): string {
-  if (open) return event.category === 'cinema' ? 'Hide screenings' : 'Hide dates';
-  return event.category === 'cinema' ? 'Nearest screenings' : 'Nearest dates';
+  if (open) return event.category === 'cinema' ? 'Ukryj seanse' : 'Ukryj terminy';
+  return event.category === 'cinema' ? 'Najbliższe seanse' : 'Najbliższe terminy';
 }
 
 /**
@@ -124,16 +124,16 @@ function Strip({
   const track = isFilm && canTrack && isLoggedIn() ? <TrackFilmButton title={event.title} /> : null;
 
   if (screenings.isLoading) {
-    return <Note>{isFilm ? 'Looking for screenings…' : 'Looking for dates…'}</Note>;
+    return <Note>{isFilm ? 'Szukamy seansów…' : 'Szukamy terminów…'}</Note>;
   }
   if (screenings.isError) {
-    return <Note>{isFilm ? 'Couldn’t load screenings.' : 'Couldn’t load dates.'}</Note>;
+    return <Note>{isFilm ? 'Nie udało się wczytać seansów.' : 'Nie udało się wczytać terminów.'}</Note>;
   }
   if (all.length === 0) {
-    const nothing = includeSelf ? 'No upcoming' : 'No other upcoming';
+    const nothing = includeSelf ? 'Brak nadchodzących' : 'Brak innych nadchodzących';
     return (
       <>
-        <Note>{nothing} {isFilm ? 'screenings.' : 'dates.'}</Note>
+        <Note>{nothing} {isFilm ? 'seansów.' : 'terminów.'}</Note>
         {track}
       </>
     );
@@ -152,7 +152,7 @@ function Strip({
           <button
             type="button"
             onClick={() => setShowAll(true)}
-            aria-label={`Show ${extra} more ${isFilm ? 'screenings' : 'dates'}`}
+            aria-label={`Pokaż jeszcze ${extra} ${isFilm ? plural(extra, 'seans', 'seanse', 'seansów') : plural(extra, 'termin', 'terminy', 'terminów')}`}
             className="w-11 md:w-14 shrink-0 bg-accent text-white text-[11px] md:text-xs font-extrabold cursor-pointer border-0"
           >
             +{extra}
@@ -191,7 +191,7 @@ function TrackFilmButton({ title }: { title: string }) {
         onClick={() => add.mutate({ title })}
         className="act act-sm act-on"
       >
-        {tracked ? '✓ On your want-to-go list' : add.isPending ? 'Adding…' : '+ Track film'}
+        {tracked ? '✓ Na liście „Chcę iść”' : add.isPending ? 'Dodawanie…' : '+ Śledź film'}
       </button>
       {add.error && !tracked ? (
         <p className="mt-1 text-[11px] text-muted">{add.error.message}</p>
@@ -231,7 +231,7 @@ function Ticket({ screening, inverted }: { screening: Event; inverted: boolean }
         <AddToCalendar event={screening} variant="icon" />
       </div>
       <div className="text-[10px] md:text-[11px] font-bold">
-        {screening.venue?.name ?? 'Unknown venue'}
+        {screening.venue?.name ?? 'Nieznane miejsce'}
       </div>
     </div>
   );
@@ -245,11 +245,11 @@ function Note({ children }: { children: React.ReactNode }) {
 function dayLabel(iso: string, now: Date = new Date()): string {
   const day = formatDayKey(iso);
   const today = formatDayKey(now.toISOString());
-  if (day === today) return 'Today';
+  if (day === today) return 'Dzisiaj';
   // Calendar arithmetic rather than "+24h": an hours-based step lands on the
   // wrong day across a DST change.
   const [y, m, d] = today.split('-').map(Number);
   const tomorrow = new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10);
-  if (day === tomorrow) return 'Tomorrow';
+  if (day === tomorrow) return 'Jutro';
   return formatShortDate(iso);
 }

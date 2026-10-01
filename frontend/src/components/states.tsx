@@ -46,12 +46,12 @@ export function NextUpNotice({ scope, nextIso }: NextUpProps) {
   return (
     <div className="pt-10 md:pt-14">
       <p className="font-display text-2xl md:text-[32px] text-ink m-0">
-        {nextIso ? `Next event on ${formatWeekdayDate(nextIso)}` : `Nothing ${scope}`}
+        {nextIso ? `Najbliższe wydarzenie: ${formatWeekdayDate(nextIso)}` : `Nic ${scope}`}
       </p>
       <p className="mt-2.5 text-sm text-muted max-w-[520px]">
         {nextIso
-          ? `Nothing ${scope} — showing the nearest events instead.`
-          : 'Showing what else is on instead.'}
+          ? `Nic ${scope} — pokazujemy najbliższe wydarzenia.`
+          : 'Pokazujemy, co jeszcze się dzieje.'}
       </p>
     </div>
   );
@@ -78,13 +78,13 @@ interface ErrorProps {
   onRetry?: () => void;
 }
 
-export function ErrorState({ message = 'Something went wrong.', onRetry }: ErrorProps) {
+export function ErrorState({ message = 'Coś poszło nie tak.', onRetry }: ErrorProps) {
   return (
     <div role="alert" className="py-14 md:py-20">
       <p className="font-display text-2xl md:text-[32px] text-accent m-0">{message}</p>
       {onRetry ? (
         <button type="button" onClick={onRetry} className="mt-6 act act-on">
-          Try again
+          Spróbuj ponownie
         </button>
       ) : null}
     </div>

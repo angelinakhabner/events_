@@ -475,6 +475,9 @@ export const eventDescriptions = pgTable(
     /** Which prompt wrote this answer. Older answers are applied but rewritten
      *  once to catch up (GOI-139). */
     writerVersion: integer('writer_version').notNull().default(1),
+    /** Language the description is written in. Only the site's own is read
+     *  back (0033); anything else is rewritten in place. */
+    lang: text('lang').notNull().default('en'),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

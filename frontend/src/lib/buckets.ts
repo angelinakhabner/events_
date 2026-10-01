@@ -75,10 +75,10 @@ export function bucketEvents(events: Event[], now: Date = new Date()): Bucket[] 
   }
 
   const nearAll: Bucket[] = [
-    { key: 'soon', label: 'Starting soon', items: buckets.soon },
-    { key: 'today', label: 'Later today', items: buckets.today },
-    { key: 'tomorrow', label: 'Tomorrow', items: buckets.tomorrow },
-    { key: 'thisWeek', label: 'This week', items: buckets.thisWeek },
+    { key: 'soon', label: 'Zaraz się zacznie', items: buckets.soon },
+    { key: 'today', label: 'Później dzisiaj', items: buckets.today },
+    { key: 'tomorrow', label: 'Jutro', items: buckets.tomorrow },
+    { key: 'thisWeek', label: 'W tym tygodniu', items: buckets.thisWeek },
   ];
   const near = nearAll.filter((b) => b.items.length > 0);
   if (near.length > 0 || buckets.later.length === 0) return near;
@@ -140,14 +140,14 @@ export function fallbackBuckets(later: Event[], now: Date): Bucket[] {
 }
 
 const PERIOD_LABEL: Record<BucketKey, string> = {
-  soon: 'Starting soon',
-  today: 'Later today',
-  tomorrow: 'Tomorrow',
-  thisWeek: 'This week',
-  nextWeek: 'Next week',
-  thisMonth: 'This month',
-  nextMonth: 'Next month',
-  later: 'Later',
+  soon: 'Zaraz się zacznie',
+  today: 'Później dzisiaj',
+  tomorrow: 'Jutro',
+  thisWeek: 'W tym tygodniu',
+  nextWeek: 'W przyszłym tygodniu',
+  thisMonth: 'W tym miesiącu',
+  nextMonth: 'W przyszłym miesiącu',
+  later: 'Później',
 };
 
 /** Events split into runs of the same Warsaw day, in order. */

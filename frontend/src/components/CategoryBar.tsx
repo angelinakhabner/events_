@@ -18,7 +18,7 @@ interface Option {
 // category the same way — this row used to be the app's second, competing set
 // of names ("Museums" here, "Exhibition" everywhere else). GOI-30.
 const OPTIONS: Option[] = [
-  { label: 'All', value: null },
+  { label: 'Wszystko', value: null },
   ...(['cinema', 'theatre', 'comedy', 'music', 'exhibition'] as const).map((value) => ({
     label: categoryLabel(value),
     value,
@@ -40,7 +40,7 @@ const OPTIONS: Option[] = [
 export function CategoryBar({ selected, onChange, compact = false }: Props) {
   return (
     <nav
-      aria-label="Filter by category"
+      aria-label="Filtruj według kategorii"
       className="flex scroll-x md:flex-wrap border-b-3 border-ink"
     >
       {OPTIONS.map((opt) => {

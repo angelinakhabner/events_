@@ -21,7 +21,7 @@ describe('EventCard', () => {
     render(<EventCard event={event} venue={venue} />);
     expect(screen.getByRole('heading', { name: 'Perfect Days' })).toBeInTheDocument();
     expect(screen.getByText(/Kino X/)).toBeInTheDocument();
-    expect(screen.getByText(/cinema/i)).toBeInTheDocument();
+    expect(screen.getByText('Kino')).toBeInTheDocument();
     expect(screen.getByText(/man and his routines/)).toBeInTheDocument();
   });
 
@@ -35,7 +35,7 @@ describe('EventCard', () => {
 
   it('falls back to "Unknown venue" when no venue is supplied', () => {
     render(<EventCard event={event} venue={undefined} />);
-    expect(screen.getByText('Unknown venue')).toBeInTheDocument();
+    expect(screen.getByText('Nieznane miejsce')).toBeInTheDocument();
   });
 
   it('prefers the inline event.venue over the prop fallback', () => {
@@ -43,12 +43,12 @@ describe('EventCard', () => {
     render(<EventCard event={{ ...event, venue: inline }} venue={venue} />);
     expect(screen.getByText(/Kino Inline/)).toBeInTheDocument();
     expect(screen.queryByText(/Kino X/)).not.toBeInTheDocument();
-    expect(screen.getByText(/theatre/i)).toBeInTheDocument();
+    expect(screen.getByText(/teatr/i)).toBeInTheDocument();
   });
 
   it('opens an Add-to-calendar menu with Google + .ics options', async () => {
     render(<EventCard event={event} venue={venue} />);
-    await userEvent.click(screen.getByRole('button', { name: /add to calendar/i }));
+    await userEvent.click(screen.getByRole('button', { name: /dodaj do kalendarza/i }));
     expect(screen.getByRole('menu')).toBeInTheDocument();
     const google = screen.getByRole('menuitem', { name: /google calendar/i });
     expect(google).toHaveAttribute('href', expect.stringContaining('calendar.google.com/calendar/render'));
@@ -61,9 +61,9 @@ describe('EventCard', () => {
     Object.defineProperty(navigator, 'share', { value: share, writable: true, configurable: true });
     try {
       render(<EventCard event={event} venue={venue} />);
-      await userEvent.click(screen.getByRole('button', { name: /share/i }));
+      await userEvent.click(screen.getByRole('button', { name: /udostępnij/i }));
       expect(share).toHaveBeenCalled();
-      expect(await screen.findByText(/shared/i)).toBeInTheDocument();
+      expect(await screen.findByText(/udostępniono/i)).toBeInTheDocument();
     } finally {
       if (originalShare === undefined) {
         delete (navigator as { share?: unknown }).share;
@@ -78,9 +78,9 @@ describe('EventCard', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     delete (navigator as { share?: unknown }).share;
     render(<EventCard event={event} venue={venue} />);
-    await userEvent.click(screen.getByRole('button', { name: /share/i }));
+    await userEvent.click(screen.getByRole('button', { name: /udostępnij/i }));
     expect(writeText).toHaveBeenCalled();
-    expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
+    expect(await screen.findByText(/skopiowano link/i)).toBeInTheDocument();
   });
   // GOI-53: museums show what's on today, not a fabricated 00:00.
   it('shows "All day" instead of midnight for an undated museum row', () => {
@@ -93,7 +93,7 @@ describe('EventCard', () => {
     };
 
     render(<EventCard event={run} venue={museum} />);
-    expect(screen.getByText('All day')).toBeInTheDocument();
+    expect(screen.getByText('Cały dzień')).toBeInTheDocument();
     expect(screen.queryByText('00:00')).not.toBeInTheDocument();
   });
 

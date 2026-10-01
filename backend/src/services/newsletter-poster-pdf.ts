@@ -4,11 +4,11 @@ import type { Event } from '@afisz/shared';
 import type { BriefSection } from './newsletter-render.js';
 import type { BriefPdfContent } from './newsletter-pdf.js';
 import { env } from '../config.js';
-import { PL } from './newsletter-copy.js';
+import { PL, plural } from './newsletter-copy.js';
 import { loadFont } from './pdf-fonts.js';
 import {
   dayPart, isAllDay, minutesIntoDay, planPoster,
-  type DayPart, type ListingGroup, type PosterCategory, type PosterPlan,
+  type DayPart, type ListingGroup, type PosterCategory, type PosterNoun, type PosterPlan,
 } from './newsletter-poster.js';
 
 /**
@@ -73,8 +73,8 @@ type Face = keyof typeof FONT_FILES;
 const TRAILING = /[\s,.;:·|—–-]+$/;
 
 /** Joined with no-break spaces, so a label never splits across lines. */
-const A_PICK = 'A\u00a0pick';
-const FREE_ENTRY = 'Free\u00a0entry';
+const A_PICK = 'Polecamy';
+const FREE_ENTRY = 'Wstęp\u00a0wolny';
 
 interface Style {
   face: Face;
@@ -246,15 +246,23 @@ function isFree(e: Event): boolean {
   return e.priceMin === 0 && (e.priceMax == null || e.priceMax === 0);
 }
 
-const NUMBER_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+/** Neuter, to agree with "miejsce". */
+const NUMBER_WORDS = ['Zero', 'Jedno', 'Dwa', 'Trzy', 'Cztery', 'Pięć', 'Sześć', 'Siedem', 'Osiem', 'Dziewięć', 'Dziesięć'];
 
 function places(n: number): string {
-  return `${NUMBER_WORDS[n] ?? n} ${n === 1 ? 'place' : 'places'}`;
+  return `${NUMBER_WORDS[n] ?? n} ${plural(n, 'miejsce', 'miejsca', 'miejsc')}`;
 }
 
-function count(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
+function count(n: number, one: string, few: string, many: string): string {
+  return `${n} ${plural(n, one, few, many)}`;
 }
+
+/** "15 seansów": a category's total, in the form its count takes. */
+function total(n: number, noun: PosterNoun): string {
+  return `${n} ${plural(n, ...noun.total)}`;
+}
+
+const GENERIC_TOTAL: PosterNoun['total'] = ['wydarzenie', 'wydarzenia', 'wydarzeń'];
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 
@@ -279,7 +287,7 @@ function masthead(ctx: Ctx, issueNo: number | null | undefined): Block {
   const { t, doc } = ctx;
   const mark: Style = { face: 'heavy', size: 82, lh: 0.82, track: -0.045, upper: true };
   const side: Style = { face: 'semibold', size: 11, lh: 1.5, track: 0.18, upper: true };
-  const sideLines = ['Daily', ...(issueNo ? [`No. ${issueNo}`] : []), 'afisz.cc'];
+  const sideLines = ['Dziennik', ...(issueNo ? [`Nr ${issueNo}`] : []), 'afisz.cc'];
   const markH = 82 * 0.82;
   const sideH = sideLines.length * 11 * 1.5 + 6;
   const rowH = Math.max(markH, sideH);
@@ -305,12 +313,12 @@ function factBand(ctx: Ctx, now: Date): Block {
   const { t, doc, plan } = ctx;
   const value: Style = { face: 'heavy', size: 20, lh: 1.55, track: -0.01, upper: true };
   const fmt = (o: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat('en-GB', { timeZone: TZ, ...o }).format(now);
+    new Intl.DateTimeFormat('pl-PL', { timeZone: TZ, ...o }).format(now);
   const cells: [string, string][] = [
     [fmt({ weekday: 'long' }), fmt({ day: 'numeric', month: 'short', year: 'numeric' })],
-    ['City', PL.city],
-    ['Your day', count(plan.eventCount, 'event', 'events')],
-    ['Across', count(plan.placeCount, 'place', 'places')],
+    ['Miasto', PL.city],
+    ['Twój dzień', count(plan.eventCount, 'wydarzenie', 'wydarzenia', 'wydarzeń')],
+    ['Miejsca', count(plan.placeCount, 'miejsce', 'miejsca', 'miejsc')],
   ];
   const colW = WIDTH / 4;
   const inner = (i: number) => colW - (i === 0 || i === 3 ? 12 : 24) - (i === 0 ? 0 : 2);
@@ -336,8 +344,9 @@ function factBand(ctx: Ctx, now: Date): Block {
 function dedication(ctx: Ctx, name: string | null): Block {
   const style: Style = { face: 'semibold', size: 12, lh: 1.55, track: 0.14, upper: true, color: C.a700 };
   const text = name
-    ? `For ${name} — picked from the places you follow`
-    : 'Picked from the places you follow';
+    // The name stays as typed: "Dla …" would need it declined.
+    ? `${name} — wybrane z miejsc, które obserwujesz`
+    : 'Wybrane z miejsc, które obserwujesz';
   const h = ctx.t.height(text, style, WIDTH);
   return {
     height: 8 + h + 14,
@@ -350,7 +359,7 @@ function hero(ctx: Ctx, e: Event, level: number): Block {
   const { t, doc, plan } = ctx;
   const inner = WIDTH - 36;
   const eyebrow: Style = { face: 'bold', size: 10, lh: 1.55, track: 0.2, upper: true, color: C.bg };
-  const left = plan.heroTonight ? 'Tonight — the one' : 'Today — the one';
+  const left = plan.heroTonight ? 'Dziś wieczorem — numer jeden' : 'Dziś — numer jeden';
   const right = metaLine(ctx, e);
   const leftW = t.width(left, eyebrow);
   const rightW = inner - leftW - 20;
@@ -360,7 +369,7 @@ function hero(ctx: Ctx, e: Event, level: number): Block {
   const time: Style = allDay
     ? { face: 'heavy', size: 28, lh: 0.9, track: -0.02, upper: true, color: C.bg }
     : { face: 'heavy', size: 56, lh: 0.85, track: -0.045, tnum: true, color: C.bg };
-  const timeText = allDay ? 'All day' : clock(e.startsAt);
+  const timeText = allDay ? 'Cały dzień' : clock(e.startsAt);
   const timeW = t.width(timeText, time) + 2;
   const timeH = time.size * time.lh;
 
@@ -405,7 +414,7 @@ function hero(ctx: Ctx, e: Event, level: number): Block {
   };
 }
 
-/** "Three more for today" and "Want to go ★", which share one style. */
+/** "Jeszcze trzy na dziś" and "Chcę iść ★", which share one style. */
 function frontList(
   ctx: Ctx,
   args: {
@@ -433,7 +442,7 @@ function frontList(
   const headH = 18 * 1.55 + 6 + 2;
   const rows = args.events.map((e) => {
     const tStyle = isAllDay(e) ? allDayTime : time;
-    const tText = isAllDay(e) ? 'All day' : clock(e.startsAt);
+    const tText = isAllDay(e) ? 'Cały dzień' : clock(e.startsAt);
     const desc = args.descLines > 0 ? flat(e.description) : '';
     const descText = desc ? t.clamp(desc, descS, descW, args.descLines) : '';
     const titleH = t.height(e.title, titleS, colW);
@@ -503,8 +512,8 @@ function frontBlocks(ctx: Ctx, content: BriefPdfContent, now: Date): Block[] {
     if (plan.hero) blocks.push(hero(ctx, plan.hero, level));
     if (plan.more.length) {
       blocks.push(gap(12), frontList(ctx, {
-        title: 'Three more for today',
-        caption: 'Full listing overleaf',
+        title: 'Jeszcze trzy na dziś',
+        caption: 'Pełny program na odwrocie',
         events: plan.more,
         metaColor: C.a700,
         descLines: level >= 3 ? 0 : listDesc,
@@ -512,13 +521,13 @@ function frontBlocks(ctx: Ctx, content: BriefPdfContent, now: Date): Block[] {
     }
     if (saved.length) {
       blocks.push(gap(12), frontList(ctx, {
-        title: 'Want to go',
+        title: 'Chcę iść',
         star: true,
-        caption: 'You saved these · today',
+        caption: 'Twoje zapisane · dziś',
         events: saved,
         metaColor: C.n700,
         descLines: level >= 4 ? 0 : listDesc,
-        more: overflow > 0 ? `+${overflow} more saved` : null,
+        more: overflow > 0 ? `+${overflow} ${plural(overflow, 'zapisane', 'zapisane', 'zapisanych')} więcej` : null,
       }));
     }
     last = blocks;
@@ -559,7 +568,7 @@ function listingHeader(
   const sideH = caption.length * 11 * 1.5;
   const maxW = WIDTH - sideW - 16;
   const [first, ...rest] = group.categories;
-  const suffix = cont ? ' (cont.)' : '';
+  const suffix = cont ? ' (cd.)' : '';
 
   // Merged categories take the two-line heading: the first as the sheet's
   // own, the rest after an ampersand in the accent.
@@ -569,7 +578,7 @@ function listingHeader(
   let style: Style = rest.length
     ? { face: 'heavy', size: 36, lh: 0.84, track: -0.04, upper: true }
     : { face: 'heavy', size: 60, lh: 0.82, track: -0.04, upper: true };
-  // Shrink a long name (a reader's tag, a "(cont.)") to fit beside the caption.
+  // Shrink a long name (a reader's tag, a "(cd.)") to fit beside the caption.
   while (style.size > 24 && lines.some(([l]) => t.width(l, style) > maxW)) {
     style = { ...style, size: style.size - 2 };
   }
@@ -677,7 +686,7 @@ function bandRows(ctx: Ctx, category: PosterCategory, descLines: number): Row[][
   // All-day items have no band to sit in; they lead as their own.
   const bands = new Map<string, Event[]>();
   for (const e of category.events) {
-    const key = isAllDay(e) ? 'All day' : clock(e.startsAt);
+    const key = isAllDay(e) ? 'Cały dzień' : clock(e.startsAt);
     bands.set(key, [...(bands.get(key) ?? []), e]);
   }
 
@@ -690,13 +699,13 @@ function bandRows(ctx: Ctx, category: PosterCategory, descLines: number): Row[][
     const n = events.length;
     for (let i = 0; i < n; i += 3) {
       const chunk = events.slice(i, i + 3);
-      let label = count(n, category.noun.one, category.noun.many);
+      let label = count(n, category.noun.one, category.noun.few, category.noun.many);
       if (n > 3) {
         const a = i + 1;
         const b = i + chunk.length;
         label += a === b ? ` · ${a}` : ` · ${a}–${b}`;
       } else if (n === 1 && plan.picks.has(chunk[0]!.id)) {
-        label += ' — a pick';
+        label += ' — polecamy';
       }
       const cells = chunk.map((e) => {
         const pick = plan.picks.has(e.id);
@@ -709,7 +718,7 @@ function bandRows(ctx: Ctx, category: PosterCategory, descLines: number): Row[][
           + (descText ? t.height(descText, descS, textW) : 0);
         return { e, pick, venue, accent: pick || free, descText, h };
       });
-      const timeStyle = key === 'All day' ? { ...time, size: 18, upper: true } : time;
+      const timeStyle = key === 'Cały dzień' ? { ...time, size: 18, upper: true } : time;
       const railH = timeStyle.size * timeStyle.lh + 5 + 9 * 1.55;
       const inner = Math.max(railH, ...cells.map((c) => c.h));
       rows.push({
@@ -748,18 +757,18 @@ function bandCaption(category: PosterCategory, day: string): string[] {
     .sort((a, b) => minutesIntoDay(a.startsAt, day) - minutesIntoDay(b.startsAt, day));
   const first = timed[0];
   const last = timed[timed.length - 1];
-  const span = !first || !last ? 'All day'
+  const span = !first || !last ? 'Cały dzień'
     : first === last ? clock(first.startsAt)
       : `${clock(first.startsAt)} → ${clock(last.startsAt)}`;
-  return [`${category.events.length} ${category.noun.total}`, span];
+  return [total(category.events.length, category.noun), span];
 }
 
 // ─── Listing: parts of the day ───────────────────────────────────────────────
 
 const PARTS: { part: Exclude<DayPart, 'allday'>; label: string }[] = [
-  { part: 'morning', label: 'Morning' },
-  { part: 'afternoon', label: 'Afternoon' },
-  { part: 'evening', label: 'Evening' },
+  { part: 'morning', label: 'Rano' },
+  { part: 'afternoon', label: 'Po południu' },
+  { part: 'evening', label: 'Wieczorem' },
 ];
 
 function dayRows(ctx: Ctx, group: ListingGroup, descLines: number): Row[][] {
@@ -809,7 +818,7 @@ function dayRows(ctx: Ctx, group: ListingGroup, descLines: number): Row[][] {
             draw(y) {
               if (withHeader) rect(doc, LEFT, y, WIDTH, 2, C.text);
               const top = y + above;
-              if (withHeader) t.draw('All day', label, LEFT, top, 104);
+              if (withHeader) t.draw('Cały dzień', label, LEFT, top, 104);
               pair.forEach((p, pi) => {
                 const x = gridX + (colW + 18) * pi;
                 if (p.v.pick) rect(doc, x - 4, top + shift - 2, colW + 8, p.h + 4, C.a100);
@@ -904,13 +913,13 @@ function dayCaption(group: ListingGroup, day: string): string[] {
   const events = group.categories.flatMap((c) => c.events);
   const timed = events.filter((e) => !isAllDay(e))
     .sort((a, b) => minutesIntoDay(a.startsAt, day) - minutesIntoDay(b.startsAt, day));
-  const from = events.some(isAllDay) ? 'All day' : timed[0] ? clock(timed[0].startsAt) : null;
+  const from = events.some(isAllDay) ? 'Cały dzień' : timed[0] ? clock(timed[0].startsAt) : null;
   const lastTimed = timed[timed.length - 1];
   const to = lastTimed ? clock(lastTimed.startsAt) : null;
   const span = from && to && from !== to ? `${from} → ${to}` : from ?? to ?? '';
-  const noun = group.categories.length === 1 ? group.categories[0]!.noun.total : 'events';
+  const noun = group.categories.length === 1 ? group.categories[0]!.noun.total : GENERIC_TOTAL;
   return [
-    `${events.length} ${noun}`,
+    `${events.length} ${plural(events.length, ...noun)}`,
     ...(span ? [span] : []),
     places(new Set(events.map((e) => e.venueId)).size),
   ];
@@ -922,7 +931,7 @@ function drawFooter(ctx: Ctx, footer: Footer, sheet: number, of: number): void {
   const { t, doc } = ctx;
   const style: Style = { ...CAPTION, color: C.n700 };
   const top = BOTTOM - CAPTION.size * CAPTION.lh;
-  const right = `Sheet ${sheet} of ${of}`;
+  const right = `Arkusz ${sheet} z ${of}`;
   const rightW = t.width(right, style) + 4;
   const leftW = WIDTH - rightW - 20;
   t.draw(right, style, LEFT, top, WIDTH, { align: 'right' });
@@ -937,9 +946,9 @@ function drawFooter(ctx: Ctx, footer: Footer, sheet: number, of: number): void {
     // the one place their newsletter can offer to change or stop it.
     const settings = `${env.APP_URL}/my?tab=newsletter`;
     const links: [string, string][] = [
-      ['Change settings', settings],
-      ['Unsubscribe', settings],
-      ['Open in Afisz.ka', `${env.APP_URL}/my`],
+      ['Zmień ustawienia', settings],
+      ['Wypisz się', settings],
+      ['Otwórz w Afisz.ka', `${env.APP_URL}/my`],
     ];
     let x = LEFT;
     links.forEach(([label, href], i) => {
@@ -974,7 +983,7 @@ export function renderDailyPosterPdf(content: BriefPdfContent): Promise<Buffer> 
     margin: 0,
     autoFirstPage: false,
     info: {
-      Title: `${PL.wordmark} Daily — ${plan.day}`,
+      Title: `${PL.wordmark} Dziennik — ${plan.day}`,
       Author: 'AFISZ',
       Creator: 'AFISZ',
       CreationDate: now,
@@ -989,7 +998,7 @@ export function renderDailyPosterPdf(content: BriefPdfContent): Promise<Buffer> 
 
   const ctx: Ctx = { doc, t: new Typesetter(doc), plan };
 
-  // Lay every sheet out first: "Sheet X of N" needs N before anything is drawn.
+  // Lay every sheet out first: "Arkusz X z N" needs N before anything is drawn.
   const front = frontBlocks(ctx, content, now);
   const pages: Page[] = [{
     footer: { kind: 'front' },

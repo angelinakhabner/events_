@@ -18,7 +18,7 @@ describe('ErrorState', () => {
     const onRetry = vi.fn();
     render(<ErrorState message="Boom" onRetry={onRetry} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Boom');
-    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await userEvent.click(screen.getByRole('button', { name: /spróbuj ponownie/i }));
     expect(onRetry).toHaveBeenCalled();
   });
 });

@@ -47,7 +47,7 @@ describe('ShareListLink', () => {
   it('offers to start sharing when there is no link yet', () => {
     render(<ShareListLink />);
 
-    fireEvent.click(screen.getByRole('button', { name: /share this list/i }));
+    fireEvent.click(screen.getByRole('button', { name: /udostępnij tę listę/i }));
     expect(enableMock).toHaveBeenCalledOnce();
   });
 
@@ -58,15 +58,15 @@ describe('ShareListLink', () => {
 
     // BASE_URL is "/" under test, so the link is origin-relative.
     expect(screen.getByText(`${window.location.origin}/list/tok123`)).toBeInTheDocument();
-    expect(screen.getByText(/anyone with this link/i)).toBeInTheDocument();
-    expect(screen.getByText(/marked seen stay private/i)).toBeInTheDocument();
+    expect(screen.getByText(/każdy, kto ma ten link/i)).toBeInTheDocument();
+    expect(screen.getByText(/obejrzane, pozostaje prywatne/i)).toBeInTheDocument();
   });
 
   it('revokes on demand', () => {
     shareMock.mockReturnValue({ data: { token: 'tok123' }, isLoading: false, error: null });
 
     render(<ShareListLink />);
-    fireEvent.click(screen.getByRole('button', { name: /stop sharing/i }));
+    fireEvent.click(screen.getByRole('button', { name: /przestań udostępniać/i }));
     expect(disableMock).toHaveBeenCalledOnce();
   });
 

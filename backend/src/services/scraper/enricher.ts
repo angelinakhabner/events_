@@ -271,7 +271,8 @@ export async function enrichDescriptions(
 }
 
 /**
- * Every show gets one English description of the work (GOI-130 / GOI-131).
+ * Every show gets one description of the work, in the site's language
+ * (GOI-130 / GOI-131; Polish since the site became Polish).
  *
  * "Fill the blanks" was the wrong rule once the blanks stopped being the
  * problem. The rows that read worst on the site were not the empty ones but

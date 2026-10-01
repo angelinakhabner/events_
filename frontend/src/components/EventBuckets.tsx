@@ -1,6 +1,6 @@
 import type { Event, Venue } from '@afisz/shared';
 import { bucketEvents, splitExhibitions, type Bucket, type BucketKey } from '../lib/buckets';
-import { categoryLabel, formatEventTime, formatExhibitionRange, formatShortDate } from '../lib/format';
+import { categoryLabel, formatEventTime, formatExhibitionRange, formatShortDate, plural } from '../lib/format';
 import { CategorySwatch } from './CategorySwatch';
 import { EventActions } from './EventActions';
 import { EventDescription } from './EventDescription';
@@ -76,10 +76,10 @@ function ExhibitionsSection({
             compact ? 'text-[28px] md:text-[34px]' : 'text-[28px] md:text-[44px]'
           }`}
         >
-          Ongoing exhibitions
+          Trwające wystawy
         </h2>
         <span className="tag shrink-0 text-[11px] md:text-[13px]">
-          {items.length} event{items.length === 1 ? '' : 's'}
+          {items.length} {plural(items.length, 'wydarzenie', 'wydarzenia', 'wydarzeń')}
         </span>
       </div>
       <div className="rule-ink" />
@@ -136,7 +136,7 @@ function ExhibitionRow({
         </a>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] md:text-[13px] font-bold uppercase tracking-[1px]">
-          <span className="text-ink">{venue?.name ?? event.venue?.name ?? 'Unknown venue'}</span>
+          <span className="text-ink">{venue?.name ?? event.venue?.name ?? 'Nieznane miejsce'}</span>
           <span className="text-muted">{categoryLabel(event.category)}</span>
         </div>
 
@@ -171,7 +171,7 @@ function BucketSection({
           {bucket.label}
         </h2>
         <span className="tag shrink-0 text-[11px] md:text-[13px]">
-          {bucket.items.length} event{bucket.items.length === 1 ? '' : 's'}
+          {bucket.items.length} {plural(bucket.items.length, 'wydarzenie', 'wydarzenia', 'wydarzeń')}
         </span>
       </div>
       <div className="rule-ink" />
@@ -253,11 +253,11 @@ function EventRow({
               {event.title}
             </h3>
           </a>
-          {bucketKey === 'soon' ? <span className="tag text-accent">Soon</span> : null}
+          {bucketKey === 'soon' ? <span className="tag text-accent">Wkrótce</span> : null}
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] md:text-[13px] font-bold uppercase tracking-[1px]">
-          <span className="text-ink">{venue?.name ?? 'Unknown venue'}</span>
+          <span className="text-ink">{venue?.name ?? 'Nieznane miejsce'}</span>
           <span className="text-muted">{categoryLabel(event.category)}</span>
           {event.durationMinutes ? (
             <span className="text-muted">{event.durationMinutes} min</span>

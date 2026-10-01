@@ -14,7 +14,7 @@ const event = {
 /** The invitation for the fixture above, as every expectation below spells it.
  *  Kept as a regex around the month so a newer ICU ("Jul" vs "Jul.") can't
  *  fail the test on wording that isn't under test. */
-const INVITE = /^Darling, let's go to Perfect Days at Kino Muranów together — Sat 4 Jul\w*, 20:00$/;
+const INVITE = /^Kochanie, chodźmy razem na „Perfect Days” \(Kino Muranów\) — sob\. 4 lip, 20:00$/;
 
 describe('shareEvent', () => {
   it('uses the injected share() and reports "shared" on success', async () => {
@@ -43,7 +43,7 @@ describe('shareEvent', () => {
     expect(r).toBe('copied');
     expect(writeText).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^Darling, let's go to Perfect Days at Kino Muranów together — Sat 4 Jul\w*, 20:00\nhttps:\/\/kinomuranow\.pl\/film\/perfect-days$/,
+        /^Kochanie, chodźmy razem na „Perfect Days” \(Kino Muranów\) — sob\. 4 lip, 20:00\nhttps:\/\/kinomuranow\.pl\/film\/perfect-days$/,
       ),
     );
   });
@@ -71,7 +71,7 @@ describe('shareEvent', () => {
     await shareEvent({ ...event, venue: undefined }, { share });
     expect(share).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringMatching(/^Darling, let's go to Perfect Days together — Sat 4 Jul/),
+        text: expect.stringMatching(/^Kochanie, chodźmy razem na „Perfect Days” — sob\. 4 lip/),
       }),
     );
   });
@@ -95,9 +95,9 @@ describe('inviteText', () => {
       startsAt: '2026-07-04T22:00:00.000Z', // 00:00 Warsaw on the 5th
     };
     const text = inviteText(museum);
-    expect(text).toMatch(/^Darling, let's go to Wystawa stała at Muzeum Narodowe together — Sun 5 Jul/);
+    expect(text).toMatch(/^Kochanie, chodźmy razem na „Wystawa stała” \(Muzeum Narodowe\) — niedz\. 5 lip/);
     expect(text).not.toMatch(/00:00/);
-    expect(text).not.toMatch(/All day/);
+    expect(text).not.toMatch(/Cały dzień/);
   });
 
   it('keeps a museum\'s real hour when the listing published one', () => {
@@ -107,14 +107,14 @@ describe('inviteText', () => {
       category: 'exhibition' as const,
       startsAt: '2026-07-04T09:00:00.000Z', // 11:00 Warsaw
     };
-    expect(inviteText(tour)).toMatch(/together — Sat 4 Jul\w*, 11:00$/);
+    expect(inviteText(tour)).toMatch(/— sob\. 4 lip, 11:00$/);
   });
 
   it('drops the when entirely for something with no usable date', () => {
     // A tracked film is a title and nothing else — `filmAsEvent` gives it an
     // empty startsAt.
     expect(inviteText({ ...event, startsAt: '' })).toBe(
-      "Darling, let's go to Perfect Days at Kino Muranów together",
+      'Kochanie, chodźmy razem na „Perfect Days” (Kino Muranów)',
     );
   });
 });

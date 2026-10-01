@@ -15,14 +15,14 @@ import type { ProbeOutcome, ProbeSampleEvent, SourceMethod } from '@afisz/shared
 /** Plain-English gloss of how we'd read the venue. The method name is
  *  operator vocabulary; this is what it means for the user. */
 const METHOD_BLURB: Record<SourceMethod, string> = {
-  jsonld: 'the page publishes its programme as structured data',
-  ical: 'the venue offers a calendar feed',
-  wp_rest: 'the venue’s events API answers',
-  wp_rest_posts: 'we can read the venue’s posts, though they aren’t structured events',
-  rss: 'the venue publishes a feed',
-  llm_extract: 'we can read the programme off the page',
-  firecrawl: 'we can read it with a full browser render',
-  manual: 'this venue is configured by hand',
+  jsonld: 'strona publikuje program jako dane strukturalne',
+  ical: 'miejsce udostępnia kanał kalendarza',
+  wp_rest: 'API wydarzeń tego miejsca odpowiada',
+  wp_rest_posts: 'możemy czytać wpisy tego miejsca, choć nie są to uporządkowane wydarzenia',
+  rss: 'miejsce publikuje kanał RSS',
+  llm_extract: 'potrafimy odczytać program ze strony',
+  firecrawl: 'potrafimy go odczytać po pełnym wyrenderowaniu strony',
+  manual: 'to miejsce jest skonfigurowane ręcznie',
 };
 
 /** Free to refetch — worth saying, because it's why we don't mind sweeping it
@@ -55,8 +55,8 @@ export function ProbeResultNote({
       {/* This one almost always works on a second try, so say how. */}
       {result.code === 'NO_LISTING_PAGE_FOUND' || result.code === 'NO_EVENTS_FOUND' ? (
         <p className="mt-1 mb-0 text-xs text-muted">
-          Venues usually list under <em>Repertuar</em>, <em>Program</em> or <em>Wydarzenia</em> —
-          open that page and paste its address.
+          Miejsca zwykle publikują program w zakładce <em>Repertuar</em>, <em>Program</em> lub <em>Wydarzenia</em> —
+          otwórz tę stronę i wklej jej adres.
         </p>
       ) : null}
 
@@ -67,7 +67,7 @@ export function ProbeResultNote({
           disabled={paidPending}
           className="act act-sm act-on mt-2"
         >
-          {paidPending ? 'Trying paid fetch…' : 'Try paid fetch (uses 1 credit)'}
+          {paidPending ? 'Próbujemy płatnego pobrania…' : 'Spróbuj płatnego pobrania (1 kredyt)'}
         </button>
       ) : null}
     </div>
@@ -78,20 +78,20 @@ function Success({ result }: { result: Extract<ProbeOutcome, { status: 'success'
   return (
     <div role="status" className="mt-2 border-l-3 border-ink pl-3">
       <p className="m-0 text-sm font-bold text-ink">
-        ✓ {result.shared ? 'Already tracked' : 'Scrapable'} — {METHOD_BLURB[result.method]}
-        {FREE_METHODS.includes(result.method) ? ', and it costs nothing to keep fresh' : ''}.
+        ✓ {result.shared ? 'Już śledzone' : 'Da się odczytać'} — {METHOD_BLURB[result.method]}
+        {FREE_METHODS.includes(result.method) ? ', a odświeżanie nic nie kosztuje' : ''}.
       </p>
 
       {result.shared ? (
         <p className="mt-1 mb-0 text-xs text-muted">
-          Someone already added this URL — you&rsquo;ll share it, and it&rsquo;s scraped once for
-          everyone.
+          Ktoś już dodał ten adres — będziecie go dzielić, a czytamy go raz dla
+          wszystkich.
         </p>
       ) : null}
 
       {result.confidence === 'low' ? (
         <p className="mt-1 mb-0 text-xs text-muted">
-          We only found blog posts here, so what we pull may be news rather than events.
+          Znaleźliśmy tu tylko wpisy blogowe, więc pobrane treści mogą być aktualnościami, a nie wydarzeniami.
         </p>
       ) : null}
 
@@ -105,7 +105,7 @@ function Success({ result }: { result: Extract<ProbeOutcome, { status: 'success'
 function SampleEvents({ events }: { events: ProbeSampleEvent[] }) {
   return (
     <div className="mt-2">
-      <p className="tag m-0 mb-1">Found here</p>
+      <p className="tag m-0 mb-1">Znalezione tutaj</p>
       <ul className="list-none m-0 p-0">
         {events.map((e, i) => (
           <li key={`${e.title}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -121,10 +121,10 @@ function SampleEvents({ events }: { events: ProbeSampleEvent[] }) {
 /** Dates only, in the venue's timezone. An undated entry says so rather than
  *  being given a fabricated time — that's the exhibition case. */
 export function formatSampleDate(startsAt: string | null): string {
-  if (!startsAt) return 'no date';
+  if (!startsAt) return 'bez daty';
   const d = new Date(startsAt);
-  if (Number.isNaN(d.getTime())) return 'no date';
-  return new Intl.DateTimeFormat('en-GB', {
+  if (Number.isNaN(d.getTime())) return 'bez daty';
+  return new Intl.DateTimeFormat('pl-PL', {
     day: 'numeric',
     month: 'short',
     timeZone: 'Europe/Warsaw',

@@ -66,8 +66,8 @@ function renderPage() {
 
 /** Open "Want to go" from the left-hand menu and return its section. */
 async function openWantToGo(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: 'Want to go' }));
-  return (await screen.findByRole('heading', { name: 'Want to go' })).closest('section')!;
+  await user.click(await screen.findByRole('button', { name: 'Chcę iść' }));
+  return (await screen.findByRole('heading', { name: 'Chcę iść' })).closest('section')!;
 }
 
 beforeAll(async () => {
@@ -94,12 +94,12 @@ describe('MyPage — want to go end-to-end', () => {
     renderPage();
     const section = await openWantToGo(user);
 
-    await within(section).findByRole('tab', { name: /want to go \(0\)/i });
-    expect(within(section).getByLabelText(/search across venues/i)).toBeInTheDocument();
+    await within(section).findByRole('tab', { name: /chcę iść \(0\)/i });
+    expect(within(section).getByLabelText(/szukaj we wszystkich miejscach/i)).toBeInTheDocument();
     // Nothing is added by typing: the search answers first, and only when it
     // finds nothing does the title itself go on the list.
-    expect(within(section).getByRole('button', { name: /^search$/i })).toBeInTheDocument();
-    expect(within(section).queryByRole('button', { name: /^add$/i })).not.toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: /^szukaj$/i })).toBeInTheDocument();
+    expect(within(section).queryByRole('button', { name: /^dodaj$/i })).not.toBeInTheDocument();
   });
 
   it('marks a tracked film seen with venue + comment, then moves it back', async () => {
@@ -112,27 +112,27 @@ describe('MyPage — want to go end-to-end', () => {
     const section = await openWantToGo(user);
 
     await within(section).findByText('Perfect Days');
-    expect(within(section).getByRole('tab', { name: /want to go \(1\)/i })).toBeInTheDocument();
+    expect(within(section).getByRole('tab', { name: /chcę iść \(1\)/i })).toBeInTheDocument();
 
     // Mark it seen with where + a short note.
-    await user.click(within(section).getByRole('button', { name: /seen it/i }));
-    await user.type(within(section).getByLabelText(/where did you watch/i), 'Kino Muranów');
-    await user.type(within(section).getByLabelText(/short comment/i), 'Quiet and lovely');
-    await user.click(within(section).getByRole('button', { name: /move to seen/i }));
+    await user.click(within(section).getByRole('button', { name: /^obejrzane$/i }));
+    await user.type(within(section).getByLabelText(/gdzie go obejrzałeś/i), 'Kino Muranów');
+    await user.type(within(section).getByLabelText(/krótki komentarz/i), 'Quiet and lovely');
+    await user.click(within(section).getByRole('button', { name: /przenieś do obejrzanych/i }));
 
     // The want tab empties; the seen tab holds the film with its details.
     await waitFor(() =>
-      expect(within(section).getByRole('tab', { name: /seen \(1\)/i })).toBeInTheDocument(),
+      expect(within(section).getByRole('tab', { name: /obejrzane \(1\)/i })).toBeInTheDocument(),
     );
-    await user.click(within(section).getByRole('tab', { name: /seen \(1\)/i }));
+    await user.click(within(section).getByRole('tab', { name: /obejrzane \(1\)/i }));
     await within(section).findByText('Perfect Days');
-    expect(within(section).getByText(/at Kino Muranów/)).toBeInTheDocument();
+    expect(within(section).getByText(/w: Kino Muranów/)).toBeInTheDocument();
     expect(within(section).getByText('Quiet and lovely')).toBeInTheDocument();
 
     // Move it back to the want list.
-    await user.click(within(section).getByRole('button', { name: /not seen/i }));
+    await user.click(within(section).getByRole('button', { name: /nieobejrzane/i }));
     await waitFor(() =>
-      expect(within(section).getByRole('tab', { name: /want to go \(1\)/i })).toBeInTheDocument(),
+      expect(within(section).getByRole('tab', { name: /chcę iść \(1\)/i })).toBeInTheDocument(),
     );
   });
 });

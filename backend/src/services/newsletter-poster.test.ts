@@ -64,8 +64,8 @@ describe('planPoster on the design’s own sample day', () => {
 
   it('bands cinema, cuts exhibitions into parts of the day, and merges music into them', () => {
     expect(plan.groups.map((g) => [g.layout, g.categories.map((c) => c.label)])).toEqual([
-      ['bands', ['Cinema']],
-      ['day', ['Exhibition', 'Music']],
+      ['bands', ['Kino']],
+      ['day', ['Wystawy', 'Muzyka']],
     ]);
   });
 });
@@ -132,7 +132,7 @@ describe('categories', () => {
     const cats = posterCategories(
       [section('arthouse Kino', [at('20:00')]), section('cinema', [at('19:00')])], DAY,
     );
-    expect(cats.map((c) => c.label)).toEqual(['arthouse Kino', 'Cinema']);
+    expect(cats.map((c) => c.label)).toEqual(['arthouse Kino', 'Kino']);
   });
 
   it('splits a rule-less brief by the events’ own categories', () => {
@@ -161,7 +161,7 @@ describe('layout choice', () => {
 
 describe('merging small categories', () => {
   const cat = (key: string, size: number, layout: 'bands' | 'day'): PosterCategory => ({
-    key, label: key, noun: { one: 'e', many: 'es', total: 'es' }, layout,
+    key, label: key, noun: { one: 'e', few: 'es', many: 'es', total: ['e', 'es', 'es'] }, layout,
     events: Array.from({ length: size }, () => at('19:00')),
   });
 

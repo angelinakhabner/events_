@@ -16,41 +16,47 @@ const base: BriefSummaryInput = {
 describe('briefSummary', () => {
   it('states the reader\'s own venues, cadence and time', () => {
     expect(briefSummary(base)).toBe(
-      'The next 24 hours at Kino Muranów and Kinoteka, emailed to your inbox every day at 15:00.',
+      'Najbliższe 24 godziny — Kino Muranów i Kinoteka, wysyłane na Twoją skrzynkę codziennie o 15:00.',
     );
   });
 
   it('names the weekday for a weekly brief', () => {
     expect(briefSummary({ ...base, frequency: 'weekly', sendWeekday: 4 })).toContain(
-      'every Thursday at 15:00',
+      'w każdy czwartek o 15:00',
     );
   });
 
+  // Polish agrees "każdy" / "każdą" with the day: Wednesday is feminine.
+  it('agrees the weekday phrase with the day', () => {
+    expect(briefSummary({ ...base, frequency: 'weekly', sendWeekday: 3 })).toContain('w każdą środę');
+    expect(briefSummary({ ...base, frequency: 'weekly', sendWeekday: 1 })).toContain('w każdy poniedziałek');
+  });
+
   it('carries the minutes, zero-padded', () => {
-    expect(briefSummary({ ...base, sendHour: 8, sendMinute: 5 })).toContain('at 08:05');
+    expect(briefSummary({ ...base, sendHour: 8, sendMinute: 5 })).toContain('o 08:05');
   });
 
   it('adds the after-hour cutoff only when there is one', () => {
     expect(briefSummary({ ...base, afterHour: 18 })).toContain(
-      '— only what starts after 18:00.',
+      '— tylko to, co zaczyna się po 18:00.',
     );
-    expect(briefSummary(base)).not.toContain('only what starts after');
+    expect(briefSummary(base)).not.toContain('tylko to, co zaczyna się po');
   });
 
   // No venues ticked means the brief covers all of them — the form says so
   // under the venue list, and the summary has to agree.
   it('says "all your venues" when none are picked', () => {
-    expect(briefSummary({ ...base, venueNames: [] })).toContain('at all your venues,');
+    expect(briefSummary({ ...base, venueNames: [] })).toContain('— wszystkie Twoje miejsca,');
   });
 
   it('reads a single venue without a conjunction', () => {
-    expect(briefSummary({ ...base, venueNames: ['Kinoteka'] })).toContain('at Kinoteka,');
+    expect(briefSummary({ ...base, venueNames: ['Kinoteka'] })).toContain('— Kinoteka,');
   });
 
   it('lists three, then counts the rest', () => {
-    expect(briefSummary({ ...base, venueNames: ['A', 'B', 'C'] })).toContain('at A, B and C,');
+    expect(briefSummary({ ...base, venueNames: ['A', 'B', 'C'] })).toContain('— A, B i C,');
     expect(briefSummary({ ...base, venueNames: ['A', 'B', 'C', 'D', 'E'] })).toContain(
-      'at A, B and 3 more,',
+      '— A, B i jeszcze 3,',
     );
   });
 
@@ -62,9 +68,9 @@ describe('briefSummary', () => {
    */
   describe('how much the brief covers', () => {
     it('states the horizon each cadence actually means', () => {
-      expect(briefSummary(base)).toContain('The next 24 hours at');
-      expect(briefSummary({ ...base, frequency: 'weekly' })).toContain('The next 7 days at');
-      expect(briefSummary({ ...base, frequency: 'monthly' })).toContain('The next 30 days at');
+      expect(briefSummary(base)).toContain('Najbliższe 24 godziny —');
+      expect(briefSummary({ ...base, frequency: 'weekly' })).toContain('Najbliższe 7 dni —');
+      expect(briefSummary({ ...base, frequency: 'monthly' })).toContain('Najbliższe 30 dni —');
     });
   });
 
@@ -72,12 +78,12 @@ describe('briefSummary', () => {
   describe('where it goes', () => {
     it('names the address the brief is sent to', () => {
       expect(briefSummary({ ...base, email: 'ania@example.com' })).toContain(
-        'emailed to ania@example.com every day',
+        'wysyłane na ania@example.com codziennie',
       );
     });
 
     it('falls back to a placeholder while the field is empty', () => {
-      expect(briefSummary({ ...base, email: '   ' })).toContain('emailed to your inbox');
+      expect(briefSummary({ ...base, email: '   ' })).toContain('wysyłane na Twoją skrzynkę');
     });
   });
 
@@ -85,12 +91,12 @@ describe('briefSummary', () => {
    *  where a reader would expect to be told. */
   describe('when the brief is off', () => {
     it('says nothing is being sent', () => {
-      expect(briefSummary({ ...base, enabled: false })).toContain('Paused — nothing is being sent.');
+      expect(briefSummary({ ...base, enabled: false })).toContain('Wstrzymany — nic nie jest wysyłane.');
     });
 
     it('stays quiet about it while the brief is on', () => {
-      expect(briefSummary({ ...base, enabled: true })).not.toContain('Paused');
-      expect(briefSummary(base)).not.toContain('Paused');
+      expect(briefSummary({ ...base, enabled: true })).not.toContain('Wstrzymany');
+      expect(briefSummary(base)).not.toContain('Wstrzymany');
     });
   });
 });
@@ -111,10 +117,10 @@ describe('NEWSLETTER_BLURB', () => {
   });
 
   it('describes what the feature can do — cadence, per-category rules, delivery', () => {
-    expect(NEWSLETTER_BLURB).toMatch(/every day, once a week or once a month/);
-    expect(NEWSLETTER_BLURB).toMatch(/each category/);
-    expect(NEWSLETTER_BLURB).toMatch(/how far ahead/);
-    expect(NEWSLETTER_BLURB).toMatch(/email/);
+    expect(NEWSLETTER_BLURB).toMatch(/codziennie, raz w tygodniu albo raz w miesiącu/);
+    expect(NEWSLETTER_BLURB).toMatch(/każdej kategorii/);
+    expect(NEWSLETTER_BLURB).toMatch(/zasięg/);
+    expect(NEWSLETTER_BLURB).toMatch(/e-mailem/);
     expect(NEWSLETTER_BLURB).toMatch(/PDF/);
   });
 });

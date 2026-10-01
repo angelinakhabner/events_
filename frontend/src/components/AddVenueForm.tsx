@@ -127,12 +127,12 @@ export function AddVenueForm({
       }}
     >
       <p className="text-sm text-body max-w-[520px]">
-        Add any venue by its listing URL — nothing pre-defined. If someone already added the
-        same URL, you&rsquo;ll share it; it&rsquo;s only scraped once for everyone.
+        Dodaj dowolne miejsce po adresie strony z programem — nic nie jest z góry ustalone. Jeśli
+        ktoś dodał już ten sam adres, będziecie go dzielić; czytamy go raz dla wszystkich.
       </p>
 
       <div>
-        <label className={stepLabel} htmlFor="add-language">1 · Language of the venue&rsquo;s page</label>
+        <label className={stepLabel} htmlFor="add-language">1 · Język strony miejsca</label>
         <select
           id="add-language"
           value={language}
@@ -149,13 +149,13 @@ export function AddVenueForm({
       </div>
 
       <div>
-        <label className={stepLabel} htmlFor="add-url">2 · Venue page URL</label>
+        <label className={stepLabel} htmlFor="add-url">2 · Adres strony z programem</label>
         <div className="flex flex-wrap gap-2">
           <input
             id="add-url" required type="url" value={url}
             onChange={(e) => { setUrl(e.target.value); setCheckedUrl(null); check.reset(); }}
             onBlur={runCheck}
-            placeholder="https://venue.example/program"
+            placeholder="https://miejsce.pl/program"
             className="field-sm flex-1 min-w-[16rem]"
           />
           <button
@@ -164,14 +164,14 @@ export function AddVenueForm({
             disabled={!url.trim() || check.isPending}
             className="btn-outline"
           >
-            {check.isPending ? 'Checking…' : 'Check'}
+            {check.isPending ? 'Sprawdzanie…' : 'Sprawdź'}
           </button>
         </div>
         {check.isPending ? (
           <p role="status" className="mt-2 text-sm text-muted">
             {paidPending
-              ? 'Rendering the page in a real browser…'
-              : 'Checking whether the page can be scraped…'}
+              ? 'Otwieramy stronę w prawdziwej przeglądarce…'
+              : 'Sprawdzamy, czy da się odczytać stronę…'}
           </p>
         ) : null}
         {check.data && !check.isPending ? (
@@ -185,13 +185,13 @@ export function AddVenueForm({
             verdict, including every failure, arrives as data. */}
         {check.error ? (
           <p role="status" className="mt-2 text-sm font-bold text-accent">
-            ✗ The check couldn&rsquo;t run. Try again in a moment.
+            ✗ Nie udało się sprawdzić strony. Spróbuj ponownie za chwilę.
           </p>
         ) : null}
       </div>
 
       <fieldset>
-        <legend className={stepLabel}>3 · Category</legend>
+        <legend className={stepLabel}>3 · Kategoria</legend>
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map((c) => (
             <button
@@ -216,7 +216,7 @@ export function AddVenueForm({
           They were already free-form on a venue's row; there was just no way
           to set them at the moment you actually know what they are. */}
       <div>
-        <label className={stepLabel} htmlFor="add-tags">4 · Your tags — optional, type your own</label>
+        <label className={stepLabel} htmlFor="add-tags">4 · Twoje tagi — opcjonalne, wpisz własne</label>
         <div className="flex flex-wrap items-center gap-2">
           {tags.map((tag) => (
             <span
@@ -226,7 +226,7 @@ export function AddVenueForm({
               {tag}
               <button
                 type="button"
-                aria-label={`Remove tag ${tag}`}
+                aria-label={`Usuń tag ${tag}`}
                 onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
                 className="act act-sm leading-none"
               >
@@ -253,25 +253,25 @@ export function AddVenueForm({
               setTags((prev) => withDraft(prev, tagDraft));
               setTagDraft('');
             }}
-            placeholder="e.g. date night, walking distance"
+            placeholder="np. randka, blisko domu"
             className="field-sm flex-1 min-w-[12rem]"
           />
         </div>
       </div>
 
       <div>
-        <label className={stepLabel} htmlFor="add-name">Name — suggested from the page, edit freely</label>
+        <label className={stepLabel} htmlFor="add-name">Nazwa — podpowiedziana ze strony, możesz ją zmienić</label>
         <div className="flex flex-wrap gap-3">
           <input
             id="add-name" value={name} onChange={(e) => setName(e.target.value)}
-            placeholder="Filled in after the URL check"
+            placeholder="Uzupełni się po sprawdzeniu adresu"
             className="field-sm flex-1 min-w-[12rem]"
           />
           <button
             type="submit" disabled={submitting || !url.trim() || !category}
             className="btn-fill"
           >
-            {submitting ? 'Adding…' : 'Add venue'}
+            {submitting ? 'Dodawanie…' : 'Dodaj miejsce'}
           </button>
         </div>
       </div>

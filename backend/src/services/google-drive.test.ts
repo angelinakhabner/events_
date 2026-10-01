@@ -91,7 +91,7 @@ describe('exchangeDriveCode', () => {
     ]);
 
     await expect(exchangeDriveCode(googleDriveConfig()!, 'code-1', { fetcher }))
-      .rejects.toThrow(/permission was not granted/i);
+      .rejects.toThrow(/nie udzielono uprawnień/i);
   });
 });
 
@@ -101,7 +101,7 @@ describe('refreshAccessToken', () => {
     const { fetcher } = stubFetch([{ match: /token/, reply: () => json({ error: 'invalid_grant' }, 400) }]);
 
     await expect(refreshAccessToken(googleDriveConfig()!, 'rt', fetcher))
-      .rejects.toThrow(/revoked — reconnect/i);
+      .rejects.toThrow(/cofnięty — połącz go ponownie/i);
   });
 });
 

@@ -40,8 +40,8 @@ export function WantToGoSection() {
   return (
     <section>
       <PanelHeading
-        title="Want to go"
-        blurb={'Everything you saved, in one list. Search for something across every venue below, or add events with "Want to go" and films with "Track film" wherever you find them.'}
+        title="Chcę iść"
+        blurb={'Wszystko, co zapisujesz, na jednej liście. Wyszukaj coś we wszystkich miejscach poniżej albo dodawaj wydarzenia przyciskiem „Chcę iść”, a filmy przyciskiem „Śledź film”, gdziekolwiek je znajdziesz.'}
         rule={false}
       />
 
@@ -54,19 +54,19 @@ export function WantToGoSection() {
         onTrack={() => { void films.refetch(); }}
       />
 
-      <div className="mb-5 flex" role="tablist" aria-label="Want to go lists">
+      <div className="mb-5 flex" role="tablist" aria-label="Listy „Chcę iść”">
         <TabButton active={tab === 'want'} onClick={() => setTab('want')}>
-          Want to go ({want.length})
+          Chcę iść ({want.length})
         </TabButton>
         <TabButton active={tab === 'seen'} onClick={() => setTab('seen')}>
-          Seen ({seen.length})
+          Obejrzane ({seen.length})
         </TabButton>
       </div>
 
       {loading ? <SkeletonList rows={2} /> : null}
       {error ? (
         <ErrorState
-          message="Couldn't load your list."
+          message="Nie udało się wczytać Twojej listy."
           onRetry={() => { void entries.refetch(); void films.refetch(); }}
         />
       ) : null}
@@ -74,8 +74,8 @@ export function WantToGoSection() {
       {!loading && !error && shown.length === 0 ? (
         <p className="border-t-3 border-ink pt-5 text-sm text-muted">
           {tab === 'want'
-            ? 'Nothing saved yet — search above, or use “Want to go” on any event you come across.'
-            : 'Nothing marked seen yet.'}
+            ? 'Nic jeszcze nie zapisano — wyszukaj powyżej albo użyj „Chcę iść” przy dowolnym wydarzeniu.'
+            : 'Nic jeszcze nie oznaczono jako obejrzane.'}
         </p>
       ) : null}
 
@@ -178,16 +178,16 @@ function EventRow({ entry }: { entry: WantToGoEntry }) {
               disabled={setSeen.isPending}
               className="act act-inherit"
             >
-              {seen ? 'Not seen' : 'Seen it'}
+              {seen ? 'Nieobejrzane' : 'Obejrzane'}
             </button>
             <button
               type="button"
-              aria-label={`Remove ${event.title}`}
+              aria-label={`Usuń ${event.title}`}
               onClick={() => remove.mutate({ eventId: event.id })}
               disabled={remove.isPending}
               className="act act-inherit"
             >
-              Remove
+              Usuń
             </button>
           </>
         }
@@ -218,7 +218,7 @@ function FilmRow({ film }: { film: Film }) {
         meta={
           seen ? (
             <>
-              {film.watchedVenue ? `at ${film.watchedVenue}` : null}
+              {film.watchedVenue ? `w: ${film.watchedVenue}` : null}
               {film.watchedVenue && film.watchedAt ? ' · ' : null}
               {film.watchedAt ? formatShortDate(film.watchedAt) : null}
             </>
@@ -233,7 +233,7 @@ function FilmRow({ film }: { film: Film }) {
                 disabled={moveToWant.isPending}
                 className="act act-inherit"
               >
-                Not seen
+                Nieobejrzane
               </button>
             ) : (
               <button
@@ -241,17 +241,17 @@ function FilmRow({ film }: { film: Film }) {
                 onClick={() => setMarking((v) => !v)}
                 className="act act-inherit"
               >
-                Seen it
+                Obejrzane
               </button>
             )}
             <button
               type="button"
-              aria-label={`Remove ${film.title}`}
+              aria-label={`Usuń ${film.title}`}
               onClick={() => remove.mutate({ filmId: film.id })}
               disabled={remove.isPending}
               className="act act-inherit"
             >
-              Remove
+              Usuń
             </button>
           </>
         }
@@ -285,22 +285,22 @@ function MarkSeenForm({ film, onDone }: { film: Film; onDone: () => void }) {
         });
       }}
     >
-      <label className="sr-only" htmlFor={`seen-venue-${film.id}`}>Where did you watch it?</label>
+      <label className="sr-only" htmlFor={`seen-venue-${film.id}`}>Gdzie go obejrzałeś(-aś)?</label>
       <input
         id={`seen-venue-${film.id}`}
         type="text"
         value={venue}
         onChange={(e) => setVenue(e.target.value)}
-        placeholder="Where? e.g. Kino Muranów"
+        placeholder="Gdzie? np. Kino Muranów"
         className="field-sm"
       />
-      <label className="sr-only" htmlFor={`seen-comment-${film.id}`}>Short comment</label>
+      <label className="sr-only" htmlFor={`seen-comment-${film.id}`}>Krótki komentarz</label>
       <input
         id={`seen-comment-${film.id}`}
         type="text"
         value={comment}
         onChange={(e) => setComment(e.target.value)}
-        placeholder="Short comment (optional)"
+        placeholder="Krótki komentarz (opcjonalnie)"
         className="field-sm flex-1 min-w-[10rem]"
       />
       <button
@@ -308,7 +308,7 @@ function MarkSeenForm({ film, onDone }: { film: Film; onDone: () => void }) {
         disabled={markSeen.isPending}
         className="btn-outline"
       >
-        {markSeen.isPending ? 'Saving…' : 'Move to seen'}
+        {markSeen.isPending ? 'Zapisywanie…' : 'Przenieś do obejrzanych'}
       </button>
       {markSeen.error ? <p className="self-center text-sm text-accent">{markSeen.error.message}</p> : null}
     </form>

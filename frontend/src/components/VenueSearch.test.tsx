@@ -80,15 +80,15 @@ function setup(tracked: string[] = []) {
 }
 
 function search(q: string) {
-  fireEvent.change(screen.getByLabelText(/search across venues/i), { target: { value: q } });
-  fireEvent.click(screen.getByRole('button', { name: /^search$/i }));
+  fireEvent.change(screen.getByLabelText(/szukaj we wszystkich miejscach/i), { target: { value: q } });
+  fireEvent.click(screen.getByRole('button', { name: /^szukaj$/i }));
 }
 
 describe('VenueSearch', () => {
   it('will not search on a single character', () => {
     setup();
-    fireEvent.change(screen.getByLabelText(/search across venues/i), { target: { value: 'a' } });
-    expect(screen.getByRole('button', { name: /^search$/i })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/szukaj we wszystkich miejscach/i), { target: { value: 'a' } });
+    expect(screen.getByRole('button', { name: /^szukaj$/i })).toBeDisabled();
   });
 
   it('lists what is on, with where and when', async () => {
@@ -109,9 +109,9 @@ describe('VenueSearch', () => {
     search('Nieistniejący film');
 
     await waitFor(() => {
-      expect(screen.getByText(/nothing coming up/i)).toBeInTheDocument();
+      expect(screen.getByText(/nic nie nadchodzi/i)).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole('button', { name: /track/i }));
+    fireEvent.click(screen.getByRole('button', { name: /śledź/i }));
     expect(addMutate).toHaveBeenCalledWith({ title: 'Nieistniejący film' });
   });
 
@@ -121,9 +121,9 @@ describe('VenueSearch', () => {
     search('Nieistniejący film');
 
     await waitFor(() => {
-      expect(screen.getByText(/already on your list/i)).toBeInTheDocument();
+      expect(screen.getByText(/już na twojej liście/i)).toBeInTheDocument();
     });
-    expect(screen.queryByRole('button', { name: /track/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /śledź/i })).not.toBeInTheDocument();
   });
 
   it('says what happens next once a title is tracked', async () => {
@@ -133,7 +133,7 @@ describe('VenueSearch', () => {
     search('Nieistniejący film');
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(/in your brief/i);
+      expect(screen.getByRole('status')).toHaveTextContent(/w twoim newsletterze/i);
     });
   });
 });

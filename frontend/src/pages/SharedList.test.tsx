@@ -90,7 +90,7 @@ describe('SharedListPage', () => {
     });
 
     renderAt('tok123');
-    expect(screen.getByRole('button', { name: /nearest screenings/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /najbliższe seanse/i })).toBeInTheDocument();
   });
 
   it('carries no owner actions — a shared list is read-only', () => {
@@ -101,8 +101,8 @@ describe('SharedListPage', () => {
     });
 
     renderAt('tok123');
-    expect(screen.queryByRole('button', { name: /seen it/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^obejrzane$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /usuń/i })).not.toBeInTheDocument();
   });
 
   it('never names the owner', () => {
@@ -120,15 +120,15 @@ describe('SharedListPage', () => {
     listMock.mockReturnValue({ data: undefined, isLoading: false, error: { message: 'NOT_FOUND' } });
 
     renderAt('revoked');
-    expect(screen.getByRole('alert')).toHaveTextContent(/isn’t shared any more|link is wrong/i);
-    expect(screen.getByRole('link', { name: /browse what/i })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/nie jest już udostępniana|link jest błędny/i);
+    expect(screen.getByRole('link', { name: /zobacz, co się dzieje/i })).toBeInTheDocument();
   });
 
   it('distinguishes an empty shared list from a broken link', () => {
     listMock.mockReturnValue({ data: { entries: [], films: [] }, isLoading: false, error: null });
 
     renderAt('tok123');
-    expect(screen.getByText(/this list is empty/i)).toBeInTheDocument();
+    expect(screen.getByText(/ta lista jest na razie pusta/i)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

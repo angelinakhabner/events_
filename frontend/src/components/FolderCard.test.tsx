@@ -25,7 +25,7 @@ describe('FolderCard', () => {
       />,
     );
     expect(screen.getByText('My folder')).toBeInTheDocument();
-    expect(screen.getByText(/1 venue · Cinema · After 18:00/)).toBeInTheDocument();
+    expect(screen.getByText(/1 miejsce · Kino · Po 18:00/)).toBeInTheDocument();
   });
 
   it('calls onRename when the name is edited and Enter is pressed', async () => {
@@ -36,8 +36,8 @@ describe('FolderCard', () => {
         onToggle={() => {}} onRename={onRename} onDelete={() => {}}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: /rename folder/i }));
-    const input = screen.getByLabelText('Folder name');
+    await userEvent.click(screen.getByRole('button', { name: /zmień nazwę folderu/i }));
+    const input = screen.getByLabelText('Nazwa folderu');
     await userEvent.clear(input);
     await userEvent.type(input, 'Renamed{Enter}');
     expect(onRename).toHaveBeenCalledWith('Renamed');
@@ -51,10 +51,10 @@ describe('FolderCard', () => {
         onToggle={() => {}} onRename={() => {}} onDelete={onDelete}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: /delete folder/i }));
+    await userEvent.click(screen.getByRole('button', { name: /usuń folder/i }));
     expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /confirm delete/i })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
+    expect(screen.getByRole('button', { name: /potwierdź usunięcie/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /potwierdź usunięcie/i }));
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
@@ -66,10 +66,10 @@ describe('FolderCard', () => {
         onToggle={() => {}} onRename={() => {}} onDelete={onDelete}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: /delete folder/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /usuń folder/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^anuluj$/i }));
     expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: /confirm delete/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /potwierdź usunięcie/i })).not.toBeInTheDocument();
   });
 
   it('renders children only when expanded', () => {

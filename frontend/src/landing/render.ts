@@ -90,12 +90,16 @@ function documentSections(sections: readonly PolicySection[], prefix: string): s
 
 /**
  * A stable slug for a section heading, so the policy's parts are linkable.
- * Headings are short, hand-written English; anything outside a-z collapses to
- * a hyphen and repeats are squeezed.
+ * Headings are short and hand-written, in Polish: diacritics are folded to
+ * their base letters (ł included, which Unicode does not decompose), anything
+ * else outside a-z collapses to a hyphen, and repeats are squeezed.
  */
 export function slug(heading: string): string {
   return heading
     .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 }
@@ -112,7 +116,7 @@ function jsonLd(): string {
     name: NAME,
     url: SITE_URL,
     description: META_DESCRIPTION,
-    inLanguage: 'en',
+    inLanguage: 'pl',
   };
   return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
@@ -157,7 +161,7 @@ export function landingBody(): string {
 
       <main>
         <section class="afisz-section" id="what-it-is">
-          <h1 class="afisz-h1">What ${escapeHtml(NAME)} is</h1>
+          <h1 class="afisz-h1">Czym jest ${escapeHtml(NAME)}</h1>
           ${paragraph(DESCRIPTION)}
         </section>
 
@@ -173,7 +177,7 @@ export function landingBody(): string {
 
         <section class="afisz-section" id="privacy">
           <h2 class="afisz-h2">${escapeHtml(POLICY_HEADING)}</h2>
-          <p class="afisz-updated">Last updated ${escapeHtml(POLICY_UPDATED)}</p>
+          <p class="afisz-updated">Ostatnia aktualizacja: ${escapeHtml(POLICY_UPDATED)} r.</p>
           ${policy}
         </section>
 
@@ -183,13 +187,13 @@ export function landingBody(): string {
              not been invited yet, this page is before. -->
         <section class="afisz-section" id="terms">
           <h2 class="afisz-h2">${escapeHtml(TERMS_HEADING)}</h2>
-          <p class="afisz-updated">Last updated ${escapeHtml(TERMS_UPDATED)}</p>
+          <p class="afisz-updated">Ostatnia aktualizacja: ${escapeHtml(TERMS_UPDATED)} r.</p>
           ${terms}
         </section>
       </main>
 
       <footer class="afisz-footer">
-        <p>${escapeHtml(NAME)} · <a href="mailto:${escapeHtml(CONTACT_EMAIL)}">${escapeHtml(CONTACT_EMAIL)}</a> · <a href="#privacy">Privacy</a> · <a href="#terms">Terms</a></p>
+        <p>${escapeHtml(NAME)} · <a href="mailto:${escapeHtml(CONTACT_EMAIL)}">${escapeHtml(CONTACT_EMAIL)}</a> · <a href="#privacy">Prywatność</a> · <a href="#terms">Regulamin</a></p>
       </footer>
     </div>`;
 }

@@ -55,7 +55,7 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     city: 'Warsaw',
     startDate: '2026-06-19',
     endDate: '2026-08-30',
-    description: 'Open-air summer screenings on the Vistula boulevards — free entry, films at dusk.',
+    description: 'Letnie seanse pod gołym niebem na bulwarach wiślanych — wstęp wolny, filmy o zmierzchu.',
   },
   {
     // GOI-99's own example. It reaches the listing as a run of identically
@@ -72,7 +72,7 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     city: 'Warsaw',
     startDate: '2026-09-11',
     endDate: '2026-09-13',
-    description: 'Warsaw’s crossroads-of-cultures festival — world music and stage work from across the map, at Teatr Dramatyczny.',
+    description: 'Warszawski festiwal na skrzyżowaniu kultur — muzyka świata i teatr z różnych stron mapy, w Teatrze Dramatycznym.',
   },
   {
     id: 'wff-2026',
@@ -83,7 +83,7 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     city: 'Warsaw',
     startDate: '2026-10-09',
     endDate: '2026-10-18',
-    description: 'Warsaw’s flagship international festival — premieres, competitions and Q&As across the city’s big screens.',
+    description: 'Najważniejszy międzynarodowy festiwal filmowy Warszawy — premiery, konkursy i spotkania z twórcami na wielkich ekranach miasta.',
   },
   {
     id: 'five-flavours-2026',
@@ -94,7 +94,7 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     city: 'Warsaw',
     startDate: '2026-11-10',
     endDate: '2026-11-17',
-    description: 'The largest showcase of Asian cinema in Poland, from festival hits to genre discoveries.',
+    description: 'Największy przegląd kina azjatyckiego w Polsce — od festiwalowych przebojów po gatunkowe odkrycia.',
   },
   {
     id: 'watch-docs-2026',
@@ -105,7 +105,7 @@ export const FESTIVAL_SEEDS: FestivalSeed[] = [
     city: 'Warsaw',
     startDate: '2026-12-04',
     endDate: '2026-12-13',
-    description: 'International documentary festival on human rights, with post-screening debates.',
+    description: 'Międzynarodowy festiwal filmów dokumentalnych o prawach człowieka, z debatami po seansach.',
   },
 ];
 

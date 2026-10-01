@@ -33,7 +33,7 @@ describe('ExpandableText', () => {
   it('reveals "Read more" only when the text overflows the clamp', () => {
     restore = stubOverflow(120, 40);
     render(<ExpandableText text="a very long description that gets clamped" />);
-    expect(screen.getByRole('button', { name: /read more/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /czytaj dalej/i })).toBeInTheDocument();
   });
 
   it('toggles between clamped and full text, updating label + aria-expanded', async () => {
@@ -43,18 +43,18 @@ describe('ExpandableText', () => {
 
     // Collapsed: clamped and labelled "Read more".
     expect(para.className).toMatch(/line-clamp-2/);
-    const button = screen.getByRole('button', { name: /read more/i });
+    const button = screen.getByRole('button', { name: /czytaj dalej/i });
     expect(button).toHaveAttribute('aria-expanded', 'false');
 
     await userEvent.click(button);
 
     // Expanded: clamp removed, label flips, aria-expanded true.
     expect(para.className).not.toMatch(/line-clamp/);
-    const collapse = screen.getByRole('button', { name: /show less/i });
+    const collapse = screen.getByRole('button', { name: /zwiń/i });
     expect(collapse).toHaveAttribute('aria-expanded', 'true');
 
     await userEvent.click(collapse);
-    expect(screen.getByRole('button', { name: /read more/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /czytaj dalej/i })).toBeInTheDocument();
   });
 
   it('respects a custom clamp depth', () => {

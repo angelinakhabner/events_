@@ -71,7 +71,7 @@ describe('privacy policy', () => {
   it('identifies the controller', () => {
     renderAt('/policy');
     expect(text()).toContain(operatorIdentity());
-    expect(text()).toMatch(/administrator danych osobowych/);
+    expect(text()).toMatch(/Administratorem danych osobowych/);
   });
 
   /** Art. 13(2)(d) RODO: the notice must name the supervisory authority the
@@ -84,7 +84,7 @@ describe('privacy policy', () => {
 
   it('states a legal basis for each purpose it describes', () => {
     renderAt('/policy');
-    for (const basis of ['art. 6(1)(a)', 'art. 6(1)(b)', 'art. 6(1)(f)']) {
+    for (const basis of ['art. 6 ust. 1 lit. a', 'art. 6 ust. 1 lit. b', 'art. 6 ust. 1 lit. f']) {
       expect(text()).toContain(basis);
     }
   });
@@ -92,7 +92,7 @@ describe('privacy policy', () => {
   it('lists every data subject right, including withdrawal of consent', () => {
     renderAt('/policy');
     for (const right of [
-      'art. 15', 'art. 16', 'art. 17', 'art. 18', 'art. 20', 'art. 21', 'art. 7(3)',
+      'art. 15', 'art. 16', 'art. 17', 'art. 18', 'art. 20', 'art. 21', 'art. 7 ust. 3',
     ]) {
       expect(text()).toContain(right);
     }
@@ -107,23 +107,23 @@ describe('privacy policy', () => {
 
   it('addresses transfers outside the EEA', () => {
     renderAt('/policy');
-    expect(text()).toMatch(/Standard Contractual Clauses/i);
+    expect(text()).toMatch(/standardowe klauzule umowne/i);
     expect(text()).toMatch(/Data Privacy Framework/i);
   });
 
   it('says how long each kind of data is kept', () => {
     renderAt('/policy');
-    expect(text()).toMatch(/How long it is kept/i);
-    expect(text()).toMatch(/single-use/i);
+    expect(text()).toMatch(/Jak długo je przechowujemy/i);
+    expect(text()).toMatch(/jednorazowe/i);
   });
 
   /** The claims that would be false if a tracker were ever added. They are
    *  asserted so that adding one without amending the copy breaks a test. */
   it('states plainly that there is no advertising, analytics or profiling', () => {
     renderAt('/policy');
-    expect(text()).toMatch(/not sold, rented/i);
-    expect(text()).toMatch(/no analytics package/i);
-    expect(text()).toMatch(/art\. 22 GDPR/);
+    expect(text()).toMatch(/nie sprzedajemy, nie wynajmujemy/i);
+    expect(text()).toMatch(/nie ma pakietu analitycznego/i);
+    expect(text()).toMatch(/art\. 22 RODO/);
   });
 
   it('explains the browser storage it uses in place of a cookie banner', () => {
@@ -134,12 +134,12 @@ describe('privacy policy', () => {
 
   it('carries the date it was last changed', () => {
     renderAt('/policy');
-    expect(screen.getByText(/^Last updated \d{1,2} \w+ \d{4}$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Ostatnia aktualizacja: \d{1,2} \p{L}+ \d{4} r\.$/u)).toBeInTheDocument();
   });
 
   it('links to the terms', () => {
     renderAt('/policy');
-    expect(screen.getByRole('link', { name: /terms of use/i })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: /regulamin/i })).toHaveAttribute('href', '/terms');
   });
 });
 
@@ -150,51 +150,51 @@ describe('terms of use', () => {
    */
   it('covers everything art. 8(3) UŚUDE requires of a regulamin', () => {
     renderAt('/terms');
-    expect(text()).toMatch(/What the service does/i);            // scope
-    expect(text()).toMatch(/What you need to use it/i);          // technical requirements
-    expect(text()).toMatch(/must not supply unlawful content/i); // unlawful content
-    expect(text()).toMatch(/Complaints/i);                       // complaints procedure
+    expect(text()).toMatch(/Na czym polega usługa/i);            // scope
+    expect(text()).toMatch(/Wymagania techniczne/i);          // technical requirements
+    expect(text()).toMatch(/zakazane jest dostarczanie treści o charakterze bezprawnym/i); // unlawful content
+    expect(text()).toMatch(/Reklamacje/i);                       // complaints procedure
   });
 
   it('gives a complaints route and a deadline for answering', () => {
     renderAt('/terms');
-    expect(text()).toMatch(/answered within 14 days/i);
+    expect(text()).toMatch(/w ciągu 14 dni od jej otrzymania/i);
   });
 
   it('states the consumer right of withdrawal rather than disclaiming it', () => {
     renderAt('/terms');
-    expect(text()).toMatch(/withdraw from the contract within 14 days/i);
-    expect(text()).toMatch(/ustawa o prawach konsumenta/);
+    expect(text()).toMatch(/odstąpić od umowy w ciągu 14 dni/i);
+    expect(text()).toMatch(/ustawy o prawach konsumenta/);
   });
 
   /** The listings are scraped and can be wrong; saying so is the point of the
    *  clause, and "check with the venue" is the actionable half. */
   it('is honest about the accuracy of scraped listings', () => {
     renderAt('/terms');
-    expect(text()).toMatch(/Check with the venue before you set out/i);
-    expect(text()).toMatch(/not as a guarantee/i);
+    expect(text()).toMatch(/Zanim wyjdziesz, sprawdź u organizatora/i);
+    expect(text()).toMatch(/a nie jako gwarancję/i);
   });
 
   it('does not purport to exclude liability the law will not let it exclude', () => {
     renderAt('/terms');
-    expect(text()).toMatch(/not excluded or limited for wilful misconduct/i);
-    expect(text()).toMatch(/the law prevails/i);
+    expect(text()).toMatch(/nie jest wyłączona ani ograniczona w przypadku winy umyślnej/i);
+    expect(text()).toMatch(/pierwszeństwo ma prawo/i);
   });
 
   it('says the newsletter is sent on consent that can be withdrawn', () => {
     renderAt('/terms');
-    expect(text()).toMatch(/withdraw that consent at any time/i);
-    expect(text()).toMatch(/unsubscribe link/i);
+    expect(text()).toMatch(/możesz ją w każdej chwili wycofać/i);
+    expect(text()).toMatch(/linkiem do rezygnacji/i);
   });
 
   it('names the governing law', () => {
     renderAt('/terms');
-    expect(text()).toMatch(/governed by Polish law/i);
+    expect(text()).toMatch(/podlega prawu polskiemu/i);
   });
 
   it('links to the privacy policy', () => {
     renderAt('/terms');
-    expect(screen.getByRole('link', { name: /privacy policy/i })).toHaveAttribute('href', '/policy');
+    expect(screen.getByRole('link', { name: /polityka prywatności/i })).toHaveAttribute('href', '/policy');
   });
 });
 
@@ -248,10 +248,10 @@ describe('the app and the landing page are one document', () => {
 
   it('keeps the two documents\' anchors apart', () => {
     const html = landingBody();
-    // Both have a section called "Complaints"; duplicate ids would make one
-    // of them unreachable.
-    expect(html).toContain('id="privacy-complaints"');
-    expect(html).toContain('id="terms-complaints"');
+    // Both have a section about complaints ("Skargi", "Reklamacje"); if they
+    // ever share a heading, duplicate ids would make one of them unreachable.
+    expect(html).toContain('id="privacy-skargi"');
+    expect(html).toContain('id="terms-reklamacje"');
   });
 });
 
@@ -280,9 +280,9 @@ describe('clause anchors', () => {
 describe('document title', () => {
   it('names the document being read', () => {
     const { unmount } = renderAt('/policy');
-    expect(document.title).toBe('Privacy policy — AFISZ');
+    expect(document.title).toBe('Polityka prywatności — AFISZ');
     unmount();
     renderAt('/terms');
-    expect(document.title).toBe('Terms of use — AFISZ');
+    expect(document.title).toBe('Regulamin — AFISZ');
   });
 });

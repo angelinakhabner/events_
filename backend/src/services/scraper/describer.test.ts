@@ -52,7 +52,7 @@ describe('AnthropicDescriber', () => {
 
     const out = await new AnthropicDescriber('key', 'model-x').describe(INPUT);
 
-    expect(create.mock.calls[0]![0].system).toMatch(/LONG: <in English: a fuller paragraph/);
+    expect(create.mock.calls[0]![0].system).toMatch(/LONG: <in Polish: a fuller paragraph/);
     expect(out.longDescription).toBe(
       'After Troy falls, its women wait to learn which Greek will take them. ' +
       'Kleczewska stages Euripides as a chorus of survivors.',
@@ -80,7 +80,7 @@ describe('AnthropicDescriber', () => {
     expect(create.mock.calls[1]![0].tools[0].max_uses).toBe(2);
   });
 
-  it('asks for English, offers web search, and returns the description', async () => {
+  it('asks for Polish, offers web search, and returns the description', async () => {
     create.mockResolvedValueOnce(reply([
       text('CATEGORY: performance\nDESCRIPTION: Euripides’ tragedy of the women of Troy.'),
     ]));
@@ -88,7 +88,7 @@ describe('AnthropicDescriber', () => {
     const out = await new AnthropicDescriber('key', 'model-x').describe(INPUT);
 
     const req = create.mock.calls[0]![0];
-    expect(req.system).toMatch(/Always write both descriptions in English/);
+    expect(req.system).toMatch(/Always write both descriptions in Polish/);
     expect(req.system).toMatch(/Never describe logistics/);
     expect(req.tools).toEqual([expect.objectContaining({ type: 'web_search_20260209', name: 'web_search' })]);
     expect(req.messages[0].content).toContain('Listing note: Scena: scena duża');

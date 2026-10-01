@@ -108,7 +108,7 @@ describe('search engines', () => {
 
   // Nothing worth indexing, and nothing that tells a stranger what this is.
   it('gives the gate page no venue names, no event data, no descriptive copy', () => {
-    expect(GATE_HTML).toContain('Not available');
+    expect(GATE_HTML).toContain('Niedostępne');
     expect(GATE_HTML).toContain(NOINDEX);
     expect(GATE_HTML).not.toMatch(/afisz|goin|teatr|kino|event|wydarzen/i);
   });

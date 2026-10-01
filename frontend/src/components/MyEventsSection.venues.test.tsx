@@ -69,20 +69,20 @@ afterEach(() => vi.useRealTimers());
 describe('MyEventsSection — venues per category (GOI-135)', () => {
   it('has no venue row on the ALL tab, as on Home', () => {
     render(<MyEventsSection />);
-    expect(screen.queryByRole('group', { name: /filter by venue/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /filtruj według miejsca/i })).not.toBeInTheDocument();
   });
 
   it('lists the category’s own venues, and picking one narrows the list', async () => {
     const user = userEvent.setup();
     render(<MyEventsSection />);
-    await user.click(screen.getByRole('button', { name: 'Cinema' }));
+    await user.click(screen.getByRole('button', { name: 'Kino' }));
 
-    const row = screen.getByRole('group', { name: /filter by venue/i });
-    expect(within(row).getByRole('button', { name: /^Kino Muranów, 1 event/i })).toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: /^Kinoteka, 1 event/i })).toBeInTheDocument();
+    const row = screen.getByRole('group', { name: /filtruj według miejsca/i });
+    expect(within(row).getByRole('button', { name: /^Kino Muranów, 1 wydarzenie/i })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: /^Kinoteka, 1 wydarzenie/i })).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: /Powszechny/i })).not.toBeInTheDocument();
 
-    await user.click(within(row).getByRole('button', { name: /^Kinoteka, 1 event/i }));
+    await user.click(within(row).getByRole('button', { name: /^Kinoteka, 1 wydarzenie/i }));
     expect(screen.getByRole('heading', { name: 'Perfect Days' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Chungking Express' })).not.toBeInTheDocument();
   });
@@ -90,14 +90,14 @@ describe('MyEventsSection — venues per category (GOI-135)', () => {
   it('remembers the pick per category', async () => {
     const user = userEvent.setup();
     render(<MyEventsSection />);
-    await user.click(screen.getByRole('button', { name: 'Cinema' }));
-    const row = () => screen.getByRole('group', { name: /filter by venue/i });
+    await user.click(screen.getByRole('button', { name: 'Kino' }));
+    const row = () => screen.getByRole('group', { name: /filtruj według miejsca/i });
     await user.click(within(row()).getByRole('button', { name: /^Kinoteka/i }));
 
-    await user.click(screen.getByRole('button', { name: 'Theatre' }));
+    await user.click(screen.getByRole('button', { name: 'Teatr' }));
     expect(within(row()).getByRole('button', { name: /^Teatr Powszechny/i })).toHaveAttribute('aria-pressed', 'false');
 
-    await user.click(screen.getByRole('button', { name: 'Cinema' }));
+    await user.click(screen.getByRole('button', { name: 'Kino' }));
     expect(within(row()).getByRole('button', { name: /^Kinoteka/i })).toHaveAttribute('aria-pressed', 'true');
   });
 });

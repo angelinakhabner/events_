@@ -33,7 +33,7 @@ export function ShareListLink() {
           disabled={busy}
           className="btn-outline"
         >
-          {enable.isPending ? 'Creating link…' : 'Share this list'}
+          {enable.isPending ? 'Tworzenie linku…' : 'Udostępnij tę listę'}
         </button>
         {enable.error ? <p className="mt-2 text-sm text-accent">{enable.error.message}</p> : null}
       </div>
@@ -42,7 +42,7 @@ export function ShareListLink() {
 
   return (
     <div className="mb-6 border-3 border-ink bg-panel p-4">
-      <p className="label-caps">Shared link</p>
+      <p className="label-caps">Udostępniony link</p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <code className="text-sm text-ink break-all">{sharedListUrl(token)}</code>
         <CopyLinkButton url={sharedListUrl(token)} />
@@ -52,13 +52,13 @@ export function ShareListLink() {
           disabled={busy}
           className="act act-sm"
         >
-          {disable.isPending ? 'Stopping…' : 'Stop sharing'}
+          {disable.isPending ? 'Wyłączanie…' : 'Przestań udostępniać'}
         </button>
       </div>
       <p className="mt-3 text-sm text-body max-w-[520px]">
-        Anyone with this link can see what you want to go to — no account needed. Things
-        you&rsquo;ve marked seen stay private. Stop sharing to kill the link; sharing again
-        creates a new one.
+        Każdy, kto ma ten link, zobaczy, na co chcesz iść — bez zakładania konta. To, co
+        oznaczysz jako obejrzane, pozostaje prywatne. Wyłączenie udostępniania unieważnia link;
+        ponowne udostępnienie tworzy nowy.
       </p>
     </div>
   );
@@ -75,9 +75,9 @@ function CopyLinkButton({ url }: { url: string }) {
   }, [outcome]);
 
   const flash =
-    outcome === 'copied' ? 'Link copied' :
-    outcome === 'shared' ? 'Shared' :
-    outcome === 'failed' ? "Couldn't copy" :
+    outcome === 'copied' ? 'Skopiowano link' :
+    outcome === 'shared' ? 'Udostępniono' :
+    outcome === 'failed' ? 'Nie udało się skopiować' :
     null;
 
   return (
@@ -85,12 +85,12 @@ function CopyLinkButton({ url }: { url: string }) {
       <button
         type="button"
         onClick={async () => {
-          const result = await shareLink({ title: 'Want to go', text: 'My “want to go” list', url });
+          const result = await shareLink({ title: 'Chcę iść', text: 'Moja lista „Chcę iść”', url });
           if (result !== 'cancelled') setOutcome(result);
         }}
         className="act act-sm"
       >
-        Copy
+        Kopiuj
       </button>
       {flash ? (
         <span role="status" aria-live="polite" className="text-[11px] text-faint">

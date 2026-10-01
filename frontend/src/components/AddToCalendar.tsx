@@ -55,7 +55,7 @@ export function AddToCalendar({
         onClick={() => setOpen((v) => !v)}
         className={icon ? 'act act-sm leading-none' : 'act act-inherit'}
       >
-        {icon ? <CalendarPlusIcon /> : 'Add to calendar'}
+        {icon ? <CalendarPlusIcon /> : 'Dodaj do kalendarza'}
       </button>
       {open ? (
         // z-20 clears the nearest-screenings panel (z-10) this can open inside.
@@ -92,8 +92,8 @@ export function addToCalendarLabel(
   const where = event.venue?.name;
   const when = `${formatShortDate(event.startsAt)} ${formatTime(event.startsAt)}`;
   return where
-    ? `Add ${event.title} at ${where}, ${when}, to calendar`
-    : `Add ${event.title}, ${when}, to calendar`;
+    ? `Dodaj do kalendarza: ${event.title}, ${where}, ${when}`
+    : `Dodaj do kalendarza: ${event.title}, ${when}`;
 }
 
 /** A calendar page with a "+" — 12px, inherits colour from the button. */

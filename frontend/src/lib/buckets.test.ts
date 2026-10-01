@@ -162,7 +162,7 @@ describe('bucketEvents — nothing this week (GOI-82)', () => {
     expect(buckets).toHaveLength(1);
     expect(buckets[0]!.items.map((e) => e.id)).toEqual(['sep']);
     // A period, not a single date: "how far off is the programme?".
-    expect(buckets[0]!.label).toBe('Later');
+    expect(buckets[0]!.label).toBe('Później');
   });
 
   // The old rule stopped at the nearest day, which in a Warsaw summer meant a

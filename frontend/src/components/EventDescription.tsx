@@ -22,9 +22,9 @@ export function EventDescription({ event, venueName }: { event: Event; venueName
     if (event.category !== 'theatre') return null;
     return (
       <p className="mt-2.5 text-sm text-muted">
-        No description yet —{' '}
+        Brak opisu —{' '}
         <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="underline hover:text-accent">
-          about this show on {venueName ? `${venueName}’s` : 'the venue’s'} page ↗
+          o tym spektaklu na stronie {venueName ? venueName : 'miejsca'} ↗
         </a>
       </p>
     );
@@ -41,7 +41,7 @@ export function EventDescription({ event, venueName }: { event: Event; venueName
         onClick={() => setOpen((v) => !v)}
         className="mt-1.5 act act-sm act-on"
       >
-        {open ? 'Show less' : 'Read more'}
+        {open ? 'Zwiń' : 'Czytaj dalej'}
       </button>
     </div>
   );

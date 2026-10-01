@@ -43,7 +43,7 @@ describe('the masthead is desktop-only (GOI-127)', () => {
 
   it('takes the intro paragraph with it rather than leaving it behind', () => {
     render(<HomePage />);
-    const blurb = screen.getByText(/one listing, refreshed every few minutes/i);
+    const blurb = screen.getByText(/jeden program, odświeżany co kilka minut/i);
     expect(blurb.closest('div.bg-ink')).not.toBeNull();
   });
 
