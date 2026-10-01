@@ -39,10 +39,10 @@ export function SharedListPage() {
 
   return (
     <section className="page-x pt-8 md:pt-12">
-      <h1 className="font-display text-[32px] md:text-[42px] m-0">Want to go</h1>
+      <h1 className="font-display text-[32px] md:text-[42px] m-0">Chcę iść</h1>
       <p className="mt-1.5 mb-6 max-w-[520px] text-sm md:text-base text-body">
-        A shared list. Open &ldquo;Nearest screenings&rdquo; on anything here to see where
-        and when it&rsquo;s on.
+        Udostępniona lista. Kliknij &bdquo;Najbliższe seanse&rdquo; przy dowolnej pozycji, żeby zobaczyć,
+        gdzie i kiedy to grają.
       </p>
 
       {list.isLoading ? <SkeletonList rows={3} /> : null}
@@ -50,18 +50,18 @@ export function SharedListPage() {
       {list.error ? (
         <div>
           <p role="alert" className="border-t-3 border-ink pt-5 font-display text-2xl text-accent">
-            This list isn&rsquo;t shared any more, or the link is wrong.
+            Ta lista nie jest już udostępniana albo link jest błędny.
           </p>
           <p className="mt-5">
             <Link to="/" className="act act-on">
-              Browse what&rsquo;s on instead
+              Zobacz, co się dzieje
             </Link>
           </p>
         </div>
       ) : null}
 
       {list.data && rows.length === 0 ? (
-        <p className="border-t-3 border-ink pt-5 text-sm text-muted">This list is empty for now.</p>
+        <p className="border-t-3 border-ink pt-5 text-sm text-muted">Ta lista jest na razie pusta.</p>
       ) : null}
 
       {rows.length > 0 ? (

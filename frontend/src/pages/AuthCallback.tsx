@@ -52,7 +52,7 @@ export function AuthCallbackPage() {
   }, []);
 
   if (!token && !oauthSession && !oauthError) {
-    return <p className="page-x pt-12 text-muted">Missing login token — use the link from your email.</p>;
+    return <p className="page-x pt-12 text-muted">Brak tokenu logowania — użyj linku z e-maila.</p>;
   }
   if (error) {
     return (
@@ -60,11 +60,11 @@ export function AuthCallbackPage() {
         <p className="font-display text-2xl text-accent">{error}</p>
         <p className="mt-2 text-sm text-muted">
           {oauthError
-            ? 'You can try again from the /my page.'
-            : 'Login links are single-use and expire after 15 minutes. Request a new one from the /my page.'}
+            ? 'Możesz spróbować ponownie na stronie /my.'
+            : 'Linki do logowania są jednorazowe i wygasają po 15 minutach. Poproś o nowy na stronie /my.'}
         </p>
       </div>
     );
   }
-  return <p className="page-x pt-12 text-muted">Logging you in…</p>;
+  return <p className="page-x pt-12 text-muted">Logowanie…</p>;
 }

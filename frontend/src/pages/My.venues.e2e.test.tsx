@@ -61,8 +61,8 @@ function renderPage() {
 
 /** Open the "My venues" section from the left-hand menu and return it. */
 async function openVenues(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: 'My venues' }));
-  return (await screen.findByRole('heading', { name: 'My venues' })).closest('section')!;
+  await user.click(await screen.findByRole('button', { name: 'Moje miejsca' }));
+  return (await screen.findByRole('heading', { name: 'Moje miejsca' })).closest('section')!;
 }
 
 beforeAll(async () => {
@@ -85,10 +85,10 @@ describe('MyPage — My venues end-to-end', () => {
 
     // Create a second folder. Its (empty) section shows up straight away —
     // unlike the old lists UI, every folder is listed at once.
-    await user.click(within(section).getByRole('button', { name: /\+ new folder/i }));
-    await user.type(within(section).getByLabelText(/folder name/i), 'Poznan');
-    await user.click(within(section).getByRole('button', { name: /^create$/i }));
-    await within(section).findByText(/nothing filed here yet/i);
+    await user.click(within(section).getByRole('button', { name: /\+ nowy folder/i }));
+    await user.type(within(section).getByLabelText(/nazwa folderu/i), 'Poznan');
+    await user.click(within(section).getByRole('button', { name: /^utwórz$/i }));
+    await within(section).findByText(/nic tu jeszcze nie ma/i);
 
     // Move Kinoteka into Poznan. Its folder select only appears once there is
     // somewhere else to put it.
@@ -100,7 +100,7 @@ describe('MyPage — My venues end-to-end', () => {
 
     // Kinoteka is still on the page — it moved folder, it didn't disappear.
     await waitFor(() => {
-      expect(within(section).queryByText(/nothing filed here yet/i)).not.toBeInTheDocument();
+      expect(within(section).queryByText(/nic tu jeszcze nie ma/i)).not.toBeInTheDocument();
     });
     expect(within(section).getByText('Kinoteka')).toBeInTheDocument();
   });
@@ -113,15 +113,15 @@ describe('MyPage — My venues end-to-end', () => {
     const venue = await within(section).findByText('Kino Muranów');
     const row = venue.closest('li')!;
 
-    await user.click(within(row).getByRole('button', { name: /add tag to kino muranów/i }));
-    await user.type(within(row).getByLabelText(/new tag for kino muranów/i), 'date night');
-    await user.click(within(row).getByRole('button', { name: /^add$/i }));
+    await user.click(within(row).getByRole('button', { name: /dodaj tag do kino muranów/i }));
+    await user.type(within(row).getByLabelText(/nowy tag dla kino muranów/i), 'date night');
+    await user.click(within(row).getByRole('button', { name: /^dodaj$/i }));
 
     const tag = await within(section).findByText('date night');
     expect(tag).toBeInTheDocument();
 
     await user.click(
-      within(section).getByRole('button', { name: /remove tag date night from kino muranów/i }),
+      within(section).getByRole('button', { name: /usuń tag date night z kino muranów/i }),
     );
     await waitFor(() => expect(within(section).queryByText('date night')).not.toBeInTheDocument());
   });

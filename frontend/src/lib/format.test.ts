@@ -6,31 +6,31 @@ import {
 
 describe('format helpers', () => {
   it('categoryLabel capitalises', () => {
-    expect(categoryLabel('cinema')).toBe('Cinema');
+    expect(categoryLabel('cinema')).toBe('Kino');
   });
 
   // GOI-30: the category bar said "Museums" while everything reading through
   // categoryLabel said "Exhibition" — two names for one thing.
   it('categoryLabel calls an exhibition what the category bar calls it', () => {
-    expect(categoryLabel('exhibition')).toBe('Museums');
+    expect(categoryLabel('exhibition')).toBe('Muzea');
   });
 
   // The newsletter's rules name either a category or one of the reader's own
   // venue tags. A tag is their wording, not ours to restyle.
   it('categoryOrTagLabel maps categories and leaves tags alone', () => {
-    expect(categoryOrTagLabel('exhibition')).toBe('Museums');
-    expect(categoryOrTagLabel('Cinema')).toBe('Cinema');
+    expect(categoryOrTagLabel('exhibition')).toBe('Muzea');
+    expect(categoryOrTagLabel('Cinema')).toBe('Kino');
     expect(categoryOrTagLabel('date night')).toBe('date night');
   });
 
   it('filterSummary composes parts in order', () => {
     expect(
       filterSummary({ categories: ['cinema', 'theatre'], startHour: 18, priceMax: 50 }, 3),
-    ).toBe('3 venues · Cinema, Theatre · After 18:00 · Under 50 zł');
+    ).toBe('3 miejsca · Kino, Teatr · Po 18:00 · Do 50 zł');
   });
 
   it('filterSummary singular venue', () => {
-    expect(filterSummary({}, 1)).toBe('1 venue');
+    expect(filterSummary({}, 1)).toBe('1 miejsce');
   });
 
   it('formatDayKey returns ISO date', () => {
@@ -45,7 +45,7 @@ describe('formatEventTime', () => {
   const midnight = '2026-06-08T22:00:00.000Z'; // 00:00 Warsaw on the 9th
 
   it('says "All day" for an exhibition with no published hour', () => {
-    expect(formatEventTime({ category: 'exhibition', startsAt: midnight })).toBe('All day');
+    expect(formatEventTime({ category: 'exhibition', startsAt: midnight })).toBe('Cały dzień');
   });
 
   it('keeps a museum\'s real hour when the listing printed one', () => {
@@ -70,7 +70,7 @@ describe('formatExhibitionRange', () => {
         { startsAt: '2026-06-12T00:00:00+02:00', endsAt: '2026-09-14T00:00:00+02:00' },
         now,
       ),
-    ).toBe('UNTIL 14 SEPT');
+    ).toBe('DO 14 WRZ');
   });
 
   it('names both ends while the run is still to open', () => {
@@ -79,7 +79,7 @@ describe('formatExhibitionRange', () => {
         { startsAt: '2026-09-01T00:00:00+02:00', endsAt: '2026-11-30T00:00:00+01:00' },
         now,
       ),
-    ).toBe('1 SEPT – 30 NOV');
+    ).toBe('1 WRZ – 30 LIS');
   });
 
   it('treats a run opening today as open', () => {
@@ -88,7 +88,7 @@ describe('formatExhibitionRange', () => {
         { startsAt: '2026-08-11T00:00:00+02:00', endsAt: '2026-08-30T00:00:00+02:00' },
         now,
       ),
-    ).toBe('UNTIL 30 AUG');
+    ).toBe('DO 30 SIE');
   });
 
   it('says "until" right through the closing day', () => {
@@ -97,7 +97,7 @@ describe('formatExhibitionRange', () => {
         { startsAt: '2026-06-12T00:00:00+02:00', endsAt: '2026-08-11T00:00:00+02:00' },
         now,
       ),
-    ).toBe('UNTIL 11 AUG');
+    ).toBe('DO 11 SIE');
   });
 
   it('prints a single-day run once, not as a range', () => {
@@ -106,27 +106,38 @@ describe('formatExhibitionRange', () => {
         { startsAt: '2026-09-05T00:00:00+02:00', endsAt: '2026-09-05T00:00:00+02:00' },
         now,
       ),
-    ).toBe('5 SEPT');
+    ).toBe('5 WRZ');
   });
 
   it('falls back sensibly when no closing date was published', () => {
     expect(formatExhibitionRange({ startsAt: '2026-06-12T00:00:00+02:00', endsAt: null }, now))
-      .toBe('ONGOING');
+      .toBe('TRWA');
     expect(formatExhibitionRange({ startsAt: '2026-09-01T00:00:00+02:00', endsAt: null }, now))
-      .toBe('FROM 1 SEPT');
+      .toBe('OD 1 WRZ');
+  });
+});
+
+describe('plural', () => {
+  it('picks the Polish form for the count', async () => {
+    const { plural } = await import('./format');
+    const forms = ['miejsce', 'miejsca', 'miejsc'] as const;
+    expect([1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 102, 112].map((n) => plural(n, ...forms))).toEqual([
+      'miejsce', 'miejsca', 'miejsca', 'miejsc', 'miejsc', 'miejsc', 'miejsc',
+      'miejsc', 'miejsca', 'miejsc', 'miejsca', 'miejsc',
+    ]);
   });
 });
 
 describe('formatRange', () => {
   it('collapses same-month ranges', () => {
-    expect(formatRange('2026-10-09', '2026-10-18')).toBe('9–18 Oct');
+    expect(formatRange('2026-10-09', '2026-10-18')).toBe('9–18 paź');
   });
 
   it('spells out cross-month ranges', () => {
-    expect(formatRange('2026-06-19', '2026-08-30')).toBe('19 Jun – 30 Aug');
+    expect(formatRange('2026-06-19', '2026-08-30')).toBe('19 cze – 30 sie');
   });
 
   it('shows a single day once', () => {
-    expect(formatRange('2026-11-11', '2026-11-11')).toBe('11 Nov');
+    expect(formatRange('2026-11-11', '2026-11-11')).toBe('11 lis');
   });
 });

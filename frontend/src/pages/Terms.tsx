@@ -14,8 +14,8 @@ export function TermsPage() {
       title={TERMS_HEADING}
       updated={TERMS_UPDATED}
       sections={TERMS_SECTIONS}
-      seeAlso={{ to: '/policy', label: 'privacy policy' }}
-      intro={`The rules for using ${NAME} — what the service is, what it is not, and what to do when it goes wrong. This is the regulamin required by art. 8 of the Polish Act on Providing Services by Electronic Means.`}
+      seeAlso={{ to: '/policy', label: 'polityka prywatności' }}
+      intro={`Zasady korzystania z ${NAME} — czym jest usługa, czym nie jest i co zrobić, gdy coś pójdzie nie tak. To regulamin wymagany przez art. 8 ustawy o świadczeniu usług drogą elektroniczną.`}
     />
   );
 }

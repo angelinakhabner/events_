@@ -225,7 +225,7 @@ export function dedupe(suggestions: SuggestedVenue[], existing: VenueExemplar[] 
  */
 export async function suggestSimilarVenues(opts: SuggestOptions): Promise<SuggestedVenue[]> {
   const city = opts.city.trim();
-  if (!city) throw new Error('A target city is required');
+  if (!city) throw new Error('Podaj miasto.');
 
   const complete = opts.complete ?? completeWithClaude;
   const text = await complete(buildPrompt(opts), SYSTEM);
@@ -237,11 +237,11 @@ export async function suggestSimilarVenues(opts: SuggestOptions): Promise<Sugges
   try {
     raw = extractJson(text);
   } catch {
-    throw new Error('The model did not return a list of venues');
+    throw new Error('Model nie zwrócił listy miejsc.');
   }
   const parsed = z.array(z.unknown()).safeParse(raw);
   if (!parsed.success) {
-    throw new Error('The model did not return a list of venues');
+    throw new Error('Model nie zwrócił listy miejsc.');
   }
   const valid = parsed.data
     .map((row) => SuggestedVenue.safeParse(row))
@@ -249,7 +249,7 @@ export async function suggestSimilarVenues(opts: SuggestOptions): Promise<Sugges
     .map((r) => r.data);
 
   if (valid.length === 0 && parsed.data.length > 0) {
-    throw new Error('The model returned venues, but none had a usable name and homepage');
+    throw new Error('Model zwrócił miejsca, ale żadne nie miało poprawnej nazwy i strony internetowej.');
   }
   return valid.slice(0, opts.limit ?? 6);
 }

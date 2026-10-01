@@ -27,7 +27,7 @@ export function Layout() {
         </NavLink>
 
         <nav className="hidden md:flex items-center gap-10">
-          <HeaderLink to="/" end>Home</HeaderLink>
+          <HeaderLink to="/" end>Start</HeaderLink>
           <HeaderLink to="/my">/my</HeaderLink>
           <LogoutButton />
         </nav>
@@ -46,10 +46,10 @@ export function Layout() {
       <Footer />
 
       <nav
-        aria-label="Sections"
+        aria-label="Sekcje"
         className="md:hidden fixed inset-x-0 bottom-0 z-20 flex bg-paper border-t-4 border-ink"
       >
-        <TabLink to="/" end>Home</TabLink>
+        <TabLink to="/" end>Start</TabLink>
         <TabLink to="/my">/my</TabLink>
       </nav>
     </div>
@@ -83,10 +83,10 @@ function Footer() {
     <footer className="mt-16 border-t-3 border-ink page-x py-7 pb-24 md:pb-9">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <span className="tag">
-          AFISZ &middot; Warsaw
+          AFISZ &middot; Warszawa
         </span>
-        <FooterLink to="/policy">Privacy policy</FooterLink>
-        <FooterLink to="/terms">Terms of use</FooterLink>
+        <FooterLink to="/policy">Polityka prywatności</FooterLink>
+        <FooterLink to="/terms">Regulamin</FooterLink>
       </div>
     </footer>
   );
@@ -148,7 +148,7 @@ function LogoutButton() {
   if (!isLoggedIn()) return null;
   return (
     <button type="button" onClick={() => logout.mutate()} className="act act-sm md:text-sm">
-      Log out
+      Wyloguj
     </button>
   );
 }

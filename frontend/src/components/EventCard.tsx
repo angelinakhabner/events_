@@ -39,7 +39,7 @@ export function EventCard({ event, venue }: Props) {
           </a>
         </h3>
         <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] md:text-[13px] font-bold uppercase tracking-[1px]">
-          <span className="text-ink">{v?.name ?? 'Unknown venue'}</span>
+          <span className="text-ink">{v?.name ?? 'Nieznane miejsce'}</span>
           {v ? <span className="text-muted">{categoryLabel(v.category)}</span> : null}
         </div>
         {event.description ? (

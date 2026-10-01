@@ -10,9 +10,9 @@ import { FestivalBanner } from '../components/FestivalBanner';
 
 /** The left-hand menu (GOI-24). `key` doubles as the ?tab= value. */
 const SECTIONS = [
-  { key: 'events', label: 'Events' },
-  { key: 'venues', label: 'My venues' },
-  { key: 'want-to-go', label: 'Want to go' },
+  { key: 'events', label: 'Wydarzenia' },
+  { key: 'venues', label: 'Moje miejsca' },
+  { key: 'want-to-go', label: 'Chcę iść' },
   { key: 'newsletter', label: 'Newsletter' },
 ] as const;
 
@@ -56,14 +56,14 @@ export function MyPage() {
             nothing to live in. */}
         <div className="md:w-[220px] md:shrink-0">
           <div className="page-x md:px-0 pt-6 pb-2.5 md:pt-0">
-            <h1 className="font-display text-[30px] md:text-[42px] tracking-[0.5px] m-0">My page</h1>
+            <h1 className="font-display text-[30px] md:text-[42px] tracking-[0.5px] m-0">Moja strona</h1>
             {me.data ? (
               <p className="mt-1 text-xs md:text-sm text-muted">{me.data.email}</p>
             ) : null}
           </div>
 
           <nav
-            aria-label="My page sections"
+            aria-label="Sekcje mojej strony"
             className="flex scroll-x border-y-2 border-ink md:mt-9 md:flex-col md:border-b-0 md:border-t-0"
           >
             {SECTIONS.map((s) => {
@@ -108,7 +108,7 @@ export function MyPage() {
  *  announces only what is on at venues this reader follows (GOI-33, GOI-99). */
 function MyFestivalBanner() {
   const mine = trpc.festivals.mine.useQuery();
-  return <FestivalBanner festivals={mine.data} label="Festivals at your venues" />;
+  return <FestivalBanner festivals={mine.data} label="Festiwale w Twoich miejscach" />;
 }
 
 // ─── Login ───────────────────────────────────────────────────────────────────
@@ -126,33 +126,33 @@ function LoginSection() {
 
   if (request.isSuccess) {
     return (
-      <LoginCard title="Check your email">
+      <LoginCard title="Sprawdź skrzynkę">
         <p className="text-sm text-body">
           {request.data.emailSent ? (
             <>
-              We sent a sign-in link to <span className="font-bold text-ink">{email}</span>.
-              {' '}It&rsquo;s valid for 15 minutes and works once.
+              Wysłaliśmy link do logowania na adres <span className="font-bold text-ink">{email}</span>.
+              {' '}Jest ważny przez 15 minut i działa jeden raz.
             </>
           ) : (
-            'Email sending is not configured on this server — ask the operator for the login link from the server log.'
+            'Wysyłka e-maili nie jest skonfigurowana na tym serwerze — poproś administratora o link do logowania z logu serwera.'
           )}
         </p>
         <button type="button" onClick={() => request.reset()} className="mt-7 act act-on">
-          Use a different address
+          Użyj innego adresu
         </button>
       </LoginCard>
     );
   }
 
   return (
-    <LoginCard title="Log in">
+    <LoginCard title="Zaloguj się">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (email.trim()) request.mutate({ email: email.trim() });
         }}
       >
-        <label className="label-caps mb-1.5" htmlFor="login-email">Email</label>
+        <label className="label-caps mb-1.5" htmlFor="login-email">E-mail</label>
         <input
           id="login-email"
           type="email"
@@ -160,11 +160,11 @@ function LoginSection() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
+          placeholder="ty@przyklad.pl"
           className="field mb-5"
         />
         <button type="submit" disabled={request.isPending} className="btn-accent w-full text-left text-sm">
-          {request.isPending ? 'Sending…' : 'Continue with email →'}
+          {request.isPending ? 'Wysyłanie…' : 'Kontynuuj przez e-mail →'}
         </button>
       </form>
       {request.error ? (
@@ -173,20 +173,20 @@ function LoginSection() {
 
       {methods.data?.google ? (
         <>
-          <p className="my-3.5 text-center text-xs font-bold uppercase tracking-[1px] text-muted">or</p>
+          <p className="my-3.5 text-center text-xs font-bold uppercase tracking-[1px] text-muted">lub</p>
           <a
             href={`${import.meta.env.VITE_API_URL ?? ''}/auth/google`}
             className="btn-outline flex w-full items-center gap-3 text-sm"
           >
             <GoogleMark />
-            Continue with Google
+            Kontynuuj przez Google
           </a>
         </>
       ) : null}
 
       <p className="mt-8 text-xs text-muted">
-        No password to remember — your venues, folders, films and &ldquo;want to go&rdquo; list
-        live behind this sign-in.
+        Bez hasła do zapamiętania — Twoje miejsca, foldery, filmy i lista &bdquo;Chcę iść&rdquo;
+        czekają za tym logowaniem.
       </p>
     </LoginCard>
   );

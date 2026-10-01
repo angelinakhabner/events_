@@ -63,31 +63,31 @@ describe('VenueBar — selection (GOI-76 §1)', () => {
   it('solos on the first click rather than adding to "all"', () => {
     const onSelection = vi.fn();
     render(<Harness onSelection={onSelection} />);
-    fireEvent.click(chip(/^Muranow, 12 events/));
+    fireEvent.click(chip(/^Muranow, 12 wydarzeń/));
     expect(onSelection).toHaveBeenLastCalledWith([MURANOW.id]);
   });
 
   it('adds on the second click', () => {
     const onSelection = vi.fn();
     render(<Harness onSelection={onSelection} />);
-    fireEvent.click(chip(/^Muranow, 12 events/));
-    fireEvent.click(chip(/^Kinoteka, 8 events/));
+    fireEvent.click(chip(/^Muranow, 12 wydarzeń/));
+    fireEvent.click(chip(/^Kinoteka, 8 wydarzeń/));
     expect(onSelection).toHaveBeenLastCalledWith([MURANOW.id, KINOTEKA.id]);
   });
 
   it('removes one of several without clearing the rest', () => {
     const onSelection = vi.fn();
     render(<Harness initial={[MURANOW.id, KINOTEKA.id]} onSelection={onSelection} />);
-    fireEvent.click(chip(/^Muranow, 12 events/));
+    fireEvent.click(chip(/^Muranow, 12 wydarzeń/));
     expect(onSelection).toHaveBeenLastCalledWith([KINOTEKA.id]);
   });
 
   it('returns to All when the last selected venue is deselected', () => {
     const onSelection = vi.fn();
     render(<Harness initial={[MURANOW.id]} onSelection={onSelection} />);
-    fireEvent.click(chip(/^Muranow, 12 events/));
+    fireEvent.click(chip(/^Muranow, 12 wydarzeń/));
     expect(onSelection).toHaveBeenLastCalledWith([]);
-    expect(chip(/^All venues/)).toHaveAttribute('aria-pressed', 'true');
+    expect(chip(/^Wszystkie miejsca/)).toHaveAttribute('aria-pressed', 'true');
   });
 
   // GOI-89 moved clearing one level in: "All venues" now opens the picker,
@@ -98,12 +98,12 @@ describe('VenueBar — selection (GOI-76 §1)', () => {
     const onSelection = vi.fn();
     render(<Harness initial={[MURANOW.id, KINOTEKA.id]} onSelection={onSelection} />);
 
-    fireEvent.click(chip(/^All venues/));
+    fireEvent.click(chip(/^Wszystkie miejsca/));
     expect(onSelection).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: /^All venues$/ }));
-    fireEvent.click(within(dialog).getByRole('button', { name: /show all venues/i }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Wszystkie miejsca$/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /pokaż wszystkie miejsca/i }));
 
     expect(onSelection).toHaveBeenLastCalledWith([]);
   });
@@ -112,37 +112,37 @@ describe('VenueBar — selection (GOI-76 §1)', () => {
   // it has to be visible: filled when on, outline when off.
   it('fills a selected chip and leaves an unselected one outlined', () => {
     render(<Harness initial={[MURANOW.id]} />);
-    expect(chip(/^Muranow, 12 events/)).toHaveClass('bg-ink');
-    expect(chip(/^Kinoteka, 8 events/)).not.toHaveClass('bg-ink');
+    expect(chip(/^Muranow, 12 wydarzeń/)).toHaveClass('bg-ink');
+    expect(chip(/^Kinoteka, 8 wydarzeń/)).not.toHaveClass('bg-ink');
   });
 
   it('marks selection with aria-pressed, since these are toggles', () => {
     render(<Harness initial={[MURANOW.id]} />);
-    expect(chip(/^Muranow, 12 events/)).toHaveAttribute('aria-pressed', 'true');
-    expect(chip(/^Kinoteka, 8 events/)).toHaveAttribute('aria-pressed', 'false');
-    expect(chip(/^All venues/)).toHaveAttribute('aria-pressed', 'false');
+    expect(chip(/^Muranow, 12 wydarzeń/)).toHaveAttribute('aria-pressed', 'true');
+    expect(chip(/^Kinoteka, 8 wydarzeń/)).toHaveAttribute('aria-pressed', 'false');
+    expect(chip(/^Wszystkie miejsca/)).toHaveAttribute('aria-pressed', 'false');
   });
 });
 
 describe('VenueBar — counts (GOI-76 §2)', () => {
   it('puts the count in the accessible name', () => {
     render(<Harness />);
-    expect(chip(/^Muranow, 12 events/)).toBeInTheDocument();
+    expect(chip(/^Muranow, 12 wydarzeń/)).toBeInTheDocument();
     // Singular reads correctly too.
     render(<Harness venues={[venue({ name: 'Solo', count: 1 })]} />);
-    expect(chip(/^Solo, 1 event\b/)).toBeInTheDocument();
+    expect(chip(/^Solo, 1 wydarzenie\b/)).toBeInTheDocument();
   });
 
   it('sums the row into "All venues"', () => {
     render(<Harness />);
-    expect(within(chip(/^All venues/)).getByText('25')).toBeInTheDocument();
+    expect(within(chip(/^Wszystkie miejsca/)).getByText('25')).toBeInTheDocument();
   });
 
   // A visible zero says "watched, nothing on" — different from not covered.
   it('keeps a zero-count venue visible and clickable', () => {
     const onSelection = vi.fn();
     render(<Harness onSelection={onSelection} />);
-    const atlantic = chip(/^Atlantic, 0 events/);
+    const atlantic = chip(/^Atlantic, 0 wydarzeń/);
     expect(atlantic).toBeInTheDocument();
     fireEvent.click(atlantic);
     expect(onSelection).toHaveBeenLastCalledWith([ATLANTIC.id]);
@@ -151,8 +151,8 @@ describe('VenueBar — counts (GOI-76 §2)', () => {
 
 describe('VenueBar — status is text, not just colour (GOI-76 §2, §7)', () => {
   it.each([
-    ['empty', /no events listed right now/i],
-    ['dark', /can’t currently read/i],
+    ['empty', /nie ma teraz żadnych wydarzeń/i],
+    ['dark', /nie możemy teraz odczytać/i],
   ] as const)('states why a %s venue reads zero', (status, note) => {
     render(<Harness venues={[venue({ name: 'Quiet', count: 0, status })]} />);
     const el = chip(/^Quiet/);
@@ -165,7 +165,7 @@ describe('VenueBar — status is text, not just colour (GOI-76 §2, §7)', () =>
     render(
       <Harness venues={[venue({ name: 'Old', count: 3, status: 'stale', lastScrapedAt: eightDaysAgo })]} />,
     );
-    expect(chip(/^Old/)).toHaveAttribute('title', expect.stringMatching(/last updated 8 days ago/i));
+    expect(chip(/^Old/)).toHaveAttribute('title', expect.stringMatching(/ostatnia aktualizacja 8 dni temu/i));
   });
 
   it('strikes through a dark venue’s count — the number is not trustworthy', () => {
@@ -175,7 +175,7 @@ describe('VenueBar — status is text, not just colour (GOI-76 §2, §7)', () =>
 
   it('says "nothing on in this period" for an active venue with a zero', () => {
     render(<Harness venues={[venue({ name: 'Atlantic', count: 0, status: 'active' })]} />);
-    expect(chip(/^Atlantic/)).toHaveAttribute('title', 'Nothing on in this period');
+    expect(chip(/^Atlantic/)).toHaveAttribute('title', 'Nic w tym okresie');
   });
 
   it('adds no note to a healthy venue with events', () => {
@@ -239,7 +239,7 @@ describe('VenueBar — the ALL tab (GOI-76 §4)', () => {
 
   it('is a labelled group when it does render', () => {
     render(<Harness />);
-    expect(screen.getByRole('group', { name: 'Filter by venue' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Filtruj według miejsca' })).toBeInTheDocument();
   });
 });
 
@@ -312,13 +312,13 @@ describe('counts ignore the selection (GOI-76 §2 — the regression that matter
       <VenueBar venues={ALL_FOUR} selected={[MURANOW.id]} onChange={vi.fn()} category="cinema" />,
     );
     expect(countsOf()).toEqual(before);
-    expect(chip(/^Kinoteka, 8 events/)).toBeInTheDocument();
-    expect(chip(/^Iluzjon, 5 events/)).toBeInTheDocument();
+    expect(chip(/^Kinoteka, 8 wydarzeń/)).toBeInTheDocument();
+    expect(chip(/^Iluzjon, 5 wydarzeń/)).toBeInTheDocument();
   });
 
   it('keeps the "All venues" total at the unfiltered sum while a subset is on', () => {
     render(<Harness initial={[MURANOW.id]} />);
-    expect(within(chip(/^All venues/)).getByText('25')).toBeInTheDocument();
+    expect(within(chip(/^Wszystkie miejsca/)).getByText('25')).toBeInTheDocument();
   });
 });
 
@@ -334,7 +334,7 @@ describe('VenueBar — the venue picker (GOI-89)', () => {
   const openPicker = (initial: string[] = [], props: Record<string, unknown> = {}) => {
     const onSelection = vi.fn();
     render(<Harness initial={initial} onSelection={onSelection} {...props} />);
-    const trigger = chip(/^All venues/);
+    const trigger = chip(/^Wszystkie miejsca/);
     fireEvent.click(trigger);
     return { onSelection, trigger, dialog: screen.getByRole('dialog') };
   };
@@ -365,14 +365,14 @@ describe('VenueBar — the venue picker (GOI-89)', () => {
     // every tick is what makes a list like this unusable.
     expect(onSelection).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /show 2 venues/i }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /pokaż 2 miejsca/i }));
     expect(onSelection).toHaveBeenLastCalledWith([MURANOW.id, KINOTEKA.id]);
   });
 
   it('drops the selection on cancel', () => {
     const { onSelection, dialog } = openPicker();
     fireEvent.click(within(dialog).getByRole('button', { name: /^Muranow,/ }));
-    fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^anuluj$/i }));
 
     expect(onSelection).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -388,11 +388,11 @@ describe('VenueBar — the venue picker (GOI-89)', () => {
 
   it('tells a signed-out reader where venues come from', () => {
     const { dialog } = openPicker();
-    expect(within(dialog).getByRole('link', { name: /log in to my venues/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: /zaloguj się w sekcji moje miejsca/i })).toBeInTheDocument();
   });
 
   it('spares a signed-in reader the hint', () => {
     const { dialog } = openPicker([], { signedIn: true });
-    expect(within(dialog).queryByRole('link', { name: /log in to my venues/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('link', { name: /zaloguj się w sekcji moje miejsca/i })).not.toBeInTheDocument();
   });
 });

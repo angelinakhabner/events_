@@ -127,7 +127,7 @@ describe('InviteGate — the legal pages are in front of the gate', () => {
     at('/policy');
     render(<InviteGate><App /></InviteGate>);
 
-    expect(await screen.findByRole('heading', { name: 'Privacy policy', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Polityka prywatności', level: 1 })).toBeInTheDocument();
   });
 
   it('serves the terms without an invite', async () => {
@@ -135,7 +135,7 @@ describe('InviteGate — the legal pages are in front of the gate', () => {
     at('/terms');
     render(<InviteGate><App /></InviteGate>);
 
-    expect(await screen.findByRole('heading', { name: 'Terms of use', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Regulamin', level: 1 })).toBeInTheDocument();
   });
 
   // The landing page is a full-page document sitting outside `#root`. Left up,
@@ -145,7 +145,7 @@ describe('InviteGate — the legal pages are in front of the gate', () => {
     at('/policy');
     render(<InviteGate><App /></InviteGate>);
 
-    await screen.findByRole('heading', { name: 'Privacy policy', level: 1 });
+    await screen.findByRole('heading', { name: 'Polityka prywatności', level: 1 });
     expect(landingShown()).toBe(false);
   });
 
@@ -156,7 +156,7 @@ describe('InviteGate — the legal pages are in front of the gate', () => {
     at('/policy');
     render(<InviteGate><App /></InviteGate>);
 
-    await screen.findByRole('heading', { name: 'Privacy policy', level: 1 });
+    await screen.findByRole('heading', { name: 'Polityka prywatności', level: 1 });
     expect(screen.queryByText('SECRET APP SHELL')).not.toBeInTheDocument();
   });
 
@@ -166,7 +166,7 @@ describe('InviteGate — the legal pages are in front of the gate', () => {
     at('/policy');
     render(<InviteGate><App /></InviteGate>);
 
-    await screen.findByRole('heading', { name: 'Privacy policy', level: 1 });
+    await screen.findByRole('heading', { name: 'Polityka prywatności', level: 1 });
     expect(gateWasOpen()).toBe(false);
   });
 
@@ -177,7 +177,7 @@ describe('InviteGate — the legal pages are in front of the gate', () => {
 
     await waitFor(() => expect(landingShown()).toBe(true));
     expect(screen.queryByText('SECRET APP SHELL')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Privacy policy', level: 1 })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Polityka prywatności', level: 1 })).not.toBeInTheDocument();
   });
 
   it('lets the app through on those paths once there is an invite', async () => {

@@ -6,22 +6,22 @@ import { CategoryBar } from './CategoryBar';
 describe('CategoryBar', () => {
   it('renders all six options with "All" pressed when nothing is selected', () => {
     render(<CategoryBar selected={null} onChange={() => {}} />);
-    expect(screen.getByRole('button', { name: 'All', pressed: true })).toBeInTheDocument();
-    for (const label of ['Cinema', 'Theatre', 'Comedy', 'Music', 'Museums']) {
+    expect(screen.getByRole('button', { name: 'Wszystko', pressed: true })).toBeInTheDocument();
+    for (const label of ['Kino', 'Teatr', 'Stand-up', 'Muzyka', 'Muzea']) {
       expect(screen.getByRole('button', { name: label, pressed: false })).toBeInTheDocument();
     }
   });
 
   it('marks the currently-selected category as pressed', () => {
     render(<CategoryBar selected="exhibition" onChange={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Museums', pressed: true })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'All', pressed: false })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Muzea', pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Wszystko', pressed: false })).toBeInTheDocument();
   });
 
   it('calls onChange with the underlying enum value on click', async () => {
     const onChange = vi.fn();
     render(<CategoryBar selected={null} onChange={onChange} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Museums' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Muzea' }));
     // UI label is "Museums" but value stays "exhibition" to match the schema.
     expect(onChange).toHaveBeenCalledWith('exhibition');
   });
@@ -29,7 +29,7 @@ describe('CategoryBar', () => {
   it('calls onChange(null) when "All" is clicked', async () => {
     const onChange = vi.fn();
     render(<CategoryBar selected="cinema" onChange={onChange} />);
-    await userEvent.click(screen.getByRole('button', { name: 'All' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Wszystko' }));
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
@@ -37,9 +37,9 @@ describe('CategoryBar', () => {
   // day and time. The chip used to fill with ink while day and time went red.
   it('fills the selected chip with accent red, not ink', () => {
     render(<CategoryBar selected="exhibition" onChange={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Museums' }).className).toContain('bg-accent');
-    expect(screen.getByRole('button', { name: 'Museums' }).className).not.toContain('bg-ink');
-    expect(screen.getByRole('button', { name: 'Cinema' }).className).toContain('bg-transparent');
+    expect(screen.getByRole('button', { name: 'Muzea' }).className).toContain('bg-accent');
+    expect(screen.getByRole('button', { name: 'Muzea' }).className).not.toContain('bg-ink');
+    expect(screen.getByRole('button', { name: 'Kino' }).className).toContain('bg-transparent');
   });
 
   // The palette is two colours, so a coloured swatch on a filled chip can

@@ -100,12 +100,12 @@ export async function exchangeDriveCode(
       grant_type: 'authorization_code',
     }).toString(),
   });
-  if (!res.ok) throw new Error(`Connecting Google Drive failed (token exchange HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Nie udało się połączyć Dysku Google (wymiana tokenu, HTTP ${res.status})`);
 
   const body = (await res.json()) as {
     refresh_token?: string; access_token?: string; id_token?: string; scope?: string;
   };
-  if (!body.access_token) throw new Error('Connecting Google Drive failed (no access token)');
+  if (!body.access_token) throw new Error('Nie udało się połączyć Dysku Google (brak tokenu dostępu)');
   // Without this the connection looks fine and then cannot upload anything
   // once the first access token expires, an hour later. Fail now, loudly.
   if (!body.refresh_token) {
@@ -115,7 +115,7 @@ export async function exchangeDriveCode(
     );
   }
   if (body.scope && !body.scope.split(' ').includes(DRIVE_SCOPE)) {
-    throw new Error('Connecting Google Drive failed (the Drive permission was not granted)');
+    throw new Error('Nie udało się połączyć Dysku Google (nie udzielono uprawnień do Dysku)');
   }
 
   const claims = body.id_token ? decodeJwtPayload(body.id_token) : null;
@@ -143,12 +143,12 @@ export async function refreshAccessToken(
     // 400 here is all but always a revoked or expired grant, which the user
     // has to fix by reconnecting — say that rather than printing a status.
     if (res.status === 400 || res.status === 401) {
-      throw new Error('Google Drive access was revoked — reconnect it in Newsletter settings');
+      throw new Error('Dostęp do Dysku Google został cofnięty — połącz go ponownie w ustawieniach newslettera');
     }
-    throw new Error(`Google Drive token refresh failed (HTTP ${res.status})`);
+    throw new Error(`Nie udało się odświeżyć tokenu Dysku Google (HTTP ${res.status})`);
   }
   const body = (await res.json()) as { access_token?: string };
-  if (!body.access_token) throw new Error('Google Drive token refresh returned no access token');
+  if (!body.access_token) throw new Error('Odświeżenie tokenu Dysku Google nie zwróciło tokenu dostępu');
   return body.access_token;
 }
 
@@ -190,7 +190,7 @@ async function findFolder(
   url.searchParams.set('pageSize', '10');
 
   const res = await fetcher(url.toString(), { headers: { authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) throw new Error(`Google Drive folder lookup failed (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Nie udało się wyszukać folderu na Dysku Google (HTTP ${res.status})`);
   const body = (await res.json()) as { files?: { id: string }[] };
   return body.files?.[0]?.id ?? null;
 }
@@ -205,9 +205,9 @@ async function createFolder(
     headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
     body: JSON.stringify({ name, mimeType: FOLDER_MIME }),
   });
-  if (!res.ok) throw new Error(`Creating the Google Drive folder failed (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Nie udało się utworzyć folderu na Dysku Google (HTTP ${res.status})`);
   const body = (await res.json()) as { id?: string };
-  if (!body.id) throw new Error('Creating the Google Drive folder returned no id');
+  if (!body.id) throw new Error('Utworzenie folderu na Dysku Google nie zwróciło identyfikatora');
   return body.id;
 }
 
@@ -221,14 +221,14 @@ async function folderStillThere(
   url.searchParams.set('fields', 'id,trashed');
   const res = await fetcher(url.toString(), { headers: { authorization: `Bearer ${accessToken}` } });
   if (res.status === 404) return false;
-  if (!res.ok) throw new Error(`Google Drive folder check failed (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Nie udało się sprawdzić folderu na Dysku Google (HTTP ${res.status})`);
   const body = (await res.json()) as { trashed?: boolean };
   return body.trashed !== true;
 }
 
 function requireConfig(): GoogleDriveConfig {
   const cfg = googleDriveConfig();
-  if (!cfg) throw new Error('Google Drive is not configured on this deployment');
+  if (!cfg) throw new Error('Dysk Google nie jest skonfigurowany w tej instalacji');
   return cfg;
 }
 
@@ -275,7 +275,7 @@ export const googleDriveProvider: DriveProvider = {
         'That folder is no longer in your Drive — it will be recreated with the next brief.',
       );
     }
-    if (!res.ok) throw new Error(`Renaming the Google Drive folder failed (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`Nie udało się zmienić nazwy folderu na Dysku Google (HTTP ${res.status})`);
   },
 };
 
@@ -311,9 +311,9 @@ async function uploadMultipart(
     },
     body: body as unknown as BodyInit,
   });
-  if (!res.ok) throw new Error(`Uploading the brief to Google Drive failed (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Nie udało się zapisać newslettera na Dysku Google (HTTP ${res.status})`);
 
   const parsed = (await res.json()) as { id?: string; webViewLink?: string };
-  if (!parsed.id) throw new Error('Google Drive accepted the upload but returned no file id');
+  if (!parsed.id) throw new Error('Dysk Google przyjął plik, ale nie zwrócił jego identyfikatora');
   return { fileId: parsed.id, webUrl: parsed.webViewLink ?? null };
 }

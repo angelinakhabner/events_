@@ -198,17 +198,17 @@ describe('auth + /my flow (in-process)', () => {
       expect((await sharedList(token!)).error).toBeUndefined();
 
       await trpcCall('my.wantToGo.share.disable', { body: {}, token: ivan });
-      expect((await sharedList(token!)).error).toMatch(/not shared/i);
+      expect((await sharedList(token!)).error).toMatch(/nie jest udostępniona/i);
 
       const reshared = (await trpcCall('my.wantToGo.share.enable', { body: {}, token: ivan }))
         .data as Share;
       expect(reshared.token).not.toBe(token);
       // The link that was handed out and revoked stays dead.
-      expect((await sharedList(token!)).error).toMatch(/not shared/i);
+      expect((await sharedList(token!)).error).toMatch(/nie jest udostępniona/i);
     });
 
     it('rejects a made-up token the same way as a revoked one', async () => {
-      expect((await sharedList('not-a-real-token')).error).toMatch(/not shared/i);
+      expect((await sharedList('not-a-real-token')).error).toMatch(/nie jest udostępniona/i);
     });
 
     it('needs a session to manage sharing', async () => {
@@ -625,7 +625,7 @@ describe('Elsewhere: the destination city folder (GOI-92)', () => {
     expect((await trpcCall('my.lists.create', { body: { name }, token })).status).toBe(200);
     const dup = await trpcCall('my.lists.create', { body: { name: name.toUpperCase() }, token });
     expect(dup.status).not.toBe(200);
-    expect(dup.error).toMatch(/already have a list/i);
+    expect(dup.error).toMatch(/masz już listę/i);
   });
 });
 

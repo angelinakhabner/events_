@@ -124,7 +124,7 @@ describe('WantToGoSection — saved events carry no date', () => {
     });
 
     render(<WantToGoSection />);
-    expect(screen.getByText('theatre')).toBeInTheDocument();
+    expect(screen.getByText('Teatr')).toBeInTheDocument();
   });
 
   it('shows the screenings without being asked, and can be collapsed (GOI-66)', () => {
@@ -145,7 +145,7 @@ describe('WantToGoSection — saved events carry no date', () => {
     expect(screen.getByRole('link', { name: '20:00' })).toBeInTheDocument();
 
     // Still collapsible, for a long list.
-    fireEvent.click(screen.getByRole('button', { name: /hide screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /ukryj seanse/i }));
     expect(screen.queryByRole('link', { name: '20:00' })).not.toBeInTheDocument();
   });
 
@@ -157,10 +157,10 @@ describe('WantToGoSection — saved events carry no date', () => {
     });
 
     render(<WantToGoSection />);
-    fireEvent.click(screen.getByRole('tab', { name: /seen/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^obejrzane/i }));
 
     expect(screen.getByRole('link', { name: 'Ojczyzna' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /nearest screenings/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /najbliższe seanse/i })).not.toBeInTheDocument();
   });
 });
 

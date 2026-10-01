@@ -81,7 +81,7 @@ describe('MyPage — newsletter end-to-end', () => {
 
     // Wait for the form (the section shows a skeleton while settings load,
     // and the whole section subtree is replaced once they arrive).
-    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const email = (await screen.findByLabelText(/adres e-mail/i)) as HTMLInputElement;
     const section = email.closest('section')!;
 
     // Email defaults to the login address. The prefill is async by design —
@@ -91,14 +91,14 @@ describe('MyPage — newsletter end-to-end', () => {
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
     // Every hour and every minute is offered, not a hand-picked handful.
-    const sendHour = within(section).getByLabelText(/^hour$/i);
-    const sendMinute = within(section).getByLabelText(/^minute$/i);
+    const sendHour = within(section).getByLabelText(/^godzina$/i);
+    const sendMinute = within(section).getByLabelText(/^minuta$/i);
     expect(within(sendHour).getAllByRole('option')).toHaveLength(24);
     expect(within(sendMinute).getAllByRole('option')).toHaveLength(60);
     expect(within(sendHour).getByRole('option', { name: '23' })).toBeInTheDocument();
 
     // Daily at 03:45 — neither reachable without the full ranges.
-    await user.click(within(section).getByRole('radio', { name: /every day/i }));
+    await user.click(within(section).getByRole('radio', { name: /codziennie/i }));
     await user.selectOptions(sendHour, '3');
     await user.selectOptions(sendMinute, '45');
 
@@ -109,12 +109,12 @@ describe('MyPage — newsletter end-to-end', () => {
 
     // GOI-30: the line under the heading describes the brief you have set up,
     // so it has to follow the controls rather than state a fixed example.
-    expect(within(section).getByText(/emailed to/i)).toHaveTextContent(
-      'every day at 03:45.',
+    expect(within(section).getByText(/wysyłane na/i)).toHaveTextContent(
+      'codziennie o 03:45.',
     );
 
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
 
     // Settings landed in the store.
     const saved = await defaultNewsletterStore.get(userId);
@@ -145,11 +145,11 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+    const group = await screen.findByRole('radiogroup', { name: /jak go wysyłać/i });
 
     expect(group.className).toContain('grid-cols-3');
     const options = within(group).getAllByRole('radio');
-    expect(options.map((o) => o.textContent)).toEqual(['Email', 'Drive', 'Both']);
+    expect(options.map((o) => o.textContent)).toEqual(['E-mail', 'Dysk', 'Oba']);
     for (const option of options) expect(option.className).toContain('w-full');
   });
 
@@ -158,10 +158,10 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const group = await screen.findByRole('radiogroup', { name: /how to send it/i });
+    const group = await screen.findByRole('radiogroup', { name: /jak go wysyłać/i });
 
-    await user.click(within(group).getByRole('radio', { name: 'Both' }));
-    expect(await screen.findByText(/emailed, and filed as a pdf as well/i)).toBeInTheDocument();
+    await user.click(within(group).getByRole('radio', { name: 'Oba' }));
+    expect(await screen.findByText(/wysyłany e-mailem i dodatkowo zapisywany jako pdf/i)).toBeInTheDocument();
   });
 
   it('shows the cadence as a segmented control with exactly one option selected', async () => {
@@ -169,13 +169,13 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const email = (await screen.findByLabelText(/adres e-mail/i)) as HTMLInputElement;
     const section = email.closest('section')!;
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
-    const group = within(section).getByRole('radiogroup', { name: /how often/i });
-    const daily = within(group).getByRole('radio', { name: /every day/i });
-    const weekly = within(group).getByRole('radio', { name: /weekly/i });
+    const group = within(section).getByRole('radiogroup', { name: /jak często/i });
+    const daily = within(group).getByRole('radio', { name: /codziennie/i });
+    const weekly = within(group).getByRole('radio', { name: /co tydzień/i });
 
     // Every option is on screen — that is the point of the control.
     expect(within(group).getAllByRole('radio')).toHaveLength(3);
@@ -202,19 +202,19 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const email = await screen.findByLabelText(/email address/i);
+    const email = await screen.findByLabelText(/adres e-mail/i);
     const section = email.closest('section')!;
 
-    const group = within(section).getByRole('radiogroup', { name: /how often/i });
-    const monthly = within(group).getByRole('radio', { name: /monthly/i });
-    expect(within(section).queryByLabelText(/^on$/i)).not.toBeInTheDocument();
+    const group = within(section).getByRole('radiogroup', { name: /jak często/i });
+    const monthly = within(group).getByRole('radio', { name: /co miesiąc/i });
+    expect(within(section).queryByLabelText(/^dzień$/i)).not.toBeInTheDocument();
 
     await user.click(monthly);
-    const dayOfMonth = await within(section).findByLabelText(/^on$/i);
+    const dayOfMonth = await within(section).findByLabelText(/^dzień$/i);
     // 1-28, so February has an issue too.
     expect(within(dayOfMonth).getAllByRole('option')).toHaveLength(28);
-    expect(within(dayOfMonth).getByRole('option', { name: '1st' })).toBeInTheDocument();
-    expect(within(dayOfMonth).queryByRole('option', { name: '31st' })).not.toBeInTheDocument();
+    expect(within(dayOfMonth).getByRole('option', { name: '1.' })).toBeInTheDocument();
+    expect(within(dayOfMonth).queryByRole('option', { name: '31.' })).not.toBeInTheDocument();
   });
 
   /**
@@ -227,10 +227,10 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    expect(within(section).getByRole('button', { name: /schedule newsletter/i })).toBeInTheDocument();
-    expect(within(section).getByRole('button', { name: /generate now/i })).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: /zaplanuj newsletter/i })).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: /wygeneruj teraz/i })).toBeInTheDocument();
     expect(within(section).queryByRole('button', { name: /send me a test/i })).not.toBeInTheDocument();
   });
 
@@ -239,19 +239,19 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const email = (await screen.findByLabelText(/adres e-mail/i)) as HTMLInputElement;
     const section = email.closest('section')!;
     await waitFor(() => expect(email.value).toBe(USER_EMAIL));
 
     // The weekday picker only exists for weekly briefs. Cadence is a segmented
     // control (GOI-60) — a radiogroup, so each option is its own radio.
-    await user.click(within(section).getByRole('radio', { name: /every day/i }));
-    expect(within(section).queryByLabelText(/^on$/i)).not.toBeInTheDocument();
+    await user.click(within(section).getByRole('radio', { name: /codziennie/i }));
+    expect(within(section).queryByLabelText(/^dzień$/i)).not.toBeInTheDocument();
 
-    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
-    await user.selectOptions(await within(section).findByLabelText(/^on$/i), '4');
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await user.click(within(section).getByRole('radio', { name: /co tydzień/i }));
+    await user.selectOptions(await within(section).findByLabelText(/^dzień$/i), '4');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
 
     expect(await defaultNewsletterStore.get(userId)).toMatchObject({
       sendCadence: 'weekly',
@@ -261,7 +261,7 @@ describe('MyPage — newsletter end-to-end', () => {
     // "Generate now" renders the brief the settings would produce, as the
     // recipient will see it. Without a database there are no events, so it
     // says so rather than 404ing.
-    await user.click(within(section).getByRole('button', { name: /generate now/i }));
+    await user.click(within(section).getByRole('button', { name: /wygeneruj teraz/i }));
     const preview = (await screen.findByTestId('newsletter-preview')) as HTMLIFrameElement;
     // An email document, sandboxed — not markup spliced into the page.
     expect(preview.tagName).toBe('IFRAME');
@@ -294,8 +294,8 @@ describe('MyPage — newsletter end-to-end', () => {
     try {
       renderPage();
       await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
-      await user.click(within(section).getByRole('button', { name: /generate now/i }));
+      const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+      await user.click(within(section).getByRole('button', { name: /wygeneruj teraz/i }));
       await screen.findByTestId('newsletter-preview');
 
       expect(saved).toHaveLength(1);
@@ -304,11 +304,11 @@ describe('MyPage — newsletter end-to-end', () => {
 
       // And it can be saved again without regenerating — as either format,
       // since the .html one is what you paste into a mail client.
-      await user.click(screen.getByRole('button', { name: /download pdf/i }));
+      await user.click(screen.getByRole('button', { name: /pobierz pdf/i }));
       expect(saved).toHaveLength(2);
       expect(saved[1]!.type).toBe('application/pdf');
 
-      await user.click(screen.getByRole('button', { name: /download \.html/i }));
+      await user.click(screen.getByRole('button', { name: /pobierz \.html/i }));
       expect(saved).toHaveLength(3);
       expect(saved[2]!.type).toBe('text/html;charset=utf-8');
     } finally {
@@ -328,8 +328,8 @@ describe('MyPage — newsletter end-to-end', () => {
     try {
       renderPage();
       await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
-      await user.click(within(section).getByRole('button', { name: /generate now/i }));
+      const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+      await user.click(within(section).getByRole('button', { name: /wygeneruj teraz/i }));
       expect(await screen.findByTestId('newsletter-preview')).toBeInTheDocument();
     } finally {
       URL.createObjectURL = orig;
@@ -342,50 +342,50 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    let section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    let section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
     // Categories come from your venues and their tags — cinema is there
     // because the seeded venues are cinemas.
-    const picker = await within(section).findByLabelText(/add a category/i);
+    const picker = await within(section).findByLabelText(/dodaj kategorię/i);
     await user.selectOptions(picker, 'cinema');
 
     await user.selectOptions(
-      await within(section).findByLabelText(/how often for cinema/i), 'every_issue',
+      await within(section).findByLabelText(/jak często: kino/i), 'every_issue',
     );
-    await user.selectOptions(within(section).getByLabelText(/description for cinema/i), 'short');
+    await user.selectOptions(within(section).getByLabelText(/opis: kino/i), 'short');
     // GOI-100: time of day is per category now. Cinema after 18:00 is the
     // setting that used to be global — and that used to empty museums.
-    await user.selectOptions(within(section).getByLabelText(/time of day for cinema/i), 'after_18');
+    await user.selectOptions(within(section).getByLabelText(/pora dnia: kino/i), 'after_18');
     // Save before leaving: switching tabs unmounts the form, so anything not
     // yet saved is gone — the same as for any other section.
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
 
     // A tag added over in "My venues" shows up here as a category too.
-    await user.click(screen.getByRole('button', { name: 'My venues' }));
-    const venuesSection = (await screen.findByRole('heading', { name: 'My venues' })).closest('section')!;
+    await user.click(screen.getByRole('button', { name: 'Moje miejsca' }));
+    const venuesSection = (await screen.findByRole('heading', { name: 'Moje miejsca' })).closest('section')!;
     const row = (await within(venuesSection).findByText('Kinoteka')).closest('li')!;
-    await user.click(within(row).getByRole('button', { name: /add tag to kinoteka/i }));
-    await user.type(within(row).getByLabelText(/new tag for kinoteka/i), 'museums');
-    await user.click(within(row).getByRole('button', { name: /^add$/i }));
+    await user.click(within(row).getByRole('button', { name: /dodaj tag do kinoteka/i }));
+    await user.type(within(row).getByLabelText(/nowy tag dla kinoteka/i), 'museums');
+    await user.click(within(row).getByRole('button', { name: /^dodaj$/i }));
     await within(venuesSection).findByText('museums');
 
     await user.click(screen.getByRole('button', { name: 'Newsletter' }));
-    section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
     // The saved cinema rule comes back with the form.
-    await within(section).findByLabelText(/how often for cinema/i);
-    await user.selectOptions(await within(section).findByLabelText(/add a category/i), 'museums');
+    await within(section).findByLabelText(/jak często: kino/i);
+    await user.selectOptions(await within(section).findByLabelText(/dodaj kategorię/i), 'museums');
 
     // Museums monthly, with the full write-up — the example from the brief.
-    await user.selectOptions(await within(section).findByLabelText(/how often for museums/i), 'monthly');
-    await user.selectOptions(within(section).getByLabelText(/description for museums/i), 'full');
+    await user.selectOptions(await within(section).findByLabelText(/jak często: museums/i), 'monthly');
+    await user.selectOptions(within(section).getByLabelText(/opis: museums/i), 'full');
     // …and left at "any time", which is the point of the per-row filter: the
     // one global setting could not say "evenings for cinema, any time for
     // exhibitions", so it said "evenings" and museums went silent.
-    expect(within(section).getByLabelText(/time of day for museums/i)).toHaveValue('any');
+    expect(within(section).getByLabelText(/pora dnia: museums/i)).toHaveValue('any');
 
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
 
     expect((await defaultNewsletterStore.get(userId))!.categoryRules).toEqual([
       {
@@ -412,11 +412,11 @@ describe('MyPage — newsletter end-to-end', () => {
       renderPage();
 
       await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+      const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+      const group = within(section).getByRole('radiogroup', { name: /jak go wysyłać/i });
       expect(within(group).getAllByRole('radio')).toHaveLength(3);
-      expect(within(group).getByRole('radio', { name: /^email$/i })).toHaveAttribute('aria-checked', 'true');
+      expect(within(group).getByRole('radio', { name: /^e-mail$/i })).toHaveAttribute('aria-checked', 'true');
     });
 
     it('saves the choice, and the summary line stops claiming an email', async () => {
@@ -424,16 +424,16 @@ describe('MyPage — newsletter end-to-end', () => {
       renderPage();
 
       await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
-      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+      const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+      const group = within(section).getByRole('radiogroup', { name: /jak go wysyłać/i });
 
-      await user.click(within(group).getByRole('radio', { name: /^drive$/i }));
+      await user.click(within(group).getByRole('radio', { name: /^dysk$/i }));
       // GOI-30's rule: the line above the controls must not state a fiction.
       // "Emailed to ada@example.com" is one for a reader who chose the drive.
-      expect(within(section).getByText(/filed to your drive/i)).toBeInTheDocument();
+      expect(within(section).getByText(/zapisywane na twoim dysku/i)).toBeInTheDocument();
 
-      await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-      await within(section).findByText('Saved.');
+      await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+      await within(section).findByText('Zapisano.');
       expect(await defaultNewsletterStore.get(userId)).toMatchObject({ delivery: 'drive' });
     });
 
@@ -455,27 +455,27 @@ describe('MyPage — newsletter end-to-end', () => {
       renderPage();
 
       await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
-      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+      const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+      const group = within(section).getByRole('radiogroup', { name: /jak go wysyłać/i });
 
       // Start from a known state: an earlier test in this file saves a
       // delivery choice, and the form loads whatever is stored.
-      await user.click(within(group).getByRole('radio', { name: /^email$/i }));
+      await user.click(within(group).getByRole('radio', { name: /^e-mail$/i }));
       expect(
-        within(section).queryByText(/nowhere to file|briefs are filed to the drive/i),
+        within(section).queryByText(/nie ma gdzie zapisać|newslettery trafiają na dysk/i),
       ).not.toBeInTheDocument();
 
-      for (const choice of [/^drive$/i, /^both$/i]) {
+      for (const choice of [/^dysk$/i, /^oba$/i]) {
         await user.click(within(group).getByRole('radio', { name: choice }));
         expect(
-          within(section).getByText(/nowhere to file|briefs are filed to the drive|aren.t available/i),
+          within(section).getByText(/nie ma gdzie zapisać|newslettery trafiają na dysk|dyski nie są dostępne/i),
         ).toBeInTheDocument();
       }
 
       // …and goes quiet again once no drive is involved.
-      await user.click(within(group).getByRole('radio', { name: /^email$/i }));
+      await user.click(within(group).getByRole('radio', { name: /^e-mail$/i }));
       expect(
-        within(section).queryByText(/nowhere to file|briefs are filed to the drive/i),
+        within(section).queryByText(/nie ma gdzie zapisać|newslettery trafiają na dysk/i),
       ).not.toBeInTheDocument();
     });
 
@@ -484,15 +484,15 @@ describe('MyPage — newsletter end-to-end', () => {
       renderPage();
 
       await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-      const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
-      const group = within(section).getByRole('radiogroup', { name: /how to send it/i });
+      const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+      const group = within(section).getByRole('radiogroup', { name: /jak go wysyłać/i });
 
-      await user.click(within(group).getByRole('radio', { name: /^drive$/i }));
-      expect(within(section).getByText(/nothing is emailed with this setting/i)).toBeInTheDocument();
+      await user.click(within(group).getByRole('radio', { name: /^dysk$/i }));
+      expect(within(section).getByText(/przy tym ustawieniu nic nie jest wysyłane e-mailem/i)).toBeInTheDocument();
 
       // …and stops saying it once an email is involved again.
-      await user.click(within(group).getByRole('radio', { name: /^both$/i }));
-      expect(within(section).queryByText(/nothing is emailed with this setting/i)).not.toBeInTheDocument();
+      await user.click(within(group).getByRole('radio', { name: /^oba$/i }));
+      expect(within(section).queryByText(/przy tym ustawieniu nic nie jest wysyłane e-mailem/i)).not.toBeInTheDocument();
     });
   });
 
@@ -506,25 +506,25 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
-    const cadence = await within(section).findByLabelText(/how often for museums/i);
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+    const cadence = await within(section).findByLabelText(/jak często: museums/i);
 
     // Daily: every option is reachable.
-    await user.click(within(section).getByRole('radio', { name: /every day/i }));
-    for (const name of [/every issue/i, /once a week/i, /once a month/i]) {
+    await user.click(within(section).getByRole('radio', { name: /codziennie/i }));
+    for (const name of [/w każdym wydaniu/i, /raz w tygodniu/i, /raz w miesiącu/i]) {
       expect(within(cadence).getByRole('option', { name })).not.toBeDisabled();
     }
 
     // Weekly: "once a week" *is* every issue, so it is offered but unusable.
-    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
-    expect(within(cadence).getByRole('option', { name: /once a week/i })).toBeDisabled();
-    expect(within(cadence).getByRole('option', { name: /once a month/i })).not.toBeDisabled();
+    await user.click(within(section).getByRole('radio', { name: /co tydzień/i }));
+    expect(within(cadence).getByRole('option', { name: /raz w tygodniu/i })).toBeDisabled();
+    expect(within(cadence).getByRole('option', { name: /raz w miesiącu/i })).not.toBeDisabled();
 
     // Monthly: nothing is finer than the envelope, so nothing else is left.
-    await user.click(within(section).getByRole('radio', { name: /monthly/i }));
-    expect(within(cadence).getByRole('option', { name: /once a week/i })).toBeDisabled();
-    expect(within(cadence).getByRole('option', { name: /once a month/i })).toBeDisabled();
-    expect(within(cadence).getByRole('option', { name: /every issue/i })).not.toBeDisabled();
+    await user.click(within(section).getByRole('radio', { name: /co miesiąc/i }));
+    expect(within(cadence).getByRole('option', { name: /raz w tygodniu/i })).toBeDisabled();
+    expect(within(cadence).getByRole('option', { name: /raz w miesiącu/i })).toBeDisabled();
+    expect(within(cadence).getByRole('option', { name: /w każdym wydaniu/i })).not.toBeDisabled();
   });
 
   /**
@@ -538,16 +538,16 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    await user.click(within(section).getByRole('radio', { name: /every day/i }));
-    const cadence = await within(section).findByLabelText(/how often for museums/i);
+    await user.click(within(section).getByRole('radio', { name: /codziennie/i }));
+    const cadence = await within(section).findByLabelText(/jak często: museums/i);
     await user.selectOptions(cadence, 'weekly');
 
     // Weekly issues cannot carry a weekly category — that is every issue.
-    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
+    await user.click(within(section).getByRole('radio', { name: /co tydzień/i }));
     expect(cadence).toHaveValue('every_issue');
-    expect(await within(section).findByRole('status')).toHaveTextContent(/museums moved to/i);
+    expect(await within(section).findByRole('status')).toHaveTextContent(/museums: zmieniono na/i);
   });
 
   /** GOI-102 §2: the derived window is shown, so the override is answerable
@@ -557,18 +557,18 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    await user.click(within(section).getByRole('radio', { name: /every day/i }));
-    const cadence = await within(section).findByLabelText(/how often for museums/i);
+    await user.click(within(section).getByRole('radio', { name: /codziennie/i }));
+    const cadence = await within(section).findByLabelText(/jak często: museums/i);
 
     // Every issue of a daily newsletter covers a day…
     await user.selectOptions(cadence, 'every_issue');
-    expect(within(section).getByText('Each issue shows the next 1 day of museums.')).toBeInTheDocument();
+    expect(within(section).getByText('Każde wydanie pokazuje najbliższe 1 dzień programu (museums).')).toBeInTheDocument();
 
     // …and a monthly section of one covers a month.
     await user.selectOptions(cadence, 'monthly');
-    expect(within(section).getByText('Each issue shows the next 30 days of museums.')).toBeInTheDocument();
+    expect(within(section).getByText('Każde wydanie pokazuje najbliższe 30 dni programu (museums).')).toBeInTheDocument();
   });
 
   /**
@@ -583,19 +583,19 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    expect(within(section).getByText(/each issue shows the next \d+ days? of museums/i)).toBeInTheDocument();
+    expect(within(section).getByText(/każde wydanie pokazuje najbliższe \d+ (dzień|dni) programu \(museums\)/i)).toBeInTheDocument();
 
     await user.click(
-      within(section).getByRole('button', { name: /change how many days of museums each issue shows/i }),
+      within(section).getByRole('button', { name: /zmień, ile dni programu \(museums\) pokazuje każde wydanie/i }),
     );
-    // GOI-137: the field sits inside one plain sentence — no "Look ahead"
+    // GOI-137: the field sits inside one plain sentence — no "Zasięg"
     // label and no paragraph about spans and repeats under it.
-    const field = within(section).getByLabelText(/each issue shows the next/i);
+    const field = within(section).getByLabelText(/każde wydanie pokazuje najbliższe/i);
     expect(field).toHaveAttribute('type', 'number');
-    expect(within(section).queryByText(/look ahead/i)).not.toBeInTheDocument();
-    expect(within(section).queryByText(/no gaps and no repeats/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/^zasięg$/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/bez luk i powtórzeń/i)).not.toBeInTheDocument();
   });
 
   it('says the venues are the reader\u2019s own, and what ticking one does', async () => {
@@ -603,10 +603,10 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    expect(within(section).getByText(/these are the venues you follow/i)).toBeInTheDocument();
-    expect(within(section).getByText(/leave everything unticked/i)).toBeInTheDocument();
+    expect(within(section).getByText(/to miejsca, które obserwujesz/i)).toBeInTheDocument();
+    expect(within(section).getByText(/jeśli nic nie zaznaczysz/i)).toBeInTheDocument();
   });
 
   it('says where a category comes from', async () => {
@@ -614,9 +614,9 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    expect(within(section).getByText(/a category is a heading in the brief/i))
+    expect(within(section).getByText(/kategoria to nagłówek w newsletterze/i))
       .toBeInTheDocument();
   });
 
@@ -635,9 +635,9 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    const include = within(section).getByLabelText(/include events i saved/i);
+    const include = within(section).getByLabelText(/dołącz zapisane wydarzenia/i);
     expect(include).toBeChecked();
 
     // The three knobs GOI-101 put underneath it are gone.
@@ -660,20 +660,20 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
-    const include = within(section).getByLabelText(/include events i saved/i);
+    const include = within(section).getByLabelText(/dołącz zapisane wydarzenia/i);
     await user.click(include);
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
 
     expect((await defaultNewsletterStore.get(userId))!.wantToGo)
       .toEqual({ ...DEFAULT_WANT_TO_GO, enabled: false });
 
     // Put it back: the cases after this one share the account.
     await user.click(include);
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
     expect((await defaultNewsletterStore.get(userId))!.wantToGo).toEqual(DEFAULT_WANT_TO_GO);
   });
 
@@ -688,26 +688,26 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
     // Drop every rule, then switch saved events off. Whatever the previous
     // tests left saved, the point is the state with nothing in it.
-    await within(section).findByLabelText(/how often for museums/i);
+    await within(section).findByLabelText(/jak często: museums/i);
     // Re-queried each time: removing a row rebuilds the list under us.
     for (;;) {
-      const [remove] = within(section).queryAllByRole('button', { name: /^remove /i });
+      const [remove] = within(section).queryAllByRole('button', { name: /^usuń (?!ten newsletter)/i });
       if (!remove) break;
       await user.click(remove);
     }
-    await user.click(within(section).getByLabelText(/include events i saved/i));
+    await user.click(within(section).getByLabelText(/dołącz zapisane wydarzenia/i));
 
     // Named rather than "the alert": the delivery choice raises one of its own
     // when a drive is asked for and none is connected, and a previous test in
     // this file leaves that choice saved.
     expect(
-      await within(section).findByText(/this newsletter would always be empty/i),
+      await within(section).findByText(/ten newsletter byłby zawsze pusty/i),
     ).toBeInTheDocument();
-    expect(within(section).getByRole('button', { name: /schedule newsletter/i })).toBeDisabled();
+    expect(within(section).getByRole('button', { name: /zaplanuj newsletter/i })).toBeDisabled();
   });
 
   it('drops a category rule again', async () => {
@@ -715,13 +715,13 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
 
     // The saved rules from the previous test are loaded back into the form.
-    await within(section).findByLabelText(/how often for cinema/i);
-    await user.click(within(section).getByRole('button', { name: /remove cinema/i }));
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await within(section).findByLabelText(/jak często: kino/i);
+    await user.click(within(section).getByRole('button', { name: /usuń kino/i }));
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
 
     expect((await defaultNewsletterStore.get(userId))!.categoryRules.map((r) => r.category))
       .toEqual(['museums']);
@@ -737,11 +737,11 @@ describe('MyPage — newsletter end-to-end', () => {
     renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const picker = await screen.findByRole('navigation', { name: /your newsletters/i });
+    const picker = await screen.findByRole('navigation', { name: /twoje newslettery/i });
     // Scoped to the row and anchored: the first is called "Newsletter", which
     // half the buttons on this screen also say.
     const tab = (label: string) =>
-      within(screen.getByRole('navigation', { name: /your newsletters/i }))
+      within(screen.getByRole('navigation', { name: /twoje newslettery/i }))
         .getByRole('button', { name: new RegExp(`^${label}`, 'i') });
     const before = await defaultNewsletterStore.list(userId);
     expect(before).toHaveLength(1);
@@ -750,23 +750,23 @@ describe('MyPage — newsletter end-to-end', () => {
     // The first is the one being edited, until another is picked.
     expect(tab(first.name)).toHaveAttribute('aria-pressed', 'true');
 
-    await user.click(within(picker).getByRole('button', { name: /new newsletter/i }));
-    const name = (await screen.findByLabelText(/newsletter name/i)) as HTMLInputElement;
+    await user.click(within(picker).getByRole('button', { name: /nowy newsletter/i }));
+    const name = (await screen.findByLabelText(/nazwa newslettera/i)) as HTMLInputElement;
     const section = name.closest('section')!;
-    expect(name.value).toBe('New newsletter');
+    expect(name.value).toBe('Nowy newsletter');
     await user.clear(name);
     await user.type(name, 'Weekend');
-    await user.click(within(section).getByRole('radio', { name: /weekly/i }));
-    await user.selectOptions(await within(section).findByLabelText(/^on$/i), '6');
+    await user.click(within(section).getByRole('radio', { name: /co tydzień/i }));
+    await user.selectOptions(await within(section).findByLabelText(/^dzień$/i), '6');
 
     // It starts with nothing in it: no categories, and not the saved events
     // the first one already carries — so it has to be given something.
-    expect(within(section).getByLabelText(/include events i saved/i)).not.toBeChecked();
-    expect(within(section).getByRole('button', { name: /schedule newsletter/i })).toBeDisabled();
-    await user.selectOptions(await within(section).findByLabelText(/add a category/i), 'cinema');
+    expect(within(section).getByLabelText(/dołącz zapisane wydarzenia/i)).not.toBeChecked();
+    expect(within(section).getByRole('button', { name: /zaplanuj newsletter/i })).toBeDisabled();
+    await user.selectOptions(await within(section).findByLabelText(/dodaj kategorię/i), 'cinema');
 
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
-    await within(section).findByText('Saved.');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
 
     // Created beside the first, not written over it.
     const after = await defaultNewsletterStore.list(userId);
@@ -778,26 +778,26 @@ describe('MyPage — newsletter end-to-end', () => {
     await waitFor(() => expect(tab('Weekend')).toHaveAttribute('aria-pressed', 'true'));
 
     // Saving it again updates it in place.
-    await user.selectOptions(within(section).getByLabelText(/^on$/i), '0');
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await user.selectOptions(within(section).getByLabelText(/^dzień$/i), '0');
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
     await waitFor(async () => expect((await defaultNewsletterStore.list(userId))[1]?.sendWeekday).toBe(0));
     expect(await defaultNewsletterStore.list(userId)).toHaveLength(2);
 
     // Picking the first loads its own settings back.
     await user.click(tab(first.name));
-    await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe(first.name));
+    await waitFor(() => expect((screen.getByLabelText(/nazwa newslettera/i) as HTMLInputElement).value).toBe(first.name));
 
     // And the second goes again, leaving the first as it was.
     await user.click(tab('Weekend'));
-    await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe('Weekend'));
+    await waitFor(() => expect((screen.getByLabelText(/nazwa newslettera/i) as HTMLInputElement).value).toBe('Weekend'));
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     try {
-      await user.click(screen.getByRole('button', { name: /delete this newsletter/i }));
+      await user.click(screen.getByRole('button', { name: /usuń ten newsletter/i }));
     } finally {
       confirm.mockRestore();
     }
     await waitFor(async () => expect(await defaultNewsletterStore.list(userId)).toEqual([first]));
-    await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe(first.name));
+    await waitFor(() => expect((screen.getByLabelText(/nazwa newslettera/i) as HTMLInputElement).value).toBe(first.name));
   });
 });
 
@@ -908,11 +908,11 @@ describe('MyPage — newsletter against an API older than the page (GOI-105)', (
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
 
     const banner = await screen.findByRole('alert');
-    expect(banner).toHaveTextContent(/older build than this page/i);
-    expect(banner).toHaveTextContent(/deploy the backend/i);
+    expect(banner).toHaveTextContent(/na starszej wersji niż ta strona/i);
+    expect(banner).toHaveTextContent(/wdróż backend/i);
     // The form is still there: a stale server is not a reason to hide the
     // reader's own settings from them.
-    expect(await screen.findByLabelText(/email address/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/adres e-mail/i)).toBeInTheDocument();
   });
 
   /**
@@ -924,23 +924,23 @@ describe('MyPage — newsletter against an API older than the page (GOI-105)', (
     const user = userEvent.setup();
     renderAgainstStaleApi();
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
-    const email = await screen.findByLabelText(/email address/i);
+    const email = await screen.findByLabelText(/adres e-mail/i);
     const section = email.closest('section')!;
 
-    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
     await waitFor(() => {
       expect(within(section).getByText(/Frequency: Required/)).toBeInTheDocument();
     });
-    expect(within(section).getAllByText(/older build than this page/i).length).toBeGreaterThan(0);
+    expect(within(section).getAllByText(/na starszej wersji niż ta strona/i).length).toBeGreaterThan(0);
 
     // "Generate now" fails the same way and says so in its own line, beside
     // the preview it could not produce — so the save error above is now one
     // of two on screen.
-    await user.click(within(section).getByRole('button', { name: /generate now/i }));
+    await user.click(within(section).getByRole('button', { name: /wygeneruj teraz/i }));
     await waitFor(() => {
-      expect(within(section).getAllByText(/Send weekday: Expected number, received null/))
+      expect(within(section).getAllByText(/Dzień tygodnia wysyłki: Expected number, received null/))
         .toHaveLength(2);
     });
-    expect(within(section).getByText(/couldn.t generate a preview/i)).toBeInTheDocument();
+    expect(within(section).getByText(/nie udało się wygenerować podglądu/i)).toBeInTheDocument();
   });
 });

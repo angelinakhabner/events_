@@ -46,7 +46,7 @@ export function LegalPage({
   return (
     <article className="page-x py-10 md:py-16">
       <div className="max-w-[68ch]">
-        <p className="tag m-0">Last updated {updated}</p>
+        <p className="tag m-0">Ostatnia aktualizacja: {updated} r.</p>
         <h1
           className="font-display leading-[0.98] tracking-[0.5px] m-0 mt-3"
           style={{ fontSize: 'clamp(34px, 6vw, 60px)' }}
@@ -61,7 +61,7 @@ export function LegalPage({
         ))}
 
         <p className="mt-12 border-t-2 border-divider pt-6 text-[15px] md:text-base text-body">
-          See also the{' '}
+          Zobacz też:{' '}
           <Link to={seeAlso.to} className="underline hover:text-accent">{seeAlso.label}</Link>.
         </p>
       </div>

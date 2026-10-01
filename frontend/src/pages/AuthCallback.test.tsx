@@ -52,12 +52,12 @@ describe('AuthCallbackPage — OAuth fragment', () => {
   it('shows the error from #error= with a retry hint', async () => {
     renderAt('/auth#error=Google%20sign-in%20was%20cancelled.');
     await screen.findByText('Google sign-in was cancelled.');
-    expect(screen.getByText(/try again from the \/my page/i)).toBeInTheDocument();
+    expect(screen.getByText(/spróbować ponownie na stronie \/my/i)).toBeInTheDocument();
     await waitFor(() => expect(getSessionToken()).toBeNull());
   });
 
   it('still asks for a token when the URL carries neither', () => {
     renderAt('/auth');
-    expect(screen.getByText(/missing login token/i)).toBeInTheDocument();
+    expect(screen.getByText(/brak tokenu logowania/i)).toBeInTheDocument();
   });
 });

@@ -20,11 +20,11 @@ import { pad } from './format';
  * (see `briefSummary`), live, right under this one.
  */
 export const NEWSLETTER_BLURB =
-  'A brief of what is coming up at the venues you follow, built the way you want to read it. ' +
-  'Choose when it arrives — every day, once a week or once a month — and give each category its ' +
-  'own rhythm, depth and how far ahead it looks, so cinema can turn up daily in a line each while ' +
-  'museums arrive monthly in full. Events you saved can ride along. It reaches you by email, as a ' +
-  'PDF filed on your drive, or both.';
+  'Przegląd tego, co nadchodzi w obserwowanych przez Ciebie miejscach, ułożony tak, jak chcesz go czytać. ' +
+  'Wybierz, kiedy przychodzi — codziennie, raz w tygodniu albo raz w miesiącu — i nadaj każdej kategorii ' +
+  'własny rytm, szczegółowość i zasięg, tak by kino pojawiało się codziennie w jednej linijce, a muzea ' +
+  'raz w miesiącu w pełnej wersji. Zapisane wydarzenia mogą dołączyć. Dostajesz go e-mailem, jako PDF ' +
+  'zapisany na Twoim dysku albo na oba sposoby.';
 
 /**
  * The form's state, as the request body the API expects (GOI-105).
@@ -142,7 +142,12 @@ function collectKeys(value: unknown, into: Set<string> = new Set()): Set<string>
 }
 
 /** Weekday names, JS convention (0=Sun … 6=Sat). */
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** "Every <weekday>", JS convention (0=Sun). Whole phrases rather than names,
+ *  because Polish agrees "każdy" / "każdą" with the day's gender. */
+const EVERY_WEEKDAY = [
+  'w każdą niedzielę', 'w każdy poniedziałek', 'w każdy wtorek', 'w każdą środę',
+  'w każdy czwartek', 'w każdy piątek', 'w każdą sobotę',
+];
 
 export interface BriefSummaryInput {
   /** Names of the venues the brief covers; empty means "all of them". */
@@ -188,12 +193,14 @@ export interface BriefSummaryInput {
  */
 export function briefSummary(input: BriefSummaryInput): string {
   const where = venuePhrase(input.venueNames);
-  const when = `${cadence(input)} at ${pad(input.sendHour)}:${pad(input.sendMinute)}`;
-  const only = input.afterHour == null ? '' : ` — only what starts after ${pad(input.afterHour)}:00`;
+  const when = `${cadence(input)} o ${pad(input.sendHour)}:${pad(input.sendMinute)}`;
+  const only = input.afterHour == null ? '' : ` — tylko to, co zaczyna się po ${pad(input.afterHour)}:00`;
+  // The venues follow a dash rather than a preposition: "z" would have to
+  // decline every venue name, and a venue's name is not ours to decline.
   const line =
-    `${horizon(input.frequency)} at ${where}, ${destination(input)} ${when}${only}.`;
+    `${horizon(input.frequency)} — ${where}, ${destination(input)} ${when}${only}.`;
   // Capitalised by the horizon phrase, which always leads.
-  return input.enabled === false ? `${line} Paused — nothing is being sent.` : line;
+  return input.enabled === false ? `${line} Wstrzymany — nic nie jest wysyłane.` : line;
 }
 
 /**
@@ -202,9 +209,9 @@ export function briefSummary(input: BriefSummaryInput): string {
  * of upcoming events, so the line says days rather than repeating the cadence.
  */
 function horizon(frequency: BriefSummaryInput['frequency']): string {
-  if (frequency === 'daily') return 'The next 24 hours';
-  if (frequency === 'weekly') return 'The next 7 days';
-  return 'The next 30 days';
+  if (frequency === 'daily') return 'Najbliższe 24 godziny';
+  if (frequency === 'weekly') return 'Najbliższe 7 dni';
+  return 'Najbliższe 30 dni';
 }
 
 /**
@@ -217,27 +224,27 @@ function horizon(frequency: BriefSummaryInput['frequency']): string {
  */
 function destination(input: BriefSummaryInput): string {
   const delivery = input.delivery ?? 'email';
-  if (delivery === 'drive') return 'filed to your drive as a PDF';
-  const to = `emailed to ${recipient(input.email)}`;
-  return delivery === 'both' ? `${to} and filed to your drive` : to;
+  if (delivery === 'drive') return 'zapisywane na Twoim dysku jako PDF';
+  const to = `wysyłane na ${recipient(input.email)}`;
+  return delivery === 'both' ? `${to} i zapisywane na Twoim dysku` : to;
 }
 
 /** The address, or a placeholder while the field is still empty. */
 function recipient(email: string | undefined): string {
   const trimmed = email?.trim();
-  return trimmed ? trimmed : 'your inbox';
+  return trimmed ? trimmed : 'Twoją skrzynkę';
 }
 
 function venuePhrase(names: string[]): string {
-  if (names.length === 0) return 'all your venues';
+  if (names.length === 0) return 'wszystkie Twoje miejsca';
   if (names.length === 1) return names[0]!;
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
-  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+  if (names.length === 2) return `${names[0]} i ${names[1]}`;
+  if (names.length === 3) return `${names[0]}, ${names[1]} i ${names[2]}`;
+  return `${names[0]}, ${names[1]} i jeszcze ${names.length - 2}`;
 }
 
 function cadence({ frequency, sendWeekday }: BriefSummaryInput): string {
-  if (frequency === 'daily') return 'every day';
-  if (frequency === 'monthly') return 'once a month';
-  return `every ${WEEKDAY_NAMES[sendWeekday] ?? 'Monday'}`;
+  if (frequency === 'daily') return 'codziennie';
+  if (frequency === 'monthly') return 'raz w miesiącu';
+  return EVERY_WEEKDAY[sendWeekday] ?? EVERY_WEEKDAY[1]!;
 }

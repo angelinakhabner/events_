@@ -78,11 +78,11 @@ describe('exchangeGoogleCode', () => {
   });
 
   it.each([
-    ['wrong issuer', goodClaims({ iss: 'https://evil.example' }), /issuer/],
-    ['wrong audience', goodClaims({ aud: 'someone-else' }), /audience/],
-    ['expired token', goodClaims({ exp: Math.floor(NOW.getTime() / 1000) - 10 }), /expired/],
-    ['unverified email', goodClaims({ email_verified: false }), /verified email/],
-    ['missing email', goodClaims({ email: undefined }), /verified email/],
+    ['wrong issuer', goodClaims({ iss: 'https://evil.example' }), /wystawca/],
+    ['wrong audience', goodClaims({ aud: 'someone-else' }), /odbiorca/],
+    ['expired token', goodClaims({ exp: Math.floor(NOW.getTime() / 1000) - 10 }), /wygasł/],
+    ['unverified email', goodClaims({ email_verified: false }), /zweryfikowanego adresu/],
+    ['missing email', goodClaims({ email: undefined }), /zweryfikowanego adresu/],
   ])('rejects %s', async (_name, claims, message) => {
     const fetcher = tokenFetcher(fakeIdToken(claims));
     await expect(exchangeGoogleCode(CFG, 'code', { fetcher, now: NOW })).rejects.toThrow(message);
@@ -94,7 +94,7 @@ describe('exchangeGoogleCode', () => {
     ).rejects.toThrow(/HTTP 400/);
     await expect(
       exchangeGoogleCode(CFG, 'code', { fetcher: tokenFetcher(null), now: NOW }),
-    ).rejects.toThrow(/no id_token/);
+    ).rejects.toThrow(/brak id_token/);
   });
 
   it('sends the code and secret to the token endpoint', async () => {

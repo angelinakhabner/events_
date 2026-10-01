@@ -21,10 +21,10 @@ describe('readableApiError', () => {
       { path: ['categoryRules', 1, 'cadence'], message: 'A weekly newsletter cannot carry a category once a week.' },
     ]);
     const out = readableApiError(message, NEWSLETTER_FIELDS);
-    expect(out).toContain('Send weekday: A weekly newsletter needs a day of the week to go out on.');
+    expect(out).toContain('Dzień tygodnia wysyłki: A weekly newsletter needs a day of the week to go out on.');
     // One-based, so the index reads as the position a reader can count to.
-    expect(out).toContain('Category rules 2 — cadence: A weekly newsletter cannot carry a category once a week.');
-    expect(out).not.toContain('older build');
+    expect(out).toContain('Reguły kategorii 2 — częstotliwość: A weekly newsletter cannot carry a category once a week.');
+    expect(out).not.toContain('starszej wersji');
   });
 
   /** The failure this helper exists for: the API predates the form. */
@@ -35,13 +35,13 @@ describe('readableApiError', () => {
     ]);
     const out = readableApiError(message, NEWSLETTER_FIELDS);
     expect(out).toContain('Frequency: Required');
-    expect(out).toContain('older build than this page');
+    expect(out).toContain('na starszej wersji niż ta strona');
   });
 
   it('explains an unknown procedure as the same mismatch', () => {
     const out = readableApiError('No procedure found on path "my.newsletter.sendTest"');
     expect(out).toContain('my.newsletter.sendTest');
-    expect(out).toContain('older build than this page');
+    expect(out).toContain('na starszej wersji niż ta strona');
   });
 
   it('does not cry version mismatch with no field set to compare against', () => {
@@ -92,8 +92,8 @@ describe('a backend older than the page (GOI-105)', () => {
   it('names the fields, then says the API is the older half', () => {
     const text = readableApiError(STALE_API, NEWSLETTER_FIELDS)!;
     expect(text).toContain('Frequency: Required');
-    expect(text).toContain('Send weekday: Expected number, received null');
-    expect(text).toContain('the API is running an older build than this page');
+    expect(text).toContain('Dzień tygodnia wysyłki: Expected number, received null');
+    expect(text).toContain('API działa na starszej wersji niż ta strona');
   });
 
   /**
@@ -105,7 +105,7 @@ describe('a backend older than the page (GOI-105)', () => {
   it('explains it even when only one of the named fields is unknown', () => {
     expect(NEWSLETTER_FIELDS.has('sendWeekday')).toBe(true);
     expect(NEWSLETTER_FIELDS.has('frequency')).toBe(false);
-    expect(readableApiError(STALE_API, NEWSLETTER_FIELDS)).toContain('older build');
+    expect(readableApiError(STALE_API, NEWSLETTER_FIELDS)).toContain('starszej wersji');
   });
 
   /**
@@ -118,7 +118,7 @@ describe('a backend older than the page (GOI-105)', () => {
   it('cannot explain it with no field set to compare against', () => {
     const text = readableApiError(STALE_API, undefined)!;
     expect(text).toContain('Frequency: Required');
-    expect(text).not.toContain('older build');
+    expect(text).not.toContain('starszej wersji');
   });
 
   /**
@@ -144,7 +144,7 @@ describe('a backend older than the page (GOI-105)', () => {
     expect(JSON.stringify(echoed)).toContain('frequency');
     // The static set does not, so the rejection is still read as a mismatch.
     expect(NEWSLETTER_FIELDS.has('frequency')).toBe(false);
-    expect(readableApiError(STALE_API, NEWSLETTER_FIELDS)).toContain('older build');
+    expect(readableApiError(STALE_API, NEWSLETTER_FIELDS)).toContain('starszej wersji');
   });
 
   /** A genuine bad value is still the reader's to fix, not a deploy. */
@@ -153,8 +153,8 @@ describe('a backend older than the page (GOI-105)', () => {
       { code: 'too_big', path: ['sendHour'], message: 'Number must be less than or equal to 23' },
     ]);
     const text = readableApiError(badHour, NEWSLETTER_FIELDS)!;
-    expect(text).toContain('Send hour: Number must be less than or equal to 23');
-    expect(text).not.toContain('older build');
+    expect(text).toContain('Godzina wysyłki: Number must be less than or equal to 23');
+    expect(text).not.toContain('starszej wersji');
   });
 });
 

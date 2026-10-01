@@ -62,7 +62,7 @@ describe('ScreeningsStrip', () => {
     render(<ScreeningsStrip event={makeEvent()} />);
     expect(useQueryMock).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
     expect(useQueryMock).toHaveBeenCalledWith(
       { title: 'Ojczyzna', match: 'exact' },
       expect.objectContaining({ retry: 1 }),
@@ -78,7 +78,7 @@ describe('ScreeningsStrip', () => {
    */
   it('asks for a tracked title by its words instead', () => {
     render(<ScreeningsStrip event={makeEvent({ title: 'chungking' })} match="words" />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
     expect(useQueryMock).toHaveBeenCalledWith(
       { title: 'chungking', match: 'words' },
@@ -100,7 +100,7 @@ describe('ScreeningsStrip', () => {
     });
 
     render(<ScreeningsStrip event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
     const link = screen.getByRole('link', { name: '14:00' });
     expect(link).toHaveAttribute('href', 'https://kinoteka.example/k1');
@@ -120,7 +120,7 @@ describe('ScreeningsStrip', () => {
     });
 
     render(<ScreeningsStrip event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
     const [first, second] = screen.getAllByRole('link').map((a) => a.closest('div')!.parentElement!);
     expect(first).toHaveClass('bg-ink');
@@ -137,10 +137,10 @@ describe('ScreeningsStrip', () => {
     });
 
     render(<ScreeningsStrip event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
     expect(screen.getAllByRole('link')).toHaveLength(3);
 
-    fireEvent.click(screen.getByRole('button', { name: /show 2 more screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pokaż jeszcze 2 seanse/i }));
     expect(screen.getAllByRole('link')).toHaveLength(5);
   });
 
@@ -159,10 +159,10 @@ describe('ScreeningsStrip', () => {
     });
 
     render(<ScreeningsStrip event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
     expect(
-      screen.getByRole('button', { name: 'Add Ojczyzna at Kinoteka, 4 Jul 14:00, to calendar' }),
+      screen.getByRole('button', { name: 'Dodaj do kalendarza: Ojczyzna, Kinoteka, 4 lip 14:00' }),
     ).toBeInTheDocument();
   });
 
@@ -171,28 +171,28 @@ describe('ScreeningsStrip', () => {
     useQueryMock.mockReturnValue({ data: [], isLoading: false, isError: false });
 
     render(<ScreeningsStrip event={event} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest dates/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe terminy/i }));
 
     expect(useQueryMock).toHaveBeenCalledWith({ title: 'Dziady', match: 'exact' }, expect.anything());
-    expect(screen.getByText(/no upcoming dates/i)).toBeInTheDocument();
+    expect(screen.getByText(/brak nadchodzących terminów/i)).toBeInTheDocument();
   });
 
   it('shows a loading state while the query is in flight', () => {
     useQueryMock.mockReturnValue({ data: undefined, isLoading: true, isError: false });
 
     render(<ScreeningsStrip event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
-    expect(screen.getByText(/looking for screenings/i)).toBeInTheDocument();
+    expect(screen.getByText(/szukamy seansów/i)).toBeInTheDocument();
   });
 
   it('says so when the query fails', () => {
     useQueryMock.mockReturnValue({ data: undefined, isLoading: false, isError: true });
 
     render(<ScreeningsStrip event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
-    expect(screen.getByText(/couldn’t load screenings/i)).toBeInTheDocument();
+    expect(screen.getByText(/nie udało się wczytać seansów/i)).toBeInTheDocument();
   });
 });
 
@@ -215,7 +215,7 @@ describe('ScreeningsStrip — includeSelf', () => {
     });
 
     render(<ScreeningsStrip event={event} includeSelf={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
     const links = screen.getAllByRole('link');
     expect(links).toHaveLength(1);
@@ -234,7 +234,7 @@ describe('ScreeningsStrip — includeSelf', () => {
     });
 
     render(<ScreeningsStrip event={event} includeSelf={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
     expect(screen.getByRole('link', { name: '21:15' })).toBeInTheDocument();
   });
@@ -244,14 +244,14 @@ describe('ScreeningsStrip — includeSelf', () => {
     useQueryMock.mockReturnValue({ data: [event], isLoading: false, isError: false });
 
     const { unmount } = render(<ScreeningsStrip event={event} includeSelf={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
-    expect(screen.getByText(/no other upcoming screenings/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
+    expect(screen.getByText(/brak innych nadchodzących seansów/i)).toBeInTheDocument();
     unmount();
 
     useQueryMock.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<ScreeningsStrip event={event} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
-    expect(screen.getByText(/^No upcoming screenings\.$/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
+    expect(screen.getByText(/^Brak nadchodzących seansów\.$/i)).toBeInTheDocument();
   });
 });
 
@@ -261,9 +261,9 @@ describe('ScreeningsStrip — Track film', () => {
   it('tracks the film under the title the venue uses', () => {
     loggedIn = true;
     render(<ScreeningsStrip event={makeEvent()} canTrack />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /track film/i }));
+    fireEvent.click(screen.getByRole('button', { name: /śledź film/i }));
     expect(addFilmMock).toHaveBeenCalledWith({ title: 'Ojczyzna' });
   });
 
@@ -274,9 +274,9 @@ describe('ScreeningsStrip — Track film', () => {
     useQueryMock.mockReturnValue({ data: [], isLoading: false, isError: false });
 
     render(<ScreeningsStrip event={makeEvent()} canTrack />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
-    expect(screen.getByRole('button', { name: /track film/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /śledź film/i })).toBeInTheDocument();
   });
 
   it('shows the film as already tracked instead of offering it twice', () => {
@@ -284,29 +284,29 @@ describe('ScreeningsStrip — Track film', () => {
     filmsListMock.mockReturnValue({ data: [{ id: 'f1', title: 'ojczyzna', status: 'want' }] });
 
     render(<ScreeningsStrip event={makeEvent()} canTrack />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
-    const button = screen.getByRole('button', { name: /on your want-to-go list/i });
+    const button = screen.getByRole('button', { name: /na liście „chcę iść”/i });
     expect(button).toBeDisabled();
-    expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /śledź film/i })).not.toBeInTheDocument();
   });
 
   it('is hidden for logged-out visitors, for non-films, and where nothing can be tracked', () => {
     const { unmount } = render(<ScreeningsStrip event={makeEvent()} canTrack />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
-    expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
+    expect(screen.queryByRole('button', { name: /śledź film/i })).not.toBeInTheDocument();
     unmount();
 
     loggedIn = true;
     const theatre = render(<ScreeningsStrip event={makeEvent({ category: 'theatre' })} canTrack />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest dates/i }));
-    expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe terminy/i }));
+    expect(screen.queryByRole('button', { name: /śledź film/i })).not.toBeInTheDocument();
     theatre.unmount();
 
     // The want-to-go list leaves `canTrack` off — the film is already on it.
     render(<ScreeningsStrip event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: /nearest screenings/i }));
-    expect(screen.queryByRole('button', { name: /track film/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
+    expect(screen.queryByRole('button', { name: /śledź film/i })).not.toBeInTheDocument();
   });
 });
 
@@ -320,7 +320,7 @@ describe('ScreeningsStrip — the row stays on one line (GOI-66)', () => {
     useQueryMock.mockReturnValue({ data: [], isLoading: false, isError: false });
     const { container } = render(<ScreeningsStrip event={makeEvent()} defaultOpen />);
 
-    const button = screen.getByRole('button', { name: /hide screenings/i });
+    const button = screen.getByRole('button', { name: /ukryj seanse/i });
     // The button is a direct child of whatever contains the strip — not
     // nested inside a wrapper that also holds the panel.
     expect(button.parentElement).toBe(container);

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { VenueFilterOption } from '@afisz/shared';
+import type { Category, VenueFilterOption } from '@afisz/shared';
+import { categoryLabel, plural } from '../lib/format';
 import { venueStatusNote } from '@afisz/shared';
 
 /**
@@ -84,15 +85,15 @@ export function VenuePickerModal({
       >
         <div className="border-b-3 border-ink p-6 md:px-8">
           <h2 id={titleId} className="font-display text-[28px] md:text-[32px] uppercase m-0">
-            {category} venues
+            {category ? `Miejsca · ${categoryLabel(category as Category)}` : 'Wszystkie miejsca'}
           </h2>
           <p className="mt-1.5 text-sm text-muted">
-            {venues.length} venue{venues.length === 1 ? '' : 's'} · pick the ones you want in the
-            feed, or leave it on all.
+            {venues.length} {plural(venues.length, 'miejsce', 'miejsca', 'miejsc')} · wybierz te, które chcesz
+            widzieć w programie, albo zostaw wszystkie.
           </p>
 
           <label className="sr-only" htmlFor={searchId}>
-            Search venues
+            Szukaj miejsc
           </label>
           <input
             id={searchId}
@@ -100,7 +101,7 @@ export function VenuePickerModal({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name or address"
+            placeholder="Szukaj po nazwie lub adresie"
             className="mt-4 w-full border-2 border-ink bg-transparent px-3 py-2 text-sm"
           />
         </div>
@@ -118,7 +119,7 @@ export function VenuePickerModal({
               >
                 <Tick on={allSelected} />
                 <span className="text-[13px] font-extrabold uppercase tracking-[0.5px]">
-                  All venues
+                  Wszystkie miejsca
                 </span>
               </button>
             </li>
@@ -133,7 +134,7 @@ export function VenuePickerModal({
                       type="button"
                       onClick={() => toggle(v.id)}
                       aria-pressed={on}
-                      aria-label={`${v.name}, ${v.count} event${v.count === 1 ? '' : 's'}${
+                      aria-label={`${v.name}, ${v.count} ${plural(v.count, 'wydarzenie', 'wydarzenia', 'wydarzeń')}${
                         note ? `. ${note}` : ''
                       }`}
                       className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 border-0 bg-transparent p-0 text-left"
@@ -169,7 +170,7 @@ export function VenuePickerModal({
 
             {matches.length === 0 ? (
               <li className="px-6 py-6 text-sm text-muted md:px-8">
-                No venue matches “{query}”.
+                Żadne miejsce nie pasuje do „{query}”.
               </li>
             ) : null}
           </ul>
@@ -181,9 +182,9 @@ export function VenuePickerModal({
               question. */}
           {signedIn ? null : (
             <p className="mb-4 text-sm text-muted">
-              To add venues,{' '}
+              Aby dodawać miejsca,{' '}
               <a href="/my?section=venues" className="underline hover:text-accent">
-                log in to My venues
+                zaloguj się w sekcji Moje miejsca
               </a>
               .
             </p>
@@ -191,11 +192,11 @@ export function VenuePickerModal({
           <div className="flex flex-col gap-3.5 md:flex-row">
             <button type="button" onClick={() => onApply(draft)} className="btn-fill text-center">
               {allSelected
-                ? 'Show all venues'
-                : `Show ${draft.length} venue${draft.length === 1 ? '' : 's'}`}
+                ? 'Pokaż wszystkie miejsca'
+                : `Pokaż ${draft.length} ${plural(draft.length, 'miejsce', 'miejsca', 'miejsc')}`}
             </button>
             <button type="button" onClick={onCancel} className="btn-outline text-center">
-              Cancel
+              Anuluj
             </button>
           </div>
         </div>

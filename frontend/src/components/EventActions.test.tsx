@@ -19,7 +19,7 @@ afterEach(() => {
 describe('EventActions', () => {
   it('reveals Google Calendar and .ics options from the "Add to calendar" menu', () => {
     render(<EventActions event={event} />);
-    fireEvent.click(screen.getByRole('button', { name: /add to calendar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /dodaj do kalendarza/i }));
 
     const gcal = screen.getByRole('menuitem', { name: /google calendar/i });
     expect(gcal).toHaveAttribute('href', expect.stringContaining('calendar.google.com'));
@@ -31,7 +31,7 @@ describe('EventActions', () => {
     const share = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { share });
     render(<EventActions event={event} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Udostępnij' }));
     await vi.waitFor(() => expect(share).toHaveBeenCalledOnce());
     expect(share).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Perfect Days', url: 'https://example.com/e1' }),
@@ -42,9 +42,9 @@ describe('EventActions', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     render(<EventActions event={event} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Udostępnij' }));
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledOnce());
-    expect(await screen.findByText(/link copied/i)).toBeInTheDocument();
+    expect(await screen.findByText(/skopiowano link/i)).toBeInTheDocument();
   });
 });
 

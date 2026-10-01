@@ -137,7 +137,7 @@ describe('suggestSimilarVenues', () => {
   it('rejects a category outside the offered set', async () => {
     const complete = replying([good({ category: 'restaurant' as never })]);
     await expect(suggestSimilarVenues({ like: exemplars, city: 'Berlin', complete })).rejects.toThrow(
-      /none had a usable/,
+      /żadne nie miało poprawnej nazwy/,
     );
   });
 
@@ -151,14 +151,14 @@ describe('suggestSimilarVenues', () => {
   it('throws when every row was unusable', async () => {
     const complete = replying([{ nonsense: true }]);
     await expect(suggestSimilarVenues({ like: exemplars, city: 'Berlin', complete })).rejects.toThrow(
-      /none had a usable/,
+      /żadne nie miało poprawnej nazwy/,
     );
   });
 
   it('throws when the reply is not a list at all', async () => {
     const complete = vi.fn().mockResolvedValue('I could not find anything.');
     await expect(suggestSimilarVenues({ like: exemplars, city: 'Berlin', complete })).rejects.toThrow(
-      /did not return a list/,
+      /nie zwrócił listy/,
     );
   });
 
@@ -171,7 +171,7 @@ describe('suggestSimilarVenues', () => {
   it('requires a target city', async () => {
     await expect(
       suggestSimilarVenues({ like: exemplars, city: '   ', complete: replying([]) }),
-    ).rejects.toThrow(/city is required/);
+    ).rejects.toThrow(/Podaj miasto/);
   });
 });
 

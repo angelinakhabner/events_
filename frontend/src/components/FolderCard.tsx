@@ -31,7 +31,7 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
           {editing ? (
             <input
               autoFocus
-              aria-label="Folder name"
+              aria-label="Nazwa folderu"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={submit}
@@ -46,7 +46,7 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
               type="button"
               onClick={() => setEditing(true)}
               className="text-2xl font-bold text-ink bg-transparent border-0 p-0 cursor-text text-left"
-              aria-label={`Rename folder ${folder.name}`}
+              aria-label={`Zmień nazwę folderu ${folder.name}`}
             >
               {folder.name}
             </button>
@@ -57,7 +57,7 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
         </div>
         <div className="flex items-center gap-4">
           <button type="button" onClick={onToggle} className="act act-on">
-            {expanded ? 'Hide events' : 'Show events'}
+            {expanded ? 'Ukryj wydarzenia' : 'Pokaż wydarzenia'}
           </button>
           {confirmingDelete ? (
             <span className="flex items-center gap-3">
@@ -66,14 +66,14 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
                 onClick={() => { setConfirmingDelete(false); onDelete(); }}
                 className="act act-on"
               >
-                Confirm delete
+                Potwierdź usunięcie
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(false)}
                 className="act"
               >
-                Cancel
+                Anuluj
               </button>
             </span>
           ) : (
@@ -81,9 +81,9 @@ export function FolderCard({ folder, venues, expanded, onToggle, onRename, onDel
               type="button"
               onClick={() => setConfirmingDelete(true)}
               className="act"
-              aria-label={`Delete folder ${folder.name}`}
+              aria-label={`Usuń folder ${folder.name}`}
             >
-              Delete
+              Usuń
             </button>
           )}
         </div>

@@ -364,7 +364,7 @@ const auth = router({
     .mutation(async ({ ctx, input }) => {
       const res = await verifyMagicLink(ctx.auth, input.token);
       if (!res) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Login link is invalid or expired' });
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Link do logowania jest nieprawidłowy lub wygasł.' });
       }
       // First login: populate /my with the default venues so the page never
       // starts empty. No-op for returning users.
@@ -611,7 +611,7 @@ const my = router({
         }
         const venues = await ctx.userVenues.listAll(ctx.user.id);
         if (!venues.some((v) => v.id === input.venueId)) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'That venue is not in your list.' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Tego miejsca nie ma na Twojej liście.' });
         }
         return scrapeVenue(input.venueId);
       }),
@@ -673,7 +673,7 @@ const my = router({
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 path: ['until'],
-                message: 'The end of the window is before its start.',
+                message: 'Koniec zakresu jest przed jego początkiem.',
               });
               return;
             }
@@ -681,7 +681,7 @@ const my = router({
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 path: ['until'],
-                message: `Dates can span at most ${VENUE_SEARCH_MAX_WINDOW_DAYS} days — few venues publish further ahead than that.`,
+                message: `Zakres dat może obejmować najwyżej ${VENUE_SEARCH_MAX_WINDOW_DAYS} dni — mało które miejsce publikuje program dalej.`,
               });
             }
           }),
@@ -693,7 +693,7 @@ const my = router({
         if (!consumeQuota(ctx.user.id, 'suggest')) {
           throw new TRPCError({
             code: 'TOO_MANY_REQUESTS',
-            message: `You've run ${VENUE_SUGGEST_PER_HOUR} discovery searches this hour — try again shortly.`,
+            message: `W tej godzinie wykonano już ${VENUE_SUGGEST_PER_HOUR} wyszukiwań — spróbuj ponownie za chwilę.`,
           });
         }
 
@@ -844,7 +844,7 @@ const my = router({
       .input(z.object({ id: z.string().uuid() }))
       .mutation(async ({ ctx, input }) => {
         if (!(await ctx.newsletter.remove(ctx.user.id, input.id))) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'No such newsletter' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Nie ma takiego newslettera.' });
         }
         return { success: true };
       }),
@@ -949,7 +949,7 @@ const my = router({
         if (!cfg) {
           throw new TRPCError({
             code: 'PRECONDITION_FAILED',
-            message: 'Google Drive is not configured on this deployment',
+            message: 'Dysk Google nie jest skonfigurowany w tej instalacji.',
           });
         }
         // The user id travels in the signed state: Google's callback is a
@@ -1182,7 +1182,7 @@ const sharedList = router({
     .input(z.object({ token: z.string().min(1).max(200) }))
     .query(async ({ ctx, input }): Promise<SharedWantToGoList> => {
       const ownerId = await ctx.wantToGo.ownerOfShareToken(input.token);
-      if (!ownerId) throw new TRPCError({ code: 'NOT_FOUND', message: 'This list is not shared.' });
+      if (!ownerId) throw new TRPCError({ code: 'NOT_FOUND', message: 'Ta lista nie jest udostępniona.' });
       const [entries, films] = await Promise.all([
         ctx.wantToGo.listEntries(ownerId),
         ctx.films.list(ownerId),

@@ -109,17 +109,17 @@ describe('the day strip (GOI-88)', () => {
     const user = userEvent.setup();
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'Today' }));
+    await user.click(screen.getByRole('button', { name: 'Dzisiaj' }));
 
     expect(titles()).toEqual(['Dzis wieczorem', 'Dzis nocą']);
-    expect(screen.queryByText(/Next event on/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Najbliższe wydarzenie:/)).not.toBeInTheDocument();
   });
 
   it('"Tomorrow" keeps tomorrow and drops today', async () => {
     const user = userEvent.setup();
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'Tomorrow' }));
+    await user.click(screen.getByRole('button', { name: 'Jutro' }));
 
     expect(titles()).toEqual(['Jutro']);
   });
@@ -128,7 +128,7 @@ describe('the day strip (GOI-88)', () => {
     const user = userEvent.setup();
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'This week' }));
+    await user.click(screen.getByRole('button', { name: 'W tym tygodniu' }));
 
     // Tue 18th through Mon 24th: the Friday is in, the 26th is not.
     expect(titles()).toEqual(['Dzis wieczorem', 'Dzis nocą', 'Jutro']);
@@ -141,7 +141,7 @@ describe('the day strip (GOI-88)', () => {
 
     // The nearest three rows end on Wednesday, so filtering them in the
     // browser could only ever answer "nothing on Friday".
-    await user.click(screen.getByRole('button', { name: 'Fri 21 Aug' }));
+    await user.click(screen.getByRole('button', { name: 'pt., 21 sie' }));
 
     expect(requests.at(-1)).toMatchObject({ fromDay: '2026-08-21' });
     expect(titles()).toEqual(['W piątek']);
@@ -152,16 +152,16 @@ describe('the day strip (GOI-88)', () => {
     render(<HomePage />);
 
     // Nothing at all on the Thursday.
-    await user.click(screen.getByRole('button', { name: 'Thu 20 Aug' }));
+    await user.click(screen.getByRole('button', { name: 'czw., 20 sie' }));
 
-    expect(screen.getByText('Next event on Fri 21 Aug')).toBeInTheDocument();
-    expect(screen.getByText(/Nothing on Thu 20 Aug/)).toBeInTheDocument();
+    expect(screen.getByText('Najbliższe wydarzenie: pt., 21 sie')).toBeInTheDocument();
+    expect(screen.getByText(/Nic w dniu czw., 20 sie/)).toBeInTheDocument();
     // …and the nearest events themselves, not just the sentence. The feed's
     // own rule still decides how far they run: Friday is inside the week, so
     // the 26th stays out of a "what's on now" listing (GOI-82).
     expect(titles()).toEqual(['W piątek']);
     // Never the dead-end empty state.
-    expect(screen.queryByText(/No upcoming events/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No upcoming wydarzeń/)).not.toBeInTheDocument();
   });
 
   it('says "today" and "this week" in the reader\'s own words', async () => {
@@ -169,12 +169,12 @@ describe('the day strip (GOI-88)', () => {
     rows = [NEXT_WEEK];
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'This week' }));
-    expect(screen.getByText(/Nothing this week/)).toBeInTheDocument();
-    expect(screen.getByText('Next event on Wed 26 Aug')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'W tym tygodniu' }));
+    expect(screen.getByText(/Nic w tym tygodniu/)).toBeInTheDocument();
+    expect(screen.getByText('Najbliższe wydarzenie: śr., 26 sie')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Today' }));
-    expect(screen.getByText(/Nothing today/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Dzisiaj' }));
+    expect(screen.getByText(/Nic dzisiaj/)).toBeInTheDocument();
   });
 
   it('answers "Today" with the next date once the day is over, not a blank page', async () => {
@@ -183,9 +183,9 @@ describe('the day strip (GOI-88)', () => {
     const user = userEvent.setup();
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'Today' }));
+    await user.click(screen.getByRole('button', { name: 'Dzisiaj' }));
 
-    expect(screen.getByText('Next event on Wed 19 Aug')).toBeInTheDocument();
+    expect(screen.getByText('Najbliższe wydarzenie: śr., 19 sie')).toBeInTheDocument();
     expect(titles()).toEqual(['Jutro']);
   });
 
@@ -194,18 +194,18 @@ describe('the day strip (GOI-88)', () => {
     rows = [TODAY_LATE];
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'Tomorrow' }));
+    await user.click(screen.getByRole('button', { name: 'Jutro' }));
 
-    expect(screen.getByText('No upcoming events match your selection.')).toBeInTheDocument();
-    expect(screen.queryByText(/Next event on/)).not.toBeInTheDocument();
+    expect(screen.getByText('Żadne nadchodzące wydarzenie nie pasuje do wybranych filtrów.')).toBeInTheDocument();
+    expect(screen.queryByText(/Najbliższe wydarzenie:/)).not.toBeInTheDocument();
   });
 
   it('"Any day" puts the whole feed back', async () => {
     const user = userEvent.setup();
     render(<HomePage />);
 
-    await user.click(screen.getByRole('button', { name: 'Fri 21 Aug' }));
-    await user.click(screen.getByRole('button', { name: 'Any day' }));
+    await user.click(screen.getByRole('button', { name: 'pt., 21 sie' }));
+    await user.click(screen.getByRole('button', { name: 'Każdy dzień' }));
 
     expect(requests.at(-1)?.fromDay).toBeUndefined();
     expect(titles()).toEqual(['Dzis wieczorem', 'Dzis nocą', 'Jutro']);

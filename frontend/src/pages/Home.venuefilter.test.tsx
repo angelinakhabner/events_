@@ -85,8 +85,8 @@ beforeEach(() => {
 
 /** Pick a category so the venue row is on screen, then open the dialog. */
 async function openPicker(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Cinema' }));
-  await user.click(screen.getByRole('button', { name: /all venues/i }));
+  await user.click(screen.getByRole('button', { name: 'Kino' }));
+  await user.click(screen.getByRole('button', { name: /wszystkie miejsca/i }));
   return screen.getByRole('dialog');
 }
 
@@ -94,7 +94,7 @@ describe('the All venues dialog narrows the feed (GOI-94)', () => {
   it('shows both venues before anything is picked', async () => {
     const user = userEvent.setup();
     render(<HomePage />);
-    await user.click(screen.getByRole('button', { name: 'Cinema' }));
+    await user.click(screen.getByRole('button', { name: 'Kino' }));
 
     expect(screen.getByRole('heading', { name: 'Chungking Express' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Perfect Days' })).toBeInTheDocument();
@@ -105,8 +105,8 @@ describe('the All venues dialog narrows the feed (GOI-94)', () => {
     render(<HomePage />);
     const dialog = await openPicker(user);
 
-    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 event/i }));
-    await user.click(within(dialog).getByRole('button', { name: /show 1 venue/i }));
+    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 wydarzenie/i }));
+    await user.click(within(dialog).getByRole('button', { name: /pokaż 1 miejsce/i }));
 
     expect(screen.getByRole('heading', { name: 'Chungking Express' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Perfect Days' })).not.toBeInTheDocument();
@@ -128,8 +128,8 @@ describe('the All venues dialog narrows the feed (GOI-94)', () => {
 
     expect(listInputs.at(-1)?.venueIds).toBeUndefined();
 
-    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 event/i }));
-    await user.click(within(dialog).getByRole('button', { name: /show 1 venue/i }));
+    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 wydarzenie/i }));
+    await user.click(within(dialog).getByRole('button', { name: /pokaż 1 miejsce/i }));
 
     expect(listInputs.at(-1)?.venueIds).toEqual(['v-muranow']);
   });
@@ -138,12 +138,12 @@ describe('the All venues dialog narrows the feed (GOI-94)', () => {
     const user = userEvent.setup();
     render(<HomePage />);
     const dialog = await openPicker(user);
-    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 event/i }));
-    await user.click(within(dialog).getByRole('button', { name: /show 1 venue/i }));
+    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 wydarzenie/i }));
+    await user.click(within(dialog).getByRole('button', { name: /pokaż 1 miejsce/i }));
 
     const again = await openPicker(user);
-    await user.click(within(again).getByRole('button', { name: /^all venues$/i }));
-    await user.click(within(again).getByRole('button', { name: /show all venues/i }));
+    await user.click(within(again).getByRole('button', { name: /^wszystkie miejsca$/i }));
+    await user.click(within(again).getByRole('button', { name: /pokaż wszystkie miejsca/i }));
 
     // Absent, not an empty array: an explicitly empty selection would mean
     // "no venues" to the store, and this means "every venue".
@@ -155,13 +155,13 @@ describe('the All venues dialog narrows the feed (GOI-94)', () => {
     render(<HomePage />);
     const dialog = await openPicker(user);
 
-    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 event/i }));
-    await user.click(within(dialog).getByRole('button', { name: /show 1 venue/i }));
+    await user.click(within(dialog).getByRole('button', { name: /^Kino Muranów, 1 wydarzenie/i }));
+    await user.click(within(dialog).getByRole('button', { name: /pokaż 1 miejsce/i }));
     expect(screen.queryByRole('heading', { name: 'Perfect Days' })).not.toBeInTheDocument();
 
     const again = await openPicker(user);
-    await user.click(within(again).getByRole('button', { name: /^all venues$/i }));
-    await user.click(within(again).getByRole('button', { name: /show all venues/i }));
+    await user.click(within(again).getByRole('button', { name: /^wszystkie miejsca$/i }));
+    await user.click(within(again).getByRole('button', { name: /pokaż wszystkie miejsca/i }));
 
     expect(screen.getByRole('heading', { name: 'Perfect Days' })).toBeInTheDocument();
   });

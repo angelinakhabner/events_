@@ -52,8 +52,8 @@ const SCRAPABLE: ProbeOutcome = {
 };
 
 function check(url = 'https://palacowe.example/repertuar') {
-  fireEvent.change(screen.getByLabelText(/venue page url/i), { target: { value: url } });
-  fireEvent.click(screen.getByRole('button', { name: /^check$/i }));
+  fireEvent.change(screen.getByLabelText(/adres strony z programem/i), { target: { value: url } });
+  fireEvent.click(screen.getByRole('button', { name: /^sprawdź$/i }));
 }
 
 beforeEach(() => {
@@ -65,13 +65,13 @@ describe('AddVenueForm — guided flow', () => {
   it('walks language → free-text URL → category, with no pre-defined venue list', () => {
     render(<AddVenueForm onSubmit={vi.fn()} submitting={false} error={null} />);
 
-    const language = screen.getByLabelText(/1 · language/i);
-    const url = screen.getByLabelText(/2 · venue page url/i);
+    const language = screen.getByLabelText(/1 · język/i);
+    const url = screen.getByLabelText(/2 · adres strony z programem/i);
     expect(language).toBeInTheDocument();
     expect(url).toHaveValue(''); // free text, nothing pre-filled
-    expect(screen.getByRole('group', { name: /3 · category/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /3 · kategoria/i })).toBeInTheDocument();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
-    const cinemaTag = screen.getByRole('button', { name: /^cinema$/i });
+    const cinemaTag = screen.getByRole('button', { name: /^kino$/i });
     expect(language.compareDocumentPosition(url) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(url.compareDocumentPosition(cinemaTag) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -80,15 +80,15 @@ describe('AddVenueForm — guided flow', () => {
     const onSubmit = vi.fn();
     render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
 
-    fireEvent.change(screen.getByLabelText(/1 · language/i), { target: { value: 'en' } });
-    fireEvent.change(screen.getByLabelText(/venue page url/i), {
+    fireEvent.change(screen.getByLabelText(/1 · język/i), { target: { value: 'en' } });
+    fireEvent.change(screen.getByLabelText(/adres strony z programem/i), {
       target: { value: 'https://www.palacowe.example/repertuar' },
     });
 
-    const submit = screen.getByRole('button', { name: /add venue/i });
+    const submit = screen.getByRole('button', { name: /dodaj miejsce/i });
     expect(submit).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /^cinema$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^kino$/i }));
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
 
@@ -108,18 +108,18 @@ describe('AddVenueForm — probe result (GOI-72 §5, §8)', () => {
     check();
 
     const status = await screen.findByRole('status');
-    expect(status).toHaveTextContent(/✓ scrapable/i);
-    expect(status).toHaveTextContent(/structured data/i);
+    expect(status).toHaveTextContent(/✓ da się odczytać/i);
+    expect(status).toHaveTextContent(/dane strukturalne/i);
     // Free to keep fresh — the reason we don't mind sweeping it daily.
-    expect(status).toHaveTextContent(/costs nothing to keep fresh/i);
-    expect(screen.getByLabelText(/name/i)).toHaveValue('Kino Pałacowe');
+    expect(status).toHaveTextContent(/odświeżanie nic nie kosztuje/i);
+    expect(screen.getByLabelText(/nazwa/i)).toHaveValue('Kino Pałacowe');
 
     // The sample events are the confirmation step: real titles, real dates.
     expect(status).toHaveTextContent('Perfect Days');
-    expect(status).toHaveTextContent('1 Sep');
+    expect(status).toHaveTextContent('1 wrz');
     // An undated entry says so rather than inventing a time.
     expect(status).toHaveTextContent('Wystawa stała');
-    expect(status).toHaveTextContent('no date');
+    expect(status).toHaveTextContent('bez daty');
   });
 
   it('sends the form’s language as the probe locale, without consent to spend', () => {
@@ -136,8 +136,8 @@ describe('AddVenueForm — probe result (GOI-72 §5, §8)', () => {
     check();
 
     const status = await screen.findByRole('status');
-    expect(status).toHaveTextContent(/already tracked/i);
-    expect(status).toHaveTextContent(/scraped once for everyone/i);
+    expect(status).toHaveTextContent(/już śledzone/i);
+    expect(status).toHaveTextContent(/czytamy go raz dla wszystkich/i);
   });
 
   it('warns that a low-confidence source may be news rather than events', async () => {
@@ -145,7 +145,7 @@ describe('AddVenueForm — probe result (GOI-72 §5, §8)', () => {
     render(<AddVenueForm onSubmit={vi.fn()} submitting={false} error={null} />);
     check();
 
-    expect(await screen.findByRole('status')).toHaveTextContent(/news rather than events/i);
+    expect(await screen.findByRole('status')).toHaveTextContent(/aktualnościami, a nie wydarzeniami/i);
   });
 });
 
@@ -156,13 +156,13 @@ describe('AddVenueForm — failures render by severity, never raw', () => {
       normalizedUrl: null,
       code: 'SOCIAL_ONLY',
       severity: 'fatal',
-      message: 'This is a Facebook or Instagram page. We can only read venue websites.',
+      message: 'To strona na Facebooku lub Instagramie. Czytamy tylko strony internetowe miejsc.',
     };
     render(<AddVenueForm onSubmit={vi.fn()} submitting={false} error={null} />);
     check('https://facebook.com/teatr');
 
     const status = await screen.findByRole('status');
-    expect(status).toHaveTextContent(/Facebook or Instagram/);
+    expect(status).toHaveTextContent(/Facebooku lub Instagramie/);
     expect(status.querySelector('p')).toHaveClass('text-accent');
   });
 
@@ -201,8 +201,8 @@ describe('AddVenueForm — failures render by severity, never raw', () => {
     // The first check never spends.
     expect(calls).toEqual([{ url: 'https://spa.example/', locale: 'pl', allowPaid: false }]);
 
-    const opt = await screen.findByRole('button', { name: /try paid fetch/i });
-    expect(opt).toHaveTextContent(/1 credit/i);
+    const opt = await screen.findByRole('button', { name: /spróbuj płatnego pobrania/i });
+    expect(opt).toHaveTextContent(/1 kredyt/i);
     fireEvent.click(opt);
 
     // Consent is what turns it on, and it goes to the same endpoint.
@@ -221,16 +221,16 @@ describe('AddVenueForm — failures render by severity, never raw', () => {
     check('https://v.example/');
 
     await screen.findByRole('status');
-    expect(screen.queryByRole('button', { name: /paid fetch/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /płatnego pobrania/i })).not.toBeInTheDocument();
   });
 });
 
 describe('AddVenueForm — your own tags (GOI-74)', () => {
   function fill() {
-    fireEvent.change(screen.getByLabelText(/venue page url/i), {
+    fireEvent.change(screen.getByLabelText(/adres strony z programem/i), {
       target: { value: 'https://palacowe.example/repertuar' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /^cinema$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^kino$/i }));
   }
 
   it('lets the user type tags of their own and submits them', () => {
@@ -238,13 +238,13 @@ describe('AddVenueForm — your own tags (GOI-74)', () => {
     render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
     fill();
 
-    const field = screen.getByLabelText(/your tags/i);
+    const field = screen.getByLabelText(/twoje tagi/i);
     fireEvent.change(field, { target: { value: 'date night' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     fireEvent.change(field, { target: { value: 'walking distance' } });
     fireEvent.keyDown(field, { key: ',' });
 
-    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /dodaj miejsce/i }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ tags: ['date night', 'walking distance'] }),
     );
@@ -255,7 +255,7 @@ describe('AddVenueForm — your own tags (GOI-74)', () => {
     render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
     fill();
 
-    const field = screen.getByLabelText(/your tags/i);
+    const field = screen.getByLabelText(/twoje tagi/i);
     fireEvent.change(field, { target: { value: 'jazz' } });
     fireEvent.keyDown(field, { key: 'Enter' });
 
@@ -271,8 +271,8 @@ describe('AddVenueForm — your own tags (GOI-74)', () => {
     render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
     fill();
 
-    fireEvent.change(screen.getByLabelText(/your tags/i), { target: { value: 'unfinished' } });
-    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+    fireEvent.change(screen.getByLabelText(/twoje tagi/i), { target: { value: 'unfinished' } });
+    fireEvent.click(screen.getByRole('button', { name: /dodaj miejsce/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: ['unfinished'] }));
   });
@@ -282,12 +282,12 @@ describe('AddVenueForm — your own tags (GOI-74)', () => {
     render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
     fill();
 
-    const field = screen.getByLabelText(/your tags/i);
+    const field = screen.getByLabelText(/twoje tagi/i);
     fireEvent.change(field, { target: { value: 'jazz' } });
     fireEvent.keyDown(field, { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: /remove tag jazz/i }));
+    fireEvent.click(screen.getByRole('button', { name: /usuń tag jazz/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /dodaj miejsce/i }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }));
   });
 
@@ -295,7 +295,7 @@ describe('AddVenueForm — your own tags (GOI-74)', () => {
     const onSubmit = vi.fn();
     render(<AddVenueForm onSubmit={onSubmit} submitting={false} error={null} />);
     fill();
-    fireEvent.click(screen.getByRole('button', { name: /add venue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /dodaj miejsce/i }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }));
   });
 });

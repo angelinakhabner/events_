@@ -20,7 +20,7 @@ describe('DevGate', () => {
     vi.stubEnv('VITE_DEV_GATE_HASH', SECRET_HASH);
     render(<DevGate>app content</DevGate>);
     expect(screen.queryByText('app content')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Dev access password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hasło do podglądu')).toBeInTheDocument();
   });
 
   it('unlocks with the right password and persists the unlock', async () => {
@@ -28,8 +28,8 @@ describe('DevGate', () => {
     const user = userEvent.setup();
     render(<DevGate>app content</DevGate>);
 
-    await user.type(screen.getByLabelText('Dev access password'), 'secret');
-    await user.click(screen.getByRole('button', { name: 'Enter' }));
+    await user.type(screen.getByLabelText('Hasło do podglądu'), 'secret');
+    await user.click(screen.getByRole('button', { name: 'Wejdź' }));
 
     expect(await screen.findByText('app content')).toBeInTheDocument();
     expect(localStorage.getItem('afisz-dev-gate')).toBe(SECRET_HASH);
@@ -40,10 +40,10 @@ describe('DevGate', () => {
     const user = userEvent.setup();
     render(<DevGate>app content</DevGate>);
 
-    await user.type(screen.getByLabelText('Dev access password'), 'nope');
-    await user.click(screen.getByRole('button', { name: 'Enter' }));
+    await user.type(screen.getByLabelText('Hasło do podglądu'), 'nope');
+    await user.click(screen.getByRole('button', { name: 'Wejdź' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Wrong password.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Błędne hasło.');
     expect(screen.queryByText('app content')).not.toBeInTheDocument();
   });
 

@@ -13,6 +13,9 @@ import type { WrittenDetail, WrittenStore } from './scraper/enricher.js';
  */
 export const EMPTY_ANSWER_TTL_DAYS = 14;
 
+/** The language the writer writes in, and the only one read back. */
+export const DESCRIPTION_LANG = 'pl';
+
 /**
  * The English descriptions the enrichment pass has already written, one per
  * show per venue (GOI-130 / GOI-131). The enricher reads it before spending a
@@ -34,6 +37,8 @@ export function descriptionStore(venueId: string): WrittenStore {
           and(
             eq(schema.eventDescriptions.venueId, venueId),
             inArray(schema.eventDescriptions.showKey, keys),
+            // An answer in another language is a show still to be written.
+            eq(schema.eventDescriptions.lang, DESCRIPTION_LANG),
             // An empty answer expires; a written one does not.
             sql`(${schema.eventDescriptions.description} is not null
               or ${schema.eventDescriptions.writtenAt} > now() - make_interval(days => ${EMPTY_ANSWER_TTL_DAYS}))`,
@@ -56,6 +61,7 @@ export function descriptionStore(venueId: string): WrittenStore {
           description: e.description,
           contentCategory: e.contentCategory,
           searched: e.searched ?? false,
+          lang: DESCRIPTION_LANG,
           writtenAt: now,
         })))
         .onConflictDoUpdate({
@@ -64,6 +70,7 @@ export function descriptionStore(venueId: string): WrittenStore {
             description: sql`excluded.description`,
             contentCategory: sql`excluded.content_category`,
             searched: sql`excluded.searched`,
+            lang: sql`excluded.lang`,
             writtenAt: sql`excluded.written_at`,
           },
         });

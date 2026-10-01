@@ -32,9 +32,9 @@ describe('Layout footer', () => {
   it('links to the privacy policy and the terms', () => {
     renderLayout();
     const footer = screen.getByRole('contentinfo');
-    expect(screen.getByRole('link', { name: /privacy policy/i })).toHaveAttribute('href', '/policy');
-    expect(screen.getByRole('link', { name: /terms of use/i })).toHaveAttribute('href', '/terms');
-    expect(footer).toContainElement(screen.getByRole('link', { name: /terms of use/i }));
+    expect(screen.getByRole('link', { name: /polityka prywatności/i })).toHaveAttribute('href', '/policy');
+    expect(screen.getByRole('link', { name: /regulamin/i })).toHaveAttribute('href', '/terms');
+    expect(footer).toContainElement(screen.getByRole('link', { name: /regulamin/i }));
   });
 
   /**

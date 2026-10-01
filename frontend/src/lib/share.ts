@@ -26,12 +26,12 @@ type ShareableEvent = Pick<Event, 'title' | 'sourceUrl' | 'venue' | 'category' |
  * an invitation to meet at midnight.
  */
 export function inviteText(event: ShareableEvent): string {
-  const where = event.venue?.name ? ` at ${event.venue.name}` : '';
+  const where = event.venue?.name ? ` (${event.venue.name})` : '';
   const when = whenPhrase(event);
-  return `Darling, let's go to ${event.title}${where} together${when}`;
+  return `Kochanie, chodźmy razem na „${event.title}”${where}${when}`;
 }
 
-/** " — Sat 4 Jul, 20:00", or just the day for an all-day run. Empty when the
+/** " — sob. 4 lip, 20:00", or just the day for an all-day run. Empty when the
  *  event carries no usable date at all (a tracked film, say). */
 function whenPhrase(event: ShareableEvent): string {
   if (!event.startsAt || Number.isNaN(Date.parse(event.startsAt))) return '';
@@ -39,7 +39,7 @@ function whenPhrase(event: ShareableEvent): string {
   return isAllDay(event) ? ` — ${day}` : ` — ${day}, ${formatEventTime(event)}`;
 }
 
-const weekdayFmt = new Intl.DateTimeFormat('en-GB', {
+const weekdayFmt = new Intl.DateTimeFormat('pl-PL', {
   weekday: 'short',
   timeZone: 'Europe/Warsaw',
 });

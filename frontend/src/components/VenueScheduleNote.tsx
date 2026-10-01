@@ -1,6 +1,7 @@
 import type { VenueSchedule } from '@afisz/shared';
+import { plural } from '../lib/format';
 
-const dayFmt = new Intl.DateTimeFormat('en-GB', {
+const dayFmt = new Intl.DateTimeFormat('pl-PL', {
   day: 'numeric', month: 'short', timeZone: 'Europe/Warsaw',
 });
 
@@ -22,9 +23,9 @@ export function VenueScheduleNote({ schedule }: { schedule: VenueSchedule | unde
     return (
       <span
         className="text-muted"
-        title="No upcoming events found. The venue may be closed, or its programme may not be published yet."
+        title="Brak nadchodzących wydarzeń. Miejsce może być zamknięte albo program nie został jeszcze opublikowany."
       >
-        nothing listed
+        brak wydarzeń
       </span>
     );
   }
@@ -33,9 +34,9 @@ export function VenueScheduleNote({ schedule }: { schedule: VenueSchedule | unde
   return (
     <span
       className="text-accent"
-      title={`Nothing on for ${schedule.daysUntilNext} more days — the next event here is on ${until}.`}
+      title={`Przez ${schedule.daysUntilNext} ${plural(schedule.daysUntilNext ?? 0, 'dzień', 'dni', 'dni')} nic się tu nie dzieje — najbliższe wydarzenie: ${until}.`}
     >
-      dark until {until}
+      przerwa do {until}
     </span>
   );
 }

@@ -215,9 +215,9 @@ describe('the daily poster on the drive', () => {
     expect(bodies).toHaveLength(2);
     const first = await pdfText(bodies[0]!);
     const second = await pdfText(bodies[1]!);
-    expect(first.flat).toContain(squash('DAILY NO. 1'));
-    expect(first.flat).toContain(squash('WANT TO GO'));
+    expect(first.flat).toContain(squash('DZIENNIK NR 1'));
+    expect(first.flat).toContain(squash('CHCĘ IŚĆ'));
     expect(first.flat).toContain(squash('Zimna wojna'));
-    expect(second.flat).toContain(squash('DAILY NO. 2'));
+    expect(second.flat).toContain(squash('DZIENNIK NR 2'));
   });
 });

@@ -21,17 +21,19 @@ const TZ = 'Europe/Warsaw';
 
 /** A category's own words: its heading, and what one of its events is called. */
 export interface PosterNoun {
+  /** Polish plural forms, as `plural()` takes them: 1, 2–4, 5+. */
   one: string;
+  few: string;
   many: string;
-  /** What the listing header counts — "15 screenings". */
-  total: string;
+  /** What the listing header counts — "15 seansów" — in the same three forms. */
+  total: [string, string, string];
 }
 
 /** One category as the poster lists it. */
 export interface PosterCategory {
   /** Lower-cased category or tag, for grouping. */
   key: string;
-  /** The heading, in English for a built-in and as typed for a reader's tag. */
+  /** The heading, in Polish for a built-in and as typed for a reader's tag. */
   label: string;
   noun: PosterNoun;
   /** Sorted by start, all-day first. */
@@ -80,18 +82,20 @@ export const MERGE_AT_MOST = 3;
 export const TONIGHT_HOUR = 18;
 
 const BUILT_IN: Record<string, { label: string; noun: PosterNoun }> = {
-  cinema: { label: 'Cinema', noun: { one: 'film', many: 'films', total: 'screenings' } },
-  exhibition: { label: 'Exhibition', noun: { one: 'event', many: 'events', total: 'events' } },
-  music: { label: 'Music', noun: { one: 'concert', many: 'concerts', total: 'concerts' } },
-  theatre: { label: 'Theatre', noun: { one: 'performance', many: 'performances', total: 'performances' } },
-  comedy: { label: 'Comedy', noun: { one: 'show', many: 'shows', total: 'shows' } },
-  other: { label: 'Other', noun: { one: 'event', many: 'events', total: 'events' } },
+  cinema: { label: 'Kino', noun: { one: 'film', few: 'filmy', many: 'filmów', total: ['seans', 'seanse', 'seansów'] } },
+  exhibition: { label: 'Wystawy', noun: { one: 'wydarzenie', few: 'wydarzenia', many: 'wydarzeń', total: ['wydarzenie', 'wydarzenia', 'wydarzeń'] } },
+  music: { label: 'Muzyka', noun: { one: 'koncert', few: 'koncerty', many: 'koncertów', total: ['koncert', 'koncerty', 'koncertów'] } },
+  theatre: { label: 'Teatr', noun: { one: 'spektakl', few: 'spektakle', many: 'spektakli', total: ['spektakl', 'spektakle', 'spektakli'] } },
+  comedy: { label: 'Kabaret', noun: { one: 'występ', few: 'występy', many: 'występów', total: ['występ', 'występy', 'występów'] } },
+  other: { label: 'Inne', noun: { one: 'wydarzenie', few: 'wydarzenia', many: 'wydarzeń', total: ['wydarzenie', 'wydarzenia', 'wydarzeń'] } },
 };
 
 /** The order built-ins take when the reader set no rules to order them by. */
 const BUILT_IN_ORDER = ['cinema', 'theatre', 'music', 'exhibition', 'comedy', 'other'];
 
-const GENERIC_NOUN: PosterNoun = { one: 'event', many: 'events', total: 'events' };
+const GENERIC_NOUN: PosterNoun = {
+  one: 'wydarzenie', few: 'wydarzenia', many: 'wydarzeń', total: ['wydarzenie', 'wydarzenia', 'wydarzeń'],
+};
 
 function describeCategory(raw: string): { key: string; label: string; noun: PosterNoun } {
   const key = raw.trim().toLowerCase();
