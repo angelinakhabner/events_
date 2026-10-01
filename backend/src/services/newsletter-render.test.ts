@@ -53,6 +53,24 @@ function render(over: Partial<Parameters<typeof renderBriefHtml>[0]> = {}) {
   return renderBriefHtml({ sections: [section()], now: NOW, ...over });
 }
 
+describe('renderBriefHtml — detail levels (GOI-139)', () => {
+  const ev = makeEvent({
+    description: 'Dramat An-skiego.',
+    longDescription: 'Dramat An-skiego o miłości silniejszej niż śmierć, w nowej inscenizacji.',
+  });
+  it('prints the paragraph at full detail and the line at short', () => {
+    expect(render({ sections: [section({ detail: 'full', events: [ev] })] }))
+      .toContain('o miłości silniejszej niż śmierć');
+    const short = render({ sections: [section({ detail: 'short', events: [ev] })] });
+    expect(short).toContain('Dramat An-skiego.');
+    expect(short).not.toContain('silniejszej');
+  });
+  it('falls back to the line at full detail when there is no paragraph', () => {
+    expect(render({ sections: [section({ detail: 'full', events: [{ ...ev, longDescription: null }] })] }))
+      .toContain('Dramat An-skiego.');
+  });
+});
+
 describe('renderBriefHtml — content', () => {
   it('renders the masthead, picks, festival and CTA', () => {
     const html = render({

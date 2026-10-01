@@ -547,7 +547,9 @@ export async function fetchBriefEvents(
   // An explicitly empty list means "no venues", not "all of them".
   if (venueIds.length === 0) return [];
   const until = new Date(now.getTime() + briefFetchWindowDays(sub, now) * 24 * 3_600_000);
-  const base = await events.listUpcoming({ venueIds, now, until, limit: BRIEF_FETCH_LIMIT });
+  const base = await events.listUpcoming({
+    venueIds, now, until, limit: BRIEF_FETCH_LIMIT, withLongDescriptions: true,
+  });
   if (base.length < BRIEF_FETCH_LIMIT) return base;
 
   const byId = new Map(base.map((e) => [e.id, e]));
@@ -558,7 +560,7 @@ export async function fetchBriefEvents(
     );
     for (const scope of ruleFetchScopes(rule.category, venues)) {
       const rows = await events.listUpcoming({
-        ...scope, now, until: ruleUntil, limit: SECTION_FETCH_LIMIT,
+        ...scope, now, until: ruleUntil, limit: SECTION_FETCH_LIMIT, withLongDescriptions: true,
       });
       for (const e of rows) if (!byId.has(e.id)) byId.set(e.id, e);
     }

@@ -42,6 +42,9 @@ export interface Event {
   venue?: EventVenue;
   title: string;
   description: string | null;
+  /** A paragraph about the work (GOI-139). Only on events fetched for the
+   *  newsletter, which prints it at "full" detail. */
+  longDescription?: string | null;
   startsAt: string;
   endsAt: string | null;
   /** See EventKind. Optional on the wire so older clients and the many test

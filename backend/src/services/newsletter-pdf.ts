@@ -493,7 +493,8 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
 function blurbFor(pick: Pick, detail: BriefSection['detail']): string | null {
   const text = pick.lead.description;
   if (!text || detail === 'line') return null;
-  return detail === 'full' ? text : firstSentence(text);
+  // "Full" is the paragraph where the writer had more to say (GOI-139).
+  return detail === 'full' ? (pick.lead.longDescription || text) : firstSentence(text);
 }
 
 /**
