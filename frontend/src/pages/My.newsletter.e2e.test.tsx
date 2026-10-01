@@ -234,6 +234,32 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(within(section).queryByRole('button', { name: /send me a test/i })).not.toBeInTheDocument();
   });
 
+  it('saves a newsletter that exists by itself after each change (GOI-142)', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const email = (await screen.findByLabelText(/adres e-mail/i)) as HTMLInputElement;
+    const section = email.closest('section')!;
+    await waitFor(() => expect(email.value).toBe(USER_EMAIL));
+    // The button still saves at once — and creates one that does not exist.
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await within(section).findByText('Zapisano.');
+
+    // From then on, a change is saved without pressing anything.
+    await user.click(within(section).getByRole('radio', { name: /codziennie/i }));
+    await waitFor(async () => {
+      expect(await defaultNewsletterStore.get(userId)).toMatchObject({ sendCadence: 'daily' });
+    }, { timeout: 3000 });
+    expect(await within(section).findByText(/zmiany zapisują się same/i, {}, { timeout: 4000 })).toBeInTheDocument();
+
+    // An address that is not one yet is held back, and the form says so.
+    await user.clear(email);
+    await user.type(email, 'nie-adres');
+    expect(await within(section).findByText(/gdy adres e-mail będzie poprawny/i)).toBeInTheDocument();
+    expect((await defaultNewsletterStore.get(userId))?.email).toBe(USER_EMAIL);
+  });
+
   it('weekly briefs let you pick the weekday, and Generate renders a preview', async () => {
     const user = userEvent.setup();
     renderPage();

@@ -510,6 +510,37 @@ function NewsletterForm({
    */
   const emptyByConstruction = rules.length === 0 && !wantToGo.enabled;
 
+  /**
+   * Autosave (GOI-142): a newsletter that exists saves itself a moment after
+   * each change, so there is no "did I press save?" to get wrong. A new one
+   * is still created by the button — creating a newsletter is a decision,
+   * not a side effect of typing its name — and autosaves from then on.
+   *
+   * `lastSent` is the body last handed to the server (or the one the form
+   * opened with), so opening a newsletter writes nothing, and a failed save
+   * is not retried in a loop: the error stays up until the next change.
+   * Nothing is sent that is known to be refused — no categories and no saved
+   * events, or an address that is not one yet; the form says why instead.
+   */
+  const bodyKey = JSON.stringify(body);
+  const [lastSent, setLastSent] = useState(bodyKey);
+  const emailOk = EMAIL_SHAPE.test(email.trim());
+  const autosaveBlocked = emptyByConstruction || !emailOk;
+  const send = () => {
+    setLastSent(bodyKey);
+    save.mutate(body);
+  };
+  const { mutate: autosave, isPending: autosaving } = update;
+  const exists = !!saved;
+  useEffect(() => {
+    if (!exists || bodyKey === lastSent || autosaveBlocked || autosaving) return;
+    const t = setTimeout(() => {
+      setLastSent(bodyKey);
+      autosave(JSON.parse(bodyKey));
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [exists, bodyKey, lastSent, autosaveBlocked, autosaving, autosave]);
+
   return (
     <section>
       {staleApi ? <StaleApiBanner /> : null}
@@ -530,7 +561,7 @@ function NewsletterForm({
         onSubmit={(e) => {
           e.preventDefault();
           if (emptyByConstruction) return;
-          save.mutate(body);
+          send();
         }}
       >
         {/* What tells two newsletters apart in the row above (GOI-126). */}
@@ -893,7 +924,9 @@ function NewsletterForm({
         {/* GOI-102 §5: the screen used to give no sign that a dropdown change
             had persisted, so "did that save?" had no answer but reloading. */}
         <SaveState
-          dirty={!justSaved && (save.isIdle || save.isSuccess)}
+          autosave={!!saved}
+          dirty={bodyKey !== lastSent}
+          blocked={saved && bodyKey !== lastSent && !emailOk ? 'Zmiany zapiszą się, gdy adres e-mail będzie poprawny.' : null}
           pending={save.isPending}
           justSaved={justSaved}
           error={readableApiError(save.error?.message, NEWSLETTER_FIELDS)}
@@ -1243,13 +1276,27 @@ function Check({
  * honest answer was usually "no", because changing a control here does not
  * save anything until Schedule is pressed.
  */
+/** How long the form waits after the last change before saving it (GOI-142):
+ *  long enough not to save every keystroke of a name, short enough that a
+ *  reader closing the tab right after a change does not lose it. */
+const AUTOSAVE_DELAY_MS = 800;
+
+/** Enough of an address to be worth sending; the server has the final say. */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function SaveState({
+  autosave,
   dirty,
+  blocked,
   pending,
   justSaved,
   error,
 }: {
+  /** The newsletter exists, so changes save themselves (GOI-142). */
+  autosave: boolean;
   dirty: boolean;
+  /** Why an autosave is being held, when it is. */
+  blocked: string | null;
   pending: boolean;
   justSaved: boolean;
   error: string | null;
@@ -1261,14 +1308,20 @@ function SaveState({
   }
   if (pending) return <p role="status" className="mt-3 text-sm text-muted">Zapisywanie…</p>;
   if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Zapisano.</p>;
-  if (dirty) {
+  if (blocked) return <p className="mt-3 text-sm text-faint">{blocked}</p>;
+  if (autosave) {
     return (
       <p className="mt-3 text-sm text-faint">
-        Zmiany nie są zapisane, dopóki nie klikniesz <strong>Zaplanuj newsletter</strong>.
+        {dirty ? 'Zapisywanie zmian…' : 'Zmiany zapisują się same.'}
       </p>
     );
   }
-  return null;
+  // A newsletter not created yet has nothing to autosave into.
+  return (
+    <p className="mt-3 text-sm text-faint">
+      Zmiany nie są zapisane, dopóki nie klikniesz <strong>Zaplanuj newsletter</strong>.
+    </p>
+  );
 }
 
 /**
