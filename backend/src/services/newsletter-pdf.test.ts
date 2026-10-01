@@ -58,6 +58,29 @@ const section = (over: Partial<BriefSection> = {}): BriefSection =>
   ({ category: 'Kino', windowDays: 7, detail: 'full', events: [event()], ...over }) as BriefSection;
 
 describe('renderBriefPdf', () => {
+  it('draws a block per venue in the reader\'s order when grouped by venue (GOI-140 / GOI-141)', async () => {
+    const kinoteka = { id: 'v2', name: 'Kinoteka', city: 'Warsaw' } as Event['venue'];
+    const { flat } = await textOf(await renderBriefPdf({
+      sections: [section({
+        groupBy: 'venue',
+        venueOrder: ['v2', 'v1'],
+        events: [event(), event({ id: 'k', venueId: 'v2', venue: kinoteka, title: 'Perfect Days' })],
+      })],
+      now: new Date('2026-09-08T08:00:00Z'),
+    }));
+    expect(flat.indexOf(squash('KINOTEKA'))).toBeGreaterThan(-1);
+    expect(flat.indexOf(squash('KINOTEKA'))).toBeLessThan(flat.indexOf(squash('KINO MURANÓW')));
+    expect(flat.indexOf(squash('Perfect Days'))).toBeLessThan(flat.indexOf(squash('Zimna wojna')));
+  });
+
+  it('prints the paragraph at full detail (GOI-139)', async () => {
+    const { flat } = await textOf(await renderBriefPdf({
+      sections: [section({ events: [event({ description: 'Krótko.', longDescription: 'Długi akapit o filmie Pawlikowskiego.' })] })],
+      now: new Date('2026-09-08T08:00:00Z'),
+    }));
+    expect(flat).toContain(squash('Długi akapit o filmie Pawlikowskiego.'));
+  });
+
   it('produces a readable PDF carrying the brief', async () => {
     const pdf = await renderBriefPdf({
       sections: [section()],

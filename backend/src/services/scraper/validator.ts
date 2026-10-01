@@ -32,6 +32,9 @@ const EventFields = z.object({
   director: z.string().min(1).nullable(),
   cast: z.array(z.string()).nullable(),
   description: z.string().nullable(),
+  /** A paragraph about the work, for the newsletter's "full" detail (GOI-139).
+   *  Never scraped — only the description writer sets it. */
+  long_description: z.string().nullable().optional().transform((v) => v ?? null),
   price_min: z.number().int().nonnegative().nullable(),
   price_max: z.number().int().nonnegative().nullable(),
   source_url: z.string().url(),

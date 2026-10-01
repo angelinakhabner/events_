@@ -60,6 +60,8 @@ function makeSub(over: Partial<NewsletterSubscription> = {}): NewsletterSubscrip
     delivery: 'email',
     sendCadence: 'daily',
     venueIds: [],
+    groupBy: 'event',
+    venueOrder: [],
     beforeHour: null,
     sendHour: 8,
     sendMinute: 0,

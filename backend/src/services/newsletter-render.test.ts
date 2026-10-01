@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Event, Festival } from '@afisz/shared';
 import {
-  dayList, groupPicks, listSentence, renderBriefHtml, venueWhen, type BriefSection,
+  dayList, groupPicks, listSentence, renderBriefHtml, sectionGroups, venueWhen, type BriefSection,
 } from './newsletter-render.js';
 
 // A Wednesday noon in Warsaw (CEST = UTC+2).
@@ -52,6 +52,64 @@ function section(over: Partial<BriefSection> = {}): BriefSection {
 function render(over: Partial<Parameters<typeof renderBriefHtml>[0]> = {}) {
   return renderBriefHtml({ sections: [section()], now: NOW, ...over });
 }
+
+describe('sectionGroups — by event or by venue (GOI-140 / GOI-141)', () => {
+  const muranow = { id: 'v-m', name: 'Kino Muranów', category: 'cinema' as const, city: 'Warsaw', country: 'PL' };
+  const kinoteka = { id: 'v-k', name: 'Kinoteka', category: 'cinema' as const, city: 'Warsaw', country: 'PL' };
+  const at = (venue: typeof muranow, title: string, hhmm: string) => makeEvent({
+    venueId: venue.id, venue, title, startsAt: `2026-07-22T${hhmm}:00+02:00`,
+  });
+  const events = [
+    at(kinoteka, 'Perfect Days', '17:00'),
+    at(muranow, 'Perfect Days', '18:00'),
+    at(muranow, 'Dziady', '20:00'),
+  ];
+
+  it('lists by event, with venue lines in the reader\'s order', () => {
+    const [group] = sectionGroups(section({ events, venueOrder: ['v-m', 'v-k'] }));
+    expect(group!.picks.map((p) => p.lead.title)).toEqual(['Perfect Days', 'Dziady']);
+    expect(group!.picks[0]!.venues.map((v) => v.name)).toEqual(['Kino Muranów', 'Kinoteka']);
+  });
+
+  it('keeps the chronological venue lines without an order', () => {
+    const [group] = sectionGroups(section({ events }));
+    expect(group!.picks[0]!.venues.map((v) => v.name)).toEqual(['Kinoteka', 'Kino Muranów']);
+  });
+
+  it('lists a block per venue, in the reader\'s order, unplaced venues last', () => {
+    const groups = sectionGroups(section({ events, groupBy: 'venue', venueOrder: ['v-m'] }));
+    expect(groups.map((g) => [g.label, g.picks.map((p) => p.lead.title)])).toEqual([
+      ['Kino Muranów', ['Perfect Days', 'Dziady']],
+      ['Kinoteka', ['Perfect Days']],
+    ]);
+    expect(groups.every((g) => g.venue)).toBe(true);
+  });
+
+  it('heads each venue block in the email and leaves the name off its rows', () => {
+    const html = render({ sections: [section({ category: 'cinema', events, groupBy: 'venue' })] });
+    expect(html).toContain('KINOTEKA</td>');
+    expect(html).not.toContain('KINOTEKA \u00b7 17:00');
+    expect(html.indexOf('KINOTEKA')).toBeLessThan(html.indexOf('KINO MURANÓW'));
+  });
+});
+
+describe('renderBriefHtml — detail levels (GOI-139)', () => {
+  const ev = makeEvent({
+    description: 'Dramat An-skiego.',
+    longDescription: 'Dramat An-skiego o miłości silniejszej niż śmierć, w nowej inscenizacji.',
+  });
+  it('prints the paragraph at full detail and the line at short', () => {
+    expect(render({ sections: [section({ detail: 'full', events: [ev] })] }))
+      .toContain('o miłości silniejszej niż śmierć');
+    const short = render({ sections: [section({ detail: 'short', events: [ev] })] });
+    expect(short).toContain('Dramat An-skiego.');
+    expect(short).not.toContain('silniejszej');
+  });
+  it('falls back to the line at full detail when there is no paragraph', () => {
+    expect(render({ sections: [section({ detail: 'full', events: [{ ...ev, longDescription: null }] })] }))
+      .toContain('Dramat An-skiego.');
+  });
+});
 
 describe('renderBriefHtml — content', () => {
   it('renders the masthead, picks, festival and CTA', () => {

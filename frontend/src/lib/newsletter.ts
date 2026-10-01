@@ -1,5 +1,5 @@
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterSendCadence, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterGrouping, NewsletterSendCadence, NewsletterWantToGo,
 } from '@afisz/shared';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { pad } from './format';
@@ -56,6 +56,10 @@ export interface NewsletterFormState {
   sendWeekday: number;
   sendDayOfMonth: number;
   venueIds: string[];
+  /** One entry per title, or a block per venue (GOI-141). */
+  groupBy?: NewsletterGrouping;
+  /** The reader's venue order, by id (GOI-140). */
+  venueOrder?: string[];
   rules: NewsletterCategoryRule[];
   wantToGo: NewsletterWantToGo;
   enabled: boolean;
@@ -76,6 +80,8 @@ export function newsletterPayload(form: NewsletterFormState) {
     sendWeekday: form.sendCadence === 'weekly' ? form.sendWeekday : null,
     sendDayOfMonth: form.sendCadence === 'monthly' ? form.sendDayOfMonth : null,
     venueIds: form.venueIds,
+    groupBy: form.groupBy ?? 'event',
+    venueOrder: form.venueOrder ?? [],
     categoryRules: form.rules,
     wantToGo: form.wantToGo,
     enabled: form.enabled,

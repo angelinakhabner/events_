@@ -3,6 +3,10 @@ import { getDb, schema } from '../db/index.js';
 import { collapseDuplicateExhibitions, type Event, type EventKind, type EventVenue, type Category } from '@afisz/shared';
 
 export interface EventListInput {
+  /** Carry each row's long description too (GOI-139). Only the newsletter
+   *  prints it, so the site's listings leave it out rather than ship a
+   *  paragraph per row they never show. */
+  withLongDescriptions?: boolean;
   city?: string;
   venueId?: string;
   /** Restrict to a set of venues — the newsletter's "my venues" selection.
@@ -222,6 +226,7 @@ export class EventStore {
           country: r.venueCountry,
         },
         venueLanguage: r.venueLanguage,
+        withLongDescription: input.withLongDescriptions,
       }),
     ));
   }
@@ -578,7 +583,7 @@ function unwrap(result: unknown): Record<string, unknown>[] {
 
 function rowToEvent(
   row: typeof schema.events.$inferSelect,
-  ctx: { venue: EventVenue; venueLanguage: string },
+  ctx: { venue: EventVenue; venueLanguage: string; withLongDescription?: boolean },
 ): Event {
   return {
     id: row.id,
@@ -586,6 +591,7 @@ function rowToEvent(
     venue: ctx.venue,
     title: row.title,
     description: row.description,
+    ...(ctx.withLongDescription ? { longDescription: row.longDescription } : {}),
     startsAt: row.startsAt.toISOString(),
     endsAt: row.endsAt ? row.endsAt.toISOString() : null,
     kind: row.kind === 'exhibition' ? 'exhibition' : ('timed' as EventKind),
