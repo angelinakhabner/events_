@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey, boolean, unique } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey, boolean, unique, smallint } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const venues = pgTable('venues', {
@@ -61,6 +61,8 @@ export const events = pgTable(
     venueId: uuid('venue_id').notNull().references(() => venues.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     description: text('description'),
+    /** A paragraph about the work, for the newsletter's "full" detail (0034). */
+    longDescription: text('long_description'),
     /** For an exhibition this is the opening date at local midnight — the
      *  range's left edge, not a showtime. See `kind`. */
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
@@ -311,6 +313,10 @@ export const newsletterSubscriptions = pgTable(
     /** Venues within the folder the brief covers; empty = all of them. It
      *  narrows the folder and never writes back to it. */
     venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+    /** event | venue — how each category's listing is arranged (0035). */
+    groupBy: text('group_by').notNull().default('event'),
+    /** The reader's order of venues, by id (0035); unnamed venues follow. */
+    venueOrder: text('venue_order').array().notNull().default(sql`ARRAY[]::text[]`),
     /** The after-hour half of this pair moved onto each category rule in 0026
      *  — see NewsletterTimeFilter for why. This half has no UI and stays. */
     beforeHour: integer('before_hour'),
@@ -447,7 +453,7 @@ export const eventChanges = pgTable(
 );
 
 /**
- * One English description per show, written once by the enrichment pass
+ * One description per show, written once by the enrichment pass
  * (GOI-130 / GOI-131). See 0030_event_descriptions.sql for why it is kept
  * apart from the event rows.
  */
@@ -464,6 +470,11 @@ export const eventDescriptions = pgTable(
     /** Language the description is written in. Only the site's own is read
      *  back (0033); anything else is rewritten in place. */
     lang: text('lang').notNull().default('en'),
+    /** The paragraph beside the line (0034). Null: nothing more to say. */
+    longDescription: text('long_description'),
+    /** Which shape of answer this is — only `DESCRIPTION_FORMAT` is read back
+     *  (0034); older rows are rewritten in place. */
+    format: smallint('format').notNull().default(1),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
