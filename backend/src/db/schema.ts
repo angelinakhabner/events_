@@ -472,8 +472,9 @@ export const eventDescriptions = pgTable(
     lang: text('lang').notNull().default('en'),
     /** The paragraph beside the line (0034). Null: nothing more to say. */
     longDescription: text('long_description'),
-    /** Which shape of answer this is — only `DESCRIPTION_FORMAT` is read back
-     *  (0034); older rows are rewritten in place. */
+    /** Which shape of answer this is (0034). Rows older than format 2 are
+     *  rewritten in place, and format 2 too where the show's site now has a
+     *  synopsis rule. */
     format: smallint('format').notNull().default(1),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
   },

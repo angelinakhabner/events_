@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { fetchVenueHTML } from './fetcher.js';
+import { hasSynopsisRule, venueSynopsis } from './synopsis.js';
 
 /**
  * Descriptions come from the *detail* page, not the listing (GOI-79).
@@ -60,6 +61,10 @@ export interface DescribeInput {
    *  meta description (GOI-136). On a page rendered by JavaScript this is
    *  often the only text about the work the server sends. */
   summary?: string | null;
+  /** The venue's own text about the work, read from the show page by a rule
+   *  for its site (see synopsis.ts). When present it is the source; the page
+   *  text is only there for credits and context. */
+  synopsis?: string | null;
   venue?: { name: string; city: string; category: string };
 }
 
@@ -92,7 +97,16 @@ export interface WrittenDetail {
   longDescription?: string | null;
   contentCategory: string | null;
   searched?: boolean;
+  /** The answer's shape, as the store recorded it. Absent: current. */
+  format?: number;
 }
+
+/**
+ * The written-answer shape that had the venue's synopsis to work from. An
+ * older answer for a show whose site now has a synopsis rule was written from
+ * the whole page — often its logistics — so it is written again, once.
+ */
+export const SYNOPSIS_FORMAT = 3;
 
 export interface EnrichOptions {
   /** Venue's calendar URL. A row pointing here has no detail page of its own
@@ -321,6 +335,10 @@ async function writeDescriptions(
     console.warn('[enricher] written-description lookup failed, writing all:', message(e));
   }
 
+  for (const [key, answer] of known) {
+    if ((answer.format ?? SYNOPSIS_FORMAT) < SYNOPSIS_FORMAT && hasSynopsisRule(key)) known.delete(key);
+  }
+
   const answers = new Map(known);
   const fresh: Array<WrittenDetail & { key: string }> = [];
   const todo = keys.filter((k) => !known.has(k));
@@ -341,12 +359,14 @@ async function writeDescriptions(
     const hasPage = !key.startsWith(TITLE_KEY);
     let text: string | null = null;
     let summary: string | null = null;
+    let synopsis: string | null = null;
     if (hasPage) {
       if (result.fetched > 0) await sleep(delayMs);
       try {
         const html = await fetchVenueHTML(first.source_url, { fetcher, timeoutMs });
         text = mainContentText(html);
         summary = pageSummary(html);
+        synopsis = venueSynopsis(html, first.source_url);
       } catch (e) {
         // A dead page is not a dead show: the note and a search may still say
         // what it is.
@@ -362,6 +382,7 @@ async function writeDescriptions(
         title: first.title,
         note: first.description,
         summary,
+        synopsis,
         venue,
       });
       result.inputTokens += out.inputTokens;
@@ -431,22 +452,26 @@ async function describe(
   result: EnrichResult,
   categories: Map<string, string | null>,
 ): Promise<string | null> {
-  const meta = extractDescription(html);
-  if (!client) return meta;
+  // The venue's own synopsis, where its site has a rule, beats the meta tags
+  // as the free answer: those are written for link previews and are as often
+  // the venue's slogan as the show's.
+  const synopsis = venueSynopsis(html, url);
+  const fallback = synopsis ? clean(synopsis) : extractDescription(html);
+  if (!client) return fallback;
 
   const text = mainContentText(html);
-  if (!text) return meta;
+  if (!text) return fallback;
 
   try {
-    const out = await client.describe({ text, url });
+    const out = await client.describe({ text, url, synopsis });
     result.inputTokens += out.inputTokens;
     result.outputTokens += out.outputTokens;
     if (out.category) categories.set(url, out.category);
-    return out.description ? clean(out.description) : meta;
+    return out.description ? clean(out.description) : fallback;
   } catch (e) {
     result.failed++;
     console.warn(`[enricher] ${url}: description extraction failed: ${message(e)}`);
-    return meta;
+    return fallback;
   }
 }
 

@@ -18,7 +18,7 @@ const MAX_CONTINUATIONS = 2;
 
 const SYSTEM = `You write event descriptions for a Polish-language listings app about cultural life in Poland.
 
-You are given what is known about one event: its title, the venue, the venue's own listing note, and usually the text of the event's page and the page's own summary from its metadata. These are usually in Polish, sometimes in English or another language.
+You are given what is known about one event: its title, the venue, the venue's own listing note, and usually the text of the event's page and the page's own summary from its metadata. For many venues you also get the venue's synopsis: the venue's own text about the work, taken from the event's page. These are usually in Polish, sometimes in English or another language.
 
 Reply with exactly three lines and nothing else:
 
@@ -30,6 +30,7 @@ Rules:
 - Always write both descriptions in Polish, whatever language the sources are in. Translate; never copy sentences in another language. Keep proper names (titles, people, places) as they are.
 - Describe the work — what the film, play, concert or exhibition is about, and who made it. DESCRIPTION: at most 2 sentences, ideally 1.
 - LONG goes further than DESCRIPTION, for a reader deciding whether to go: the premise or subject, the approach or form, who made it and who is in it, and what critics or the venue single out. Only what the sources say. If they say no more than DESCRIPTION does, write LONG: NONE rather than padding it.
+- When a venue synopsis is given, base both descriptions on it; it is the venue's own account of the work. Use the page text only for names and credits it lacks. Do not search the web unless the synopsis is about something other than the work itself.
 - Never describe logistics: the stage or room, subtitles or surtitles, the language it is performed in, ticket prices, discounts, booking, opening hours, accessibility, the address. "Spektakl na Dużej Scenie z angielskimi napisami" is not a description.
 - If the material you were given does not say what the work is about, search the web for it (the title with the venue, or the work itself — a film's synopsis, a play's premise, an artist's show) and describe it from what you find. Use only results that are clearly about this same work.
 - If you still cannot tell what it is about, write DESCRIPTION: NONE and LONG: NONE. Never invent.
@@ -137,10 +138,11 @@ export function describePrompt(input: DescribeInput): string {
     input.note?.trim() ? `Listing note: ${input.note.trim()}` : null,
     input.summary?.trim() ? `Page summary: ${input.summary.trim()}` : null,
   ].filter(Boolean);
+  const synopsis = input.synopsis?.trim() ? `\n\nVenue synopsis:\n${input.synopsis.trim()}` : '';
   const page = input.text?.trim()
     ? `\n\nPage text:\n${input.text.trim()}`
     : '\n\n(No page text is available for this event.)';
-  return lines.join('\n') + page;
+  return lines.join('\n') + synopsis + page;
 }
 
 function usedSearch(resp: Anthropic.Message): boolean {
