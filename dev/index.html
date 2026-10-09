@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#141414" />
+    <!-- Icon set lives in public/icons. These are the production references;
+         the dev-preview build rewrites them to the DEV-marked set (see the
+         appVariantIcons plugin in vite.config.ts). Kept out of the landing
+         head below: that block is generated copy, this is chrome. -->
+    <link rel="icon" type="image/png" sizes="48x48" href="/dev/icons/afisz-dev-app-icon-48.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/dev/icons/afisz-dev-app-icon-512.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/dev/icons/afisz-dev-app-icon-120.png" />
+    <link rel="manifest" href="/dev/manifest.dev.webmanifest" />
+    <!--
+      The title, description, canonical URL and social card are generated from
+      src/landing/content.ts and injected here at the marker below, so the copy
+      on the page and the copy a crawler reads cannot drift apart.
+    -->
+    <title>DEV · AFISZ.KA — Agregator wydarzeń kulturalnych, który składasz sam.</title>
+    <meta name="description" content="AFISZ.KA to agregator wydarzeń kulturalnych, który składasz sam: obserwuj kina, teatry i galerie, do których chodzisz, filtruj program i dostawaj newsletter. Dostęp na zaproszenie.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="canonical" href="https://afisz.cc/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="AFISZ.KA">
+    <meta property="og:title" content="AFISZ.KA — Agregator wydarzeń kulturalnych, który składasz sam.">
+    <meta property="og:description" content="AFISZ.KA to agregator wydarzeń kulturalnych, który składasz sam: obserwuj kina, teatry i galerie, do których chodzisz, filtruj program i dostawaj newsletter. Dostęp na zaproszenie.">
+    <meta property="og:url" content="https://afisz.cc/">
+    <meta name="twitter:card" content="summary">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"AFISZ.KA","url":"https://afisz.cc","description":"AFISZ.KA to agregator wydarzeń kulturalnych, który składasz sam: obserwuj kina, teatry i galerie, do których chodzisz, filtruj program i dostawaj newsletter. Dostęp na zaproszenie.","inLanguage":"pl"}</script>
+    <script type="module" crossorigin src="/dev/assets/index-BZ5bDOqm.js"></script>
+    <link rel="stylesheet" crossorigin href="/dev/assets/index-P3Ks9MjN.css">
+  </head>
+  <body class="bg-paper text-ink">
+    <!--
+      The public landing page is injected here: a complete, self-contained
+      document that needs no JavaScript to read. It sits outside #root because
+      React must not own it — see src/landing/render.ts and src/lib/landing.ts.
+    -->
+    <style>
+#landing {
+  --ink: #141414; --paper: #eae6df; --panel: #f4f1ea;
+  --accent: #c62828; --muted: #6b6660; --body: #3a3632; --rule: #cfc9bf;
+  background: var(--paper);
+  color: var(--body);
+  font-family: Archivo, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  min-height: 100%;
+}
+#landing[hidden] { display: none; }
+#landing .afisz-landing-inner { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+#landing a { color: var(--ink); text-underline-offset: 2px; }
+#landing a:hover { color: var(--accent); }
+#landing .afisz-masthead { border-bottom: 5px solid var(--ink); padding-bottom: 1.25rem; margin-bottom: 2rem; }
+#landing .afisz-wordmark {
+  font-family: Anton, Impact, 'Arial Narrow', ui-sans-serif, sans-serif;
+  font-weight: 400; letter-spacing: 1px; text-transform: uppercase;
+  font-size: clamp(2.25rem, 9vw, 3.5rem); line-height: 1; color: var(--ink); margin: 0;
+}
+#landing .afisz-square { display: inline-block; width: 0.22em; height: 0.22em; background: var(--accent); margin-left: 0.14em; vertical-align: baseline; }
+#landing .afisz-tagline { margin: 0.75rem 0 0; font-size: 1.0625rem; color: var(--muted); }
+#landing .afisz-section { margin: 0 0 3rem; }
+#landing .afisz-h1, #landing .afisz-h2 {
+  font-family: Anton, Impact, 'Arial Narrow', ui-sans-serif, sans-serif;
+  font-weight: 400; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--ink); border-top: 3px solid var(--ink); padding-top: 0.75rem; margin: 0 0 1rem;
+}
+#landing .afisz-h1 { font-size: 1.75rem; }
+#landing .afisz-h2 { font-size: 1.4375rem; }
+#landing #what-it-is .afisz-h1 { border-top: 0; padding-top: 0; }
+#landing .afisz-note { background: var(--panel); border-left: 5px solid var(--accent); padding: 1.25rem 1.25rem 0.25rem; }
+#landing .afisz-note .afisz-h2 { border-top: 0; padding-top: 0; color: var(--accent); }
+#landing p { margin: 0 0 1rem; }
+#landing .afisz-updated { font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-top: -0.5rem; }
+#landing .afisz-policy-section { margin: 1.75rem 0 0; }
+#landing .afisz-policy-section h3 {
+  font-size: 0.8125rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--ink); margin: 0 0 0.5rem; border-bottom: 2px solid var(--rule); padding-bottom: 0.375rem;
+}
+#landing ul { margin: 0 0 1rem; padding-left: 1.125rem; }
+#landing li { margin: 0 0 0.625rem; }
+#landing .afisz-footer { border-top: 3px solid var(--ink); padding-top: 1rem; font-size: 0.8125rem; color: var(--muted); }
+#landing .afisz-footer a { color: var(--muted); }
+#landing:not([hidden]) ~ #root { display: none; }</style>
+    <div id="landing">
+    <div class="afisz-landing-inner">
+      <header class="afisz-masthead">
+        <p class="afisz-wordmark">AFISZ.KA<span class="afisz-square" aria-hidden="true"></span></p>
+        <p class="afisz-tagline">Agregator wydarzeń kulturalnych, który składasz sam.</p>
+      </header>
+
+      <main>
+        <section class="afisz-section" id="what-it-is">
+          <h1 class="afisz-h1">Czym jest AFISZ.KA</h1>
+          <p>AFISZ.KA to agregator wydarzeń kulturalnych, który budujesz dla siebie, miejsce po miejscu. Zamiast przeglądać miejski serwis z programem i liczyć, że akurat obejmuje to, co Cię interesuje, wskazujesz AFISZ.KA miejsca, do których naprawdę chodzisz — kino, teatr, galerię, filharmonię, cokolwiek, co publikuje program w sieci — a AFISZ.KA czyta ich repertuary za Ciebie i zamienia luźne strony z programem w wydarzenia, które można filtrować. Miejsca grupujesz w nazwane listy, jedną na miasto albo na nastrój, a każda pamięta własne filtry kategorii, godziny, ceny i dnia. Możesz też oznaczać, na co chcesz iść, udostępnić tę listę osobie, z którą chcesz pójść, dodać seans prosto do kalendarza i dostawać e-mailem przegląd tego, co nadchodzi, w wybrany przez siebie poranek.</p>
+        </section>
+
+        <section class="afisz-section afisz-note" id="access">
+          <h2 class="afisz-h2">Dostęp na zaproszenie</h2>
+          <p>AFISZ.KA jest w zamkniętych testach. Nie ma publicznej rejestracji ani możliwości założenia konta z tej strony — aplikacja otwiera się tylko w przeglądarce, która ma działający link z zaproszeniem, a bez niego każda jej część, aż po ostatnie zapytanie o dane, pozostaje zamknięta.</p>
+          <p>Jeśli chcesz dostać zaproszenie, napisz na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> i opowiedz krótko, w jakim mieście i jakie miejsca chcesz obserwować. Zaproszenia wysyłamy w małych partiach, dopóki aplikacja jest w budowie.</p>
+        </section>
+
+        <section class="afisz-section" id="contact">
+          <h2 class="afisz-h2">Kontakt</h2>
+          <p>Zaproszenia, pytania, miejsce, którego program jest źle odczytywany, albo cokolwiek w sprawie poniższej polityki: <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>.</p>
+        </section>
+
+        <section class="afisz-section" id="privacy">
+          <h2 class="afisz-h2">Polityka prywatności</h2>
+          <p class="afisz-updated">Ostatnia aktualizacja: 29 września 2026 r.</p>
+          
+        <section class="afisz-policy-section" id="privacy-kim-jestesmy">
+          <h3>Kim jesteśmy</h3>
+          <p>AFISZ.KA to mały, niezależnie prowadzony projekt. Administratorem danych osobowych opisanych poniżej jest operator serwisu AFISZ.KA, z którym można się skontaktować pod adresem <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> — to także adres właściwy we wszystkich sprawach dotyczących tej polityki. Nie wyznaczono inspektora ochrony danych, ponieważ art. 37 RODO nie wymaga tego przy przetwarzaniu tego rodzaju; powyższy adres trafia bezpośrednio do administratora.</p>
+          <p>Strona, którą właśnie czytasz, jest zwykłym statycznym dokumentem. Nie pobiera czcionek, skryptów, obrazów ani stylów z innych miejsc, nie ustawia plików cookie i niczego nie zapisuje w Twojej przeglądarce. Jej przeczytanie nie zostawia u nas żadnego śladu poza zwykłym logiem serwera prowadzonym przez GitHub Pages, który ją udostępnia.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-co-zbiera-aplikacja-i-po-co">
+          <h3>Co zbiera aplikacja i po co</h3>
+          <p>Nic z poniższego nie dotyczy Cię, dopóki nie przyjmiesz zaproszenia i nie zaczniesz korzystać z aplikacji. Wszystko, co przechowuje, to rzeczy, które sam(a) wpisujesz lub o które prosisz; nie tworzymy profilu na podstawie Twojego zachowania.</p>
+          <p>RODO wymaga, by każdy cel przetwarzania miał wskazaną podstawę prawną, więc oto one. Twoje konto, listy i wszystko, co zapisujesz, przetwarzamy na podstawie art. 6 ust. 1 lit. b — w celu wykonania umowy zawartej przez przyjęcie zaproszenia. Newsletter e-mailowy i połączony folder na Dysku Google opierają się na art. 6 ust. 1 lit. a, czyli Twojej zgodzie, którą możesz wycofać w dowolnym momencie bez wpływu na zgodność z prawem wcześniejszego przetwarzania. Identyfikator przeglądarki sprzed zalogowania i zwykłe logi serwera opierają się na art. 6 ust. 1 lit. f — prawnie uzasadnionym interesie w tym, by aplikacja działała, zanim założysz konto, oraz by serwis działał sprawnie i bez nadużyć. Nie przetwarzamy szczególnych kategorii danych (art. 9), a aplikacja nie jest skierowana do dzieci poniżej 16. roku życia.</p>
+          <ul><li>Twój adres e-mail, jeśli się logujesz. To on jest kontem — nie ma hasła. Logowanie wysyła na ten adres jednorazowy link; przechowujemy wyłącznie skrót (hash) tego linku i tylko do chwili jego użycia lub wygaśnięcia.</li><li>Dodane przez Ciebie miejsca, listy, w które je grupujesz, wszelkie nazwy, kategorie i własne tagi, którymi je zastępujesz, oraz filtry zapamiętane przez każdą listę. To jest istota aplikacji.</li><li>Wydarzenia oznaczone jako „Chcę iść” i każda lista, którą zdecydujesz się udostępnić. Udostępniona lista staje się widoczna dla każdego, kto ma wysłany przez Ciebie link — na tym polega udostępnianie; możesz je wyłączyć w każdej chwili.</li><li>Ustawienia newslettera, jeśli go zamówisz: adres, na który trafia, imię, którym ma Cię witać, obejmowane miejsca i kategorie oraz godzina wysyłki.</li><li>Losowy identyfikator w pamięci lokalnej (local storage) przeglądarki, dzięki któremu rzeczy zapisane przed zalogowaniem pozostają Twoje także potem. To losowa wartość bez własnego znaczenia, nigdy nie łączona z danymi kupionymi lub otrzymanymi skądinąd.</li><li>Plik cookie z zaproszeniem, ustawiany po otwarciu linku z zaproszeniem, żeby nie trzeba było podawać go przy każdej wizycie. Zawiera wyłącznie token zaproszenia i to dzięki niemu serwis w ogóle się otwiera.</li><li>Dostęp do folderu na Dysku Google — tylko jeśli sam(a) go połączysz, żeby newslettery były tam zapisywane jako pliki PDF. Połączenie przechowuje token odświeżania Google i adres połączonego konta. Rozłączenie usuwa oba.</li></ul>
+        </section>
+        <section class="afisz-policy-section" id="privacy-czego-nigdy-nie-zbieramy">
+          <h3>Czego nigdy nie zbieramy</h3>
+          <p>W projekcie nie ma żadnych reklam ani technologii reklamowych. Nie ma pakietu analitycznego, pikseli śledzących, nagrywania sesji, fingerprintingu ani plików cookie podmiotów trzecich. Twoich danych nie sprzedajemy, nie wynajmujemy, nie przekazujemy brokerom danych i nie używamy do trenowania modeli uczenia maszynowego.</p>
+          <p>Nic tutaj nie podejmuje zautomatyzowanych decyzji wywołujących skutki prawne lub w podobny sposób istotnie wpływających na osobę i nikt nie jest profilowany w rozumieniu art. 22 RODO. Aplikacja pokazuje to, co sam(a) zdecydujesz się obserwować.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-kto-jeszcze-ma-do-nich-dostep">
+          <h3>Kto jeszcze ma do nich dostęp</h3>
+          <p>Działanie aplikacji wymaga kilku zewnętrznych usług. Każda widzi tylko tę część danych, której potrzebuje do swojego zadania, i żadna nie otrzymuje niczego do własnych celów:</p>
+          <ul><li>Railway hostuje serwer aplikacji i jego bazę danych Postgres, więc opisane wyżej dane fizycznie znajdują się tam.</li><li>GitHub Pages udostępnia stronę, którą oglądasz, i prowadzi zwykłe logi dostępu po stronie serwera.</li><li>Resend dostarcza e-maile — linki do logowania i newsletter — a więc przetwarza adres odbiorcy i treść wiadomości.</li><li>Modele Claude firmy Anthropic czytają pobierane przez nas strony z programem miejsc, by zamienić je w uporządkowane wydarzenia, i piszą opisy wydarzeń. Wysyłana jest publiczna strona internetowa miejsca. Twoje konto, listy i zapisane wydarzenia nie są jej częścią.</li><li>Google — tylko jeśli logujesz się przez Google lub łączysz folder na Dysku, i tylko w zakresie, którego to wymaga.</li></ul>
+        </section>
+        <section class="afisz-policy-section" id="privacy-jak-dlugo-je-przechowujemy">
+          <h3>Jak długo je przechowujemy</h3>
+          <p>Konto i wszystko, co się w nim znajduje, przechowujemy tak długo, jak konto istnieje, bo to właśnie jest przedmiotem aplikacji. Linki do logowania szybko wygasają i są jednorazowe. Sesje wygasają same. Zaproszenia można cofnąć, a cofnięte zaproszenie przestaje działać natychmiast — plik cookie jest sprawdzany z zaproszeniem przy każdym zapytaniu, a nie zaufany raz. Na żądanie usunięcia znika konto i wszystko, co jest z nim powiązane, łącznie z subskrypcją newslettera i połączeniem z Dyskiem.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-przekazywanie-danych-poza-europe">
+          <h3>Przekazywanie danych poza Europę</h3>
+          <p>Część powyższych usług ma siedzibę w Stanach Zjednoczonych. Gdy dane osobowe do nich trafiają, podstawą przekazania jest decyzja Komisji Europejskiej z 10 lipca 2023 r. stwierdzająca odpowiedni stopień ochrony w ramach EU–US Data Privacy Framework — jeśli dostawca uzyskał certyfikację — a w pozostałych przypadkach standardowe klauzule umowne przyjęte przez Komisję na podstawie art. 46 ust. 2 lit. c RODO. Na prośbę wysłaną na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> prześlemy zabezpieczenia dotyczące konkretnego przekazania.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-pliki-cookie-i-dane-zapisywane-w-przegladarce">
+          <h3>Pliki cookie i dane zapisywane w przeglądarce</h3>
+          <p>Nie ma banera cookie, bo nie ma o co prosić o zgodę. Nigdzie nie ustawiamy reklamowych ani analitycznych plików cookie. To, co zapisujemy na Twoim urządzeniu, jest niezbędne do świadczenia usługi, o którą prosisz, i na podstawie art. 173 ust. 3 ustawy Prawo telekomunikacyjne nie wymaga zgody:</p>
+          <ul><li>token sesji w pamięci lokalnej, żeby utrzymać Cię zalogowanym(-ą);</li><li>losowy identyfikator urządzenia w pamięci lokalnej, żeby lista przetrwała przeładowanie strony, zanim założysz konto;</li><li>informacja, czy bramka zaproszeń ostatnio Cię wpuściła, żeby powracająca osoba nie widziała przez chwilę strony publicznej przed pojawieniem się aplikacji;</li><li>sam plik cookie z zaproszeniem, ustawiany przez API po otwarciu linku z zaproszeniem.</li></ul>
+          <p>Wyczyszczenie danych tej strony w przeglądarce usuwa je wszystkie. Wyloguje Cię to i odłączy wszystko, co zapisano bez konta.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-twoje-prawa">
+          <h3>Twoje prawa</h3>
+          <p>Możesz zapytać, jakie dane o Tobie przechowujemy, poprosić o ich kopię, o ich sprostowanie albo o usunięcie wszystkich. Napisz na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> z adresu, którego używasz do logowania — odpowie człowiek, nie formularz. Każdy newsletter ma też własny link do rezygnacji, który nie wymaga pisania do nas.</p>
+          <p>W brzmieniu RODO są to prawa: dostępu do danych i otrzymania ich kopii (art. 15), sprostowania (art. 16), usunięcia (art. 17), ograniczenia przetwarzania (art. 18), przenoszenia danych w formacie nadającym się do odczytu maszynowego (art. 20), sprzeciwu wobec przetwarzania opartego na prawnie uzasadnionym interesie (art. 21) oraz cofnięcia udzielonej zgody (art. 7 ust. 3). Na żądanie odpowiadamy w ciągu miesiąca, zgodnie z art. 12 ust. 3.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-skargi">
+          <h3>Skargi</h3>
+          <p>Skargę warto najpierw wysłać na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>, bo zwykle da się wtedy wszystko naprawić. Masz też prawo wnieść skargę do organu nadzorczego, którym w Polsce jest Prezes Urzędu Ochrony Danych Osobowych, ul. Stawki 2, 00-193 Warszawa, strona: uodo.gov.pl.</p>
+        </section>
+        <section class="afisz-policy-section" id="privacy-zmiany">
+          <h3>Zmiany</h3>
+          <p>Ta polityka jest wersjonowana razem z aplikacją, którą opisuje, a jej historia jest publiczna. Ostatnio zmieniono ją 29 września 2026 r. Jeśli zmieni się w sposób dotyczący osób już korzystających z aplikacji, poinformujemy je e-mailem, a nie opublikujemy zmiany po cichu.</p>
+        </section>
+        </section>
+
+        <!-- GOI-95: the regulamin belongs on the page a stranger reads, not
+             only behind the invite. Art. 8(1)(1) UŚUDE requires it to be
+             available *before* the service is used, and for someone who has
+             not been invited yet, this page is before. -->
+        <section class="afisz-section" id="terms">
+          <h2 class="afisz-h2">Regulamin</h2>
+          <p class="afisz-updated">Ostatnia aktualizacja: 29 września 2026 r.</p>
+          
+        <section class="afisz-policy-section" id="terms-kto-swiadczy-usluge">
+          <h3>Kto świadczy usługę</h3>
+          <p>Usługę AFISZ.KA świadczy operator serwisu AFISZ.KA („Usługodawca”), z którym można się kontaktować pod adresem <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>. Niniejszy regulamin jest udostępniany nieodpłatnie przed rozpoczęciem korzystania z usługi, w formie umożliwiającej jego pozyskanie, odtwarzanie i utrwalanie, zgodnie z art. 8 ust. 1 pkt 1 ustawy o świadczeniu usług drogą elektroniczną.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-na-czym-polega-usluga">
+          <h3>Na czym polega usługa</h3>
+          <p>AFISZ.KA odczytuje informacje o programie, które miejsca kultury publikują na własnych stronach internetowych, i przedstawia je jako jeden program. Nieodpłatnie i na zaproszenie pozwala:</p>
+          <ul><li>przeglądać i filtrować wydarzenia;</li><li>obserwować wybrane miejsca i grupować je w nazwane listy;</li><li>prowadzić listę „Chcę iść” i udostępniać ją linkiem;</li><li>dodawać wydarzenia do kalendarza;</li><li>zamówić newsletter e-mailowy o tym, co nadchodzi w Twoich miejscach;</li><li>opcjonalnie połączyć jeden folder na Dysku Google, w którym każdy newsletter będzie zapisywany jako PDF.</li></ul>
+          <p>Nic z tego nie jest płatne i nie ma tu nic do kupienia. AFISZ.KA nie sprzedaje biletów, nie przyjmuje rezerwacji i nie pośredniczy między Tobą a żadnym miejscem.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-wymagania-techniczne">
+          <h3>Wymagania techniczne</h3>
+          <p>Urządzenie z dostępem do internetu i aktualna wersja standardowej przeglądarki (Chrome, Firefox, Safari lub Edge) z włączoną obsługą JavaScriptu i pamięci lokalnej, a także działające zaproszenie. Do założenia konta lub zamówienia newslettera potrzebny jest adres e-mail — i nic więcej.</p>
+          <p>Korzystanie z internetu wiąże się ze zwykłymi zagrożeniami — przechwyceniem danych w trakcie przesyłania, złośliwym oprogramowaniem czy wiadomościami podszywającymi się pod serwis. Linki do logowania wysyłamy ze zweryfikowanej domeny i nigdy nie poprosimy Cię o hasło, bo serwis go nie ma.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-twoje-konto">
+          <h3>Twoje konto</h3>
+          <p>Logujesz się jednorazowym linkiem wysłanym na Twój adres e-mail albo kontem Google. Nie przechowujemy haseł. Każdy, kto ma dostęp do Twojej skrzynki, może więc zalogować się jako Ty: dbaj o jej bezpieczeństwo i napisz na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>, jeśli uważasz, że ktoś inny skorzystał z Twojego konta.</p>
+          <p>Możesz zamknąć konto w dowolnym momencie i z dowolnego powodu, pisząc na ten adres. Zamknięcie konta usuwa Twoje listy, newsletter i połączenie z Dyskiem.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-newsletter">
+          <h3>Newsletter</h3>
+          <p>Newsletter jest wysyłany tylko wtedy, gdy o to poprosisz, co w rozumieniu art. 10 ustawy o świadczeniu usług drogą elektroniczną stanowi zgodę na otrzymywanie informacji handlowej drogą elektroniczną. Możesz ją w każdej chwili wycofać — linkiem do rezygnacji w każdej wiadomości albo wyłączając newsletter na swoim koncie — i działa to natychmiast. Newsletter informuje o tym, co opublikowały miejsca; nie zawiera reklam.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-zasady-korzystania">
+          <h3>Zasady korzystania</h3>
+          <p>Korzystaj z usługi zgodnie z prawem i w sposób, który nie pogarsza jej działania dla innych. Zakazane jest dostarczanie treści o charakterze bezprawnym — zakaz ten, zgodnie z art. 8 ust. 3 pkt 2 lit. b wspomnianej ustawy, musi znaleźć się w regulaminie — a w szczególności nie wolno:</p>
+          <ul><li>przesyłać treści bezprawnych, naruszających czyjekolwiek prawa lub mających wprowadzać w błąd;</li><li>nadawać miejscu nazwy lub tagu o charakterze zniesławiającym albo podszywającego się pod istniejącą organizację;</li><li>próbować uzyskać dostęp do konta innego użytkownika lub do części usługi, które nie zostały Ci udostępnione;</li><li>przekazywać zaproszenia osobie, dla której nie było przeznaczone;</li><li>masowo pobierać danych z usługi, przeciążać jej lub w inny sposób zakłócać jej działanie ani obchodzić jej ograniczeń technicznych;</li><li>używać usługi do wysyłania niezamówionych informacji handlowych.</li></ul>
+          <p>Bezprawne treści mogą zostać usunięte, a odpowiedzialne za nie konto zawieszone, zgodnie z art. 14 tej ustawy i aktem o usługach cyfrowych (DSA).</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-dokladnosc-programu">
+          <h3>Dokładność programu</h3>
+          <p>Program jest automatycznie odczytywany ze stron internetowych miejsc. Repertuary się zmieniają, seanse bywają odwoływane, a stronę można źle odczytać. Dlatego AFISZ.KA przedstawia te informacje orientacyjnie, a nie jako gwarancję — rozstrzygająca jest zawsze strona samego miejsca. Zanim wyjdziesz, sprawdź u organizatora — właśnie dlatego każde wydarzenie prowadzi do swojego źródła.</p>
+          <p>Błędne lub brakujące wydarzenie warto zgłosić na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> — zgłoszenia są rozpatrywane.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-prawa-do-tresci">
+          <h3>Prawa do treści</h3>
+          <p>Projekt graficzny, kod i teksty usługi należą do Usługodawcy. Informacje o programie, tytuły, opisy i obrazy należą do miejsc oraz do podmiotów praw do opisywanych utworów i są tu pokazywane w celu informowania o tym, co się dzieje.</p>
+          <p>Wszystko, co wpisujesz — nazwa listy, tag, własna nazwa miejsca — pozostaje Twoje. Usługodawca otrzymuje wyłącznie uprawnienie niezbędne do przechowywania tych treści, pokazywania ich Tobie i osobom, którym świadomie udostępnisz listę.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-reklamacje">
+          <h3>Reklamacje</h3>
+          <p>Reklamacje dotyczące usługi należy kierować na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>. Opisz problem, kiedy wystąpił i jakiego adresu używasz w serwisie. Odpowiadamy na reklamację w ciągu 14 dni od jej otrzymania; brak odpowiedzi w tym terminie oznacza, że reklamację uznano.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-jesli-jestes-konsumentem">
+          <h3>Jeśli jesteś konsumentem</h3>
+          <p>Usługa jest bezpłatna, ale jest dostarczana jako usługa cyfrowa i stosuje się do niej polskie prawo konsumenckie. Możesz odstąpić od umowy w ciągu 14 dni od założenia konta, bez podawania przyczyny i bez kosztów, pisząc na <a href="mailto:hello@afisz.cc">hello@afisz.cc</a>. W praktyce zamknięcie konta daje ten sam skutek w dowolnym momencie.</p>
+          <p>Nic w tym regulaminie nie ogranicza Twoich praw wynikających z ustawy o prawach konsumenta ani Kodeksu cywilnego. Jeśli postanowienie regulaminu jest z nimi sprzeczne, pierwszeństwo ma prawo, a to postanowienie Ciebie nie dotyczy. Możesz też skorzystać z pozasądowych sposobów rozwiązywania sporów, w tym z pomocy miejskiego lub powiatowego rzecznika konsumentów oraz Inspekcji Handlowej; żadna ze stron nie jest do tego zobowiązana.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-odpowiedzialnosc-i-dostepnosc">
+          <h3>Odpowiedzialność i dostępność</h3>
+          <p>Usługodawca odpowiada za szkodę wynikłą z niewykonania lub nienależytego wykonania regulaminu na zasadach ogólnych Kodeksu cywilnego. Odpowiedzialność nie jest wyłączona ani ograniczona w przypadku winy umyślnej, szkody na życiu lub zdrowiu, a jeśli jesteś konsumentem — w żaden sposób, którego zabrania prawo.</p>
+          <p>Usługa jest w zamkniętych testach i jest oferowana w obecnym stanie, bez gwarantowanego poziomu dostępności. Może być przerywana na czas prac konserwacyjnych i może zostać zakończona. W takim przypadku osoby posiadające konto zostaną z rozsądnym wyprzedzeniem powiadomione e-mailem, by mogły najpierw wyeksportować to, co chcą zachować.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-zmiany-regulaminu">
+          <h3>Zmiany regulaminu</h3>
+          <p>Regulamin może się zmienić — gdy pojawi się nowa funkcja albo zmieni się prawo. Osoby posiadające konto zostaną poinformowane e-mailem co najmniej 14 dni przed wejściem zmiany w życie i mogą do tego czasu zamknąć konto, jeśli jej nie akceptują. Dalsze korzystanie z usługi po tym terminie oznacza akceptację zmiany. Ostatnia zmiana: 29 września 2026 r.</p>
+        </section>
+        <section class="afisz-policy-section" id="terms-prawo-wlasciwe">
+          <h3>Prawo właściwe</h3>
+          <p>Regulamin podlega prawu polskiemu. Jeśli jesteś konsumentem mieszkającym w innym państwie UE, nie pozbawia Cię to ochrony wynikającej z bezwzględnie obowiązujących przepisów prawa Twojego kraju. Spory rozstrzygają sądy właściwe zgodnie z Kodeksem postępowania cywilnego. Zasady przetwarzania danych osobowych opisuje polityka prywatności.</p>
+        </section>
+        </section>
+      </main>
+
+      <footer class="afisz-footer">
+        <p>AFISZ.KA · <a href="mailto:hello@afisz.cc">hello@afisz.cc</a> · <a href="#privacy">Prywatność</a> · <a href="#terms">Regulamin</a></p>
+      </footer>
+    </div></div>
+    <div id="root"></div>
+  </body>
+</html>
