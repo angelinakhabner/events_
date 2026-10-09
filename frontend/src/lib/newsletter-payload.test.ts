@@ -163,6 +163,17 @@ describe('the newsletter form sends what the API accepts (GOI-105)', () => {
     }
   });
 
+  /** GOI-140 / GOI-141: both layouts, with and without a venue order. */
+  it('accepts either layout, with or without a venue order', () => {
+    for (const groupBy of ['event', 'venue'] as const) {
+      for (const venueOrder of [[], ['v2', 'v1']]) {
+        const parsed = newsletterSaveInput.parse(newsletterPayload(form({ groupBy, venueOrder })));
+        expect(parsed.groupBy).toBe(groupBy);
+        expect(parsed.venueOrder).toEqual(venueOrder);
+      }
+    }
+  });
+
   /**
    * Every category rule, under every send cadence — the full product of the
    * four controls a row carries, against the cadences the row is offered under.

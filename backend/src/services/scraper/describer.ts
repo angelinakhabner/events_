@@ -12,6 +12,14 @@ const MAX_TOKENS = 2_000;
  *  title that needs the venue or the director beside it to disambiguate. */
 const MAX_SEARCHES = 2;
 
+/**
+ * A theatre's show gets one more (GOI-136). Theatre pages are the ones most
+ * often silent about the work — a cast list, a running time and the stage —
+ * and a play's premise usually sits in a review or the publisher's note
+ * rather than the first result, so theatre is where the blanks were left.
+ */
+const THEATRE_SEARCHES = 3;
+
 /** `pause_turn` continuations before giving up on a show (it is retried next
  *  run, not lost). */
 const MAX_CONTINUATIONS = 2;
@@ -43,11 +51,18 @@ Rules:
  * itself takes the block as written, and the rest of this file only ever
  * reads the reply's text blocks, which the old types do describe.
  */
-const WEB_SEARCH = {
-  type: 'web_search_20260209',
-  name: 'web_search',
-  max_uses: MAX_SEARCHES,
-} as unknown as Anthropic.Tool;
+function webSearch(maxUses: number): Anthropic.Tool {
+  return {
+    type: 'web_search_20260209',
+    name: 'web_search',
+    max_uses: maxUses,
+  } as unknown as Anthropic.Tool;
+}
+
+/** How many searches a show may spend: theatre gets one more (GOI-136). */
+export function searchBudget(venue?: { category: string }): number {
+  return venue?.category === 'theatre' ? THEATRE_SEARCHES : MAX_SEARCHES;
+}
 
 /**
  * Writes one show's description (GOI-79, then GOI-130 / GOI-131), and the
@@ -73,14 +88,15 @@ export class AnthropicDescriber implements DescriptionClient {
 
   async describe(input: DescribeInput): Promise<DescriptionResult> {
     const messages: Anthropic.MessageParam[] = [{ role: 'user', content: describePrompt(input) }];
+    const searches = searchBudget(input.venue);
     let resp: Anthropic.Message;
     try {
-      resp = await this.create(messages);
+      resp = await this.create(messages, searches);
     } catch (e) {
       if (!(this.searchAvailable && e instanceof Anthropic.BadRequestError)) throw e;
       // Only blame the tool if the same request goes through without it; a
       // 400 about something else must not switch search off for the process.
-      resp = await this.create(messages, false);
+      resp = await this.create(messages, 0);
       console.warn(`[describer] web search rejected, describing from the page alone: ${e.message}`);
       this.searchAvailable = false;
     }
@@ -93,7 +109,7 @@ export class AnthropicDescriber implements DescriptionClient {
     // the turn back resumes it where it stopped.
     for (let n = 0; (resp.stop_reason as string) === 'pause_turn' && n < MAX_CONTINUATIONS; n++) {
       messages.push({ role: 'assistant', content: resp.content });
-      resp = await this.create(messages);
+      resp = await this.create(messages, searches);
       inputTokens += resp.usage.input_tokens;
       outputTokens += resp.usage.output_tokens;
       searched ||= usedSearch(resp);
@@ -118,13 +134,16 @@ export class AnthropicDescriber implements DescriptionClient {
     };
   }
 
-  private create(messages: Anthropic.MessageParam[], search = this.searchAvailable): Promise<Anthropic.Message> {
+  /** `searches`: the web-search budget for this show; 0, or search switched
+   *  off for the process, sends no tool at all. */
+  private create(messages: Anthropic.MessageParam[], searches: number): Promise<Anthropic.Message> {
+    const search = this.searchAvailable && searches > 0;
     return this.client.messages.create({
       model: this.model,
       max_tokens: MAX_TOKENS,
       system: SYSTEM,
       messages,
-      ...(search ? { tools: [WEB_SEARCH] } : {}),
+      ...(search ? { tools: [webSearch(searches)] } : {}),
     });
   }
 }
