@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   clean, enrichDescriptions, extractDescription, showKey,
   type DescribeInput, type WrittenDetail, type WrittenStore,
@@ -675,5 +677,94 @@ describe('describer prompt and reply (GOI-130 / GOI-131)', () => {
   it('does not swallow the description into the category when both share a line', () => {
     const r = parseReply('CATEGORY: screening DESCRIPTION: A documentary about bees.');
     expect(r).toEqual({ category: 'screening', description: 'A documentary about bees.', longDescription: null });
+  });
+});
+
+describe("enrichDescriptions — the venue's own synopsis", () => {
+  const venueUrl = 'https://trwarszawa.pl/kalendarz/';
+  const venue = { name: 'TR Warszawa', city: 'Warsaw', category: 'theatre' };
+  const showUrl = 'https://trwarszawa.pl/program/laguna/';
+  const laguna = readFileSync(join(process.cwd(), 'test/fixtures/trwarszawa.pl-program-laguna.html'), 'utf8');
+  const fetcher = (async () => new Response(laguna, { status: 200 })) as unknown as typeof fetch;
+
+  function store(seed: Record<string, WrittenDetail> = {}) {
+    const saved: Array<WrittenDetail & { key: string }> = [];
+    const written: WrittenStore = {
+      lookup: async (keys) => new Map(keys.filter((k) => k in seed).map((k) => [k, seed[k]!])),
+      save: async (entries) => { saved.push(...entries); },
+    };
+    return { written, saved };
+  }
+
+  it('hands the writer the synopsis read from the show page', async () => {
+    const describe_ = vi.fn(async (_input: DescribeInput) => ({
+      description: 'Body horror w scenicznym spa.', inputTokens: 1, outputTokens: 1,
+    }));
+    const events = [{ title: 'Laguna', source_url: showUrl, description: 'TR bez barier / Pętla indukcyjna — Scena: Marszałkowska 8' }];
+
+    await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, fetcher, written: store().written, client: { describe: describe_ },
+    });
+
+    const input = describe_.mock.calls[0]![0];
+    expect(input.synopsis).toMatch(/^Po co wymyślać horrory/);
+    expect(input.synopsis).not.toMatch(/Bilet normalny|KUP BILET/);
+    expect(events[0]!.description).toBe('Body horror w scenicznym spa.');
+  });
+
+  it('writes again a stored answer from before the site had a rule', async () => {
+    const describe_ = vi.fn(async (_input: DescribeInput) => ({
+      description: 'Body horror w scenicznym spa.', inputTokens: 1, outputTokens: 1,
+    }));
+    const { written, saved } = store({
+      [showUrl]: { description: 'Spektakl w TR Warszawa.', contentCategory: null, format: 2 },
+    });
+    const events = [{ title: 'Laguna', source_url: showUrl, description: null }];
+
+    const r = await enrichDescriptions(events, {
+      venueUrl, venue, delayMs: 0, fetcher, written, client: { describe: describe_ },
+    });
+
+    expect(describe_).toHaveBeenCalledTimes(1);
+    expect(events[0]!.description).toBe('Body horror w scenicznym spa.');
+    expect(r.enriched).toBe(1);
+    expect(saved).toEqual([expect.objectContaining({ key: showUrl })]);
+  });
+
+  it('keeps an older stored answer for a site with no rule', async () => {
+    const other = 'https://teatr.example/spektakl/lisa';
+    const describe_ = vi.fn();
+    const events = [{ title: 'Lisa', source_url: other, description: null }];
+
+    await enrichDescriptions(events, {
+      venueUrl: 'https://teatr.example/repertuar', venue, delayMs: 0, fetcher,
+      written: store({ [other]: { description: 'Spektakl o Lisie.', contentCategory: null, format: 2 } }).written,
+      client: { describe: describe_ },
+    });
+
+    expect(describe_).not.toHaveBeenCalled();
+    expect(events[0]!.description).toBe('Spektakl o Lisie.');
+  });
+
+  it('uses the synopsis, not the meta tags, when there is no writer', async () => {
+    const events: Array<{ source_url: string; description: string | null }> = [{ source_url: showUrl, description: null }];
+    await enrichDescriptions(events, { venueUrl, delayMs: 0, fetcher });
+    expect(events[0]!.description).toMatch(/^Po co wymyślać horrory/);
+    expect(events[0]!.description!.length).toBeLessThanOrEqual(201);
+  });
+});
+
+describe('describer prompt — synopsis', () => {
+  it('puts the venue synopsis ahead of the page text', () => {
+    const prompt = describePrompt({
+      text: 'Cała strona.', url: 'https://trwarszawa.pl/program/laguna/', title: 'Laguna',
+      synopsis: 'Po co wymyślać horrory?',
+    });
+    expect(prompt).toContain('Venue synopsis:\nPo co wymyślać horrory?');
+    expect(prompt.indexOf('Venue synopsis')).toBeLessThan(prompt.indexOf('Page text'));
+  });
+
+  it('leaves the label out when there is no synopsis', () => {
+    expect(describePrompt({ text: 'x', url: 'https://v.example/a' })).not.toContain('Venue synopsis');
   });
 });
