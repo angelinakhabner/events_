@@ -42,10 +42,9 @@ export interface Event {
   venue?: EventVenue;
   title: string;
   description: string | null;
-  /** A fuller paragraph about the work (GOI-139) — the newsletter's "full"
-   *  description and the card's "Read more". Optional on the wire, like
-   *  `kind`, so fixtures predating it still typecheck. */
-  descriptionLong?: string | null;
+  /** A paragraph about the work (GOI-139). Only on events fetched for the
+   *  newsletter, which prints it at "full" detail. */
+  longDescription?: string | null;
   startsAt: string;
   endsAt: string | null;
   /** See EventKind. Optional on the wire so older clients and the many test
@@ -356,6 +355,13 @@ export const DEFAULT_WANT_TO_GO: NewsletterWantToGo = {
  */
 export type NewsletterDelivery = 'email' | 'drive' | 'both';
 
+/**
+ * How a category's listing is arranged (GOI-141): one entry per title with
+ * every venue showing it underneath (`event`), or a block per venue with what
+ * is on there (`venue`).
+ */
+export type NewsletterGrouping = 'event' | 'venue';
+
 /** Does this delivery choice involve sending an email? */
 export function deliversByEmail(delivery: NewsletterDelivery): boolean {
   return delivery === 'email' || delivery === 'both';
@@ -365,16 +371,6 @@ export function deliversByEmail(delivery: NewsletterDelivery): boolean {
 export function deliversToDrive(delivery: NewsletterDelivery): boolean {
   return delivery === 'drive' || delivery === 'both';
 }
-
-/**
- * What a brief lists things under (GOI-141).
- *
- * - `event`: each event once, with every venue and date it is on under it —
- *   "is that film on anywhere this week".
- * - `venue`: each venue once, with what is on there under it — "what's on at
- *   Muranów this week".
- */
-export type NewsletterGroupBy = 'event' | 'venue';
 
 export interface NewsletterSettings {
   /** The config's own id. A reader may have one per folder (GOI-100). */
@@ -414,10 +410,14 @@ export interface NewsletterSettings {
   timezone: string;
   /** Venues within the folder this newsletter covers; empty = all of them. */
   venueIds: string[];
-  /** Event-first or venue-first (GOI-141). */
-  groupBy: NewsletterGroupBy;
-  /** The reader's own order for their venues, first first (GOI-140). A venue
-   *  missing from it follows the ones that are listed. */
+  /** How each category's listing is arranged (GOI-141). */
+  groupBy: NewsletterGrouping;
+  /**
+   * The reader's own order of venues (GOI-140), by id: venue blocks follow it
+   * when grouped by venue, and a title's venue lines when grouped by event.
+   * Venues it leaves out come after, in the issue's own order. Empty: no
+   * preference.
+   */
   venueOrder: string[];
   /** Only include events starting before this hour (0-23). No UI; the
    *  after-hour half of this pair became `NewsletterCategoryRule.timeFilter`. */
@@ -1248,18 +1248,4 @@ export function normalizeDriveFolderName(raw: string): string {
     throw new Error('Folder name cannot contain "/" \u2014 briefs go in one folder, not a path.');
   }
   return name;
-}
-
-/**
- * Sort venues by the reader's own order (GOI-140): the ones they placed first,
- * in their order, then the rest as they came. Stable, so "as they came" stays
- * whatever order the caller had — chronological, usually.
- */
-export function byVenueOrder<T>(items: T[], idOf: (item: T) => string, order: string[]): T[] {
-  if (order.length === 0) return [...items];
-  const rank = new Map(order.map((id, i) => [id, i]));
-  return items
-    .map((item, i) => ({ item, i, r: rank.get(idOf(item)) ?? order.length }))
-    .sort((a, b) => a.r - b.r || a.i - b.i)
-    .map((x) => x.item);
 }

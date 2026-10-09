@@ -1,6 +1,6 @@
 import type {
   Category, Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
-  NewsletterRuleCadence, NewsletterSendCadence,
+  NewsletterGrouping, NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
 import {
   collapseDuplicateExhibitions, deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues,
@@ -449,10 +449,14 @@ export function buildBriefSections(
     sendCadence: NewsletterSendCadence;
     categoryRules: NewsletterCategoryRule[];
     beforeHour?: number | null;
+    groupBy?: NewsletterGrouping;
+    venueOrder?: string[];
   },
   venues: UserVenue[],
   now: Date = new Date(),
 ): BriefSection[] {
+  // Carried on every section so both renderers arrange it alike (GOI-140/141).
+  const layout = { groupBy: sub.groupBy ?? 'event', venueOrder: sub.venueOrder ?? [] } as const;
   const venueIds = venues.map((v) => v.id);
   const venueTags = new Map(venues.map((v) => [v.id, v.tags]));
   events = dropDuplicateEvents(events);
@@ -470,6 +474,7 @@ export function buildBriefSections(
             windowDays: sendCadenceDays(sub.sendCadence),
             detail: 'short',
             events: picked,
+            ...layout,
           },
         ]
       : [];
@@ -501,6 +506,7 @@ export function buildBriefSections(
       windowDays,
       detail: rule.detail,
       events: picked,
+      ...layout,
     });
   }
   return sections;
@@ -547,7 +553,9 @@ export async function fetchBriefEvents(
   // An explicitly empty list means "no venues", not "all of them".
   if (venueIds.length === 0) return [];
   const until = new Date(now.getTime() + briefFetchWindowDays(sub, now) * 24 * 3_600_000);
-  const base = await events.listUpcoming({ venueIds, now, until, limit: BRIEF_FETCH_LIMIT });
+  const base = await events.listUpcoming({
+    venueIds, now, until, limit: BRIEF_FETCH_LIMIT, withLongDescriptions: true,
+  });
   if (base.length < BRIEF_FETCH_LIMIT) return base;
 
   const byId = new Map(base.map((e) => [e.id, e]));
@@ -558,7 +566,7 @@ export async function fetchBriefEvents(
     );
     for (const scope of ruleFetchScopes(rule.category, venues)) {
       const rows = await events.listUpcoming({
-        ...scope, now, until: ruleUntil, limit: SECTION_FETCH_LIMIT,
+        ...scope, now, until: ruleUntil, limit: SECTION_FETCH_LIMIT, withLongDescriptions: true,
       });
       for (const e of rows) if (!byId.has(e.id)) byId.set(e.id, e);
     }
@@ -1040,9 +1048,6 @@ export async function sendNewsletterBriefs(
         recipientName: sub.recipientName,
         festivals,
         now,
-        // Event-first or venue-first, in the reader's venue order (GOI-140/141).
-        groupBy: sub.groupBy,
-        venueOrder: sub.venueOrder,
         // The daily poster's "Want to go" and its masthead number. Only the
         // filed PDF draws the poster, so an email-only reader costs no query.
         savedEventIds: deliversToDrive(sub.delivery) && sub.wantToGo.enabled

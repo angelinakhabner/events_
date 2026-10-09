@@ -25,7 +25,7 @@ async function main() {
     with shows as (
       select v.name as venue, v.category, lower(trim(e.title)) as title,
              bool_or(coalesce(trim(e.description), '') <> '') as described,
-             bool_or(coalesce(trim(e.description_long), '') <> '') as long
+             bool_or(coalesce(trim(e.long_description), '') <> '') as long
       from events e join venues v on v.id = e.venue_id
       where e.cancelled_at is null
         and (e.starts_at >= now() or (e.kind = 'exhibition' and e.ends_at >= now()))

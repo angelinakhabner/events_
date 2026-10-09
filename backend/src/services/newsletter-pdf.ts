@@ -6,8 +6,8 @@ import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
 import {
-  countPicks, pickWhen, sectionGroups, sectionLabel, venueLines,
-  type BriefLayout, type BriefSection, type Pick,
+  groupPicks, pickWhen, sectionGroups, sectionLabel, venueLines,
+  type BriefSection, type Pick,
 } from './newsletter-render.js';
 import {
   isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
@@ -115,7 +115,7 @@ function fonts(): { regular: Uint8Array; bold: Uint8Array } {
 }
 
 
-export interface BriefPdfContent extends BriefLayout {
+export interface BriefPdfContent {
   sections: BriefSection[];
   /**
    * The saved-events queue (GOI-101), at the top of the brief.
@@ -226,7 +226,7 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
    */
   drawMasthead(doc, { now, days: cadenceDays(content.fallbackFrequency ?? frequency) });
   drawSummary(doc, {
-    picks: countPicks(sections, content),
+    picks: countPicks(sections),
     venues: countVenues(sections),
     name: content.recipientName?.trim() || null,
   });
@@ -235,7 +235,7 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
   drawFestivals(doc, content.festivals ?? []);
 
   for (const section of sections) {
-    drawSection(doc, section, content);
+    drawSection(doc, section);
   }
 
   if (events.length === 0 && (!queue || isEmptySection(queue))) {
@@ -248,6 +248,13 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
 
   doc.end();
   return done;
+}
+
+function countPicks(sections: BriefSection[]): number {
+  return sections.reduce(
+    (n, s) => n + groupPicks(s.events).length,
+    0,
+  );
 }
 
 /** How many of the reader's venues the brief actually drew on. */
@@ -451,12 +458,11 @@ function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
 
 // ─── Category sections ───────────────────────────────────────────────────────
 
-function drawSection(doc: PDFKit.PDFDocument, section: BriefSection, layout: BriefLayout): void {
-  // Laid out as the email lays it out — event-first or venue-first, in the
-  // reader's venue order (GOI-36, GOI-138, GOI-140, GOI-141).
-  const groups = sectionGroups(section, layout);
-  const first = groups[0]?.picks[0];
-  if (!first) return;
+function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
+  // One card per title across the section's window, every date on its venue
+  // lines (GOI-36, GOI-138).
+  const picks = groupPicks(section.events);
+  if (picks.length === 0) return;
 
   // The heading is kept with the row it opens. A "TEATR" alone at the foot of
   // a page, with the first play at the head of the next, is worse than a page
@@ -467,18 +473,18 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection, layout: Bri
   // two renderings of one issue disagreed about what its sections are called
   // (GOI-123). Shared rather than reimplemented, so they cannot drift again.
   if (section.category) {
-    sectionHeading(doc, sectionLabel(section.category), rowHeight(doc, first, section));
+    sectionHeading(doc, sectionLabel(section.category), rowHeight(doc, picks[0]!, section));
   }
 
-  // Under subheadings where the layout has them: a museums section's two
-  // halves (GOI-122), or one per venue (GOI-141).
-  for (const group of groups) {
+  // The same arrangement the email draws: by event, a museums section in its
+  // two halves (GOI-122); by venue, a block per venue (GOI-141).
+  for (const group of sectionGroups(section)) {
     if (group.label) subHeading(doc, group.label);
     for (const pick of group.picks) {
       // An exhibition has no showtime worth putting in a gutter — it is on all
       // day for months — so it is dated by its run instead (GOI-67, GOI-122).
-      if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail);
-      else drawPick(doc, pick, section);
+      if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail, !group.venue);
+      else drawPick(doc, pick, section, !group.venue);
     }
   }
 }
@@ -487,8 +493,8 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection, layout: Bri
 function blurbFor(pick: Pick, detail: BriefSection['detail']): string | null {
   const text = pick.lead.description;
   if (!text || detail === 'line') return null;
-  // The long description where there is one (GOI-139), as the email prints it.
-  return detail === 'full' ? pick.lead.descriptionLong ?? text : firstSentence(text);
+  // "Full" is the paragraph where the writer had more to say (GOI-139).
+  return detail === 'full' ? (pick.lead.longDescription || text) : firstSentence(text);
 }
 
 /**
@@ -523,7 +529,7 @@ function rowHeight(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): 
  * break — a title stranded at the foot of one page with its times at the head
  * of the next is the sort of thing that makes a generated PDF look generated.
  */
-function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): void {
+function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection, withVenueName = true): void {
   const title = pick.lead.title;
   const blurb = blurbFor(pick, section.detail);
   // A section spanning more than a day has to date each row; a single-day one
@@ -548,7 +554,7 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   // One line per venue, so two cinemas showing the same film read as two
   // places rather than as one run-on string. Shared with the email so the two
   // renderings cannot disagree about what a venue line says.
-  for (const line of venueLines(pick)) {
+  for (const line of venueLines(pick, withVenueName)) {
     doc.font('bold').fontSize(7.5).fillColor(C.body)
       .text(line.toUpperCase(), BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
   }
@@ -573,13 +579,15 @@ function pickDateLine(pick: Pick, section: BriefSection): string {
 }
 
 /** An exhibition: dated by its run, with no gutter time. */
-function drawExhibition(doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail']): void {
+function drawExhibition(
+  doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail'], withVenueName = true,
+): void {
   const title = pick.lead.title;
   const blurb = blurbFor(pick, detail);
   // From when till when, not only till when (GOI-122): a reader deciding
   // whether to go this month wants both ends of the run.
   const run = runSpan(pick.lead.startsAt, pick.lead.endsAt ?? null);
-  const eyebrow = [run, pick.venues[0]?.name.toUpperCase()].filter(Boolean).join(' · ');
+  const eyebrow = [run, withVenueName ? pick.venues[0]?.name.toUpperCase() : null].filter(Boolean).join(' · ');
 
   ensureSpace(doc, rowHeight(doc, pick, { detail, windowDays: 1, category: '', events: [] }));
 

@@ -147,6 +147,8 @@ const FIELD_NAMES: Record<string, string> = {
   sendWeekday: 'dzień tygodnia wysyłki',
   sendDayOfMonth: 'dzień miesiąca wysyłki',
   venueIds: 'miejsca',
+  groupBy: 'układ wydania',
+  venueOrder: 'kolejność miejsc',
   categoryRules: 'reguły kategorii',
   category: 'kategoria',
   cadence: 'częstotliwość',

@@ -46,7 +46,7 @@ export async function saveEvents(
       venueId: venue.id,
       title: e.title,
       description: e.description,
-      descriptionLong: e.long_description ?? null,
+      longDescription: e.long_description ?? null,
       startsAt: new Date(e.starts_at),
       // Only an exhibition's closing date is stored (GOI-67). The validator
       // rejects a multi-day span on a timed row, so anything left here would
@@ -83,9 +83,11 @@ export async function saveEvents(
       // genuinely rewrote its blurb is applied; null now means "I learned
       // nothing this run", which is not the same as "there is nothing".
       description: sql`coalesce(excluded.description, ${schema.events.description})`,
-      // Same rule for the long one (GOI-139): a sweep that reused the stored
-      // answer without reaching the writer must not blank it.
-      descriptionLong: sql`coalesce(excluded.description_long, ${schema.events.descriptionLong})`,
+      // The paragraph follows the line it was written with (GOI-139): a row
+      // given a new description takes that answer's paragraph, even an empty
+      // one, so the two never describe different texts. A row given no new
+      // description keeps both.
+      longDescription: sql`case when excluded.description is null then ${schema.events.longDescription} else excluded.long_description end`,
       startsAt: values.startsAt,
       endsAt: values.endsAt,
       kind: values.kind,

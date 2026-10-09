@@ -4,7 +4,7 @@ import type { Event } from '@afisz/shared';
 import { EventDescription } from './EventDescription';
 
 const base: Event = {
-  id: 'e1', venueId: 'v1', title: 'Trojanki', description: null, descriptionLong: null,
+  id: 'e1', venueId: 'v1', title: 'Trojanki', description: null, longDescription: null,
   startsAt: '2026-10-02T17:00:00.000Z', endsAt: null, kind: 'timed', category: 'theatre',
   language: 'pl', director: null, cast: [], durationMinutes: null, priceMin: null, priceMax: null,
   sourceUrl: 'https://teatr.example/trojanki', sourceId: null, scrapedAt: '',
@@ -15,7 +15,7 @@ describe('EventDescription', () => {
   it('swaps in the long description on "Read more"', () => {
     render(
       <EventDescription
-        event={{ ...base, description: 'A tragedy.', descriptionLong: 'After Troy falls, its women wait.' }}
+        event={{ ...base, description: 'A tragedy.', longDescription: 'After Troy falls, its women wait.' }}
       />,
     );
     expect(screen.getByText('A tragedy.')).toBeInTheDocument();

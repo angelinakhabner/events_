@@ -3,9 +3,9 @@ import { env } from '../../config.js';
 import { MODEL } from './extractor.js';
 import type { DescribeInput, DescriptionClient, DescriptionResult } from './enricher.js';
 
-/** Two sentences and a paragraph (GOI-139) are comfortably under this even
- *  with a search's tool calls in the reply. The ceiling exists to bound the
- *  bill, not to shape the answer. */
+/** Two sentences and a paragraph are comfortably under this even with a
+ *  search's tool calls in the reply. The ceiling exists to bound the bill,
+ *  not to shape the answer. */
 const MAX_TOKENS = 2_000;
 
 /** Searches one show may spend. One usually finds it; the second is for a
@@ -26,21 +26,21 @@ const MAX_CONTINUATIONS = 2;
 
 const SYSTEM = `You write event descriptions for a Polish-language listings app about cultural life in Poland.
 
-You are given what is known about one event: its title, the venue, the venue's own listing note, and usually the text of the event's page. These are usually in Polish, sometimes in English or another language.
+You are given what is known about one event: its title, the venue, the venue's own listing note, and usually the text of the event's page and the page's own summary from its metadata. These are usually in Polish, sometimes in English or another language.
 
 Reply with exactly three lines and nothing else:
 
 CATEGORY: <one of: exhibition, guided_tour, workshop, screening, lecture, concert, performance, festival, other>
-DESCRIPTION: <in Polish: what the work itself is about, short>
-LONG: <in Polish: a fuller paragraph about the work>
+DESCRIPTION: <in Polish: what the work itself is about, in 1-2 sentences>
+LONG: <in Polish: one paragraph of 3-5 sentences about the work, on one line>
 
 Rules:
 - Always write both descriptions in Polish, whatever language the sources are in. Translate; never copy sentences in another language. Keep proper names (titles, people, places) as they are.
-- DESCRIPTION: describe the work — what the film, play, concert or exhibition is about, and who made it. At most 2 sentences, ideally 1.
-- LONG: 3 to 6 sentences on one line, for a reader deciding whether to go: the story or premise, the themes, who wrote, directed, performs or curated it, and what is distinctive about it. Use only what the sources support; it must not repeat DESCRIPTION word for word. If the sources say no more than DESCRIPTION already does, write: LONG: NONE.
+- Describe the work — what the film, play, concert or exhibition is about, and who made it. DESCRIPTION: at most 2 sentences, ideally 1.
+- LONG goes further than DESCRIPTION, for a reader deciding whether to go: the premise or subject, the approach or form, who made it and who is in it, and what critics or the venue single out. Only what the sources say. If they say no more than DESCRIPTION does, write LONG: NONE rather than padding it.
 - Never describe logistics: the stage or room, subtitles or surtitles, the language it is performed in, ticket prices, discounts, booking, opening hours, accessibility, the address. "Spektakl na Dużej Scenie z angielskimi napisami" is not a description.
 - If the material you were given does not say what the work is about, search the web for it (the title with the venue, or the work itself — a film's synopsis, a play's premise, an artist's show) and describe it from what you find. Use only results that are clearly about this same work.
-- If you still cannot tell what it is about, write: DESCRIPTION: NONE and LONG: NONE. Never invent.
+- If you still cannot tell what it is about, write DESCRIPTION: NONE and LONG: NONE. Never invent.
 - CATEGORY must be one of the listed values exactly. Use "other" if unsure.`;
 
 /**
@@ -64,7 +64,8 @@ export function searchBudget(venue?: { category: string }): number {
 }
 
 /**
- * Writes one show's description (GOI-79, then GOI-130 / GOI-131).
+ * Writes one show's description (GOI-79, then GOI-130 / GOI-131), and the
+ * longer paragraph the newsletter's "full" detail prints (GOI-139).
  *
  * Deliberately not the event extractor: that one is a forced tool call
  * returning an array of events with a dozen fields, sized for a whole listing
@@ -121,9 +122,7 @@ export class AnthropicDescriber implements DescriptionClient {
     const parsed = parseReply(raw);
     return {
       description: parsed.description,
-      // Only alongside a short one: a long paragraph about a show the writer
-      // could not describe in a sentence would be invention.
-      longDescription: parsed.description ? parsed.longDescription : null,
+      longDescription: parsed.longDescription,
       // GOI-80 step 2: the classification rides along on this call rather than
       // costing a second one. `classifyEvent` ignores it whenever the keyword
       // pass already answered, so an unnecessary value here is harmless.
@@ -134,6 +133,8 @@ export class AnthropicDescriber implements DescriptionClient {
     };
   }
 
+  /** `searches`: the web-search budget for this show; 0, or search switched
+   *  off for the process, sends no tool at all. */
   private create(messages: Anthropic.MessageParam[], searches: number): Promise<Anthropic.Message> {
     const search = this.searchAvailable && searches > 0;
     return this.client.messages.create({
@@ -153,6 +154,7 @@ export function describePrompt(input: DescribeInput): string {
     input.venue ? `Venue: ${input.venue.name}, ${input.venue.city} (${input.venue.category})` : null,
     `Page: ${input.url}`,
     input.note?.trim() ? `Listing note: ${input.note.trim()}` : null,
+    input.summary?.trim() ? `Page summary: ${input.summary.trim()}` : null,
   ].filter(Boolean);
   const page = input.text?.trim()
     ? `\n\nPage text:\n${input.text.trim()}`
@@ -165,10 +167,9 @@ function usedSearch(resp: Anthropic.Message): boolean {
 }
 
 /**
- * Split the three-line reply. Tolerant on purpose: a model that answers with
- * only a description still yields one, a missing LONG leaves the long
- * description empty (GOI-139), and a missing category simply leaves the row to
- * the keyword pass and the 'other' fallback.
+ * Split the two-line reply. Tolerant on purpose: a model that answers with
+ * only a description still yields one, and a missing category simply leaves
+ * the row to the keyword pass and the 'other' fallback.
  */
 export function parseReply(raw: string): {
   description: string | null;
@@ -179,19 +180,20 @@ export function parseReply(raw: string): {
   // they came, so a sentence the model wrote before searching can sit on the
   // same line as the first label.
   const category = raw.match(/CATEGORY:[ \t]*([a-z_]+)/i)?.[1]?.trim().toLowerCase() ?? null;
+  // LONG is last, so DESCRIPTION runs up to it — or to the end of a reply
+  // that has none (the pre-GOI-139 two-line shape).
   const longAt = raw.search(/\bLONG:/i);
   const head = longAt >= 0 ? raw.slice(0, longAt) : raw;
-  const long = longAt >= 0 ? raw.slice(longAt).replace(/^LONG:/i, '') : null;
+  const long = longAt >= 0 ? raw.slice(longAt).replace(/^LONG:/i, '') : '';
   const described = head.match(/DESCRIPTION:\s*([\s\S]*)$/i)?.[1];
   // No labels at all — treat the whole reply as the description, which is what
   // the pre-GOI-80 prompt produced.
-  const body = described ?? (category || long !== null ? '' : raw);
+  const body = described ?? (category ? '' : head);
   const description = normalize(body);
-  const longDescription = long === null ? null : normalize(long);
   return {
     description,
-    // A "long" one that only repeats the short one adds nothing.
-    longDescription: longDescription && longDescription !== description ? longDescription : null,
+    // A paragraph about nothing is not one: no description, no long one.
+    longDescription: description ? normalize(long) : null,
     category: category || null,
   };
 }

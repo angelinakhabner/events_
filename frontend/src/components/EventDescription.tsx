@@ -16,7 +16,7 @@ import { ExpandableText } from './ExpandableText';
 export function EventDescription({ event, venueName }: { event: Event; venueName?: string }) {
   const [open, setOpen] = useState(false);
   const short = event.description?.trim();
-  const long = event.descriptionLong?.trim();
+  const long = event.longDescription?.trim();
 
   if (!short) {
     if (event.category !== 'theatre') return null;
