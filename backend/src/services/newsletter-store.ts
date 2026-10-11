@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type {
-  EventChangeType, NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail,
+  EventChangeType, NewsletterCategoryRule, NewsletterDelivery, NewsletterDesign, NewsletterDetail,
   NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
   NewsletterGrouping, NewsletterWantToGo,
 } from '@afisz/shared';
@@ -26,6 +26,8 @@ export interface NewsletterSaveInput {
   recipientName?: string | null;
   /** Email, a filed PDF, or both. */
   delivery?: NewsletterDelivery;
+  /** Which layout the issue is drawn in. */
+  design?: NewsletterDesign;
   /** Which folder's venues; null keeps the folderless default config. */
   folderId?: string | null;
   name?: string;
@@ -135,6 +137,7 @@ function toSettings(row: Row, rules: NewsletterCategoryRule[]): NewsletterSettin
     email: row.email,
     recipientName: row.recipientName,
     delivery: row.delivery as NewsletterDelivery,
+    design: row.design === 'afiszka' ? 'afiszka' : 'classic',
     sendCadence: row.sendCadence as NewsletterSendCadence,
     sendWeekday: row.sendWeekday,
     sendDayOfMonth: row.sendDayOfMonth,
@@ -277,6 +280,7 @@ export class DbNewsletterStore implements NewsletterStore {
       email: input.email.trim(),
       recipientName: input.recipientName?.trim() || null,
       delivery: input.delivery ?? 'email',
+      design: input.design ?? 'classic',
       sendCadence: input.sendCadence,
       venueIds: input.venueIds,
       groupBy: input.groupBy ?? 'event',
@@ -502,6 +506,7 @@ export class InMemoryNewsletterStore implements NewsletterStore {
       email: input.email.trim(),
       recipientName: input.recipientName?.trim() || null,
       delivery: input.delivery ?? 'email',
+      design: input.design ?? 'classic',
       sendCadence: input.sendCadence,
       sendWeekday: norm.sendWeekday,
       sendDayOfMonth: norm.sendDayOfMonth,

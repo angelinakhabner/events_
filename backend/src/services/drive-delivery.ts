@@ -1,6 +1,7 @@
 import { googleDriveProvider } from './google-drive.js';
 import { defaultDriveStore, type DriveStore } from './drive-store.js';
-import { briefPdfFilename, renderBriefPdf, type BriefPdfContent } from './newsletter-pdf.js';
+import { briefPdfFilename } from './newsletter-pdf.js';
+import { renderNewsletterPdf, type NewsletterBrief } from './newsletter-design.js';
 import { DriveFolderMissingError } from './cloud-drive.js';
 import type { DriveProvider, DriveProviderId } from './cloud-drive.js';
 import { normalizeDriveFolderName, type NewsletterFrequency } from '@afisz/shared';
@@ -53,7 +54,7 @@ export interface DeliverOptions {
  */
 export async function deliverBriefToDrives(
   userId: string,
-  brief: BriefPdfContent,
+  brief: NewsletterBrief,
   frequency: NewsletterFrequency,
   opts: DeliverOptions = {},
 ): Promise<DriveDeliveryOutcome[]> {
@@ -73,7 +74,7 @@ export async function deliverBriefToDrives(
   // Rendered once, however many drives it goes to.
   let pdf: Buffer;
   try {
-    pdf = await renderBriefPdf({ ...brief, now });
+    pdf = await renderNewsletterPdf({ ...brief, now });
   } catch (e) {
     const reason = `could not render the PDF: ${message(e)}`;
     console.error(`[drive] ${reason}`);

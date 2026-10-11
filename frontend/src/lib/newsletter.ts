@@ -1,5 +1,5 @@
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterGrouping, NewsletterSendCadence, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDesign, NewsletterGrouping, NewsletterSendCadence, NewsletterWantToGo,
 } from '@afisz/shared';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { pad } from './format';
@@ -49,6 +49,8 @@ export interface NewsletterFormState {
   email: string;
   recipientName: string;
   delivery: NewsletterDelivery;
+  /** Which layout the issue is drawn in. */
+  design: NewsletterDesign;
   name?: string;
   sendCadence: NewsletterSendCadence;
   sendHour: number;
@@ -72,6 +74,7 @@ export function newsletterPayload(form: NewsletterFormState) {
     email: form.email.trim(),
     recipientName: form.recipientName.trim() || null,
     delivery: form.delivery,
+    design: form.design,
     folderId: null,
     name: form.name ?? 'Newsletter',
     sendCadence: form.sendCadence,
@@ -113,6 +116,7 @@ export const NEWSLETTER_FIELDS: ReadonlySet<string> = collectKeys(
     email: '',
     recipientName: '',
     delivery: 'email',
+    design: 'afiszka',
     sendCadence: 'weekly',
     sendHour: 0,
     sendMinute: 0,

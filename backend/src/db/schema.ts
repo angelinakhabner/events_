@@ -308,6 +308,8 @@ export const newsletterSubscriptions = pgTable(
      *  never mailed, so for them the filed PDF is the delivery rather than a
      *  copy of one, and a failed upload is a failed send. */
     delivery: text('delivery').notNull().default('email'),
+    /** classic | afiszka — which layout the issue is drawn in. */
+    design: text('design').notNull().default('classic'),
     /** daily | weekly | monthly — when an issue is sent. */
     sendCadence: text('send_cadence').notNull().default('weekly'),
     /** Venues within the folder the brief covers; empty = all of them. It

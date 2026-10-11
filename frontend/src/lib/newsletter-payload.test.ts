@@ -56,6 +56,7 @@ function form(over: Partial<NewsletterFormState> = {}): NewsletterFormState {
     email: 'ania@example.com',
     recipientName: '',
     delivery: 'email',
+    design: 'afiszka',
     sendCadence: 'weekly',
     sendHour: 8,
     sendMinute: 0,
@@ -156,7 +157,7 @@ describe('the newsletter form sends what the API accepts (GOI-105)', () => {
       expect(body).not.toHaveProperty('frequency');
       expect(body).not.toHaveProperty('afterHour');
       expect(Object.keys(body).sort()).toEqual([
-        'categoryRules', 'delivery', 'email', 'enabled', 'folderId', 'groupBy', 'id', 'name',
+        'categoryRules', 'delivery', 'design', 'email', 'enabled', 'folderId', 'groupBy', 'id', 'name',
         'recipientName', 'sendCadence', 'sendDayOfMonth', 'sendHour', 'sendMinute',
         'sendWeekday', 'venueIds', 'venueOrder', 'wantToGo',
       ]);
