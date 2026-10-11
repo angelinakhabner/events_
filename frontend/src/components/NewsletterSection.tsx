@@ -1693,6 +1693,11 @@ function FolderNameField({ current }: { current: string }) {
           {rename.isPending ? 'Zapisywanie…' : 'Zapisz'}
         </button>
       </div>
+      {/* GOI-145: say where inside it a brief lands, so the subfolders are
+          expected rather than a surprise. */}
+      <p className="mt-2 text-xs text-faint">
+        W środku: folder na każdy miesiąc, a w nim Dzienne, Tygodniowe i Miesięczne.
+      </p>
       {rename.error ? (
         <p className="mt-2 text-sm text-accent">{rename.error.message}</p>
       ) : note ? (

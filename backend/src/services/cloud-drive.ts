@@ -57,6 +57,18 @@ export interface DriveProvider {
     fetcher?: typeof fetch;
   }): Promise<{ folderId: string; created: boolean }>;
 
+  /**
+   * Find or create a chain of subfolders under `parentId` — `["2026-10
+   * październik", "Dzienne"]` — and return the innermost one's id (GOI-145).
+   * Optional: a provider without it files every brief in the app's folder.
+   */
+  ensurePath?(args: {
+    refreshToken: string;
+    parentId: string;
+    path: string[];
+    fetcher?: typeof fetch;
+  }): Promise<string>;
+
   upload(args: {
     refreshToken: string;
     folderId: string;
