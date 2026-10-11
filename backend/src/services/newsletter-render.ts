@@ -5,7 +5,7 @@ import type {
 import type { QueuedChange, QueuedEvent, WantToGoSection } from './want-to-go-queue.js';
 import { env } from '../config.js';
 import {
-  PL, ROMAN, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
+  PL, MONTHS, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
   time, weekday,
 } from './newsletter-copy.js';
 
@@ -204,10 +204,10 @@ export function venueLines(pick: Pick, withName = true): string[] {
  *
  * - One day: its times — `18:00, 20:30`.
  * - Several days at the same times: the dates once, then the times —
- *   `7–9 IX · 19:00` for three nights running, `PN 7, 14, 21 IX · 19:00` for
+ *   `7–9 WRZ · 19:00` for three nights running, `PON 7, 14, 21 WRZ · 19:00` for
  *   every Monday.
  * - A few days at different times: each day with its own —
- *   `WT 8 IX 18:00; CZ 10 IX 20:30`.
+ *   `WT 8 WRZ 18:00; CZW 10 WRZ 20:30`.
  * - More than that: the dates alone. A cinema holding a film over for a month
  *   has thirty-odd showtimes, and printing them all would bury the line.
  */
@@ -237,13 +237,13 @@ export function venueWhen(v: ShowingVenue): string {
 const MAX_DAYS_WITH_TIMES = 4;
 
 /**
- * `7–9, 14 IX; 2 X` — a set of Warsaw days, as compactly as it can be read
+ * `7–9, 14 WRZ; 2 PAŹ` — a set of Warsaw days, as compactly as it can be read
  * (GOI-138).
  *
  * Three or more consecutive days close up into a span; anything shorter is
  * listed, since "7–8" reads as a range with something missing. The month is
- * Roman and printed once per month, as `daySpan` writes it. Dates that all
- * fall on one weekday lead with it — `PN 7, 14, 21 IX` is "every Monday"
+ * abbreviated and printed once per month, as `daySpan` writes it. Dates that all
+ * fall on one weekday lead with it — `PON 7, 14, 21 WRZ` is "every Monday"
  * without having to count.
  */
 export function dayList(isos: string[]): string {
@@ -272,7 +272,7 @@ export function dayList(isos: string[]): string {
       }
       i = j + 1;
     }
-    parts.push(`${chunks.join(', ')} ${ROMAN[Number(month.slice(5, 7)) - 1]}`);
+    parts.push(`${chunks.join(', ')} ${MONTHS[Number(month.slice(5, 7)) - 1]}`);
   }
 
   const list = parts.join('; ');

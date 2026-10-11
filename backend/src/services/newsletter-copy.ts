@@ -104,8 +104,15 @@ export function plural(n: number, one: string, few: string, many: string): strin
   return many;
 }
 
-/** Months as Polish convention writes them in a short date: `11 VIII`. */
-export const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+/**
+ * Months in a short date: `11 SIE` (GOI-147).
+ *
+ * They were Roman numerals — `11 VIII` — which is a Polish convention but not
+ * one a reader scanning a brief takes in at a glance: "IX" or "XI" has to be
+ * worked out. Three-letter Polish abbreviations say the month outright, and in
+ * the brief's caps they sit in the eyebrows the way the numerals did.
+ */
+export const MONTHS = ['STY', 'LUT', 'MAR', 'KWI', 'MAJ', 'CZE', 'LIP', 'SIE', 'WRZ', 'PAŹ', 'LIS', 'GRU'];
 
 
 export function fmt(iso: string, opts: Intl.DateTimeFormatOptions, locale = 'pl-PL'): string {
@@ -122,23 +129,22 @@ export function weekday(iso: string): string {
   return fmt(iso, { weekday: 'short' }).replace(/\.$/, '').toUpperCase();
 }
 
-/** `WT 11 VIII` — the Polish short date, for a section spanning days. */
+/** `WT 11 SIE` — the Polish short date, for a section spanning days. */
 export function shortDate(iso: string): string {
   const day = Number(fmt(iso, { day: 'numeric' }));
   const month = Number(fmt(iso, { month: 'numeric' })) - 1;
-  return `${weekday(iso)} ${day} ${ROMAN[month]}`;
+  return `${weekday(iso)} ${day} ${MONTHS[month]}`;
 }
 
 /**
- * `7–13 IX` — the days a run covers, beside a venue or over a row (GOI-120).
+ * `7–13 WRZ` — the days a run covers, beside a venue or over a row (GOI-120).
  *
- * The month comes off the end date and is Roman, as Polish listings write a
- * span, matching `festivalSpan`. A run inside one month prints the month once;
- * one that crosses a boundary prints both, since "28–3 X" would read as a span
- * running backwards.
+ * The month comes off the end date, matching `festivalSpan`. A run inside one
+ * month prints the month once; one that crosses a boundary prints both, since
+ * "28–3 PAŹ" would read as a span running backwards.
  */
 export function daySpan(fromIso: string, toIso: string): string {
-  const month = (iso: string) => ROMAN[Number(fmt(iso, { month: 'numeric' })) - 1];
+  const month = (iso: string) => MONTHS[Number(fmt(iso, { month: 'numeric' })) - 1];
   const day = (iso: string) => fmt(iso, { day: 'numeric' });
   if (month(fromIso) === month(toIso)) return `${day(fromIso)}–${day(toIso)} ${month(toIso)}`;
   return `${day(fromIso)} ${month(fromIso)} – ${day(toIso)} ${month(toIso)}`;
@@ -192,21 +198,20 @@ export function closingDate(iso: string): string {
 }
 
 /**
- * `10–16 VIII` — a festival's run, beside its name.
+ * `10–16 SIE` — a festival's run, beside its name.
  *
- * The month is Roman, as Polish listings write a span. Both renderers print
- * this line, so it lives here rather than being assembled twice from `ROMAN`
- * and two `fmt` calls.
+ * Both renderers print this line, so it lives here rather than being
+ * assembled twice from `MONTHS` and two `fmt` calls.
  *
  * A run that crosses a month prints both months (GOI-124). Taking the month
  * off the end date alone was right for the ordinary week-long festival and a
  * flat lie about anything longer: the Vistula's open-air summer season, 19
- * June to 30 August, read as "19–30 VIII" — a fortnight in August, over a run
+ * June to 30 August, read as "19–30 SIE" — a fortnight in August, over a run
  * that had been going for ten weeks by then.
  */
 export function festivalSpan(f: Festival): string {
   const day = (date: string) => fmt(`${date}T12:00:00Z`, { day: 'numeric' });
-  const month = (date: string) => ROMAN[Number(date.slice(5, 7)) - 1];
+  const month = (date: string) => MONTHS[Number(date.slice(5, 7)) - 1];
   if (month(f.startDate) === month(f.endDate)) {
     return `${day(f.startDate)}–${day(f.endDate)} ${month(f.endDate)}`;
   }

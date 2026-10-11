@@ -159,12 +159,12 @@ describe('renderBriefHtml — content', () => {
       makeEvent({ title: 'Film B', startsAt: '2026-07-23T20:00:00+02:00' }),
     ];
     const weekly = render({ sections: [section({ windowDays: 7, events })] });
-    expect(weekly).toContain('ŚR 22 VII');
-    expect(weekly).toContain('CZW 23 VII');
+    expect(weekly).toContain('ŚR 22 LIP');
+    expect(weekly).toContain('CZW 23 LIP');
 
     // A daily brief is one day by definition — the masthead already says which.
     const daily = render({ sections: [section({ windowDays: 1, events: [events[0]!] })] });
-    expect(daily).not.toContain('ŚR 22 VII');
+    expect(daily).not.toContain('ŚR 22 LIP');
   });
 
   it('says so rather than sending an empty card when nothing is on', () => {
@@ -450,7 +450,7 @@ describe('renderBriefHtml — aggregated picks (GOI-36)', () => {
       })],
     });
     expect(html.match(/Chungking Express/g)).toHaveLength(1);
-    expect(html).toContain('KINOTEKA · 22, 24 VII · 18:00');
+    expect(html).toContain('KINOTEKA · 22, 24 LIP · 18:00');
   });
 
   it('escapes venue names in the aggregated line', () => {
@@ -558,11 +558,11 @@ describe('renderBriefHtml — collapsed cinema picks (GOI-120)', () => {
     ]);
 
     // The run, not whichever showing happens to be first: a card reading
-    // "PN 20 VII" for a film also on all week is worse than no date at all.
-    expect(html).toContain('20–22 VII');
+    // "PN 20 LIP" for a film also on all week is worse than no date at all.
+    expect(html).toContain('20–22 LIP');
     // Every date it is on, each with its own time (GOI-138) — not a span that
     // reads as if the 21st were included.
-    expect(html).toContain('MURANÓW · PON 20 VII 18:00; ŚR 22 VII 20:30');
+    expect(html).toContain('MURANÓW · PON 20 LIP 18:00; ŚR 22 LIP 20:30');
   });
 
   it('still prints the times when a cinema has the film for one day', () => {
@@ -572,7 +572,7 @@ describe('renderBriefHtml — collapsed cinema picks (GOI-120)', () => {
     ]);
 
     expect(html).toContain('MURANÓW · 18:00, 20:30');
-    expect(html).toContain('ŚR 22 VII');
+    expect(html).toContain('ŚR 22 LIP');
   });
 
   it('prints a theatre run once, with every performance date (GOI-138)', () => {
@@ -597,7 +597,7 @@ describe('renderBriefHtml — collapsed cinema picks (GOI-120)', () => {
     });
 
     expect(html.split('Dziady')).toHaveLength(2);
-    expect(html).toContain('POWSZECHNY · 20–22, 25 VII · 19:00');
+    expect(html).toContain('POWSZECHNY · 20–22, 25 LIP · 19:00');
   });
 });
 
@@ -771,18 +771,18 @@ describe('renderBriefHtml — the redrawn brief (GOI-110)', () => {
   /**
    * GOI-124. Taking the month off the end date alone was right for the
    * ordinary week-long festival and a flat lie about anything longer: this
-   * run, 19 June to 30 August, read as "19–30 VIII" — a fortnight in August,
+   * run, 19 June to 30 August, read as "19–30 SIE" — a fortnight in August,
    * over something that had been going for ten weeks by then.
    */
   it('names both months when a festival runs across one', () => {
     const html = render({ festivals: [FESTIVAL] });
-    expect(html).toContain('19 VI – 30 VIII');
-    expect(html).not.toContain('19–30 VIII');
+    expect(html).toContain('19 CZE – 30 SIE');
+    expect(html).not.toContain('19–30 SIE');
   });
 
   it('names the month once for a festival inside it', () => {
     const html = render({ festivals: [{ ...FESTIVAL, startDate: '2026-08-10', endDate: '2026-08-16' }] });
-    expect(html).toContain('10–16 VIII');
+    expect(html).toContain('10–16 SIE');
   });
 
   it('gives a film one line per cinema, each with that cinema’s own times', () => {
@@ -889,26 +889,26 @@ describe('venueWhen — every date, once', () => {
   it('closes three days in a row into a span', () => {
     expect(venueWhen(v(
       '2026-09-07T19:00:00+02:00', '2026-09-08T19:00:00+02:00', '2026-09-09T19:00:00+02:00',
-    ))).toBe('7–9 IX · 19:00');
+    ))).toBe('7–9 WRZ · 19:00');
   });
 
   it('says "every Monday" by leading with the weekday', () => {
     expect(venueWhen(v(
       '2026-09-07T19:00:00+02:00', '2026-09-14T19:00:00+02:00',
       '2026-09-21T19:00:00+02:00', '2026-09-28T19:00:00+02:00',
-    ))).toBe('PON 7, 14, 21, 28 IX · 19:00');
+    ))).toBe('PON 7, 14, 21, 28 WRZ · 19:00');
   });
 
   it('gives each of a few days its own times when they differ', () => {
     expect(venueWhen(v('2026-09-08T18:00:00+02:00', '2026-09-10T20:30:00+02:00')))
-      .toBe('WT 8 IX 18:00; CZW 10 IX 20:30');
+      .toBe('WT 8 WRZ 18:00; CZW 10 WRZ 20:30');
   });
 
   it('gives the dates alone for a long run at changing times', () => {
     const isos = [7, 8, 9, 10, 11, 14].map(
       (d, i) => `2026-09-${String(d).padStart(2, '0')}T${i % 2 ? '18' : '20'}:00:00+02:00`,
     );
-    expect(venueWhen(v(...isos))).toBe('7–11, 14 IX');
+    expect(venueWhen(v(...isos))).toBe('7–11, 14 WRZ');
   });
 });
 
@@ -916,11 +916,49 @@ describe('dayList', () => {
   it('prints each month once, across a month boundary', () => {
     expect(dayList([
       '2026-09-29T19:00:00+02:00', '2026-09-30T19:00:00+02:00', '2026-10-02T19:00:00+02:00',
-    ])).toBe('29, 30 IX; 2 X');
+    ])).toBe('29, 30 WRZ; 2 PAŹ');
   });
 
   it('files a small-hours showing under its Warsaw day', () => {
     // 00:30 on the 8th in Warsaw is still the 7th in UTC.
-    expect(dayList(['2026-09-07T22:30:00Z', '2026-09-09T12:00:00Z'])).toBe('8, 9 IX');
+    expect(dayList(['2026-09-07T22:30:00Z', '2026-09-09T12:00:00Z'])).toBe('8, 9 WRZ');
+  });
+});
+
+/**
+ * GOI-147, from the screenshot: "(A)pollonia" at Nowy Teatr on Friday 9 and
+ * Saturday 10 October printed as two cards, dated "PT 9 X" and "SOB 10 X".
+ * Theatre aggregates like cinema — one card, every date — and no month is
+ * written in Roman numerals.
+ */
+describe('renderBriefHtml — a theatre week (GOI-147)', () => {
+  const venue = (id: string, name: string) =>
+    ({ id, name, category: 'theatre' as const, city: 'Warsaw', country: 'PL' });
+  const nowy = venue('v-nowy', 'Nowy Teatr');
+  const powszechny = venue('v-pow', 'Teatr Powszechny');
+  const play = (title: string, v: ReturnType<typeof venue>, iso: string) =>
+    makeEvent({ title, category: 'theatre', venueId: v.id, venue: v, startsAt: iso });
+  const html = render({
+    now: new Date('2026-10-09T06:00:00Z'),
+    sections: [section({
+      category: 'theatre',
+      windowDays: 7,
+      events: [
+        play('(A)pollonia', nowy, '2026-10-09T19:00:00+02:00'),
+        play('Maria Skłodowska-Curie. Doświadczenie', powszechny, '2026-10-09T19:00:00+02:00'),
+        play('(A)pollonia', nowy, '2026-10-10T19:00:00+02:00'),
+      ],
+    })],
+  });
+
+  it('prints a play once, with every night it is on', () => {
+    expect(html.match(/\(A\)pollonia/g)).toHaveLength(1);
+    expect(html).toContain('NOWY TEATR · 9, 10 PAŹ · 19:00');
+  });
+
+  it('writes no month in Roman numerals', () => {
+    const text = html.replace(/<[^>]+>/g, ' ');
+    expect(text).not.toMatch(/\b\d{1,2}(?:–\d{1,2})? (?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\b/);
+    expect(text).toContain('PT 9 PAŹ');
   });
 });
