@@ -83,7 +83,7 @@ export interface DescriptionResult {
 /**
  * The per-show description cache (GOI-130 / GOI-131). With it, and a client,
  * enrichment switches from "fill the blanks" to "write every show once, in
- * Polish": see `writeDescriptions`.
+ * English": see `writeDescriptions`.
  */
 export interface WrittenStore {
   lookup(keys: string[]): Promise<Map<string, WrittenDetail>>;
@@ -131,7 +131,7 @@ export interface EnrichOptions {
   /** Test seam for the inter-fetch delay. */
   sleep?: (ms: number) => Promise<void>;
   /** Written-description cache. Given together with `client`, every show is
-   *  written once, in Polish, and remembered (GOI-130 / GOI-131). */
+   *  written once, in English, and remembered (GOI-130 / GOI-131). */
   written?: WrittenStore;
   /** Who is showing it — the writer needs it to search for the right thing. */
   venue?: { name: string; city: string; category: string };
@@ -278,8 +278,7 @@ export async function enrichDescriptions(
 }
 
 /**
- * Every show gets one description of the work, in the site's language
- * (GOI-130 / GOI-131; Polish since the site became Polish).
+ * Every show gets one English description of the work (GOI-130 / GOI-131).
  *
  * "Fill the blanks" was the wrong rule once the blanks stopped being the
  * problem. The rows that read worst on the site were not the empty ones but

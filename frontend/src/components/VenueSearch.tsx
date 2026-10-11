@@ -55,28 +55,28 @@ export function VenueSearch({ tracked, onTrack }: {
     <section className="mb-8 border-3 border-ink p-5">
       <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
         <label className="block flex-1 min-w-[180px]">
-          <span className="label-caps mb-2">Szukaj we wszystkich miejscach</span>
+          <span className="label-caps mb-2">Search across venues</span>
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Film, spektakl, koncert…"
+            placeholder="A film, a play, a concert…"
             className="field text-sm"
           />
         </label>
         <button type="submit" disabled={draft.trim().length < MIN_QUERY} className="btn-fill">
-          Szukaj
+          Search
         </button>
       </form>
 
       {!searched ? (
         <p className="mt-3 mb-0 text-xs text-muted">
-          Przeszukuje wszystko, co nadchodzi we wszystkich miejscach, które czytamy — nie tylko w tych, które obserwujesz.
+          Looks at everything coming up at every venue we read — not only the ones you follow.
         </p>
       ) : null}
 
       {searched && results.isLoading ? <SkeletonList rows={2} /> : null}
       {searched && results.error ? (
-        <ErrorState message="Nie udało się wyszukać." onRetry={() => void results.refetch()} />
+        <ErrorState message="Couldn't search." onRetry={() => void results.refetch()} />
       ) : null}
 
       {searched && !results.isLoading && !results.error ? (
@@ -122,7 +122,7 @@ function ResultRow({ event }: { event: Event }) {
           </h3>
         </a>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-bold uppercase tracking-[1px]">
-          <span className="text-ink">{event.venue?.name ?? 'Nieznane miejsce'}</span>
+          <span className="text-ink">{event.venue?.name ?? 'Unknown venue'}</span>
           <span className="text-muted">{formatShortDate(event.startsAt)}</span>
           <span className="text-muted">{formatEventTime(event)}</span>
         </div>
@@ -150,21 +150,21 @@ function NothingOn({ query, already, pending, done, error, onTrack }: {
   return (
     <div className="mt-4 border-t-3 border-ink pt-4">
       <p className="m-0 text-sm text-body">
-        Nic nie nadchodzi dla <strong>„{query}”</strong> w żadnym z czytanych miejsc.
+        Nothing coming up for <strong>“{query}”</strong> at any venue we read.
       </p>
       {already ? (
-        <p className="mt-2 mb-0 text-sm font-bold text-ink">Już na Twojej liście.</p>
+        <p className="mt-2 mb-0 text-sm font-bold text-ink">Already on your list.</p>
       ) : done ? (
         <p role="status" className="mt-2 mb-0 text-sm font-bold text-ink">
-          Śledzimy „{query}” — pojawi się tutaj i w Twoim newsletterze, gdy tylko zostanie ogłoszone.
+          Tracking “{query}” — it turns up here, and in your brief, as soon as it is announced.
         </p>
       ) : (
         <>
           <button type="button" onClick={onTrack} disabled={pending} className="act act-on mt-3">
-            {pending ? 'Dodawanie…' : `Śledź „${query}”`}
+            {pending ? 'Adding…' : `Track “${query}”`}
           </button>
           <p className="mt-2 mb-0 text-xs text-muted">
-            Będziemy szukać dalej. Gdy któreś miejsce to ogłosi, pojawi się na tej liście z terminami.
+            We keep looking. When a venue announces it, it appears in this list with its dates.
           </p>
         </>
       )}

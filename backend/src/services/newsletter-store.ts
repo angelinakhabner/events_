@@ -93,7 +93,7 @@ export interface NewsletterStore {
 /** An id that is not one of the reader's newsletters (GOI-126). */
 export class NewsletterNotFoundError extends Error {
   constructor() {
-    super('Nie ma takiego newslettera.');
+    super('No such newsletter');
     this.name = 'NewsletterNotFoundError';
   }
 }

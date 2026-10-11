@@ -75,8 +75,8 @@ export function MyEventsSection() {
   return (
     <section>
       <PanelHeading
-        title="Wydarzenia"
-        blurb="Co nadchodzi w miejscach z Twojego aktywnego folderu."
+        title="Events"
+        blurb="What's coming up at the venues in your active folder."
         rule={false}
       />
 
@@ -94,22 +94,22 @@ export function MyEventsSection() {
       <div className="mt-2">
         {eventsQuery.isLoading ? <SkeletonList /> : null}
         {eventsQuery.error ? (
-          <ErrorState message="Nie udało się wczytać Twoich wydarzeń." onRetry={() => eventsQuery.refetch()} />
+          <ErrorState message="Couldn't load your events." onRetry={() => eventsQuery.refetch()} />
         ) : null}
         {!eventsQuery.isLoading && !eventsQuery.error && events.length === 0 ? (
           <EmptyState
             title={
               noVenues
-                ? 'W tym folderze nie ma jeszcze miejsc.'
+                ? 'No venues in this folder yet.'
                 : narrowed
-                  ? 'Nic w Twoich miejscach nie pasuje do wybranych filtrów.'
-                  : 'W Twoich miejscach nic nie nadchodzi.'
+                  ? 'Nothing at your venues matches your selection.'
+                  : 'Nothing coming up at your venues.'
             }
-            hint={noVenues ? 'Dodaj miejsca w sekcji „Moje miejsca”, a ich wydarzenia pojawią się tutaj.' : undefined}
+            hint={noVenues ? 'Add venues under "My venues" and their events show up here.' : undefined}
             action={
               narrowed
                 ? {
-                    label: 'Pokaż wszystko',
+                    label: 'Show all',
                     onClick: () => {
                       setCategory(null);
                       setDay(null);

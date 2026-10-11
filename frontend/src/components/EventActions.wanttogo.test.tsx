@@ -48,7 +48,7 @@ const event: Event = {
 
 /** The button, whichever of its two labels it is currently showing. */
 function wantToGoButton(): HTMLButtonElement {
-  return screen.getByRole('button', { name: /want to go|idę/i }) as HTMLButtonElement;
+  return screen.getByRole('button', { name: /want to go|going/i }) as HTMLButtonElement;
 }
 
 beforeEach(() => {
@@ -64,7 +64,7 @@ describe('Want to go — a button that stays put', () => {
     const button = wantToGoButton();
 
     // What the reader sees.
-    expect(button).toHaveTextContent('♥ Idę');
+    expect(button).toHaveTextContent('♥ Going');
     // …over a sizer holding the width of the label it is *not* showing, so
     // the row after it does not re-wrap.
     const sizer = button.querySelector('[aria-hidden="true"]');
@@ -97,7 +97,7 @@ describe('Want to go — a button that stays put', () => {
   it('says one thing to a screen reader, not two', () => {
     savedIds = ['e1'];
     render(<EventActions event={event} />);
-    expect(screen.getByRole('button', { name: '♥ Idę' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '♥ Going' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /want to go/i })).not.toBeInTheDocument();
   });
 
@@ -108,7 +108,7 @@ describe('Want to go — a button that stays put', () => {
 
     savedIds = ['e1'];
     render(<EventActions event={event} />);
-    fireEvent.click(screen.getAllByRole('button', { name: '♥ Idę' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: '♥ Going' })[0]!);
     expect(remove).toHaveBeenCalledWith({ eventId: 'e1' });
   });
 

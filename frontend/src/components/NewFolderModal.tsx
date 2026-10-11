@@ -35,7 +35,7 @@ export function NewFolderModal({ venues, onCancel, onSubmit, submitting, serverE
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = name.trim();
-    if (trimmed.length === 0) { setError('Nadaj folderowi nazwę.'); return; }
+    if (trimmed.length === 0) { setError('Give your folder a name.'); return; }
     onSubmit({
       name: trimmed,
       venueIds,
@@ -56,24 +56,24 @@ export function NewFolderModal({ venues, onCancel, onSubmit, submitting, serverE
         onSubmit={submit}
         className="w-full max-w-lg border-4 border-ink bg-panel p-7 md:p-10"
       >
-        <h2 id={titleId} className="font-display text-[32px] uppercase m-0 mb-6">Nowy folder</h2>
+        <h2 id={titleId} className="font-display text-[32px] uppercase m-0 mb-6">New folder</h2>
 
         <label className="block">
-          <span className="label-caps mb-2">Nazwa</span>
+          <span className="label-caps mb-2">Name</span>
           <input
             autoFocus
             value={name}
             onChange={(e) => { setName(e.target.value); if (error) setError(null); }}
-            placeholder="Kino w tygodniu"
+            placeholder="Weeknight cinema"
             className="field text-base"
           />
           {error ? <p className="mt-2 text-sm font-bold text-accent" role="alert">{error}</p> : null}
         </label>
 
         <fieldset className="mt-8">
-          <legend className="label-caps mb-3">Miejsca</legend>
+          <legend className="label-caps mb-3">Venues</legend>
           <div className="space-y-2 max-h-48 overflow-auto">
-            {venues.length === 0 ? <p className="text-sm text-muted">Brak miejsc.</p> : null}
+            {venues.length === 0 ? <p className="text-sm text-muted">No venues yet.</p> : null}
             {venues.map((v) => (
               <label key={v.id} className="flex items-center gap-3 text-[13px] font-semibold cursor-pointer">
                 <input
@@ -90,7 +90,7 @@ export function NewFolderModal({ venues, onCancel, onSubmit, submitting, serverE
         </fieldset>
 
         <fieldset className="mt-8">
-          <legend className="label-caps mb-3">Kategorie</legend>
+          <legend className="label-caps mb-3">Categories</legend>
           <div className="flex flex-wrap gap-3">
             {CATEGORIES.map((c) => {
               const active = categories.includes(c);
@@ -113,20 +113,20 @@ export function NewFolderModal({ venues, onCancel, onSubmit, submitting, serverE
 
         {serverError ? (
           <p role="alert" className="mt-8 text-sm font-bold text-accent">
-            Nie udało się utworzyć folderu: {serverError}
+            Couldn&rsquo;t create folder: {serverError}
           </p>
         ) : null}
 
         <div className="mt-10 flex justify-end gap-4">
           <button type="button" onClick={onCancel} className="btn-outline">
-            Anuluj
+            Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
             className="btn-fill"
           >
-            {submitting ? 'Tworzenie…' : 'Utwórz folder'}
+            {submitting ? 'Creating…' : 'Create folder'}
           </button>
         </div>
       </form>

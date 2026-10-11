@@ -1053,19 +1053,19 @@ export function venueStatusNote(
 ): string | null {
   switch (status) {
     case 'dark':
-      return 'Nie możemy teraz odczytać programu tego miejsca';
+      return 'We can’t currently read this venue’s listings';
     case 'stale': {
       const days = lastScrapedAt
         ? Math.floor((now.getTime() - Date.parse(lastScrapedAt)) / 86_400_000)
         : null;
       return days === null || !Number.isFinite(days)
-        ? 'Ostatnia aktualizacja dawno temu'
-        : `Ostatnia aktualizacja ${days === 1 ? 'wczoraj' : `${days} dni temu`}`;
+        ? 'Last updated a while ago'
+        : `Last updated ${days} day${days === 1 ? '' : 's'} ago`;
     }
     case 'empty':
-      return 'To miejsce nie ma teraz żadnych wydarzeń';
+      return 'This venue has no events listed right now';
     default:
-      return count === 0 ? 'Nic w tym okresie' : null;
+      return count === 0 ? 'Nothing on in this period' : null;
   }
 }
 

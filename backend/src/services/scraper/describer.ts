@@ -24,22 +24,22 @@ const THEATRE_SEARCHES = 3;
  *  run, not lost). */
 const MAX_CONTINUATIONS = 2;
 
-const SYSTEM = `You write event descriptions for a Polish-language listings app about cultural life in Poland.
+const SYSTEM = `You write event descriptions for an English-language listings app about cultural life in Poland.
 
 You are given what is known about one event: its title, the venue, the venue's own listing note, and usually the text of the event's page and the page's own summary from its metadata. For many venues you also get the venue's synopsis: the venue's own text about the work, taken from the event's page. These are usually in Polish, sometimes in English or another language.
 
 Reply with exactly three lines and nothing else:
 
 CATEGORY: <one of: exhibition, guided_tour, workshop, screening, lecture, concert, performance, festival, other>
-DESCRIPTION: <in Polish: what the work itself is about, in 1-2 sentences>
-LONG: <in Polish: one paragraph of 3-5 sentences about the work, on one line>
+DESCRIPTION: <in English: what the work itself is about, in 1-2 sentences>
+LONG: <in English: one paragraph of 3-5 sentences about the work, on one line>
 
 Rules:
-- Always write both descriptions in Polish, whatever language the sources are in. Translate; never copy sentences in another language. Keep proper names (titles, people, places) as they are.
+- Always write both descriptions in English, whatever language the sources are in. Translate; never copy non-English sentences. Keep proper names (titles, people, places) as they are.
 - Describe the work — what the film, play, concert or exhibition is about, and who made it. DESCRIPTION: at most 2 sentences, ideally 1.
 - LONG goes further than DESCRIPTION, for a reader deciding whether to go: the premise or subject, the approach or form, who made it and who is in it, and what critics or the venue single out. Only what the sources say. If they say no more than DESCRIPTION does, write LONG: NONE rather than padding it.
 - When a venue synopsis is given, base both descriptions on it; it is the venue's own account of the work. Use the page text only for names and credits it lacks. Do not search the web unless the synopsis is about something other than the work itself.
-- Never describe logistics: the stage or room, subtitles or surtitles, the language it is performed in, ticket prices, discounts, booking, opening hours, accessibility, the address. "Spektakl na Dużej Scenie z angielskimi napisami" is not a description.
+- Never describe logistics: the stage or room, subtitles or surtitles, the language it is performed in, ticket prices, discounts, booking, opening hours, accessibility, the address. "Performance on the Main Stage with English surtitles" is not a description.
 - If the material you were given does not say what the work is about, search the web for it (the title with the venue, or the work itself — a film's synopsis, a play's premise, an artist's show) and describe it from what you find. Use only results that are clearly about this same work.
 - If you still cannot tell what it is about, write DESCRIPTION: NONE and LONG: NONE. Never invent.
 - CATEGORY must be one of the listed values exactly. Use "other" if unsure.`;
@@ -70,7 +70,7 @@ export function searchBudget(venue?: { category: string }): number {
  *
  * Deliberately not the event extractor: that one is a forced tool call
  * returning an array of events with a dozen fields, sized for a whole listing
- * page. This reads one show and returns one or two sentences — in Polish,
+ * page. This reads one show and returns one or two sentences — in English,
  * about the work, searched for when the venue's own words do not say — and it
  * reports token usage back, because the run has to record what enrichment
  * cost.

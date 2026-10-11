@@ -13,18 +13,18 @@ describe('NewFolderModal', () => {
   it('blocks submission with an empty name and shows a validation message', async () => {
     const onSubmit = vi.fn();
     render(<NewFolderModal venues={venues} onCancel={() => {}} onSubmit={onSubmit} />);
-    await userEvent.click(screen.getByRole('button', { name: /utwórz folder/i }));
+    await userEvent.click(screen.getByRole('button', { name: /create folder/i }));
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent(/nadaj folderowi nazwę/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/give your folder a name/i);
   });
 
   it('submits with name, selected venues, and selected categories', async () => {
     const onSubmit = vi.fn();
     render(<NewFolderModal venues={venues} onCancel={() => {}} onSubmit={onSubmit} />);
-    await userEvent.type(screen.getByLabelText(/nazwa/i), 'Weeknight cinema');
+    await userEvent.type(screen.getByLabelText(/name/i), 'Weeknight cinema');
     await userEvent.click(screen.getByLabelText(/Kino Muranów/));
     await userEvent.click(screen.getByRole('button', { name: 'cinema' }));
-    await userEvent.click(screen.getByRole('button', { name: /utwórz folder/i }));
+    await userEvent.click(screen.getByRole('button', { name: /create folder/i }));
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Weeknight cinema',
       venueIds: ['v1'],
@@ -41,13 +41,13 @@ describe('NewFolderModal', () => {
         serverError="UNAUTHORIZED"
       />,
     );
-    expect(screen.getByRole('alert')).toHaveTextContent(/nie udało się utworzyć folderu.*UNAUTHORIZED/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/couldn.+create folder.*UNAUTHORIZED/i);
   });
 
   it('calls onCancel when the cancel button is pressed', async () => {
     const onCancel = vi.fn();
     render(<NewFolderModal venues={venues} onCancel={onCancel} onSubmit={() => {}} />);
-    await userEvent.click(screen.getByRole('button', { name: /anuluj/i }));
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(onCancel).toHaveBeenCalled();
   });
 });

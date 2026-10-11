@@ -1,11 +1,7 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { AppContext } from './context.js';
-import { polishMessage } from './polish.js';
 
-const t = initTRPC.context<AppContext>().create({
-  // Every message a reader can be shown, in Polish — see `polish.ts`.
-  errorFormatter: ({ shape }) => ({ ...shape, message: polishMessage(shape.message) }),
-});
+const t = initTRPC.context<AppContext>().create();
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
