@@ -120,6 +120,9 @@ function toRule(row: RuleRow): NewsletterCategoryRule {
     detail: row.depth as NewsletterDetail,
     timeFilter: row.timeFilter as NewsletterTimeFilter,
     lookaheadDays: row.lookaheadDays,
+    museumContent: row.museumContent === 'exhibitions' || row.museumContent === 'events'
+      ? row.museumContent
+      : 'both',
     sortOrder: row.sortOrder,
   };
 }
@@ -182,6 +185,8 @@ export function normaliseRules(
 ): NewsletterCategoryRule[] {
   return rules.map((r, i) => ({
     ...r,
+    // Only the museums rule has two kinds of thing to choose between.
+    museumContent: r.category === 'exhibition' ? (r.museumContent ?? 'both') : 'both',
     cadenceWeekday:
       sendCadence === 'daily' && r.cadence === 'weekly' ? (r.cadenceWeekday ?? 1) : null,
     sortOrder: r.sortOrder ?? i,
@@ -325,6 +330,7 @@ export class DbNewsletterStore implements NewsletterStore {
           depth: r.detail,
           timeFilter: r.timeFilter,
           lookaheadDays: r.lookaheadDays,
+          museumContent: r.museumContent ?? 'both',
           sortOrder: r.sortOrder,
         })),
       );

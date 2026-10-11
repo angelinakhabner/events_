@@ -12,6 +12,7 @@ import {
   resolveBriefVenues,
   sendNewsletterBriefs,
   buildBriefSections,
+  carriesMuseumContent,
   dropDuplicateEvents,
   dropFestivalRestatements,
   eventInCategory,
@@ -890,5 +891,38 @@ describe('dropDuplicateEvents (GOI-138)', () => {
       makeEvent({ id: 'b', venueId: 'v2' }),
     ]);
     expect(out).toHaveLength(2);
+  });
+});
+
+/** GOI-146: a museums section can carry its runs, its events, or both. */
+describe('museums content (GOI-146)', () => {
+  const VENUES = [{ id: 'v1', tags: [] as string[] }] as Parameters<typeof buildBriefSections>[2];
+  const run = makeEvent({
+    id: 'run', category: 'exhibition', kind: 'exhibition', title: 'Kolekcja',
+    startsAt: '2026-07-01T00:00:00+02:00', endsAt: '2026-09-30T00:00:00+02:00',
+  });
+  const talk = makeEvent({
+    id: 'talk', category: 'exhibition', title: 'Oprowadzanie', startsAt: '2026-07-22T18:00:00+02:00',
+  });
+  const ids = (museumContent?: 'both' | 'exhibitions' | 'events') =>
+    buildBriefSections(
+      [run, talk],
+      makeSub({ categoryRules: [makeRule({ category: 'exhibition', museumContent })] }),
+      VENUES,
+      NOW,
+    )[0]?.events.map((e) => e.id) ?? [];
+
+  it('carries both by default', () => {
+    expect(ids().sort()).toEqual(['run', 'talk']);
+    expect(ids('both').sort()).toEqual(['run', 'talk']);
+  });
+
+  it('carries only the runs, or only the events, when asked', () => {
+    expect(ids('exhibitions')).toEqual(['run']);
+    expect(ids('events')).toEqual(['talk']);
+  });
+
+  it('is ignored by every other rule', () => {
+    expect(carriesMuseumContent(run, { category: 'cinema', museumContent: 'events' })).toBe(true);
   });
 });

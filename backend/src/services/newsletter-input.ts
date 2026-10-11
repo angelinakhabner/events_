@@ -28,6 +28,8 @@ export const newsletterCategoryRuleInput = z.object({
   /** Overrides the derived coverage window. 1-90: below a day it selects
    *  nothing, and beyond a quarter it is not a newsletter section. */
   lookaheadDays: z.number().int().min(1).max(90).nullable().default(null),
+  /** Museums only: runs, events, or both (GOI-146). */
+  museumContent: z.enum(['both', 'exhibitions', 'events']).default('both'),
   sortOrder: z.number().int().min(0).max(99).default(0),
 });
 
