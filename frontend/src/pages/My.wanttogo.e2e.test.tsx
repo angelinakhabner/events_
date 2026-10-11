@@ -66,8 +66,8 @@ function renderPage() {
 
 /** Open "Want to go" from the left-hand menu and return its section. */
 async function openWantToGo(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: 'Chcę iść' }));
-  return (await screen.findByRole('heading', { name: 'Chcę iść' })).closest('section')!;
+  await user.click(await screen.findByRole('button', { name: 'Want to go' }));
+  return (await screen.findByRole('heading', { name: 'Want to go' })).closest('section')!;
 }
 
 beforeAll(async () => {
@@ -94,7 +94,7 @@ describe('MyPage — want to go end-to-end', () => {
     renderPage();
     const section = await openWantToGo(user);
 
-    await within(section).findByRole('tab', { name: /chcę iść \(0\)/i });
+    await within(section).findByRole('tab', { name: /want to go \(0\)/i });
     expect(within(section).getByLabelText(/szukaj we wszystkich miejscach/i)).toBeInTheDocument();
     // Nothing is added by typing: the search answers first, and only when it
     // finds nothing does the title itself go on the list.
@@ -112,7 +112,7 @@ describe('MyPage — want to go end-to-end', () => {
     const section = await openWantToGo(user);
 
     await within(section).findByText('Perfect Days');
-    expect(within(section).getByRole('tab', { name: /chcę iść \(1\)/i })).toBeInTheDocument();
+    expect(within(section).getByRole('tab', { name: /want to go \(1\)/i })).toBeInTheDocument();
 
     // Mark it seen with where + a short note.
     await user.click(within(section).getByRole('button', { name: /^obejrzane$/i }));
@@ -132,7 +132,7 @@ describe('MyPage — want to go end-to-end', () => {
     // Move it back to the want list.
     await user.click(within(section).getByRole('button', { name: /nieobejrzane/i }));
     await waitFor(() =>
-      expect(within(section).getByRole('tab', { name: /chcę iść \(1\)/i })).toBeInTheDocument(),
+      expect(within(section).getByRole('tab', { name: /want to go \(1\)/i })).toBeInTheDocument(),
     );
   });
 });

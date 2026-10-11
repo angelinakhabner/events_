@@ -191,7 +191,7 @@ function TrackFilmButton({ title }: { title: string }) {
         onClick={() => add.mutate({ title })}
         className="act act-sm act-on"
       >
-        {tracked ? '✓ Na liście „Chcę iść”' : add.isPending ? 'Dodawanie…' : '+ Śledź film'}
+        {tracked ? '✓ Na liście „Want to go”' : add.isPending ? 'Dodawanie…' : '+ Śledź film'}
       </button>
       {add.error && !tracked ? (
         <p className="mt-1 text-[11px] text-muted">{add.error.message}</p>

@@ -414,7 +414,7 @@ function hero(ctx: Ctx, e: Event, level: number): Block {
   };
 }
 
-/** "Jeszcze trzy na dziś" and "Chcę iść ★", which share one style. */
+/** "Jeszcze trzy na dziś" and "Want to go ★", which share one style. */
 function frontList(
   ctx: Ctx,
   args: {
@@ -521,7 +521,7 @@ function frontBlocks(ctx: Ctx, content: BriefPdfContent, now: Date): Block[] {
     }
     if (saved.length) {
       blocks.push(gap(12), frontList(ctx, {
-        title: 'Chcę iść',
+        title: 'Want to go',
         star: true,
         caption: 'Twoje zapisane · dziś',
         events: saved,

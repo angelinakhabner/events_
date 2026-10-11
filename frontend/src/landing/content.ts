@@ -142,7 +142,7 @@ export const POLICY_SECTIONS: readonly PolicySection[] = [
         items: [
           'Twój adres e-mail, jeśli się logujesz. To on jest kontem — nie ma hasła. Logowanie wysyła na ten adres jednorazowy link; przechowujemy wyłącznie skrót (hash) tego linku i tylko do chwili jego użycia lub wygaśnięcia.',
           'Dodane przez Ciebie miejsca, listy, w które je grupujesz, wszelkie nazwy, kategorie i własne tagi, którymi je zastępujesz, oraz filtry zapamiętane przez każdą listę. To jest istota aplikacji.',
-          'Wydarzenia oznaczone jako „Chcę iść” i każda lista, którą zdecydujesz się udostępnić. Udostępniona lista staje się widoczna dla każdego, kto ma wysłany przez Ciebie link — na tym polega udostępnianie; możesz je wyłączyć w każdej chwili.',
+          'Wydarzenia oznaczone jako „Want to go” i każda lista, którą zdecydujesz się udostępnić. Udostępniona lista staje się widoczna dla każdego, kto ma wysłany przez Ciebie link — na tym polega udostępnianie; możesz je wyłączyć w każdej chwili.',
           'Ustawienia newslettera, jeśli go zamówisz: adres, na który trafia, imię, którym ma Cię witać, obejmowane miejsca i kategorie oraz godzina wysyłki.',
           'Losowy identyfikator w pamięci lokalnej (local storage) przeglądarki, dzięki któremu rzeczy zapisane przed zalogowaniem pozostają Twoje także potem. To losowa wartość bez własnego znaczenia, nigdy nie łączona z danymi kupionymi lub otrzymanymi skądinąd.',
           'Plik cookie z zaproszeniem, ustawiany po otwarciu linku z zaproszeniem, żeby nie trzeba było podawać go przy każdej wizycie. Zawiera wyłącznie token zaproszenia i to dzięki niemu serwis w ogóle się otwiera.',
@@ -296,7 +296,7 @@ export const TERMS_SECTIONS: readonly PolicySection[] = [
         items: [
           'przeglądać i filtrować wydarzenia;',
           'obserwować wybrane miejsca i grupować je w nazwane listy;',
-          'prowadzić listę „Chcę iść” i udostępniać ją linkiem;',
+          'prowadzić listę „Want to go” i udostępniać ją linkiem;',
           'dodawać wydarzenia do kalendarza;',
           'zamówić newsletter e-mailowy o tym, co nadchodzi w Twoich miejscach;',
           'opcjonalnie połączyć jeden folder na Dysku Google, w którym każdy newsletter będzie zapisywany jako PDF.',

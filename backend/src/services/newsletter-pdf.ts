@@ -317,7 +317,7 @@ function drawSummary(
   rule(doc, C.ink, 2);
 }
 
-// ─── "Chcę iść" ──────────────────────────────────────────────────────────────
+// ─── "Want to go" ──────────────────────────────────────────────────────────────
 
 /**
  * The saved-events queue, above every category section (GOI-101).
