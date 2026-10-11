@@ -126,6 +126,7 @@ export const NEWSLETTER_FIELDS: ReadonlySet<string> = collectKeys(
       detail: 'short',
       timeFilter: 'any',
       lookaheadDays: null,
+      museumContent: 'both',
       sortOrder: 0,
     }],
     wantToGo: DEFAULT_WANT_TO_GO,

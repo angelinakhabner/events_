@@ -416,11 +416,11 @@ describe('MyPage — newsletter end-to-end', () => {
     expect((await defaultNewsletterStore.get(userId))!.categoryRules).toEqual([
       {
         category: 'cinema', cadence: 'every_issue', cadenceWeekday: null,
-        detail: 'short', timeFilter: 'after_18', lookaheadDays: null, sortOrder: 0,
+        detail: 'short', timeFilter: 'after_18', lookaheadDays: null, museumContent: 'both', sortOrder: 0,
       },
       {
         category: 'museums', cadence: 'monthly', cadenceWeekday: null,
-        detail: 'full', timeFilter: 'any', lookaheadDays: null, sortOrder: 1,
+        detail: 'full', timeFilter: 'any', lookaheadDays: null, museumContent: 'both', sortOrder: 1,
       },
     ]);
   });
@@ -824,6 +824,30 @@ describe('MyPage — newsletter end-to-end', () => {
     }
     await waitFor(async () => expect(await defaultNewsletterStore.list(userId)).toEqual([first]));
     await waitFor(() => expect((screen.getByLabelText(/nazwa newslettera/i) as HTMLInputElement).value).toBe(first.name));
+  });
+
+  /** GOI-146: a museums section can carry only its runs, or only its events. */
+  it('lets a museums section carry only exhibitions, and saves it', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/adres e-mail/i)).closest('section')!;
+
+    if (!within(section).queryByLabelText(/jak często: muzea/i)) {
+      await user.selectOptions(await within(section).findByLabelText(/dodaj kategorię/i), 'exhibition');
+    }
+    const choice = await within(section).findByLabelText(/^pokazuj$/i);
+    expect(choice).toHaveValue('both');
+    // Only the museums row has it.
+    expect(within(section).getAllByLabelText(/^pokazuj$/i)).toHaveLength(1);
+    await user.selectOptions(choice, 'exhibitions');
+
+    await user.click(within(section).getByRole('button', { name: /zaplanuj newsletter/i }));
+    await waitFor(async () => {
+      const rules = (await defaultNewsletterStore.get(userId))?.categoryRules ?? [];
+      expect(rules.find((r) => r.category === 'exhibition')?.museumContent).toBe('exhibitions');
+    });
   });
 });
 

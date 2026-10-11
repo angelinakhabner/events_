@@ -286,7 +286,7 @@ describe('ScreeningsStrip — Track film', () => {
     render(<ScreeningsStrip event={makeEvent()} canTrack />);
     fireEvent.click(screen.getByRole('button', { name: /najbliższe seanse/i }));
 
-    const button = screen.getByRole('button', { name: /na liście „chcę iść”/i });
+    const button = screen.getByRole('button', { name: /na liście „want to go”/i });
     expect(button).toBeDisabled();
     expect(screen.queryByRole('button', { name: /śledź film/i })).not.toBeInTheDocument();
   });

@@ -293,6 +293,13 @@ export function timeFilterForHour(hour: number | null | undefined): NewsletterTi
  * one namespace deliberately (see `eventInCategory`): a tag is just another
  * name a venue answers to, and a rule does not need to know which kind it got.
  */
+/**
+ * What a museums section carries (GOI-146): runs and events together, or one
+ * of the two. "Museums" is two kinds of plan (GOI-122) and a reader may only
+ * want one in their newsletter.
+ */
+export type NewsletterMuseumContent = 'both' | 'exhibitions' | 'events';
+
 export interface NewsletterCategoryRule {
   category: string;
   cadence: NewsletterRuleCadence;
@@ -311,6 +318,8 @@ export interface NewsletterCategoryRule {
    * week. Null means "derive it", which is right almost always.
    */
   lookaheadDays: number | null;
+  /** The museums rule only (GOI-146); absent or any other rule means both. */
+  museumContent?: NewsletterMuseumContent;
   /** Section order within an issue. */
   sortOrder: number;
 }

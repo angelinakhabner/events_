@@ -429,6 +429,21 @@ export function dropDuplicateEvents(events: Event[]): Event[] {
 }
 
 /**
+ * Whether a museums rule takes this event (GOI-146): its runs, its timed
+ * events, or both. Every other rule takes everything; the museums rule is the
+ * only one with two kinds of thing in it (GOI-122).
+ */
+export function carriesMuseumContent(
+  event: Event,
+  rule: Pick<NewsletterCategoryRule, 'category' | 'museumContent'>,
+): boolean {
+  if (rule.category !== 'exhibition') return true;
+  if (rule.museumContent === 'exhibitions') return isExhibition(event);
+  if (rule.museumContent === 'events') return !isExhibition(event);
+  return true;
+}
+
+/**
  * Split the candidate events into the sections due in this issue.
  *
  * With no rules the brief is one unnamed section covering everything on the
@@ -497,7 +512,8 @@ export function buildBriefSections(
       now,
     );
     const picked = inWindow.filter(
-      (e) => !taken.has(e.id) && eventInCategory(e, rule.category, venueTags),
+      (e) => !taken.has(e.id) && eventInCategory(e, rule.category, venueTags) &&
+        carriesMuseumContent(e, rule),
     );
     if (picked.length === 0) continue;
     for (const e of picked) taken.add(e.id);

@@ -389,6 +389,8 @@ export const newsletterCategoryRules = pgTable(
     timeFilter: text('time_filter').notNull().default('any'),
     /** Overrides the derived coverage window when set. */
     lookaheadDays: integer('lookahead_days'),
+    /** both | exhibitions | events — what a museums section carries (0036). */
+    museumContent: text('museum_content').notNull().default('both'),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (t) => ({

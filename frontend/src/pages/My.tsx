@@ -12,7 +12,7 @@ import { FestivalBanner } from '../components/FestivalBanner';
 const SECTIONS = [
   { key: 'events', label: 'Wydarzenia' },
   { key: 'venues', label: 'Moje miejsca' },
-  { key: 'want-to-go', label: 'Chcę iść' },
+  { key: 'want-to-go', label: 'Want to go' },
   { key: 'newsletter', label: 'Newsletter' },
 ] as const;
 
@@ -185,7 +185,7 @@ function LoginSection() {
       ) : null}
 
       <p className="mt-8 text-xs text-muted">
-        Bez hasła do zapamiętania — Twoje miejsca, foldery, filmy i lista &bdquo;Chcę iść&rdquo;
+        Bez hasła do zapamiętania — Twoje miejsca, foldery, filmy i lista &bdquo;Want to go&rdquo;
         czekają za tym logowaniem.
       </p>
     </LoginCard>

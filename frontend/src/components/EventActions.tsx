@@ -64,7 +64,7 @@ function WantToGoButton({ event }: { event: Event }) {
   );
 }
 
-const WANT_TO_GO = '♡ Chcę iść';
+const WANT_TO_GO = '♡ Want to go';
 const GOING = '♥ Idę';
 
 /**

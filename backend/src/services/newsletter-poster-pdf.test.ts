@@ -59,9 +59,9 @@ describe('the daily poster', () => {
     expect(flatPages[0]).toContain(squash('DZIŚ WIECZOREM — NUMER JEDEN'));
     expect(flatPages[0]).toContain(squash('22:35 SIRÂT'));
     expect(flatPages[0]).toContain(squash('JESZCZE TRZY NA DZIŚ'));
-    expect(flatPages[0]).toContain(squash('CHCĘ IŚĆ'));
+    expect(flatPages[0]).toContain(squash('WANT TO GO'));
     expect(flatPages[0]).toContain(squash('Guided tour of Zofia and Oskar Hansen’s home'));
-    expect(flatPages[0]!.indexOf(squash('JESZCZE TRZY'))).toBeLessThan(flatPages[0]!.indexOf(squash('CHCĘ IŚĆ')));
+    expect(flatPages[0]!.indexOf(squash('JESZCZE TRZY'))).toBeLessThan(flatPages[0]!.indexOf(squash('WANT TO GO')));
 
     // The listing: cinema in time bands, then exhibitions with music merged in.
     expect(flatPages[1]).toContain(squash('KINO'));
@@ -90,7 +90,7 @@ describe('the daily poster', () => {
     const pdf = await renderBriefPdf({ sections: SAMPLE_SECTIONS, now: SAMPLE_NOW });
     const { flatPages } = await pdfText(pdf);
     expect(flatPages[0]).not.toContain(squash('NR '));
-    expect(flatPages[0]).not.toContain(squash('CHCĘ IŚĆ'));
+    expect(flatPages[0]).not.toContain(squash('WANT TO GO'));
     expect(flatPages[0]).toContain(squash('WYBRANE Z MIEJSC, KTÓRE OBSERWUJESZ'));
     // Straight from the fact band into the line, with no name before it.
     expect(flatPages[0]).toContain(squash('8 MIEJSC WYBRANE Z'));

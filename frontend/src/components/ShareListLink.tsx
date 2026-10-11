@@ -85,7 +85,7 @@ function CopyLinkButton({ url }: { url: string }) {
       <button
         type="button"
         onClick={async () => {
-          const result = await shareLink({ title: 'Chcę iść', text: 'Moja lista „Chcę iść”', url });
+          const result = await shareLink({ title: 'Want to go', text: 'Moja lista „Want to go”', url });
           if (result !== 'cancelled') setOutcome(result);
         }}
         className="act act-sm"

@@ -39,7 +39,7 @@ export function SharedListPage() {
 
   return (
     <section className="page-x pt-8 md:pt-12">
-      <h1 className="font-display text-[32px] md:text-[42px] m-0">Chcę iść</h1>
+      <h1 className="font-display text-[32px] md:text-[42px] m-0">Want to go</h1>
       <p className="mt-1.5 mb-6 max-w-[520px] text-sm md:text-base text-body">
         Udostępniona lista. Kliknij &bdquo;Najbliższe seanse&rdquo; przy dowolnej pozycji, żeby zobaczyć,
         gdzie i kiedy to grają.

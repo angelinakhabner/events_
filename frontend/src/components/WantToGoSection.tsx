@@ -40,8 +40,8 @@ export function WantToGoSection() {
   return (
     <section>
       <PanelHeading
-        title="Chcę iść"
-        blurb={'Wszystko, co zapisujesz, na jednej liście. Wyszukaj coś we wszystkich miejscach poniżej albo dodawaj wydarzenia przyciskiem „Chcę iść”, a filmy przyciskiem „Śledź film”, gdziekolwiek je znajdziesz.'}
+        title="Want to go"
+        blurb={'Wszystko, co zapisujesz, na jednej liście. Wyszukaj coś we wszystkich miejscach poniżej albo dodawaj wydarzenia przyciskiem „Want to go”, a filmy przyciskiem „Śledź film”, gdziekolwiek je znajdziesz.'}
         rule={false}
       />
 
@@ -54,9 +54,9 @@ export function WantToGoSection() {
         onTrack={() => { void films.refetch(); }}
       />
 
-      <div className="mb-5 flex" role="tablist" aria-label="Listy „Chcę iść”">
+      <div className="mb-5 flex" role="tablist" aria-label="Listy „Want to go”">
         <TabButton active={tab === 'want'} onClick={() => setTab('want')}>
-          Chcę iść ({want.length})
+          Want to go ({want.length})
         </TabButton>
         <TabButton active={tab === 'seen'} onClick={() => setTab('seen')}>
           Obejrzane ({seen.length})
@@ -74,7 +74,7 @@ export function WantToGoSection() {
       {!loading && !error && shown.length === 0 ? (
         <p className="border-t-3 border-ink pt-5 text-sm text-muted">
           {tab === 'want'
-            ? 'Nic jeszcze nie zapisano — wyszukaj powyżej albo użyj „Chcę iść” przy dowolnym wydarzeniu.'
+            ? 'Nic jeszcze nie zapisano — wyszukaj powyżej albo użyj „Want to go” przy dowolnym wydarzeniu.'
             : 'Nic jeszcze nie oznaczono jako obejrzane.'}
         </p>
       ) : null}

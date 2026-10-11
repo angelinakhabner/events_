@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterGrouping, NewsletterRuleCadence,
-  NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterGrouping,
+  NewsletterMuseumContent, NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings,
+  NewsletterTimeFilter, NewsletterWantToGo,
 } from '@afisz/shared';
 import {
   allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
@@ -495,6 +496,7 @@ function NewsletterForm({
         detail: 'short',
         timeFilter: 'any',
         lookaheadDays: null,
+        museumContent: 'both',
         sortOrder: prev.length,
       },
     ]);
@@ -1191,6 +1193,27 @@ function RuleRow({
         </span>
       ) : null}
 
+      {/* GOI-146: museums are two kinds of plan — runs you can drop in on,
+          and talks, tours and screenings at a time — and a reader may want
+          only one of them. Only this row has the choice. */}
+      {rule.category === 'exhibition' ? (
+        <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
+          <label className="text-xs text-faint" htmlFor={`rule-museum-${index}`}>
+            Pokazuj
+          </label>
+          <select
+            id={`rule-museum-${index}`}
+            value={rule.museumContent ?? 'both'}
+            onChange={(e) => onPatch({ museumContent: e.target.value as NewsletterMuseumContent })}
+            className="select-flat py-[7px]"
+          >
+            <option value="both">Wystawy i wydarzenia</option>
+            <option value="exhibitions">Tylko wystawy</option>
+            <option value="events">Tylko wydarzenia</option>
+          </select>
+        </span>
+      ) : null}
+
       {/* Collapsed by default: empty is correct almost always, and a field
           every row carries invites a number nobody needed to choose.
           One plain sentence either way (GOI-119, GOI-137): "Look ahead" and a
@@ -1670,6 +1693,11 @@ function FolderNameField({ current }: { current: string }) {
           {rename.isPending ? 'Zapisywanie…' : 'Zapisz'}
         </button>
       </div>
+      {/* GOI-145: say where inside it a brief lands, so the subfolders are
+          expected rather than a surprise. */}
+      <p className="mt-2 text-xs text-faint">
+        W środku: folder na każdy miesiąc, a w nim Dzienne, Tygodniowe i Miesięczne.
+      </p>
       {rename.error ? (
         <p className="mt-2 text-sm text-accent">{rename.error.message}</p>
       ) : note ? (

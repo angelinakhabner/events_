@@ -171,6 +171,37 @@ describe('googleDriveProvider.ensureFolder', () => {
   });
 });
 
+/** GOI-145: month, then cadence, inside the app's folder. */
+describe('googleDriveProvider.ensurePath', () => {
+  it('finds each level inside the one above, creating what is missing', async () => {
+    const { googleDriveProvider } = await import('./google-drive.js');
+    const { fetcher, calls } = stubFetch([
+      TOKEN_OK,
+      // The month folder exists; the cadence folder inside it does not.
+      {
+        match: /drive\/v3\/files\?q=/,
+        reply: () => json({ files: calls.filter((c) => c.url.includes('q=')).length === 1 ? [{ id: 'month-1' }] : [] }),
+      },
+      { match: /drive\/v3\/files\?fields=id/, reply: () => json({ id: 'daily-1' }) },
+    ]);
+
+    const id = await googleDriveProvider.ensurePath!({
+      refreshToken: 'rt', parentId: 'root-1', path: ['2026-10 październik', 'Dzienne'], fetcher,
+    });
+
+    expect(id).toBe('daily-1');
+    const searches = calls.filter((c) => c.url.includes('q=')).map((c) => new URL(c.url).searchParams.get('q')!);
+    expect(searches[0]).toContain("name='2026-10 październik'");
+    expect(searches[0]).toContain("'root-1' in parents");
+    expect(searches[1]).toContain("name='Dzienne'");
+    expect(searches[1]).toContain("'month-1' in parents");
+    const create = calls.find((c) => c.init?.method === 'POST' && c.url.includes('drive/v3/files'))!;
+    expect(JSON.parse(String(create.init!.body))).toMatchObject({ name: 'Dzienne', parents: ['month-1'] });
+    // One token for the whole walk.
+    expect(calls.filter((c) => c.url.includes('oauth2'))).toHaveLength(1);
+  });
+});
+
 describe('googleDriveProvider.upload', () => {
   it('posts the PDF as multipart/related into the folder', async () => {
     const { googleDriveProvider } = await import('./google-drive.js');

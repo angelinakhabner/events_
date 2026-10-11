@@ -48,7 +48,7 @@ const event: Event = {
 
 /** The button, whichever of its two labels it is currently showing. */
 function wantToGoButton(): HTMLButtonElement {
-  return screen.getByRole('button', { name: /chcę iść|idę/i }) as HTMLButtonElement;
+  return screen.getByRole('button', { name: /want to go|idę/i }) as HTMLButtonElement;
 }
 
 beforeEach(() => {
@@ -68,14 +68,14 @@ describe('Want to go — a button that stays put', () => {
     // …over a sizer holding the width of the label it is *not* showing, so
     // the row after it does not re-wrap.
     const sizer = button.querySelector('[aria-hidden="true"]');
-    expect(sizer).toHaveTextContent('♡ Chcę iść');
+    expect(sizer).toHaveTextContent('♡ Want to go');
     expect(sizer).toHaveClass('invisible');
   });
 
   it('reserves the same width in the unsaved state', () => {
     render(<EventActions event={event} />);
     const sizer = wantToGoButton().querySelector('[aria-hidden="true"]');
-    expect(sizer).toHaveTextContent('♡ Chcę iść');
+    expect(sizer).toHaveTextContent('♡ Want to go');
   });
 
   /**
@@ -89,7 +89,7 @@ describe('Want to go — a button that stays put', () => {
     const button = wantToGoButton();
     const sizer = button.querySelector('[aria-hidden="true"]')!;
     expect(sizer.className).not.toContain('absolute');
-    expect(button.querySelector('.absolute')).toHaveTextContent('♡ Chcę iść');
+    expect(button.querySelector('.absolute')).toHaveTextContent('♡ Want to go');
   });
 
   /** The sizer must never reach the accessible name — it would be read out

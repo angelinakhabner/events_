@@ -156,7 +156,7 @@ const FIELD_NAMES: Record<string, string> = {
   detail: 'szczegółowość',
   timeFilter: 'pora dnia',
   lookaheadDays: 'zasięg w dniach',
-  wantToGo: 'chcę iść',
+  wantToGo: 'want to go',
   enabled: 'włączony',
   timezone: 'strefa czasowa',
 };
