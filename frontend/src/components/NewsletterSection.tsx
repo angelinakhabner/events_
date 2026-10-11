@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterGrouping,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDesign, NewsletterDetail, NewsletterGrouping,
   NewsletterMuseumContent, NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings,
   NewsletterTimeFilter, NewsletterWantToGo,
 } from '@afisz/shared';
@@ -307,6 +307,10 @@ function NewsletterForm({
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
   const [recipientName, setRecipientName] = useState(saved?.recipientName ?? '');
   const [delivery, setDelivery] = useState<NewsletterDelivery>(saved?.delivery ?? 'email');
+  // A newsletter not saved yet starts on the new design; a saved one keeps
+  // whatever its reader chose — and one served by an API too old to know
+  // about designs was being sent in the classic one.
+  const [design, setDesign] = useState<NewsletterDesign>(saved ? (saved.design ?? 'classic') : 'afiszka');
   const [sendCadence, setSendCadenceRaw] = useState<NewsletterSendCadence>(saved?.sendCadence ?? 'weekly');
   const [sendHour, setSendHour] = useState(saved?.sendHour ?? 8);
   const [sendMinute, setSendMinute] = useState(saved?.sendMinute ?? 0);
@@ -456,6 +460,7 @@ function NewsletterForm({
     email,
     recipientName,
     delivery,
+    design,
     id: saved?.id,
     name: name.trim() || 'Newsletter',
     sendCadence,
@@ -580,6 +585,13 @@ function NewsletterForm({
             placeholder="np. Kino codziennie"
             className="field max-w-[20rem]"
           />
+        </div>
+
+        <div className="px-5 pb-5 md:px-0">
+          <span className="label-form mb-1.5 block" id="newsletter-design-label">
+            Wygląd
+          </span>
+          <DesignChoice value={design} onChange={setDesign} />
         </div>
 
         <FormSection step={1} label="Dokąd trafia">
@@ -1010,6 +1022,64 @@ function DeliveryChoice({
       </div>
       {/* One line under the row rather than three inside it: the hint answers
           "what did I just pick", which only the chosen one has to say. */}
+      <p className="mt-2 text-xs text-faint">{current?.hint}</p>
+    </div>
+  );
+}
+
+/**
+ * How the issue looks: the AFISZ.KA redesign, or the classic brief.
+ *
+ * The same strip as the delivery choice, for the same reason — one choice of
+ * equal answers. Both designs carry the same events; the hint says what the
+ * chosen one looks like, and "Generate" shows it.
+ */
+function DesignChoice({
+  value,
+  onChange,
+}: {
+  value: NewsletterDesign;
+  onChange: (v: NewsletterDesign) => void;
+}) {
+  const options: { value: NewsletterDesign; label: string; hint: string }[] = [
+    {
+      value: 'afiszka',
+      label: 'Nowy AFISZ.KA',
+      hint: 'Pierwsza strona z wyborem na dziś i Twoimi zapisanymi wydarzeniami, potem pełny program ułożony według kategorii — w e-mailu i w PDF.',
+    },
+    {
+      value: 'classic',
+      label: 'Klasyczny',
+      hint: 'Dotychczasowy newsletter: jedna lista pod czarnym nagłówkiem.',
+    },
+  ];
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <div>
+      <div
+        role="radiogroup"
+        aria-labelledby="newsletter-design-label"
+        className="grid grid-cols-2 border-2 border-ink max-w-[420px]"
+      >
+        {options.map((o, i) => {
+          const active = value === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(o.value)}
+              className={`w-full cursor-pointer px-4 py-[9px] text-center text-xs font-extrabold uppercase tracking-[0.5px] ${
+                i < options.length - 1 ? 'border-r-2 border-ink' : ''
+              } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
       <p className="mt-2 text-xs text-faint">{current?.hint}</p>
     </div>
   );

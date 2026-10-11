@@ -381,6 +381,22 @@ export function deliversToDrive(delivery: NewsletterDelivery): boolean {
   return delivery === 'drive' || delivery === 'both';
 }
 
+/**
+ * How an issue looks — a reader's choice, per newsletter.
+ *
+ * - `classic` — the brief as it has been: the ruled-list email, and its PDF
+ *               (the daily poster for a daily issue, the list otherwise).
+ * - `afiszka` — the AFISZ.KA redesign ("Newsletter presentation redesign"
+ *               handoff): a front page with the picks and the reader's saved
+ *               events, then the listing laid out per category, in both the
+ *               email and the PDF, Daily for a daily newsletter and Outlook
+ *               for a weekly or monthly one.
+ *
+ * Both draw from the same sections, so switching changes how an issue looks
+ * and is laid out, never which events are in it.
+ */
+export type NewsletterDesign = 'classic' | 'afiszka';
+
 export interface NewsletterSettings {
   /** The config's own id. A reader may have one per folder (GOI-100). */
   id: string;
@@ -405,6 +421,8 @@ export interface NewsletterSettings {
   recipientName: string | null;
   /** Email, a PDF filed on a connected drive, or both. */
   delivery: NewsletterDelivery;
+  /** Which of the two layouts the issue is drawn in. */
+  design: NewsletterDesign;
   /** When an issue is sent. */
   sendCadence: NewsletterSendCadence;
   /** Weekday weekly issues go out on (0=Sun … 6=Sat); null unless weekly. */

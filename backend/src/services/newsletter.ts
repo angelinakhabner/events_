@@ -7,7 +7,7 @@ import {
   isExhibition, sendCadenceDays, timeFilterHour, titleKey,
 } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
-import { renderBriefHtml } from './newsletter-render.js';
+import { renderNewsletterHtml } from './newsletter-design.js';
 import { defaultEventStore, FEED_CATEGORIES, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
 import { newsletterFromEmail, sendEmail } from './email.js';
@@ -848,6 +848,7 @@ export async function sendUrgentChanges(
       wantToGo: { reminders: [], changes: urgent },
       fallbackFrequency: sub.sendCadence,
       recipientName: sub.recipientName,
+      design: sub.design,
       now,
     };
     try {
@@ -855,7 +856,7 @@ export async function sendUrgentChanges(
         to: sub.email,
         from: newsletterFromEmail(),
         subject: urgentSubject(urgent),
-        html: renderBriefHtml(brief),
+        html: renderNewsletterHtml(brief),
       });
     } catch (e) {
       console.error(`[newsletter] urgent send failed for ${sub.email}:`, e);
@@ -1063,6 +1064,7 @@ export async function sendNewsletterBriefs(
         fallbackFrequency: plannedFrequency(sub),
         recipientName: sub.recipientName,
         festivals,
+        design: sub.design,
         now,
         // The daily poster's "Want to go" and its masthead number. Only the
         // filed PDF draws the poster, so an email-only reader costs no query.
@@ -1076,7 +1078,7 @@ export async function sendNewsletterBriefs(
           to: sub.email,
           from: newsletterFromEmail(),
           subject: briefSubject(sections),
-          html: renderBriefHtml(brief),
+          html: renderNewsletterHtml(brief),
         });
       }
 
