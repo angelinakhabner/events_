@@ -13,8 +13,10 @@ import { SYNOPSIS_FORMAT, type WrittenDetail, type WrittenStore } from './scrape
  */
 export const EMPTY_ANSWER_TTL_DAYS = 14;
 
-/** The language the writer writes in, and the only one read back. */
-export const DESCRIPTION_LANG = 'pl';
+/** The language the writer writes in, and the only one read back. Rows the
+ *  Polish site (#198) wrote as 'pl' are rewritten in place as their shows come
+ *  up again. */
+export const DESCRIPTION_LANG = 'en';
 
 /** The shape of answer the writer gives now: 2 = a line and a paragraph
  *  (GOI-139, 0034); 3 = the same, written with the venue's own synopsis in
@@ -94,7 +96,6 @@ export function descriptionStore(venueId: string): WrittenStore {
             format: sql`excluded.format`,
             contentCategory: sql`excluded.content_category`,
             searched: sql`excluded.searched`,
-            lang: sql`excluded.lang`,
             writtenAt: sql`excluded.written_at`,
           },
         });

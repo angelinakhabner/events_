@@ -29,7 +29,7 @@ describe('AddToCalendar', () => {
     render(<AddToCalendar event={makeEvent()} />);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dodaj do kalendarza' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to calendar' }));
     expect(screen.getByRole('menuitem', { name: /google calendar/i })).toHaveAttribute(
       'href',
       expect.stringContaining('calendar.google.com'),
@@ -42,7 +42,7 @@ describe('AddToCalendar', () => {
 
   it('closes on Escape', () => {
     render(<AddToCalendar event={makeEvent()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Dodaj do kalendarza' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to calendar' }));
     expect(screen.getByRole('menu')).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -57,7 +57,7 @@ describe('AddToCalendar', () => {
       render(<AddToCalendar event={makeEvent()} variant="icon" />);
 
       const button = screen.getByRole('button', {
-        name: 'Dodaj do kalendarza: Ojczyzna, Kinoteka, 4 lip 14:00',
+        name: 'Add Ojczyzna at Kinoteka, 4 Jul 14:00, to calendar',
       });
       expect(button).toBeInTheDocument();
       // The glyph itself must not reach the accessible name.
@@ -66,7 +66,7 @@ describe('AddToCalendar', () => {
 
     it('opens the same menu as the labelled button', () => {
       render(<AddToCalendar event={makeEvent()} variant="icon" />);
-      fireEvent.click(screen.getByRole('button', { name: /^Dodaj do kalendarza:/ }));
+      fireEvent.click(screen.getByRole('button', { name: /to calendar$/ }));
 
       expect(screen.getByRole('menuitem', { name: /google calendar/i })).toBeInTheDocument();
       expect(screen.getByRole('menuitem', { name: /apple \/ outlook/i })).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe('AddToCalendar', () => {
 
     it('drops the venue from the name when the screening has none', () => {
       expect(addToCalendarLabel(makeEvent({ venue: undefined }))).toBe(
-        'Dodaj do kalendarza: Ojczyzna, 4 lip 14:00',
+        'Add Ojczyzna, 4 Jul 14:00, to calendar',
       );
     });
   });

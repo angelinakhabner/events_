@@ -21,7 +21,7 @@ export function FilterBar({ filters, onChange }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 py-4">
-      <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Kategorie">
+      <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Categories">
         {CATEGORIES.map((c) => {
           const active = filters.categories?.includes(c) ?? false;
           return (
@@ -41,14 +41,14 @@ export function FilterBar({ filters, onChange }: Props) {
       </div>
 
       <label className="tag flex items-center gap-2">
-        Od
+        From
         <select
-          aria-label="Od godziny"
+          aria-label="Start hour"
           value={filters.startHour ?? ''}
           onChange={(e) => setHour('startHour', e.target.value)}
           className="field-sm text-[11px] font-bold uppercase cursor-pointer"
         >
-          <option value="">dowolna</option>
+          <option value="">any</option>
           {Array.from({ length: 24 }, (_, h) => (
             <option key={h} value={h}>{`${h.toString().padStart(2, '0')}:00`}</option>
           ))}
@@ -56,14 +56,14 @@ export function FilterBar({ filters, onChange }: Props) {
       </label>
 
       <label className="tag flex items-center gap-2">
-        Do
+        Until
         <select
-          aria-label="Do godziny"
+          aria-label="End hour"
           value={filters.endHour ?? ''}
           onChange={(e) => setHour('endHour', e.target.value)}
           className="field-sm text-[11px] font-bold uppercase cursor-pointer"
         >
-          <option value="">dowolna</option>
+          <option value="">any</option>
           {Array.from({ length: 24 }, (_, h) => (
             <option key={h} value={h}>{`${h.toString().padStart(2, '0')}:00`}</option>
           ))}

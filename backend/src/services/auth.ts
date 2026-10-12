@@ -68,11 +68,11 @@ export async function requestMagicLink(
     const send = opts.send ?? sendEmail;
     await send({
       to: email,
-      subject: 'Twój link do logowania w AFISZ',
+      subject: 'Your AFISZ login link',
       html:
-        `<p>Kliknij, aby zalogować się do AFISZ:</p>` +
+        `<p>Click to log in to AFISZ:</p>` +
         `<p><a href="${link}">${link}</a></p>` +
-        `<p>Link jest ważny przez 15 minut i działa jeden raz. Jeśli to nie Ty o niego prosiłeś(-aś), zignoruj tę wiadomość.</p>`,
+        `<p>The link is valid for 15 minutes and can be used once. If you didn't request it, ignore this email.</p>`,
     });
     emailSent = true;
   } else {

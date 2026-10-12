@@ -35,13 +35,13 @@ export function moveVenue(shown: LayoutVenue[], order: string[], id: string, ste
 const GROUPINGS: { value: NewsletterGrouping; label: string; hint: string }[] = [
   {
     value: 'event',
-    label: 'Po wydarzeniu',
-    hint: 'Każdy tytuł raz, a pod nim miejsca, w których jest grany — w Twojej kolejności.',
+    label: 'By event',
+    hint: 'Each title once, with the venues showing it underneath — in your order.',
   },
   {
     value: 'venue',
-    label: 'Po miejscu',
-    hint: 'W każdej kategorii osobny blok dla każdego miejsca, z tym, co tam jest — w Twojej kolejności.',
+    label: 'By venue',
+    hint: 'In each category, a block per venue with what is on there — in your order.',
   },
 ];
 
@@ -68,9 +68,9 @@ export function NewsletterLayout({
 
   return (
     <div className="mt-5">
-      <p className="label-caps mb-2">Układ wydania</p>
-      {/* Same equal-width segmented control as "Dokąd trafia" (GOI-115). */}
-      <div role="radiogroup" aria-label="Układ wydania" className="grid grid-cols-2 border-2 border-ink max-w-[420px]">
+      <p className="label-caps mb-2">Layout</p>
+      {/* Same equal-width segmented control as "Where it goes" (GOI-115). */}
+      <div role="radiogroup" aria-label="Layout" className="grid grid-cols-2 border-2 border-ink max-w-[420px]">
         {GROUPINGS.map((g, i) => {
           const active = groupBy === g.value;
           return (
@@ -93,8 +93,8 @@ export function NewsletterLayout({
 
       {shown.length > 1 ? (
         <div className="mt-5">
-          <p className="label-caps mb-2">Kolejność miejsc</p>
-          <ol aria-label="Kolejność miejsc" className="max-w-[420px] border-t-2 border-ink">
+          <p className="label-caps mb-2">Venue order</p>
+          <ol aria-label="Venue order" className="max-w-[420px] border-t-2 border-ink">
             {shown.map((v, i) => (
               <li key={v.id} className="flex items-center gap-3 border-b border-rule py-1.5">
                 <span className="w-5 text-right text-xs font-extrabold tabular-nums text-faint">{i + 1}</span>
@@ -102,7 +102,7 @@ export function NewsletterLayout({
                 <button
                   type="button"
                   className="act act-sm"
-                  aria-label={`Przesuń ${v.name} wyżej`}
+                  aria-label={`Move ${v.name} up`}
                   disabled={i === 0}
                   onClick={() => onOrder(moveVenue(venues, order, v.id, -1))}
                 >
@@ -111,7 +111,7 @@ export function NewsletterLayout({
                 <button
                   type="button"
                   className="act act-sm"
-                  aria-label={`Przesuń ${v.name} niżej`}
+                  aria-label={`Move ${v.name} down`}
                   disabled={i === shown.length - 1}
                   onClick={() => onOrder(moveVenue(venues, order, v.id, 1))}
                 >
@@ -121,7 +121,7 @@ export function NewsletterLayout({
             ))}
           </ol>
           <p className="mt-2 text-xs text-faint max-w-[520px]">
-            W tej kolejności idą bloki miejsc, a przy tytule — miejsca, w których jest grany.
+            Venue blocks come in this order, and so do the venues listed under a title.
           </p>
         </div>
       ) : null}

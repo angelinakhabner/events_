@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { VenuePickerModal } from './VenuePickerModal';
 import type { VenueFilterOption, VenueFilterStatus } from '@afisz/shared';
 import { venueStatusNote } from '@afisz/shared';
-import { plural } from '../lib/format';
 
 /**
  * The fourth filter row: which venues, under the selected category (GOI-76).
@@ -77,7 +76,7 @@ function Row({ venues, selected, onChange, category, signedIn }: Omit<VenueBarPr
   return (
     <div
       role="group"
-      aria-label="Filtruj według miejsca"
+      aria-label="Filter by venue"
       className="scroll-x flex flex-nowrap md:flex-wrap items-center gap-x-4 gap-y-2 pb-3"
     >
       {/* GOI-89: this one opens the full list rather than clearing the
@@ -100,7 +99,7 @@ function Row({ venues, selected, onChange, category, signedIn }: Omit<VenueBarPr
         onKeyDown={(e) => onKeyDown(e, 0)}
         className={chipClass(all, false)}
       >
-        Wszystkie miejsca <span className="opacity-70">{total}</span>
+        All venues <span className="opacity-70">{total}</span>
         <span aria-hidden className="ml-1.5 text-[8px] align-middle">▼</span>
       </button>
 
@@ -158,7 +157,7 @@ const VenueChip = ({
       // §7: the count belongs in the accessible name, and the status has to be
       // readable as text — a grey chip says nothing to a screen reader, and
       // says nothing to anyone who can't tell this grey from that grey.
-      aria-label={`${venue.name}, ${venue.count} ${plural(venue.count, 'wydarzenie', 'wydarzenia', 'wydarzeń')}${
+      aria-label={`${venue.name}, ${venue.count} event${venue.count === 1 ? '' : 's'}${
         note ? `. ${note}` : ''
       }`}
       aria-description={note ?? undefined}

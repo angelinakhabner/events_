@@ -11,9 +11,7 @@ import {
 import { trpc } from '../lib/trpc';
 import { newsletterApiIsStale, OLDER_API, readableApiError } from '../lib/api-error';
 import { downloadBase64, downloadText } from '../lib/download';
-import { categoryOrTagLabel, pad, plural } from '../lib/format';
-
-const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+import { categoryOrTagLabel, pad } from '../lib/format';
 import {
   briefSummary, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
 } from '../lib/newsletter';
@@ -27,13 +25,13 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h);
  *  send times are ones it can actually honour. */
 const MINUTES = Array.from({ length: 60 }, (_, m) => m);
 const WEEKDAYS = [
-  { value: 1, label: 'Poniedziałek' },
-  { value: 2, label: 'Wtorek' },
-  { value: 3, label: 'Środa' },
-  { value: 4, label: 'Czwartek' },
-  { value: 5, label: 'Piątek' },
-  { value: 6, label: 'Sobota' },
-  { value: 0, label: 'Niedziela' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+  { value: 0, label: 'Sunday' },
 ];
 
 /** 1-28. Capped so a monthly newsletter has an issue in February too. */
@@ -45,23 +43,17 @@ const DAYS_OF_MONTH = Array.from({ length: 28 }, (_, i) => i + 1);
  * promise the sender could not keep.
  */
 const RULE_CADENCES: { value: NewsletterRuleCadence; label: string }[] = [
-  { value: 'every_issue', label: 'W każdym wydaniu' },
-  { value: 'weekly', label: 'Raz w tygodniu' },
-  { value: 'monthly', label: 'Raz w miesiącu' },
+  { value: 'every_issue', label: 'Every issue' },
+  { value: 'weekly', label: 'Once a week' },
+  { value: 'monthly', label: 'Once a month' },
 ];
 
-/** "1.", "2.", "23." — for the day-of-month picker; Polish writes an
- *  ordinal as the number and a full stop. */
+/** "1st", "2nd", "23rd" — for the day-of-month picker. */
 function ordinal(n: number): string {
-  return `${n}.`;
+  const rest = n % 100;
+  if (rest >= 11 && rest <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 }
-
-/** The newsletter's rhythm as an adjective, for sentences about it. */
-const CADENCE_ADJECTIVE: Record<NewsletterSendCadence, string> = {
-  daily: 'codzienny',
-  weekly: 'cotygodniowy',
-  monthly: 'comiesięczny',
-};
 
 /** How many days a rule's section will cover, given the envelope carrying it
  *  — the number the days field shows as its placeholder. */
@@ -75,7 +67,7 @@ function deriveWindowDays(
 
 /** "1 day" / "7 days". */
 function daysPhrase(n: number): string {
-  return `${n} ${plural(n, 'dzień', 'dni', 'dni')}`;
+  return n === 1 ? '1 day' : `${n} days`;
 }
 
 /** Small inline clock, so the send time reads as a time at a glance. */
@@ -145,7 +137,7 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
       <section>
         <PanelHeading title="Newsletter" />
         <ErrorState
-          message="Nie udało się wczytać ustawień newslettera."
+          message="Couldn't load your newsletter settings."
           onRetry={() => { void settings.refetch(); void venues.refetch(); }}
         />
       </section>
@@ -206,7 +198,7 @@ export function NewsletterPicker({
   onPick: (id: string) => void;
 }) {
   return (
-    <nav aria-label="Twoje newslettery" className="mb-6 flex flex-wrap gap-2.5">
+    <nav aria-label="Your newsletters" className="mb-6 flex flex-wrap gap-2.5">
       {newsletters.map((n) => {
         const active = n.id === current;
         return (
@@ -222,7 +214,7 @@ export function NewsletterPicker({
             <span className="block text-[13px] font-extrabold uppercase tracking-[0.5px]">{n.name}</span>
             <span className={`block text-[11px] font-semibold ${active ? 'text-white/75' : 'text-faint'}`}>
               {CADENCE_LABEL[n.sendCadence]}
-              {n.enabled ? '' : ' · wstrzymany'}
+              {n.enabled ? '' : ' · paused'}
             </span>
           </button>
         );
@@ -235,16 +227,16 @@ export function NewsletterPicker({
           current === NEW ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'
         }`}
       >
-        + Nowy newsletter
+        + New newsletter
       </button>
     </nav>
   );
 }
 
 const CADENCE_LABEL: Record<NewsletterSendCadence, string> = {
-  daily: 'Codziennie',
-  weekly: 'Co tydzień',
-  monthly: 'Co miesiąc',
+  daily: 'Every day',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
 };
 
 /**
@@ -264,10 +256,10 @@ const CADENCE_LABEL: Record<NewsletterSendCadence, string> = {
 function StaleApiBanner() {
   return (
     <div role="alert" className="mb-6 border-3 border-accent bg-panel p-4">
-      <p className="label-form text-accent">Newsletter jest teraz niedostępny</p>
+      <p className="label-form text-accent">Newsletter unavailable right now</p>
       <p className="mt-2 max-w-prose text-sm font-semibold">
-        Zapisywanie i generowanie nie zadziałają: {OLDER_API} Do tego czasu poniższe ustawienia
-        są pokazane tak, jak odczytuje je ta strona, i mogą nie zgadzać się z zapisanymi.
+        Saving and generating will both fail: {OLDER_API} Until then the settings below are
+        shown as this page reads them, and may not match what is stored.
       </p>
     </div>
   );
@@ -303,7 +295,7 @@ function NewsletterForm({
   onCreated?: (created: NewsletterSettings) => void;
   onDeleted?: () => void;
 }) {
-  const [name, setName] = useState(saved?.name ?? (picker ? 'Nowy newsletter' : 'Newsletter'));
+  const [name, setName] = useState(saved?.name ?? (picker ? 'New newsletter' : 'Newsletter'));
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
   const [recipientName, setRecipientName] = useState(saved?.recipientName ?? '');
   const [delivery, setDelivery] = useState<NewsletterDelivery>(saved?.delivery ?? 'email');
@@ -347,7 +339,7 @@ function NewsletterForm({
       venues: venues.filter((v) => v.listId === f.id),
     }));
     const unfiled = venues.filter((v) => !folders.some((f) => f.id === v.listId));
-    if (unfiled.length) groups.push({ id: null, name: 'Bez folderu', venues: unfiled });
+    if (unfiled.length) groups.push({ id: null, name: 'Unfiled', venues: unfiled });
     return groups.filter((g) => g.venues.length > 0);
   }, [venues, folders]);
 
@@ -559,7 +551,7 @@ function NewsletterForm({
       <PanelHeading title="Newsletter" blurb={NEWSLETTER_BLURB} rule={false} />
       {picker}
       <p className={`${picker ? '' : '-mt-3 '}mb-5 md:mb-6 max-w-[520px] text-sm md:text-base font-semibold text-ink`}>
-        <span className="label-form mr-2 text-faint">Twój</span>
+        <span className="label-form mr-2 text-faint">Yours</span>
         {summary}
       </p>
 
@@ -574,7 +566,7 @@ function NewsletterForm({
         {/* What tells two newsletters apart in the row above (GOI-126). */}
         <div className="px-5 pt-4 pb-4 md:px-0 md:pt-5 md:pb-5">
           <label className="label-form mb-1.5" htmlFor="newsletter-title">
-            Nazwa newslettera
+            Newsletter name
           </label>
           <input
             id="newsletter-title"
@@ -582,25 +574,25 @@ function NewsletterForm({
             maxLength={60}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="np. Kino codziennie"
+            placeholder="e.g. Daily cinema"
             className="field max-w-[20rem]"
           />
         </div>
 
         <div className="px-5 pb-5 md:px-0">
           <span className="label-form mb-1.5 block" id="newsletter-design-label">
-            Wygląd
+            Design
           </span>
           <DesignChoice value={design} onChange={setDesign} />
         </div>
 
-        <FormSection step={1} label="Dokąd trafia">
+        <FormSection step={1} label="Where it goes">
           <DeliveryChoice value={delivery} onChange={setDelivery} />
 
           <div className="mt-5 flex flex-wrap gap-5">
             <div className="flex-1 min-w-[14rem]">
               <label className="label-form mb-1.5" htmlFor="newsletter-email">
-                Adres e-mail
+                Email address
               </label>
               <input
                 id="newsletter-email"
@@ -608,24 +600,24 @@ function NewsletterForm({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="ty@przyklad.pl"
+                placeholder="you@example.com"
                 className="field"
               />
             </div>
             <div className="flex-1 min-w-[10rem]">
               <label className="label-form mb-1.5" htmlFor="newsletter-name">
-                Twoje imię <span className="font-semibold text-faint">(opcjonalnie)</span>
+                Your name <span className="font-semibold text-faint">(optional)</span>
               </label>
               <input
                 id="newsletter-name"
                 type="text"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
-                placeholder="Imię"
+                placeholder="First name"
                 className="field"
               />
               <p className="mt-1.5 text-xs text-faint">
-                Newsletter zaczyna się od Twojego imienia (&bdquo;{recipientName.trim() || '…'} — …&rdquo;) — zostaw puste, żeby je pominąć.
+                The brief opens with &ldquo;Hi {recipientName.trim() || '…'}&rdquo; — leave it empty to skip the name.
               </p>
             </div>
           </div>
@@ -635,8 +627,8 @@ function NewsletterForm({
               who chose the drive. */}
           {!deliversByEmail(delivery) ? (
             <p className="mt-3 text-xs text-faint">
-              Przy tym ustawieniu nic nie jest wysyłane e-mailem. Adres pozostaje adresem Twojego konta,
-              a imię nadal pojawia się na początku PDF.
+              Nothing is emailed with this setting. The address stays as your account&rsquo;s, and
+              the name is still used to open the PDF.
             </p>
           ) : null}
 
@@ -645,11 +637,11 @@ function NewsletterForm({
 
         <FormSection
           step={2}
-          label="Miejsca z moich miejsc"
+          label="Venues from my venues"
           note={
             venueIds.length === 0
-              ? 'To miejsca, które obserwujesz, pogrupowane w foldery. Zaznacz te, o których chcesz dostawać informacje; jeśli nic nie zaznaczysz, newsletter obejmie wszystkie. Zaznaczanie zawęża tylko newsletter — Twoje foldery się nie zmieniają.'
-              : `Newsletter obejmuje ${venueIds.length} z Twoich miejsc. Zaznaczanie zawęża tylko newsletter: Twoje foldery się nie zmieniają, a odznaczone tu miejsce nadal jest w folderze.`
+              ? 'These are the venues you follow, in their folders. Tick the specific ones you want briefed on; leave everything unticked and the newsletter covers all of them. Ticking narrows the newsletter only — your folders are not changed.'
+              : `Briefing on ${venueIds.length} of your venues. Ticking narrows the newsletter only: your folders are not changed, and a venue unticked here is still in the folder.`
           }
         >
           {byFolder.map((folder) => (
@@ -659,7 +651,7 @@ function NewsletterForm({
                 {/* GOI-102: adding a venue is the folder's job, not this
                     form's, so the form points at it rather than growing a
                     second way to do it that could disagree. */}
-                <a href="/my?tab=venues" className="act act-sm">Dodaj miejsca</a>
+                <a href="/my?tab=venues" className="act act-sm">Add venues</a>
               </p>
               <div className="flex flex-wrap gap-x-5 gap-y-2.5">
                 {folder.venues.map((v) => (
@@ -677,7 +669,7 @@ function NewsletterForm({
             </div>
           ))}
           {venues.length === 0 ? (
-            <span className="text-sm text-muted">Najpierw dodaj miejsca w sekcji &bdquo;Moje miejsca&rdquo;.</span>
+            <span className="text-sm text-muted">Add venues under &ldquo;My venues&rdquo; first.</span>
           ) : (
             <NewsletterLayout
               groupBy={groupBy}
@@ -694,16 +686,16 @@ function NewsletterForm({
         {/* GOI-102 §1. The envelope, stated on its own and before the
             contents: how often an issue arrives is a different question from
             what goes in it, and the two used to be one control. */}
-        <FormSection step={3} label="Kiedy" note="Jak często przychodzi wydanie. Co się w nim znajdzie, ustawisz niżej.">
+        <FormSection step={3} label="When" note="How often an issue arrives. What goes in it is set below.">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-3.5">
             <span className="flex items-center gap-2.5">
-              <span className="label-caps">Wysyłka</span>
+              <span className="label-caps">Send</span>
               <ScheduleToggle value={sendCadence} onChange={setSendCadence} />
             </span>
 
             {sendCadence === 'weekly' ? (
               <span className="flex items-center gap-2.5">
-                <label className="label-caps" htmlFor="newsletter-weekday">Dzień</label>
+                <label className="label-caps" htmlFor="newsletter-weekday">On</label>
                 <select
                   id="newsletter-weekday"
                   value={sendWeekday}
@@ -719,7 +711,7 @@ function NewsletterForm({
 
             {sendCadence === 'monthly' ? (
               <span className="flex items-center gap-2.5">
-                <label className="label-caps" htmlFor="newsletter-day-of-month">Dzień</label>
+                <label className="label-caps" htmlFor="newsletter-day-of-month">On</label>
                 <select
                   id="newsletter-day-of-month"
                   value={sendDayOfMonth}
@@ -738,12 +730,12 @@ function NewsletterForm({
                 time reads as a single control rather than two dropdowns that
                 happen to be adjacent. */}
             <span className="flex items-center gap-2.5">
-              <span className="label-caps">O</span>
+              <span className="label-caps">At</span>
               <span className="inline-flex items-stretch border-2 border-ink bg-white">
                 <span className="flex items-center border-r-2 border-ink px-2.5">
                   <ClockIcon />
                 </span>
-                <label className="sr-only" htmlFor="newsletter-send-hour">Godzina</label>
+                <label className="sr-only" htmlFor="newsletter-send-hour">Hour</label>
                 <select
                   id="newsletter-send-hour"
                   value={sendHour}
@@ -755,7 +747,7 @@ function NewsletterForm({
                   ))}
                 </select>
                 <span aria-hidden className="flex items-center px-1 text-xs font-extrabold">:</span>
-                <label className="sr-only" htmlFor="newsletter-send-minute">Minuta</label>
+                <label className="sr-only" htmlFor="newsletter-send-minute">Minute</label>
                 <select
                   id="newsletter-send-minute"
                   value={sendMinute}
@@ -770,25 +762,25 @@ function NewsletterForm({
             </span>
           </div>
           <p className="mt-2.5 text-xs text-faint">
-            Czas warszawski — kolejne wydanie o {pad(sendHour)}:{pad(sendMinute)}
-            {sendCadence === 'weekly' ? `, dzień: ${WEEKDAYS.find((d) => d.value === sendWeekday)?.label.toLowerCase()}` : null}
-            {sendCadence === 'monthly' ? `, ${ordinal(sendDayOfMonth)} dnia miesiąca` : null}
-            {sendCadence === 'daily' ? ', codziennie' : null}.
+            Warsaw time — next issue at {pad(sendHour)}:{pad(sendMinute)}
+            {sendCadence === 'weekly' ? ` on ${WEEKDAYS.find((d) => d.value === sendWeekday)?.label}` : null}
+            {sendCadence === 'monthly' ? ` on the ${ordinal(sendDayOfMonth)} of the month` : null}
+            {sendCadence === 'daily' ? ', every day' : null}.
           </p>
         </FormSection>
 
         <FormSection
           step={4}
-          label="Co się w nim znajdzie, według kategorii"
-          note="Kategoria to nagłówek w newsletterze. Pochodzi z Twoich miejsc — z ich rodzaju (kino, teatr, muzea) i z tagów, które im nadasz. Każda ma własny rytm, szczegółowość i porę dnia: kino w każdym wydaniu w skrócie, muzea raz w miesiącu z pełnym opisem. Kategorie bez reguły się nie pojawiają."
+          label="What goes in it, per category"
+          note="A category is a heading in the brief, and it comes from your venues — their own kind (cinema, theatre, museums) and any tag you put on them. Each one gets its own rhythm, depth and time of day: cinema in every issue in brief, museums once a month with the full write-up. Nothing you don't add a rule for is listed."
         >
           {/* Named rather than silent: the reader chose those values, and a
               form that rewrites a choice without saying so is one they stop
               trusting (GOI-102). */}
           {reconciled.length > 0 ? (
             <p role="status" className="mb-3 border-l-3 border-accent pl-3 text-xs text-body">
-              {reconciled.join(', ')}: zmieniono na <strong>w każdym wydaniu</strong> —{' '}
-              {CADENCE_ADJECTIVE[sendCadence]} newsletter nie może zawierać kategorii częściej, niż sam przychodzi.
+              {reconciled.join(', ')} moved to <strong>every issue</strong> — a{' '}
+              {sendCadence} newsletter cannot carry a category more often than it goes out.
             </p>
           ) : null}
 
@@ -797,10 +789,10 @@ function NewsletterForm({
               {/* Column headings, desktop only: the rows stack below `md`, where
                   a five-column header would label nothing. */}
               <div className="hidden md:flex gap-3 label-form border-b-2 border-ink pb-2">
-                <span className="w-[110px] shrink-0">Kategoria</span>
-                <span className="w-[130px] shrink-0">W wydaniach</span>
-                <span className="w-[120px] shrink-0">Pora</span>
-                <span className="flex-1">Szczegółowość</span>
+                <span className="w-[110px] shrink-0">Category</span>
+                <span className="w-[130px] shrink-0">In issues</span>
+                <span className="w-[120px] shrink-0">Time</span>
+                <span className="flex-1">Depth</span>
                 <span className="w-[54px] shrink-0" />
               </div>
               <ul className="mb-3.5 list-none m-0 p-0">
@@ -820,32 +812,32 @@ function NewsletterForm({
 
           {emptyByConstruction ? (
             <p role="alert" className="mb-3 text-sm font-bold text-accent">
-              Ten newsletter byłby zawsze pusty. Dodaj kategorię albo włącz niżej zapisane wydarzenia.
+              This newsletter would always be empty. Add a category, or turn on saved events below.
             </p>
           ) : null}
 
           {allCategories.length === 0 ? (
             <p className="text-sm text-muted">
-              Kategorie pochodzą z Twoich miejsc i z nadanych im tagów — najpierw dodaj miejsce
-              w sekcji &bdquo;Moje miejsca&rdquo;.
+              Categories come from your venues and the tags you put on them — add a venue
+              under &ldquo;My venues&rdquo; first.
             </p>
           ) : unusedCategories.length > 0 ? (
             <>
-              <label className="sr-only" htmlFor="add-rule">Dodaj kategorię</label>
+              <label className="sr-only" htmlFor="add-rule">Add a category</label>
               <select
                 id="add-rule"
                 value=""
                 onChange={(e) => { if (e.target.value) addRule(e.target.value); }}
                 className="select-chevron border-0 bg-transparent py-3 pl-0 pr-6 text-xs font-bold uppercase tracking-[0.5px] text-accent"
               >
-                <option value="">+ Dodaj kategorię…</option>
+                <option value="">+ Add a category…</option>
                 {unusedCategories.map((c) => (
                   <option key={c} value={c}>{categoryOrTagLabel(c)}</option>
                 ))}
               </select>
             </>
           ) : (
-            <p className="text-sm text-muted">Każda kategoria ma już regułę.</p>
+            <p className="text-sm text-muted">Every category has a rule.</p>
           )}
         </FormSection>
 
@@ -853,7 +845,7 @@ function NewsletterForm({
             table above: this is a queue of events the reader already chose,
             escalating as they approach, and it inherits no cadence, depth or
             window from anything. */}
-        <FormSection step={5} label="Zapisane wydarzenia">
+        <FormSection step={5} label="Events you saved">
           {/* GOI-103: one decision, not four.
               GOI-101 shipped this block with a reminder horizon, a
               change-report switch and an urgent-send switch beneath the
@@ -865,15 +857,15 @@ function NewsletterForm({
               (`DEFAULT_WANT_TO_GO`) rather than making its internals the
               reader's problem. */}
           <p className="mb-3.5 max-w-[520px] text-xs text-faint">
-            Zapisane wydarzenia pojawiają się na początku każdego wydania, z przypomnieniem dzień
-            wcześniej i ostrzeżeniem o ostatniej szansie. Dajemy znać, gdy coś zostanie odwołane lub przeniesione.
+            Saved events appear at the top of every issue, with a reminder the day before and a
+            warning on the last chance to go. You are told if one is cancelled or moved.
           </p>
 
           <Check
             id="wtg-enabled"
             checked={wantToGo.enabled}
             onChange={(v) => setWantToGo((w) => ({ ...w, enabled: v }))}
-            label="Dołącz zapisane wydarzenia"
+            label="Include events I saved"
           />
         </FormSection>
 
@@ -889,7 +881,7 @@ function NewsletterForm({
               enabled ? 'text-accent' : 'text-muted hover:text-ink'
             }`}
           >
-            {enabled ? '● Newsletter włączony' : 'Włącz newsletter'}
+            {enabled ? '● Newsletter enabled' : 'Enable newsletter'}
           </button>
           <div className="flex w-full flex-col md:w-auto md:flex-row gap-3.5">
             <button
@@ -897,7 +889,7 @@ function NewsletterForm({
               disabled={save.isPending || emptyByConstruction}
               className="btn-outline text-center"
             >
-              {save.isPending ? 'Zapisywanie…' : 'Zaplanuj newsletter'}
+              {save.isPending ? 'Scheduling…' : 'Schedule newsletter'}
             </button>
             <button
               type="button"
@@ -909,7 +901,7 @@ function NewsletterForm({
               disabled={preview.isPending || emptyByConstruction}
               className="btn-fill text-center"
             >
-              {preview.isPending ? 'Generowanie…' : 'Wygeneruj teraz'}
+              {preview.isPending ? 'Generating…' : 'Generate now'}
             </button>
           </div>
           {/* Only a saved newsletter has anything to delete; an unsaved one
@@ -919,13 +911,13 @@ function NewsletterForm({
               type="button"
               disabled={remove.isPending}
               onClick={() => {
-                if (window.confirm(`Usunąć „${saved.name}”? Nic więcej z niego nie zostanie wysłane.`)) {
+                if (window.confirm(`Delete “${saved.name}”? Nothing more will be sent from it.`)) {
                   remove.mutate({ id: saved.id });
                 }
               }}
               className="bg-transparent border-0 p-0 cursor-pointer text-xs font-bold uppercase tracking-[0.5px] text-muted hover:text-accent"
             >
-              {remove.isPending ? 'Usuwanie…' : 'Usuń ten newsletter'}
+              {remove.isPending ? 'Deleting…' : 'Delete this newsletter'}
             </button>
           ) : null}
           {remove.error ? (
@@ -940,7 +932,7 @@ function NewsletterForm({
         <SaveState
           autosave={!!saved}
           dirty={bodyKey !== lastSent}
-          blocked={saved && bodyKey !== lastSent && !emailOk ? 'Zmiany zapiszą się, gdy adres e-mail będzie poprawny.' : null}
+          blocked={saved && bodyKey !== lastSent && !emailOk ? 'Changes will save once the email address is valid.' : null}
           pending={save.isPending}
           justSaved={justSaved}
           error={readableApiError(save.error?.message, NEWSLETTER_FIELDS)}
@@ -980,9 +972,9 @@ function DeliveryChoice({
   onChange: (v: NewsletterDelivery) => void;
 }) {
   const options: { value: NewsletterDelivery; label: string; hint: string }[] = [
-    { value: 'email', label: 'E-mail', hint: 'Newsletter trafia do Twojej skrzynki.' },
-    { value: 'drive', label: 'Dysk', hint: 'Zapisywany jako PDF. Nic nie jest wysyłane e-mailem.' },
-    { value: 'both', label: 'Oba', hint: 'Wysyłany e-mailem i dodatkowo zapisywany jako PDF.' },
+    { value: 'email', label: 'Email', hint: 'The brief arrives in your inbox.' },
+    { value: 'drive', label: 'Drive', hint: 'Filed as a PDF. Nothing is emailed.' },
+    { value: 'both', label: 'Both', hint: 'Emailed, and filed as a PDF as well.' },
   ];
   const current = options.find((o) => o.value === value);
 
@@ -999,7 +991,7 @@ function DeliveryChoice({
       */}
       <div
         role="radiogroup"
-        aria-label="Jak go wysyłać"
+        aria-label="How to send it"
         className="grid grid-cols-3 border-2 border-ink max-w-[420px]"
       >
         {options.map((o, i) => {
@@ -1044,13 +1036,13 @@ function DesignChoice({
   const options: { value: NewsletterDesign; label: string; hint: string }[] = [
     {
       value: 'afiszka',
-      label: 'Nowy AFISZ.KA',
-      hint: 'Pierwsza strona z wyborem na dziś i Twoimi zapisanymi wydarzeniami, potem pełny program ułożony według kategorii — w e-mailu i w PDF.',
+      label: 'New AFISZ.KA',
+      hint: 'A front page with today’s picks and the events you saved, then the full programme by category — in the email and the PDF.',
     },
     {
       value: 'classic',
-      label: 'Klasyczny',
-      hint: 'Dotychczasowy newsletter: jedna lista pod czarnym nagłówkiem.',
+      label: 'Classic',
+      hint: 'The newsletter as it was: one list under a black masthead.',
     },
   ];
   const current = options.find((o) => o.value === value);
@@ -1112,16 +1104,16 @@ function DriveRequiredNote() {
     if (!status.data.available) {
       return (
         <Note alert>
-          W tej instalacji dyski nie są dostępne, więc nic nie zostanie zapisane. Wybierz
-          &bdquo;E-mail&rdquo;.
+          Drives aren&rsquo;t available on this deployment, so nothing can be filed. Choose
+          &ldquo;Email&rdquo; instead.
         </Note>
       );
     }
     if (status.data.connections.length === 0) {
       return (
         <Note alert>
-          Nie połączono jeszcze żadnego dysku, więc nie ma gdzie zapisać PDF — połącz go niżej, w sekcji
-          &bdquo;Zapisuj newslettery na dysku&rdquo;. Do tego czasu nic nie zostanie zapisane.
+          No drive is connected yet, so there is nowhere to file the PDF — connect one under
+          &ldquo;Save briefs to a drive&rdquo; below. Until you do, no brief will be filed.
         </Note>
       );
     }
@@ -1132,8 +1124,8 @@ function DriveRequiredNote() {
   // not nothing either.
   return (
     <Note>
-      Newslettery trafiają na dysk połączony niżej, w sekcji &bdquo;Zapisuj newslettery na dysku&rdquo;.
-      Bez połączonego dysku nic nie jest zapisywane.
+      Briefs are filed to the drive you connect under &ldquo;Save briefs to a drive&rdquo; below.
+      With none connected, nothing is filed.
     </Note>
   );
 }
@@ -1180,7 +1172,7 @@ function RuleRow({
   // What the reader would be overriding, shown as placeholder text so the
   // field is answerable without arithmetic.
   const derived = deriveWindowDays(sendCadence, rule);
-  const why = `${capitalise(CADENCE_ADJECTIVE[sendCadence])} newsletter nie może zawierać kategorii częściej, niż sam przychodzi.`;
+  const why = `A ${sendCadence} newsletter cannot carry a category more often than it goes out.`;
 
   return (
     <li className="flex flex-wrap items-center gap-3 py-2.5 rule-soft text-[13px]">
@@ -1190,7 +1182,7 @@ function RuleRow({
         {label}
       </span>
 
-      <label className="sr-only" htmlFor={`rule-cadence-${index}`}>Jak często: {label}</label>
+      <label className="sr-only" htmlFor={`rule-cadence-${index}`}>How often for {label}</label>
       <select
         id={`rule-cadence-${index}`}
         value={rule.cadence}
@@ -1207,39 +1199,39 @@ function RuleRow({
         })}
       </select>
 
-      <label className="sr-only" htmlFor={`rule-time-${index}`}>Pora dnia: {label}</label>
+      <label className="sr-only" htmlFor={`rule-time-${index}`}>Time of day for {label}</label>
       <select
         id={`rule-time-${index}`}
         value={rule.timeFilter}
         onChange={(e) => onPatch({ timeFilter: e.target.value as NewsletterTimeFilter })}
         className="select-flat md:w-[120px] md:shrink-0"
       >
-        <option value="any">Każda pora</option>
-        <option value="after_17">Po 17:00</option>
-        <option value="after_18">Po 18:00</option>
-        <option value="after_19">Po 19:00</option>
-        <option value="after_20">Po 20:00</option>
+        <option value="any">Any time</option>
+        <option value="after_17">After 17:00</option>
+        <option value="after_18">After 18:00</option>
+        <option value="after_19">After 19:00</option>
+        <option value="after_20">After 20:00</option>
       </select>
 
-      <label className="sr-only" htmlFor={`rule-detail-${index}`}>Opis: {label}</label>
+      <label className="sr-only" htmlFor={`rule-detail-${index}`}>Description for {label}</label>
       <select
         id={`rule-detail-${index}`}
         value={rule.detail}
         onChange={(e) => onPatch({ detail: e.target.value as NewsletterDetail })}
         className="select-flat md:flex-1"
       >
-        <option value="line">Jedna linijka</option>
-        <option value="short">Krótki opis</option>
-        <option value="full">Pełny opis</option>
+        <option value="line">One line</option>
+        <option value="short">Short description</option>
+        <option value="full">Full description</option>
       </select>
 
       <button
         type="button"
-        aria-label={`Usuń ${label}`}
+        aria-label={`Remove ${label}`}
         onClick={onRemove}
         className="act act-sm ml-auto md:w-[54px] md:shrink-0 md:text-left"
       >
-        Usuń
+        Remove
       </button>
 
       {/* A weekly category inside a daily newsletter is the one case that
@@ -1248,7 +1240,7 @@ function RuleRow({
       {sendCadence === 'daily' && rule.cadence === 'weekly' ? (
         <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
           <label className="text-xs text-faint" htmlFor={`rule-weekday-${index}`}>
-            W wydaniu w dniu
+            In the issue on
           </label>
           <select
             id={`rule-weekday-${index}`}
@@ -1269,7 +1261,7 @@ function RuleRow({
       {rule.category === 'exhibition' ? (
         <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
           <label className="text-xs text-faint" htmlFor={`rule-museum-${index}`}>
-            Pokazuj
+            Show
           </label>
           <select
             id={`rule-museum-${index}`}
@@ -1277,9 +1269,9 @@ function RuleRow({
             onChange={(e) => onPatch({ museumContent: e.target.value as NewsletterMuseumContent })}
             className="select-flat py-[7px]"
           >
-            <option value="both">Wystawy i wydarzenia</option>
-            <option value="exhibitions">Tylko wystawy</option>
-            <option value="events">Tylko wydarzenia</option>
+            <option value="both">Exhibitions and events</option>
+            <option value="exhibitions">Exhibitions only</option>
+            <option value="events">Events only</option>
           </select>
         </span>
       ) : null}
@@ -1292,7 +1284,7 @@ function RuleRow({
       <span className="flex w-full flex-wrap items-center gap-2 pl-0 md:pl-[122px] text-xs text-faint">
         {showLookahead ? (
           <>
-            <label htmlFor={`rule-lookahead-${index}`}>Każde wydanie pokazuje najbliższe</label>
+            <label htmlFor={`rule-lookahead-${index}`}>Each issue shows the next</label>
             <input
               id={`rule-lookahead-${index}`}
               type="number"
@@ -1305,20 +1297,20 @@ function RuleRow({
               }
               className="field w-[72px] py-1.5 text-[13px]"
             />
-            <span>{plural(Number(rule.lookaheadDays ?? derived), 'dzień', 'dni', 'dni')} programu ({label.toLowerCase()}).</span>
+            <span>days of {label.toLowerCase()}.</span>
           </>
         ) : (
           <>
             <span>
-              Każde wydanie pokazuje najbliższe {daysPhrase(derived)} programu ({label.toLowerCase()}).
+              Each issue shows the next {daysPhrase(derived)} of {label.toLowerCase()}.
             </span>
             <button
               type="button"
               onClick={() => setShowLookahead(true)}
               className="act act-sm"
-              aria-label={`Zmień, ile dni programu (${label}) pokazuje każde wydanie`}
+              aria-label={`Change how many days of ${label} each issue shows`}
             >
-              Zmień
+              Change
             </button>
           </>
         )}
@@ -1399,20 +1391,20 @@ function SaveState({
   if (error) {
     return <p role="alert" className="mt-3 text-sm text-accent whitespace-pre-line">{error}</p>;
   }
-  if (pending) return <p role="status" className="mt-3 text-sm text-muted">Zapisywanie…</p>;
-  if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Zapisano.</p>;
+  if (pending) return <p role="status" className="mt-3 text-sm text-muted">Saving…</p>;
+  if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Saved.</p>;
   if (blocked) return <p className="mt-3 text-sm text-faint">{blocked}</p>;
   if (autosave) {
     return (
       <p className="mt-3 text-sm text-faint">
-        {dirty ? 'Zapisywanie zmian…' : 'Zmiany zapisują się same.'}
+        {dirty ? 'Saving changes…' : 'Changes save automatically.'}
       </p>
     );
   }
   // A newsletter not created yet has nothing to autosave into.
   return (
     <p className="mt-3 text-sm text-faint">
-      Zmiany nie są zapisane, dopóki nie klikniesz <strong>Zaplanuj newsletter</strong>.
+      Changes here are not saved until you press <strong>Schedule newsletter</strong>.
     </p>
   );
 }
@@ -1444,12 +1436,12 @@ function ScheduleToggle({
   // envelope and the contents are separate, a monthly issue is an ordinary
   // choice: it carries every category that has anything to say, once a month.
   const options: { value: NewsletterSendCadence; label: string }[] = [
-    { value: 'daily', label: 'Codziennie' },
-    { value: 'weekly', label: 'Co tydzień' },
-    { value: 'monthly', label: 'Co miesiąc' },
+    { value: 'daily', label: 'Every day' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
   ];
   return (
-    <div role="radiogroup" aria-label="Jak często" className="flex border-2 border-ink">
+    <div role="radiogroup" aria-label="How often" className="flex border-2 border-ink">
       {options.map((o, i) => {
         const active = value === o.value;
         return (
@@ -1534,7 +1526,7 @@ function NewsletterPreview({
   if (error) {
     return (
       <p role="alert" className="mt-6 text-sm text-accent whitespace-pre-line">
-        Nie udało się wygenerować podglądu.{'\n'}{error}
+        Couldn&rsquo;t generate a preview.{'\n'}{error}
       </p>
     );
   }
@@ -1543,24 +1535,24 @@ function NewsletterPreview({
     <div className="mt-10">
       <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-3.5">
         <h3 className="label-form">
-          Podgląd{count !== null ? ` — ${count} ${plural(count, 'wydarzenie', 'wydarzenia', 'wydarzeń')}` : ''}
+          Preview{count !== null ? ` — ${count} event${count === 1 ? '' : 's'}` : ''}
         </h3>
         {/* Generating already saved the PDF; these are for when it got lost
             in the downloads folder, or the .html version is wanted instead. */}
         <div className="flex gap-3.5">
           {pdf ? (
             <button type="button" onClick={() => downloadPdf(pdf)} className="act act-sm">
-              Pobierz PDF
+              Download PDF
             </button>
           ) : null}
           <button type="button" onClick={() => downloadBrief(html)} className="act act-sm">
-            Pobierz .html
+            Download .html
           </button>
         </div>
       </div>
       <iframe
         data-testid="newsletter-preview"
-        title="Podgląd newslettera"
+        title="Newsletter preview"
         srcDoc={html}
         sandbox=""
         className="w-full max-w-[640px] h-[720px] border-3 border-ink bg-white"
@@ -1599,7 +1591,7 @@ function DriveCard() {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const outcome = hash.get('drive');
     if (!outcome) return;
-    if (outcome === 'error') setError(hash.get('message') || 'Nie udało się połączyć dysku.');
+    if (outcome === 'error') setError(hash.get('message') || 'Connecting the drive failed.');
     if (outcome === 'connected') void utils.my.newsletter.drive.status.invalidate();
     // Clear it so a refresh doesn't replay the banner.
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -1626,9 +1618,9 @@ function DriveCard() {
   if (!status.data.available) {
     return (
       <div className="mt-10 border-t-3 border-ink pt-6">
-        <h3 className="label-form">Zapisuj newslettery na dysku</h3>
+        <h3 className="label-form">Save briefs to a drive</h3>
         <p className="mt-2 text-sm text-muted">
-          Niedostępne w tej instalacji — Google nie jest skonfigurowany.
+          Not available on this deployment — Google isn&rsquo;t configured.
         </p>
       </div>
     );
@@ -1638,28 +1630,28 @@ function DriveCard() {
 
   return (
     <div className="mt-10 border-t-3 border-ink pt-6">
-      <h3 className="label-form">Zapisuj newslettery na dysku</h3>
+      <h3 className="label-form">Save briefs to a drive</h3>
       <p className="mt-2 max-w-prose text-sm text-muted">
-        Połącz dysk, a każdy newsletter może trafiać tam jako PDF, zgodnie z harmonogramem, do
-        wybranego folderu w głównym katalogu dysku. Czy zamiast e-maila, czy obok niego — to wybór
-        na górze tej strony. AFISZ widzi tylko pliki, które sam tam zapisał — nic więcej
-        z Twojego dysku.
+        Connect a drive and each brief can be filed there as a PDF, on its own schedule, in a
+        folder of your choosing at the root of the drive. Whether that happens instead of the
+        email or as well as it is the choice at the top of this page. AFISZ can only see files
+        it puts there itself — nothing else in your drive.
       </p>
 
       {google ? (
         <div className="mt-4 border-3 border-ink p-4">
           <p className="text-sm font-bold">
-            Połączono Dysk Google{google.accountEmail ? ` — ${google.accountEmail}` : ''}
+            Google Drive connected{google.accountEmail ? ` — ${google.accountEmail}` : ''}
           </p>
           <p className="mt-1 text-sm text-muted">
             {google.lastUploadAt
-              ? `Ostatni newsletter zapisano ${new Date(google.lastUploadAt).toLocaleDateString('pl-PL')}`
-              : 'Nie zapisano jeszcze żadnego newslettera'}
+              ? `Last brief filed ${new Date(google.lastUploadAt).toLocaleDateString()}`
+              : 'No brief filed yet'}
           </p>
           <FolderNameField current={google.folderName} />
           {google.lastError ? (
             <p className="mt-2 text-sm text-accent">
-              Ostatnie zapisywanie nie powiodło się: {google.lastError}
+              Last upload failed: {google.lastError}
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-3.5">
@@ -1669,7 +1661,7 @@ function DriveCard() {
               disabled={connect.isPending}
               className="act act-sm"
             >
-              Połącz ponownie
+              Reconnect
             </button>
             <button
               type="button"
@@ -1677,7 +1669,7 @@ function DriveCard() {
               disabled={disconnect.isPending}
               className="act act-sm"
             >
-              {disconnect.isPending ? 'Rozłączanie…' : 'Rozłącz'}
+              {disconnect.isPending ? 'Disconnecting…' : 'Disconnect'}
             </button>
           </div>
         </div>
@@ -1688,7 +1680,7 @@ function DriveCard() {
           disabled={connect.isPending}
           className="btn-outline mt-4 text-center"
         >
-          {connect.isPending ? 'Otwieranie Google…' : 'Połącz Dysk Google'}
+          {connect.isPending ? 'Opening Google…' : 'Connect Google Drive'}
         </button>
       )}
 
@@ -1721,8 +1713,8 @@ function FolderNameField({ current }: { current: string }) {
     onSuccess: async (res) => {
       setNote(
         res.recreated
-          ? 'Zapisano — folder powstanie przy następnym newsletterze.'
-          : 'Zmieniono nazwę na Twoim dysku.',
+          ? 'Saved — the folder is created with the next brief.'
+          : 'Renamed in your drive.',
       );
       await utils.my.newsletter.drive.status.invalidate();
     },
@@ -1760,13 +1752,13 @@ function FolderNameField({ current }: { current: string }) {
           disabled={!dirty || !trimmed || rename.isPending}
           className="act act-sm"
         >
-          {rename.isPending ? 'Zapisywanie…' : 'Zapisz'}
+          {rename.isPending ? 'Saving…' : 'Save'}
         </button>
       </div>
       {/* GOI-145: say where inside it a brief lands, so the subfolders are
           expected rather than a surprise. */}
       <p className="mt-2 text-xs text-faint">
-        W środku: folder na każdy miesiąc, a w nim Dzienne, Tygodniowe i Miesięczne.
+        Inside it: a folder for each month, and in each one Dzienne, Tygodniowe and Miesięczne (daily, weekly, monthly).
       </p>
       {rename.error ? (
         <p className="mt-2 text-sm text-accent">{rename.error.message}</p>

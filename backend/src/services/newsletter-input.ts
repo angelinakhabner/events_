@@ -93,14 +93,14 @@ export const newsletterSaveInput = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['sendWeekday'],
-        message: 'Cotygodniowy newsletter potrzebuje dnia tygodnia, w którym ma wychodzić.',
+        message: 'A weekly newsletter needs a day of the week to go out on.',
       });
     }
     if (v.sendCadence === 'monthly' && v.sendDayOfMonth == null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['sendDayOfMonth'],
-        message: 'Comiesięczny newsletter potrzebuje dnia miesiąca, w którym ma wychodzić.',
+        message: 'A monthly newsletter needs a day of the month to go out on.',
       });
     }
   })
@@ -114,8 +114,8 @@ export const newsletterSaveInput = z
           code: z.ZodIssueCode.custom,
           path: ['categoryRules', i, 'cadence'],
           message:
-            `${CADENCE_ADJECTIVE[v.sendCadence]} newsletter nie może zawierać kategorii ${cadenceWord(rule.cadence)} — ` +
-            'to częściej, niż wychodzi wydanie.',
+            `A ${v.sendCadence} newsletter cannot carry a category ${cadenceWord(rule.cadence)} — ` +
+            'that is more often than an issue goes out.',
         });
       }
     });
@@ -129,7 +129,7 @@ export const newsletterSaveInput = z
         code: z.ZodIssueCode.custom,
         path: ['categoryRules'],
         message:
-          'Ten newsletter byłby zawsze pusty. Dodaj kategorię albo włącz zapisane wydarzenia.',
+          'This newsletter would always be empty. Add a category, or turn on saved events.',
       });
     }
   })
@@ -149,16 +149,9 @@ export const newsletterSaveInput = z
   }));
 
 function cadenceWord(cadence: 'every_issue' | 'weekly' | 'monthly'): string {
-  if (cadence === 'weekly') return 'raz w tygodniu';
-  if (cadence === 'monthly') return 'raz w miesiącu';
-  return 'w każdym wydaniu';
+  if (cadence === 'weekly') return 'once a week';
+  if (cadence === 'monthly') return 'once a month';
+  return 'in every issue';
 }
-
-/** The newsletter's rhythm as the adjective a Polish sentence opens with. */
-const CADENCE_ADJECTIVE: Record<'daily' | 'weekly' | 'monthly', string> = {
-  daily: 'Codzienny',
-  weekly: 'Cotygodniowy',
-  monthly: 'Comiesięczny',
-};
 
 export type NewsletterSaveInput = z.infer<typeof newsletterSaveInput>;

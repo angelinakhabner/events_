@@ -204,9 +204,7 @@ export function problem(
     normalizedUrl,
     code,
     severity,
-    // The locale tunes how the page is *read* (which language's month names
-    // count as dates); the verdict is for the reader, and the site is Polish.
-    message: probeMessage(code, 'pl'),
+    message: probeMessage(code, locale),
   };
 }
 

@@ -36,23 +36,23 @@ describe('NewsletterLayout', () => {
   it('switches between grouping by event and by venue', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    const byVenue = screen.getByRole('radio', { name: 'Po miejscu' });
-    expect(screen.getByRole('radio', { name: 'Po wydarzeniu' })).toHaveAttribute('aria-checked', 'true');
+    const byVenue = screen.getByRole('radio', { name: 'By venue' });
+    expect(screen.getByRole('radio', { name: 'By event' })).toHaveAttribute('aria-checked', 'true');
     await user.click(byVenue);
     expect(byVenue).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText(/osobny blok dla każdego miejsca/)).toBeInTheDocument();
+    expect(screen.getByText(/a block per venue/)).toBeInTheDocument();
   });
 
   it('reorders the venues with the arrows', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await user.click(screen.getByRole('button', { name: 'Przesuń Teatr Powszechny wyżej' }));
-    const list = screen.getByRole('list', { name: 'Kolejność miejsc' });
+    await user.click(screen.getByRole('button', { name: 'Move Teatr Powszechny up' }));
+    const list = screen.getByRole('list', { name: 'Venue order' });
     expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       expect.stringContaining('Kino Muranów'),
       expect.stringContaining('Teatr Powszechny'),
       expect.stringContaining('Kinoteka'),
     ]);
-    expect(screen.getByRole('button', { name: 'Przesuń Kino Muranów wyżej' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Kino Muranów up' })).toBeDisabled();
   });
 });
