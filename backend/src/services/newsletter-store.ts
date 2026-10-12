@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type {
-  EventChangeType, NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail,
+  EventChangeType, NewsletterCategoryRule, NewsletterDelivery, NewsletterDesign, NewsletterDetail,
   NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter,
-  NewsletterWantToGo,
+  NewsletterGrouping, NewsletterWantToGo,
 } from '@afisz/shared';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { getDb, schema } from '../db/index.js';
@@ -26,11 +26,15 @@ export interface NewsletterSaveInput {
   recipientName?: string | null;
   /** Email, a filed PDF, or both. */
   delivery?: NewsletterDelivery;
+  /** Which layout the issue is drawn in. */
+  design?: NewsletterDesign;
   /** Which folder's venues; null keeps the folderless default config. */
   folderId?: string | null;
   name?: string;
   sendCadence: NewsletterSendCadence;
   venueIds: string[];
+  groupBy?: NewsletterGrouping;
+  venueOrder?: string[];
   beforeHour?: number | null;
   sendHour?: number;
   sendMinute?: number;
@@ -45,6 +49,9 @@ export interface NewsletterSaveInput {
 
 export interface NewsletterSubscription extends NewsletterSettings {
   userId: string;
+  /** Scheduled issues sent so far — the daily poster's "No. N" is this plus
+   *  one. Kept off `NewsletterSettings`: it is the sweep's, not the form's. */
+  issuesSent?: number;
 }
 
 export interface NewsletterStore {
@@ -115,6 +122,9 @@ function toRule(row: RuleRow): NewsletterCategoryRule {
     detail: row.depth as NewsletterDetail,
     timeFilter: row.timeFilter as NewsletterTimeFilter,
     lookaheadDays: row.lookaheadDays,
+    museumContent: row.museumContent === 'exhibitions' || row.museumContent === 'events'
+      ? row.museumContent
+      : 'both',
     sortOrder: row.sortOrder,
   };
 }
@@ -127,6 +137,7 @@ function toSettings(row: Row, rules: NewsletterCategoryRule[]): NewsletterSettin
     email: row.email,
     recipientName: row.recipientName,
     delivery: row.delivery as NewsletterDelivery,
+    design: row.design === 'afiszka' ? 'afiszka' : 'classic',
     sendCadence: row.sendCadence as NewsletterSendCadence,
     sendWeekday: row.sendWeekday,
     sendDayOfMonth: row.sendDayOfMonth,
@@ -134,6 +145,8 @@ function toSettings(row: Row, rules: NewsletterCategoryRule[]): NewsletterSettin
     sendMinute: row.sendMinute,
     timezone: row.timezone,
     venueIds: row.venueIds,
+    groupBy: row.groupBy === 'venue' ? 'venue' : 'event',
+    venueOrder: row.venueOrder,
     beforeHour: row.beforeHour,
     suppressEmptyIssues: row.suppressEmptyIssues,
     wantToGo: { ...DEFAULT_WANT_TO_GO, ...(row.wantToGo ?? {}) },
@@ -175,6 +188,8 @@ export function normaliseRules(
 ): NewsletterCategoryRule[] {
   return rules.map((r, i) => ({
     ...r,
+    // Only the museums rule has two kinds of thing to choose between.
+    museumContent: r.category === 'exhibition' ? (r.museumContent ?? 'both') : 'both',
     cadenceWeekday:
       sendCadence === 'daily' && r.cadence === 'weekly' ? (r.cadenceWeekday ?? 1) : null,
     sortOrder: r.sortOrder ?? i,
@@ -265,8 +280,11 @@ export class DbNewsletterStore implements NewsletterStore {
       email: input.email.trim(),
       recipientName: input.recipientName?.trim() || null,
       delivery: input.delivery ?? 'email',
+      design: input.design ?? 'classic',
       sendCadence: input.sendCadence,
       venueIds: input.venueIds,
+      groupBy: input.groupBy ?? 'event',
+      venueOrder: [...new Set(input.venueOrder ?? [])],
       beforeHour: input.beforeHour ?? null,
       sendHour: norm.sendHour,
       sendMinute: norm.sendMinute,
@@ -316,6 +334,7 @@ export class DbNewsletterStore implements NewsletterStore {
           depth: r.detail,
           timeFilter: r.timeFilter,
           lookaheadDays: r.lookaheadDays,
+          museumContent: r.museumContent ?? 'both',
           sortOrder: r.sortOrder,
         })),
       );
@@ -331,14 +350,18 @@ export class DbNewsletterStore implements NewsletterStore {
       .from(schema.newsletterSubscriptions)
       .where(eq(schema.newsletterSubscriptions.enabled, true));
     return Promise.all(
-      rows.map(async (r) => ({ userId: r.userId, ...toSettings(r, await this.rulesFor(r.id)) })),
+      rows.map(async (r) => ({
+        userId: r.userId,
+        issuesSent: r.issuesSent,
+        ...toSettings(r, await this.rulesFor(r.id)),
+      })),
     );
   }
 
   async markSent(configId: string, at: Date): Promise<void> {
     await getDb()
       .update(schema.newsletterSubscriptions)
-      .set({ lastSentAt: at })
+      .set({ lastSentAt: at, issuesSent: sql`${schema.newsletterSubscriptions.issuesSent} + 1` })
       .where(eq(schema.newsletterSubscriptions.id, configId));
   }
 
@@ -419,6 +442,7 @@ export class DbNewsletterStore implements NewsletterStore {
 export function stripUserId(sub: NewsletterSubscription): NewsletterSettings {
   const copy: Partial<NewsletterSubscription> = { ...sub };
   delete copy.userId;
+  delete copy.issuesSent;
   return copy as NewsletterSettings;
 }
 
@@ -482,6 +506,7 @@ export class InMemoryNewsletterStore implements NewsletterStore {
       email: input.email.trim(),
       recipientName: input.recipientName?.trim() || null,
       delivery: input.delivery ?? 'email',
+      design: input.design ?? 'classic',
       sendCadence: input.sendCadence,
       sendWeekday: norm.sendWeekday,
       sendDayOfMonth: norm.sendDayOfMonth,
@@ -489,12 +514,15 @@ export class InMemoryNewsletterStore implements NewsletterStore {
       sendMinute: norm.sendMinute,
       timezone: norm.timezone,
       venueIds: [...input.venueIds],
+      groupBy: input.groupBy ?? 'event',
+      venueOrder: [...new Set(input.venueOrder ?? [])],
       beforeHour: input.beforeHour ?? null,
       suppressEmptyIssues: norm.suppressEmptyIssues,
       wantToGo: norm.wantToGo,
       categoryRules: norm.categoryRules,
       enabled: input.enabled,
       lastSentAt: prev?.lastSentAt ?? null,
+      ...(prev?.issuesSent ? { issuesSent: prev.issuesSent } : {}),
     };
     if (prev) this.configs[this.configs.indexOf(prev)] = sub;
     else this.configs.push(sub);
@@ -507,7 +535,10 @@ export class InMemoryNewsletterStore implements NewsletterStore {
 
   async markSent(configId: string, at: Date): Promise<void> {
     const sub = this.configs.find((c) => c.id === configId);
-    if (sub) sub.lastSentAt = at.toISOString();
+    if (sub) {
+      sub.lastSentAt = at.toISOString();
+      sub.issuesSent = (sub.issuesSent ?? 0) + 1;
+    }
   }
 
   async markUrgentSent(configId: string, at: Date): Promise<void> {

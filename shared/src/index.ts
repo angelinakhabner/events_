@@ -42,6 +42,9 @@ export interface Event {
   venue?: EventVenue;
   title: string;
   description: string | null;
+  /** A paragraph about the work (GOI-139). Only on events fetched for the
+   *  newsletter, which prints it at "full" detail. */
+  longDescription?: string | null;
   startsAt: string;
   endsAt: string | null;
   /** See EventKind. Optional on the wire so older clients and the many test
@@ -76,6 +79,59 @@ export function eventKind(event: Pick<Event, 'kind'>): EventKind {
 /** True for a run over a date range rather than a single timed occurrence. */
 export function isExhibition(event: Pick<Event, 'kind'>): boolean {
   return eventKind(event) === 'exhibition';
+}
+
+/**
+ * A title reduced to what two scrapes of the same page agree on (GOI-133):
+ * case, accents' composed form, quote style and punctuation all vary between
+ * the model's readings of one listing, so none of them may tell two rows apart.
+ */
+export function titleKey(title: string): string {
+  return title
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Drop repeat listings of one exhibition (GOI-133).
+ *
+ * A run is one thing on for weeks, so "POLIN · Betty Q: Morte · until 30 Sep"
+ * printed twice is the same fact twice — it happens when a listing is read
+ * more than once (two calendar pages, two passes of the model) and the copies
+ * land under different keys, each with its own paraphrase of the blurb.
+ *
+ * Keyed on venue and normalised title only. The closing date is deliberately
+ * not part of the key: two readings that disagree about it are still one show,
+ * and two different exhibitions sharing a title at one venue at the same time
+ * does not happen. Timed rows pass through untouched — a play on three nights
+ * is three performances, and folding those is the newsletter's job, not this.
+ *
+ * The first copy wins, so a caller that sorted by opening keeps the earliest;
+ * a later copy only lends it a description it was missing.
+ */
+export function collapseDuplicateExhibitions<
+  T extends Pick<Event, 'venueId' | 'title' | 'kind' | 'description'>,
+>(events: T[]): T[] {
+  const kept = new Map<string, number>();
+  const out: T[] = [];
+  for (const e of events) {
+    if (!isExhibition(e)) {
+      out.push(e);
+      continue;
+    }
+    const key = `${e.venueId}::${titleKey(e.title)}`;
+    const at = kept.get(key);
+    if (at === undefined) {
+      kept.set(key, out.length);
+      out.push(e);
+    } else if (!out[at]!.description && e.description) {
+      out[at] = { ...out[at]!, description: e.description };
+    }
+  }
+  return out;
 }
 
 /** Subset of Venue carried inline on Event responses. */
@@ -237,6 +293,13 @@ export function timeFilterForHour(hour: number | null | undefined): NewsletterTi
  * one namespace deliberately (see `eventInCategory`): a tag is just another
  * name a venue answers to, and a rule does not need to know which kind it got.
  */
+/**
+ * What a museums section carries (GOI-146): runs and events together, or one
+ * of the two. "Museums" is two kinds of plan (GOI-122) and a reader may only
+ * want one in their newsletter.
+ */
+export type NewsletterMuseumContent = 'both' | 'exhibitions' | 'events';
+
 export interface NewsletterCategoryRule {
   category: string;
   cadence: NewsletterRuleCadence;
@@ -255,6 +318,8 @@ export interface NewsletterCategoryRule {
    * week. Null means "derive it", which is right almost always.
    */
   lookaheadDays: number | null;
+  /** The museums rule only (GOI-146); absent or any other rule means both. */
+  museumContent?: NewsletterMuseumContent;
   /** Section order within an issue. */
   sortOrder: number;
 }
@@ -299,6 +364,13 @@ export const DEFAULT_WANT_TO_GO: NewsletterWantToGo = {
  */
 export type NewsletterDelivery = 'email' | 'drive' | 'both';
 
+/**
+ * How a category's listing is arranged (GOI-141): one entry per title with
+ * every venue showing it underneath (`event`), or a block per venue with what
+ * is on there (`venue`).
+ */
+export type NewsletterGrouping = 'event' | 'venue';
+
 /** Does this delivery choice involve sending an email? */
 export function deliversByEmail(delivery: NewsletterDelivery): boolean {
   return delivery === 'email' || delivery === 'both';
@@ -308,6 +380,22 @@ export function deliversByEmail(delivery: NewsletterDelivery): boolean {
 export function deliversToDrive(delivery: NewsletterDelivery): boolean {
   return delivery === 'drive' || delivery === 'both';
 }
+
+/**
+ * How an issue looks — a reader's choice, per newsletter.
+ *
+ * - `classic` — the brief as it has been: the ruled-list email, and its PDF
+ *               (the daily poster for a daily issue, the list otherwise).
+ * - `afiszka` — the AFISZ.KA redesign ("Newsletter presentation redesign"
+ *               handoff): a front page with the picks and the reader's saved
+ *               events, then the listing laid out per category, in both the
+ *               email and the PDF, Daily for a daily newsletter and Outlook
+ *               for a weekly or monthly one.
+ *
+ * Both draw from the same sections, so switching changes how an issue looks
+ * and is laid out, never which events are in it.
+ */
+export type NewsletterDesign = 'classic' | 'afiszka';
 
 export interface NewsletterSettings {
   /** The config's own id. A reader may have one per folder (GOI-100). */
@@ -333,6 +421,8 @@ export interface NewsletterSettings {
   recipientName: string | null;
   /** Email, a PDF filed on a connected drive, or both. */
   delivery: NewsletterDelivery;
+  /** Which of the two layouts the issue is drawn in. */
+  design: NewsletterDesign;
   /** When an issue is sent. */
   sendCadence: NewsletterSendCadence;
   /** Weekday weekly issues go out on (0=Sun … 6=Sat); null unless weekly. */
@@ -347,6 +437,15 @@ export interface NewsletterSettings {
   timezone: string;
   /** Venues within the folder this newsletter covers; empty = all of them. */
   venueIds: string[];
+  /** How each category's listing is arranged (GOI-141). */
+  groupBy: NewsletterGrouping;
+  /**
+   * The reader's own order of venues (GOI-140), by id: venue blocks follow it
+   * when grouped by venue, and a title's venue lines when grouped by event.
+   * Venues it leaves out come after, in the issue's own order. Empty: no
+   * preference.
+   */
+  venueOrder: string[];
   /** Only include events starting before this hour (0-23). No UI; the
    *  after-hour half of this pair became `NewsletterCategoryRule.timeFilter`. */
   beforeHour: number | null;

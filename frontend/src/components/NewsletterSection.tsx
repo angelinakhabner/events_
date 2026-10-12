@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_DRIVE_FOLDER, MAX_DRIVE_FOLDER_NAME } from '@afisz/shared';
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterDetail, NewsletterRuleCadence,
-  NewsletterSendCadence, NewsletterSettings, NewsletterTimeFilter, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDesign, NewsletterDetail, NewsletterGrouping,
+  NewsletterMuseumContent, NewsletterRuleCadence, NewsletterSendCadence, NewsletterSettings,
+  NewsletterTimeFilter, NewsletterWantToGo,
 } from '@afisz/shared';
 import {
   allowedRuleCadences, DEFAULT_WANT_TO_GO, deliversByEmail, deliversToDrive, deriveWindow,
@@ -14,6 +15,7 @@ import { categoryOrTagLabel, pad } from '../lib/format';
 import {
   briefSummary, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
 } from '../lib/newsletter';
+import { NewsletterLayout } from './NewsletterLayout';
 import { PanelHeading } from './PanelHeading';
 import { ErrorState, SkeletonList } from './states';
 
@@ -54,13 +56,18 @@ function ordinal(n: number): string {
 }
 
 /** How many days a rule's section will cover, given the envelope carrying it
- *  — the number the LOOK AHEAD field shows as its placeholder. */
+ *  — the number the days field shows as its placeholder. */
 function deriveWindowDays(
   sendCadence: NewsletterSendCadence,
   rule: Pick<NewsletterCategoryRule, 'cadence' | 'lookaheadDays'>,
 ): number {
   const { from, to } = deriveWindow({ sendCadence }, { ...rule, lookaheadDays: null }, new Date());
   return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+/** "1 day" / "7 days". */
+function daysPhrase(n: number): string {
+  return n === 1 ? '1 day' : `${n} days`;
 }
 
 /** Small inline clock, so the send time reads as a time at a glance. */
@@ -292,12 +299,18 @@ function NewsletterForm({
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
   const [recipientName, setRecipientName] = useState(saved?.recipientName ?? '');
   const [delivery, setDelivery] = useState<NewsletterDelivery>(saved?.delivery ?? 'email');
+  // A newsletter not saved yet starts on the new design; a saved one keeps
+  // whatever its reader chose — and one served by an API too old to know
+  // about designs was being sent in the classic one.
+  const [design, setDesign] = useState<NewsletterDesign>(saved ? (saved.design ?? 'classic') : 'afiszka');
   const [sendCadence, setSendCadenceRaw] = useState<NewsletterSendCadence>(saved?.sendCadence ?? 'weekly');
   const [sendHour, setSendHour] = useState(saved?.sendHour ?? 8);
   const [sendMinute, setSendMinute] = useState(saved?.sendMinute ?? 0);
   const [sendWeekday, setSendWeekday] = useState(saved?.sendWeekday ?? 1);
   const [sendDayOfMonth, setSendDayOfMonth] = useState(saved?.sendDayOfMonth ?? 1);
   const [venueIds, setVenueIds] = useState<string[]>(saved?.venueIds ?? []);
+  const [groupBy, setGroupBy] = useState<NewsletterGrouping>(saved?.groupBy ?? 'event');
+  const [venueOrder, setVenueOrder] = useState<string[]>(saved?.venueOrder ?? []);
   const [rules, setRules] = useState<NewsletterCategoryRule[]>(saved?.categoryRules ?? []);
   /**
    * The only thing left to decide about the saved-events queue is whether it
@@ -439,6 +452,7 @@ function NewsletterForm({
     email,
     recipientName,
     delivery,
+    design,
     id: saved?.id,
     name: name.trim() || 'Newsletter',
     sendCadence,
@@ -447,6 +461,8 @@ function NewsletterForm({
     sendWeekday,
     sendDayOfMonth,
     venueIds,
+    groupBy,
+    venueOrder,
     rules,
     wantToGo,
     enabled,
@@ -477,6 +493,7 @@ function NewsletterForm({
         detail: 'short',
         timeFilter: 'any',
         lookaheadDays: null,
+        museumContent: 'both',
         sortOrder: prev.length,
       },
     ]);
@@ -491,6 +508,37 @@ function NewsletterForm({
    * so it is beside the thing that has to change.
    */
   const emptyByConstruction = rules.length === 0 && !wantToGo.enabled;
+
+  /**
+   * Autosave (GOI-142): a newsletter that exists saves itself a moment after
+   * each change, so there is no "did I press save?" to get wrong. A new one
+   * is still created by the button — creating a newsletter is a decision,
+   * not a side effect of typing its name — and autosaves from then on.
+   *
+   * `lastSent` is the body last handed to the server (or the one the form
+   * opened with), so opening a newsletter writes nothing, and a failed save
+   * is not retried in a loop: the error stays up until the next change.
+   * Nothing is sent that is known to be refused — no categories and no saved
+   * events, or an address that is not one yet; the form says why instead.
+   */
+  const bodyKey = JSON.stringify(body);
+  const [lastSent, setLastSent] = useState(bodyKey);
+  const emailOk = EMAIL_SHAPE.test(email.trim());
+  const autosaveBlocked = emptyByConstruction || !emailOk;
+  const send = () => {
+    setLastSent(bodyKey);
+    save.mutate(body);
+  };
+  const { mutate: autosave, isPending: autosaving } = update;
+  const exists = !!saved;
+  useEffect(() => {
+    if (!exists || bodyKey === lastSent || autosaveBlocked || autosaving) return;
+    const t = setTimeout(() => {
+      setLastSent(bodyKey);
+      autosave(JSON.parse(bodyKey));
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [exists, bodyKey, lastSent, autosaveBlocked, autosaving, autosave]);
 
   return (
     <section>
@@ -512,7 +560,7 @@ function NewsletterForm({
         onSubmit={(e) => {
           e.preventDefault();
           if (emptyByConstruction) return;
-          save.mutate(body);
+          send();
         }}
       >
         {/* What tells two newsletters apart in the row above (GOI-126). */}
@@ -529,6 +577,13 @@ function NewsletterForm({
             placeholder="e.g. Daily cinema"
             className="field max-w-[20rem]"
           />
+        </div>
+
+        <div className="px-5 pb-5 md:px-0">
+          <span className="label-form mb-1.5 block" id="newsletter-design-label">
+            Design
+          </span>
+          <DesignChoice value={design} onChange={setDesign} />
         </div>
 
         <FormSection step={1} label="Where it goes">
@@ -615,7 +670,17 @@ function NewsletterForm({
           ))}
           {venues.length === 0 ? (
             <span className="text-sm text-muted">Add venues under &ldquo;My venues&rdquo; first.</span>
-          ) : null}
+          ) : (
+            <NewsletterLayout
+              groupBy={groupBy}
+              onGroupBy={setGroupBy}
+              // What the newsletter covers: the ticked venues, or all of them.
+              venues={byFolder.flatMap((f) => f.venues)
+                .filter((v) => venueIds.length === 0 || venueIds.includes(v.id))}
+              order={venueOrder}
+              onOrder={setVenueOrder}
+            />
+          )}
         </FormSection>
 
         {/* GOI-102 §1. The envelope, stated on its own and before the
@@ -865,7 +930,9 @@ function NewsletterForm({
         {/* GOI-102 §5: the screen used to give no sign that a dropdown change
             had persisted, so "did that save?" had no answer but reloading. */}
         <SaveState
-          dirty={!justSaved && (save.isIdle || save.isSuccess)}
+          autosave={!!saved}
+          dirty={bodyKey !== lastSent}
+          blocked={saved && bodyKey !== lastSent && !emailOk ? 'Changes will save once the email address is valid.' : null}
           pending={save.isPending}
           justSaved={justSaved}
           error={readableApiError(save.error?.message, NEWSLETTER_FIELDS)}
@@ -947,6 +1014,64 @@ function DeliveryChoice({
       </div>
       {/* One line under the row rather than three inside it: the hint answers
           "what did I just pick", which only the chosen one has to say. */}
+      <p className="mt-2 text-xs text-faint">{current?.hint}</p>
+    </div>
+  );
+}
+
+/**
+ * How the issue looks: the AFISZ.KA redesign, or the classic brief.
+ *
+ * The same strip as the delivery choice, for the same reason — one choice of
+ * equal answers. Both designs carry the same events; the hint says what the
+ * chosen one looks like, and "Generate" shows it.
+ */
+function DesignChoice({
+  value,
+  onChange,
+}: {
+  value: NewsletterDesign;
+  onChange: (v: NewsletterDesign) => void;
+}) {
+  const options: { value: NewsletterDesign; label: string; hint: string }[] = [
+    {
+      value: 'afiszka',
+      label: 'New AFISZ.KA',
+      hint: 'A front page with today’s picks and the events you saved, then the full programme by category — in the email and the PDF.',
+    },
+    {
+      value: 'classic',
+      label: 'Classic',
+      hint: 'The newsletter as it was: one list under a black masthead.',
+    },
+  ];
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <div>
+      <div
+        role="radiogroup"
+        aria-labelledby="newsletter-design-label"
+        className="grid grid-cols-2 border-2 border-ink max-w-[420px]"
+      >
+        {options.map((o, i) => {
+          const active = value === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(o.value)}
+              className={`w-full cursor-pointer px-4 py-[9px] text-center text-xs font-extrabold uppercase tracking-[0.5px] ${
+                i < options.length - 1 ? 'border-r-2 border-ink' : ''
+              } ${active ? 'bg-ink text-white' : 'bg-transparent text-ink hover:text-accent'}`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
       <p className="mt-2 text-xs text-faint">{current?.hint}</p>
     </div>
   );
@@ -1130,16 +1255,36 @@ function RuleRow({
         </span>
       ) : null}
 
+      {/* GOI-146: museums are two kinds of plan — runs you can drop in on,
+          and talks, tours and screenings at a time — and a reader may want
+          only one of them. Only this row has the choice. */}
+      {rule.category === 'exhibition' ? (
+        <span className="flex w-full items-center gap-2.5 pl-0 md:pl-[122px]">
+          <label className="text-xs text-faint" htmlFor={`rule-museum-${index}`}>
+            Show
+          </label>
+          <select
+            id={`rule-museum-${index}`}
+            value={rule.museumContent ?? 'both'}
+            onChange={(e) => onPatch({ museumContent: e.target.value as NewsletterMuseumContent })}
+            className="select-flat py-[7px]"
+          >
+            <option value="both">Exhibitions and events</option>
+            <option value="exhibitions">Exhibitions only</option>
+            <option value="events">Events only</option>
+          </select>
+        </span>
+      ) : null}
+
       {/* Collapsed by default: empty is correct almost always, and a field
           every row carries invites a number nobody needed to choose.
-          What it *means* is spelled out either way (GOI-119): a number of days
-          with no sentence beside it is a setting nobody can answer. */}
-      <span className="flex w-full flex-wrap items-center gap-2.5 pl-0 md:pl-[122px]">
+          One plain sentence either way (GOI-119, GOI-137): "Look ahead" and a
+          paragraph about spans and repeats was read as not understandable, so
+          the field sits inside the sentence it answers. */}
+      <span className="flex w-full flex-wrap items-center gap-2 pl-0 md:pl-[122px] text-xs text-faint">
         {showLookahead ? (
           <>
-            <label className="text-xs text-faint" htmlFor={`rule-lookahead-${index}`}>
-              Look ahead
-            </label>
+            <label htmlFor={`rule-lookahead-${index}`}>Each issue shows the next</label>
             <input
               id={`rule-lookahead-${index}`}
               type="number"
@@ -1150,27 +1295,23 @@ function RuleRow({
               onChange={(e) =>
                 onPatch({ lookaheadDays: e.target.value === '' ? null : Number(e.target.value) })
               }
-              className="field w-[92px] py-1.5 text-[13px]"
+              className="field w-[72px] py-1.5 text-[13px]"
             />
-            <span className="text-xs text-faint">
-              days of {label.toLowerCase()} each issue lists, counting from the day it
-              arrives. Leave it empty for {derived} — the span this cadence already
-              covers with no gaps and no repeats.
-            </span>
+            <span>days of {label.toLowerCase()}.</span>
           </>
         ) : (
           <>
+            <span>
+              Each issue shows the next {daysPhrase(derived)} of {label.toLowerCase()}.
+            </span>
             <button
               type="button"
               onClick={() => setShowLookahead(true)}
               className="act act-sm"
-              aria-label={`Set how far ahead ${label} looks`}
+              aria-label={`Change how many days of ${label} each issue shows`}
             >
-              Look ahead: {derived} days
+              Change
             </button>
-            <span className="text-xs text-faint">
-              of {label.toLowerCase()} in each issue. Change it to reach further.
-            </span>
           </>
         )}
       </span>
@@ -1220,13 +1361,27 @@ function Check({
  * honest answer was usually "no", because changing a control here does not
  * save anything until Schedule is pressed.
  */
+/** How long the form waits after the last change before saving it (GOI-142):
+ *  long enough not to save every keystroke of a name, short enough that a
+ *  reader closing the tab right after a change does not lose it. */
+const AUTOSAVE_DELAY_MS = 800;
+
+/** Enough of an address to be worth sending; the server has the final say. */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function SaveState({
+  autosave,
   dirty,
+  blocked,
   pending,
   justSaved,
   error,
 }: {
+  /** The newsletter exists, so changes save themselves (GOI-142). */
+  autosave: boolean;
   dirty: boolean;
+  /** Why an autosave is being held, when it is. */
+  blocked: string | null;
   pending: boolean;
   justSaved: boolean;
   error: string | null;
@@ -1238,14 +1393,20 @@ function SaveState({
   }
   if (pending) return <p role="status" className="mt-3 text-sm text-muted">Saving…</p>;
   if (justSaved) return <p role="status" className="mt-3 text-sm font-bold text-accent">Saved.</p>;
-  if (dirty) {
+  if (blocked) return <p className="mt-3 text-sm text-faint">{blocked}</p>;
+  if (autosave) {
     return (
       <p className="mt-3 text-sm text-faint">
-        Changes here are not saved until you press <strong>Schedule newsletter</strong>.
+        {dirty ? 'Saving changes…' : 'Changes save automatically.'}
       </p>
     );
   }
-  return null;
+  // A newsletter not created yet has nothing to autosave into.
+  return (
+    <p className="mt-3 text-sm text-faint">
+      Changes here are not saved until you press <strong>Schedule newsletter</strong>.
+    </p>
+  );
 }
 
 /**
@@ -1594,6 +1755,11 @@ function FolderNameField({ current }: { current: string }) {
           {rename.isPending ? 'Saving…' : 'Save'}
         </button>
       </div>
+      {/* GOI-145: say where inside it a brief lands, so the subfolders are
+          expected rather than a surprise. */}
+      <p className="mt-2 text-xs text-faint">
+        Inside it: a folder for each month, and in each one Dzienne, Tygodniowe and Miesięczne (daily, weekly, monthly).
+      </p>
       {rename.error ? (
         <p className="mt-2 text-sm text-accent">{rename.error.message}</p>
       ) : note ? (

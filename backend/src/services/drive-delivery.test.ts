@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Event } from '@afisz/shared';
-import { deliverBriefToDrives, renameDriveFolder } from './drive-delivery.js';
+import { briefFolderPath, deliverBriefToDrives, renameDriveFolder } from './drive-delivery.js';
 import { InMemoryDriveStore } from './drive-store.js';
 import { DriveFolderMissingError } from './cloud-drive.js';
 import { DEFAULT_DRIVE_FOLDER, normalizeDriveFolderName } from '@afisz/shared';
@@ -54,6 +54,38 @@ async function connectedStore() {
   await store.connect(USER, { provider: 'google', refreshToken: 'rt', accountEmail: 'ada@example.com' });
   return store;
 }
+
+/** GOI-145: "month, then daily and weekly newsletter". */
+describe('briefFolderPath', () => {
+  it('files by month, then by cadence', () => {
+    expect(briefFolderPath(new Date('2026-10-11T06:00:00Z'), 'daily')).toEqual(['2026-10 październik', 'Dzienne']);
+    expect(briefFolderPath(new Date('2026-10-11T06:00:00Z'), 'weekly')).toEqual(['2026-10 październik', 'Tygodniowe']);
+    expect(briefFolderPath(new Date('2026-10-11T06:00:00Z'), 'monthly')).toEqual(['2026-10 październik', 'Miesięczne']);
+  });
+
+  it('uses the Warsaw month, so a brief sent just after midnight on the 1st is filed under the new one', () => {
+    // 23:30 UTC on 31 October is 00:30 on 1 November in Warsaw.
+    expect(briefFolderPath(new Date('2026-10-31T23:30:00Z'), 'daily')[0]).toBe('2026-11 listopad');
+  });
+});
+
+describe('deliverBriefToDrives — into month and cadence folders (GOI-145)', () => {
+  it('uploads into the cadence folder inside the month folder', async () => {
+    const store = await connectedStore();
+    const paths: { parentId: string; path: string[] }[] = [];
+    const { provider, uploads } = fakeProvider({
+      async ensurePath({ parentId, path }) {
+        paths.push({ parentId, path });
+        return 'weekly-folder';
+      },
+    });
+
+    await deliverBriefToDrives(USER, { sections, now: NOW }, 'weekly', { store, providers: { google: provider } });
+
+    expect(paths).toEqual([{ parentId: 'folder-1', path: ['2026-09 wrzesień', 'Tygodniowe'] }]);
+    expect(uploads[0]!.folderId).toBe('weekly-folder');
+  });
+});
 
 describe('deliverBriefToDrives', () => {
   it('does nothing at all for a user with no drive connected', async () => {

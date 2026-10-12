@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { fetchVenueHTML } from './fetcher.js';
+import { hasSynopsisRule, venueSynopsis } from './synopsis.js';
 
 /**
  * Descriptions come from the *detail* page, not the listing (GOI-79).
@@ -33,6 +34,8 @@ export interface EnrichableEvent {
    *  grouped, and what the writer searches for (GOI-131). */
   title?: string;
   description: string | null;
+  /** The longer paragraph the writer adds (GOI-139). Set by enrichment only. */
+  long_description?: string | null;
   /** Set by enrichment when the model classified the page (GOI-80). The
    *  persister decides whether to use it — a keyword match outranks it. */
   content_category?: string | null;
@@ -52,13 +55,23 @@ export interface DescribeInput {
   url: string;
   title?: string;
   /** What the listing itself said about the show. Often logistics rather than
-   *  a description (GOI-131), and often not in English (GOI-130). */
+   *  a description (GOI-131), and in any language (GOI-130). */
   note?: string | null;
+  /** The page's own synopsis from its metadata — JSON-LD, og:description,
+   *  meta description (GOI-136). On a page rendered by JavaScript this is
+   *  often the only text about the work the server sends. */
+  summary?: string | null;
+  /** The venue's own text about the work, read from the show page by a rule
+   *  for its site (see synopsis.ts). When present it is the source; the page
+   *  text is only there for credits and context. */
+  synopsis?: string | null;
   venue?: { name: string; city: string; category: string };
 }
 
 export interface DescriptionResult {
   description: string | null;
+  /** A paragraph about the work, for the newsletter's "full" detail (GOI-139). */
+  longDescription?: string | null;
   /** Content type from the same call (GOI-80). Never a second request. */
   category?: string | null;
   inputTokens: number;
@@ -80,9 +93,20 @@ export interface WrittenStore {
 export interface WrittenDetail {
   /** Null: the writer looked and found nothing to say. */
   description: string | null;
+  /** The longer paragraph (GOI-139); null when only a line could be said. */
+  longDescription?: string | null;
   contentCategory: string | null;
   searched?: boolean;
+  /** The answer's shape, as the store recorded it. Absent: current. */
+  format?: number;
 }
+
+/**
+ * The written-answer shape that had the venue's synopsis to work from. An
+ * older answer for a show whose site now has a synopsis rule was written from
+ * the whole page — often its logistics — so it is written again, once.
+ */
+export const SYNOPSIS_FORMAT = 3;
 
 export interface EnrichOptions {
   /** Venue's calendar URL. A row pointing here has no detail page of its own
@@ -107,7 +131,7 @@ export interface EnrichOptions {
   /** Test seam for the inter-fetch delay. */
   sleep?: (ms: number) => Promise<void>;
   /** Written-description cache. Given together with `client`, every show is
-   *  written in English once and remembered (GOI-130 / GOI-131). */
+   *  written once, in English, and remembered (GOI-130 / GOI-131). */
   written?: WrittenStore;
   /** Who is showing it — the writer needs it to search for the right thing. */
   venue?: { name: string; city: string; category: string };
@@ -310,6 +334,10 @@ async function writeDescriptions(
     console.warn('[enricher] written-description lookup failed, writing all:', message(e));
   }
 
+  for (const [key, answer] of known) {
+    if ((answer.format ?? SYNOPSIS_FORMAT) < SYNOPSIS_FORMAT && hasSynopsisRule(key)) known.delete(key);
+  }
+
   const answers = new Map(known);
   const fresh: Array<WrittenDetail & { key: string }> = [];
   const todo = keys.filter((k) => !known.has(k));
@@ -329,10 +357,15 @@ async function writeDescriptions(
     const first = shows.get(key)![0]!;
     const hasPage = !key.startsWith(TITLE_KEY);
     let text: string | null = null;
+    let summary: string | null = null;
+    let synopsis: string | null = null;
     if (hasPage) {
       if (result.fetched > 0) await sleep(delayMs);
       try {
-        text = mainContentText(await fetchVenueHTML(first.source_url, { fetcher, timeoutMs }));
+        const html = await fetchVenueHTML(first.source_url, { fetcher, timeoutMs });
+        text = mainContentText(html);
+        summary = pageSummary(html);
+        synopsis = venueSynopsis(html, first.source_url);
       } catch (e) {
         // A dead page is not a dead show: the note and a search may still say
         // what it is.
@@ -347,6 +380,8 @@ async function writeDescriptions(
         url: first.source_url,
         title: first.title,
         note: first.description,
+        summary,
+        synopsis,
         venue,
       });
       result.inputTokens += out.inputTokens;
@@ -354,6 +389,7 @@ async function writeDescriptions(
       if (out.searched) result.searched++;
       const answer: WrittenDetail = {
         description: out.description ? clean(out.description) : null,
+        longDescription: out.description && out.longDescription ? cleanLong(out.longDescription) : null,
         contentCategory: out.category ?? null,
         searched: out.searched ?? false,
       };
@@ -379,7 +415,10 @@ async function writeDescriptions(
     if (!answer) continue;
     if (answer.contentCategory) for (const e of list) e.content_category = answer.contentCategory;
     if (!answer.description) continue;
-    for (const e of list) e.description = answer.description;
+    for (const e of list) {
+      e.description = answer.description;
+      e.long_description = answer.longDescription ?? null;
+    }
     if (known.has(key)) result.backfilled += list.length;
     else result.enriched += list.length;
   }
@@ -412,22 +451,26 @@ async function describe(
   result: EnrichResult,
   categories: Map<string, string | null>,
 ): Promise<string | null> {
-  const meta = extractDescription(html);
-  if (!client) return meta;
+  // The venue's own synopsis, where its site has a rule, beats the meta tags
+  // as the free answer: those are written for link previews and are as often
+  // the venue's slogan as the show's.
+  const synopsis = venueSynopsis(html, url);
+  const fallback = synopsis ? clean(synopsis) : extractDescription(html);
+  if (!client) return fallback;
 
   const text = mainContentText(html);
-  if (!text) return meta;
+  if (!text) return fallback;
 
   try {
-    const out = await client.describe({ text, url });
+    const out = await client.describe({ text, url, synopsis });
     result.inputTokens += out.inputTokens;
     result.outputTokens += out.outputTokens;
     if (out.category) categories.set(url, out.category);
-    return out.description ? clean(out.description) : meta;
+    return out.description ? clean(out.description) : fallback;
   } catch (e) {
     result.failed++;
     console.warn(`[enricher] ${url}: description extraction failed: ${message(e)}`);
-    return meta;
+    return fallback;
   }
 }
 
@@ -449,6 +492,49 @@ export function mainContentText(html: string): string | null {
     if (text.length >= 80) return text.slice(0, MAX_CONTENT_CHARS);
   }
   return null;
+}
+
+/** Longest a page's metadata synopsis is passed on at. */
+const MAX_SUMMARY_CHARS = 1_500;
+
+/**
+ * What the page says about itself in its metadata (GOI-136): JSON-LD
+ * `description`, then og:description, then meta description — every distinct
+ * one, since they are often different cuts of the same synopsis.
+ *
+ * Theatre pages are the reason. Several are rendered in the browser, so the
+ * server's HTML has a menu and an empty main region, and `mainContentText`
+ * finds nothing to read; the metadata, which the site fills in for link
+ * previews and search engines, is server-side and frequently carries the
+ * synopsis the writer was missing.
+ */
+export function pageSummary(html: string): string | null {
+  const $ = cheerio.load(html);
+  const found: string[] = [];
+  const add = (s: unknown) => {
+    if (typeof s !== 'string') return;
+    const text = cheerio.load(`<p>${s}</p>`)('p').text().replace(/\s+/g, ' ').trim();
+    if (text.length >= 20 && !found.some((f) => f.includes(text) || text.includes(f))) found.push(text);
+  };
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      for (const node of jsonLdNodes(JSON.parse($(el).text()))) add(node.description);
+    } catch {
+      // A malformed block is the site's problem; the other sources still count.
+    }
+  });
+  add($('meta[property="og:description"]').attr('content'));
+  add($('meta[name="description"]').attr('content'));
+  const joined = found.join('\n');
+  return joined ? joined.slice(0, MAX_SUMMARY_CHARS) : null;
+}
+
+/** Every object in a JSON-LD document, through `@graph` and arrays. */
+function jsonLdNodes(doc: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(doc)) return doc.flatMap(jsonLdNodes);
+  if (!doc || typeof doc !== 'object') return [];
+  const node = doc as Record<string, unknown>;
+  return [node, ...jsonLdNodes(node['@graph'])];
 }
 
 /** Pulls the best one-liner-ish description out of a page's HTML. */
@@ -480,6 +566,19 @@ export function clean(s: string): string {
   if (sentenceEnd > 100) return cut.slice(0, sentenceEnd + 1);
   const wordEnd = cut.lastIndexOf(' ');
   return wordEnd > 100 ? cut.slice(0, wordEnd) + '…' : cut + '…';
+}
+
+/** The long paragraph's ceiling (GOI-139): a newsletter's "full" entry is a
+ *  paragraph, not an essay. Cut at a sentence end when there is one. */
+const MAX_LONG_CHARS = 900;
+
+export function cleanLong(s: string): string {
+  const collapsed = s.replace(/\s+/g, ' ').trim();
+  if (collapsed.length <= MAX_LONG_CHARS) return collapsed;
+  const cut = collapsed.slice(0, MAX_LONG_CHARS);
+  const sentenceEnd = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  if (sentenceEnd > MAX_LONG_CHARS / 2) return cut.slice(0, sentenceEnd + 1);
+  return `${cut.slice(0, cut.lastIndexOf(' '))}…`;
 }
 
 function normUrl(u: string): string {

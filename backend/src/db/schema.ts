@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey, boolean, unique } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb, uuid, index, integer, primaryKey, boolean, unique, smallint } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const venues = pgTable('venues', {
@@ -61,6 +61,8 @@ export const events = pgTable(
     venueId: uuid('venue_id').notNull().references(() => venues.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     description: text('description'),
+    /** A paragraph about the work, for the newsletter's "full" detail (0034). */
+    longDescription: text('long_description'),
     /** For an exhibition this is the opening date at local midnight — the
      *  range's left edge, not a showtime. See `kind`. */
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
@@ -306,11 +308,17 @@ export const newsletterSubscriptions = pgTable(
      *  never mailed, so for them the filed PDF is the delivery rather than a
      *  copy of one, and a failed upload is a failed send. */
     delivery: text('delivery').notNull().default('email'),
+    /** classic | afiszka — which layout the issue is drawn in. */
+    design: text('design').notNull().default('classic'),
     /** daily | weekly | monthly — when an issue is sent. */
     sendCadence: text('send_cadence').notNull().default('weekly'),
     /** Venues within the folder the brief covers; empty = all of them. It
      *  narrows the folder and never writes back to it. */
     venueIds: text('venue_ids').array().notNull().default(sql`ARRAY[]::text[]`),
+    /** event | venue — how each category's listing is arranged (0035). */
+    groupBy: text('group_by').notNull().default('event'),
+    /** The reader's order of venues, by id (0035); unnamed venues follow. */
+    venueOrder: text('venue_order').array().notNull().default(sql`ARRAY[]::text[]`),
     /** The after-hour half of this pair moved onto each category rule in 0026
      *  — see NewsletterTimeFilter for why. This half has no UI and stays. */
     beforeHour: integer('before_hour'),
@@ -337,6 +345,8 @@ export const newsletterSubscriptions = pgTable(
       .default({ enabled: true, horizonDays: 7, changesEnabled: true, urgentSend: true }),
     enabled: boolean('enabled').notNull().default(true),
     lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+    /** Scheduled issues sent so far, for the daily poster's "No. N". */
+    issuesSent: integer('issues_sent').notNull().default(0),
     /** When an urgent, off-schedule change email last went out (GOI-101).
      *  Separate from `last_sent_at` so an urgent send neither counts as the
      *  scheduled issue nor suppresses the next one. */
@@ -381,6 +391,8 @@ export const newsletterCategoryRules = pgTable(
     timeFilter: text('time_filter').notNull().default('any'),
     /** Overrides the derived coverage window when set. */
     lookaheadDays: integer('lookahead_days'),
+    /** both | exhibitions | events — what a museums section carries (0036). */
+    museumContent: text('museum_content').notNull().default('both'),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (t) => ({
@@ -445,7 +457,7 @@ export const eventChanges = pgTable(
 );
 
 /**
- * One English description per show, written once by the enrichment pass
+ * One description per show, written once by the enrichment pass
  * (GOI-130 / GOI-131). See 0030_event_descriptions.sql for why it is kept
  * apart from the event rows.
  */
@@ -459,6 +471,15 @@ export const eventDescriptions = pgTable(
     description: text('description'),
     contentCategory: text('content_category'),
     searched: boolean('searched').notNull().default(false),
+    /** Language the description is written in. Only the site's own is read
+     *  back (0033); anything else is rewritten in place. */
+    lang: text('lang').notNull().default('en'),
+    /** The paragraph beside the line (0034). Null: nothing more to say. */
+    longDescription: text('long_description'),
+    /** Which shape of answer this is (0034). Rows older than format 2 are
+     *  rewritten in place, and format 2 too where the show's site now has a
+     *  synopsis rule. */
+    format: smallint('format').notNull().default(1),
     writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

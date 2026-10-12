@@ -20,7 +20,8 @@
     "scrape:one": "tsx src/scripts/scrape-one.ts",
     "compare:models": "tsx src/scripts/compare-extractor-models.ts",
     "invites": "tsx src/scripts/invites.ts",
-    "festivals:check-links": "tsx src/scripts/check-festival-links.ts"
+    "festivals:check-links": "tsx src/scripts/check-festival-links.ts",
+    "descriptions:coverage": "tsx src/scripts/description-coverage.ts"
   },
   "dependencies": {
     "@afisz/shared": "*",

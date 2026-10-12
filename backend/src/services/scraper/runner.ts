@@ -265,7 +265,7 @@ export async function scrapeVenue(venueId: string, opts: ScrapeOptions = {}): Pr
         venueUrl: fetchUrl,
         fetcher: opts.fetcher,
         delayMs: opts.enrichDelayMs,
-        maxFetches: opts.maxDetailFetches ?? env.MAX_DETAIL_FETCHES,
+        maxFetches: opts.maxDetailFetches ?? detailFetchCap(venue.category),
         client: describer,
         // Only pages we've never described get fetched (GOI-79); the rest are
         // filled from what that fetch already bought us (GOI-90). Scoped to
@@ -481,3 +481,7 @@ function unwrapRows<T>(result: unknown): T[] {
   return [];
 }
 
+/** Shows a run may write descriptions for: theatre gets more (GOI-136). */
+export function detailFetchCap(category: string): number {
+  return category === 'theatre' ? env.THEATRE_MAX_DETAIL_FETCHES : env.MAX_DETAIL_FETCHES;
+}

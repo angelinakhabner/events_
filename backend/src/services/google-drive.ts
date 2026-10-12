@@ -178,10 +178,13 @@ async function findFolder(
   accessToken: string,
   name: string,
   fetcher: typeof fetch,
+  /** Look only inside this folder (GOI-145). */
+  parentId?: string,
 ): Promise<string | null> {
   const q = [
     `mimeType='${FOLDER_MIME}'`,
     `name='${escapeQueryLiteral(name)}'`,
+    ...(parentId ? [`'${escapeQueryLiteral(parentId)}' in parents`] : []),
     'trashed=false',
   ].join(' and ');
   const url = new URL(DRIVE_FILES);
@@ -199,11 +202,12 @@ async function createFolder(
   accessToken: string,
   name: string,
   fetcher: typeof fetch,
+  parentId?: string,
 ): Promise<string> {
   const res = await fetcher(`${DRIVE_FILES}?fields=id`, {
     method: 'POST',
     headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ name, mimeType: FOLDER_MIME }),
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME, ...(parentId ? { parents: [parentId] } : {}) }),
   });
   if (!res.ok) throw new Error(`Creating the Google Drive folder failed (HTTP ${res.status})`);
   const body = (await res.json()) as { id?: string };
@@ -249,6 +253,20 @@ export const googleDriveProvider: DriveProvider = {
     const found = await findFolder(accessToken, folderName, fetcher);
     if (found) return { folderId: found, created: false };
     return { folderId: await createFolder(accessToken, folderName, fetcher), created: true };
+  },
+
+  async ensurePath({ refreshToken, parentId, path, fetcher = fetch }) {
+    const cfg = requireConfig();
+    const accessToken = await refreshAccessToken(cfg, refreshToken, fetcher);
+    // One level at a time: each name is looked for inside the folder above it,
+    // so a "Dzienne" in October is never mistaken for September's.
+    let current = parentId;
+    for (const name of path) {
+      current =
+        (await findFolder(accessToken, name, fetcher, current)) ??
+        (await createFolder(accessToken, name, fetcher, current));
+    }
+    return current;
   },
 
   async upload({ refreshToken, folderId, file, fetcher = fetch }): Promise<DriveUploadResult> {

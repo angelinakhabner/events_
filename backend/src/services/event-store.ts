@@ -1,8 +1,12 @@
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index.js';
-import type { Event, EventKind, EventVenue, Category } from '@afisz/shared';
+import { collapseDuplicateExhibitions, type Event, type EventKind, type EventVenue, type Category } from '@afisz/shared';
 
 export interface EventListInput {
+  /** Carry each row's long description too (GOI-139). Only the newsletter
+   *  prints it, so the site's listings leave it out rather than ship a
+   *  paragraph per row they never show. */
+  withLongDescriptions?: boolean;
   city?: string;
   venueId?: string;
   /** Restrict to a set of venues — the newsletter's "my venues" selection.
@@ -209,7 +213,10 @@ export class EventStore {
       .orderBy(asc(schema.events.startsAt))
       .limit(limit);
 
-    return rows.map((r) =>
+    // One exhibition, once (GOI-133): rows already stored twice under
+    // different keys are folded here, so every listing — Home, /my and the
+    // newsletter — is clean without waiting for the prune to reach them.
+    return collapseDuplicateExhibitions(rows.map((r) =>
       rowToEvent(r.e, {
         venue: {
           id: r.venueId,
@@ -219,8 +226,9 @@ export class EventStore {
           country: r.venueCountry,
         },
         venueLanguage: r.venueLanguage,
+        withLongDescription: input.withLongDescriptions,
       }),
-    );
+    ));
   }
 
 
@@ -575,7 +583,7 @@ function unwrap(result: unknown): Record<string, unknown>[] {
 
 function rowToEvent(
   row: typeof schema.events.$inferSelect,
-  ctx: { venue: EventVenue; venueLanguage: string },
+  ctx: { venue: EventVenue; venueLanguage: string; withLongDescription?: boolean },
 ): Event {
   return {
     id: row.id,
@@ -583,6 +591,7 @@ function rowToEvent(
     venue: ctx.venue,
     title: row.title,
     description: row.description,
+    ...(ctx.withLongDescription ? { longDescription: row.longDescription } : {}),
     startsAt: row.startsAt.toISOString(),
     endsAt: row.endsAt ? row.endsAt.toISOString() : null,
     kind: row.kind === 'exhibition' ? 'exhibition' : ('timed' as EventKind),

@@ -286,6 +286,8 @@ async function config(store: InMemoryNewsletterStore, over: Record<string, unkno
     email: 'a@b.pl',
     sendCadence: 'daily',
     venueIds: [],
+    groupBy: 'event',
+    venueOrder: [],
     enabled: true,
     ...over,
   });

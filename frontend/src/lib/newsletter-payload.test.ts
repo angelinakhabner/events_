@@ -56,6 +56,7 @@ function form(over: Partial<NewsletterFormState> = {}): NewsletterFormState {
     email: 'ania@example.com',
     recipientName: '',
     delivery: 'email',
+    design: 'afiszka',
     sendCadence: 'weekly',
     sendHour: 8,
     sendMinute: 0,
@@ -156,10 +157,21 @@ describe('the newsletter form sends what the API accepts (GOI-105)', () => {
       expect(body).not.toHaveProperty('frequency');
       expect(body).not.toHaveProperty('afterHour');
       expect(Object.keys(body).sort()).toEqual([
-        'categoryRules', 'delivery', 'email', 'enabled', 'folderId', 'id', 'name',
+        'categoryRules', 'delivery', 'design', 'email', 'enabled', 'folderId', 'groupBy', 'id', 'name',
         'recipientName', 'sendCadence', 'sendDayOfMonth', 'sendHour', 'sendMinute',
-        'sendWeekday', 'venueIds', 'wantToGo',
+        'sendWeekday', 'venueIds', 'venueOrder', 'wantToGo',
       ]);
+    }
+  });
+
+  /** GOI-140 / GOI-141: both layouts, with and without a venue order. */
+  it('accepts either layout, with or without a venue order', () => {
+    for (const groupBy of ['event', 'venue'] as const) {
+      for (const venueOrder of [[], ['v2', 'v1']]) {
+        const parsed = newsletterSaveInput.parse(newsletterPayload(form({ groupBy, venueOrder })));
+        expect(parsed.groupBy).toBe(groupBy);
+        expect(parsed.venueOrder).toEqual(venueOrder);
+      }
     }
   });
 

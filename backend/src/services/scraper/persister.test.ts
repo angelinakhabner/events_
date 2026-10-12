@@ -72,6 +72,14 @@ describeIfDb('saveEvents: re-scrape must not downgrade enriched fields', () => {
     expect((await stored()).description).toBe('Spotkanie z autorem.');
   });
 
+  it('keeps the paragraph with its line, and drops it when the line is replaced (GOI-139)', async () => {
+    await saveEvents(venue(), [row({ description: 'Opis.', long_description: 'Długi opis.' })]);
+    await saveEvents(venue(), [row({ description: null, long_description: null })]);
+    expect((await stored()).longDescription).toBe('Długi opis.');
+    await saveEvents(venue(), [row({ description: 'Nowy opis.', long_description: null })]);
+    expect((await stored()).longDescription).toBeNull();
+  });
+
   it('applies a description that actually changed', async () => {
     await saveEvents(venue(), [row({ description: 'Stary opis.' })]);
     await saveEvents(venue(), [row({ description: 'Nowy opis.' })]);

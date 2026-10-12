@@ -28,8 +28,8 @@ import {
   plannedFrequency, resolveBriefVenues,
 } from '../services/newsletter.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
-import { renderBriefHtml } from '../services/newsletter-render.js';
-import { briefPdfFilename, renderBriefPdf } from '../services/newsletter-pdf.js';
+import { briefPdfFilename } from '../services/newsletter-pdf.js';
+import { renderNewsletterHtml, renderNewsletterPdf } from '../services/newsletter-design.js';
 import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
 import { renameDriveFolder } from '../services/drive-delivery.js';
 import { newsletterSaveInput } from '../services/newsletter-input.js';
@@ -908,7 +908,13 @@ const my = router({
           fallbackFrequency: plannedFrequency(input),
           recipientName: input.recipientName,
           festivals,
+          design: input.design,
           now,
+          // For a daily issue's poster PDF. Its issue number is left off: a
+          // preview is not an issue.
+          savedEventIds: input.wantToGo?.enabled === false
+            ? []
+            : (await ctx.wantToGo.list(ctx.user.id)).map((e) => e.id),
         };
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand
         // the user a file to send by hand, and so what they download is
@@ -918,10 +924,10 @@ const my = router({
         // than standing up a separate authenticated download route.
         return {
           events: sections.flatMap((s) => s.events),
-          html: renderBriefHtml(brief),
+          html: renderNewsletterHtml(brief),
           pdf: {
             filename: briefPdfFilename(now, plannedFrequency(input)),
-            base64: (await renderBriefPdf(brief)).toString('base64'),
+            base64: (await renderNewsletterPdf(brief)).toString('base64'),
           },
         };
       }),

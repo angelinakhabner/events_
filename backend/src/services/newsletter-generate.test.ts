@@ -148,6 +148,8 @@ function body(
     sendWeekday: sendCadence === 'weekly' ? 1 : null,
     sendDayOfMonth: sendCadence === 'monthly' ? 1 : null,
     venueIds: [],
+    groupBy: 'event',
+    venueOrder: [],
     categoryRules: [rule()],
     wantToGo: DEFAULT_WANT_TO_GO,
     enabled: true,

@@ -168,6 +168,7 @@ describe('describer reply parsing', () => {
     expect(r).toEqual({
       category: 'workshop',
       description: 'Warsztaty ceramiczne dla początkujących.',
+      longDescription: null,
     });
   });
 
@@ -177,19 +178,20 @@ describe('describer reply parsing', () => {
 
   it('reads NONE as no description while keeping the category', () => {
     const r = parseReply('CATEGORY: lecture\nDESCRIPTION: NONE');
-    expect(r).toEqual({ category: 'lecture', description: null });
+    expect(r).toEqual({ category: 'lecture', description: null, longDescription: null });
   });
 
   // A model that ignores the format still has to yield something usable.
   it('treats an unlabelled reply as the description, as the old prompt produced', () => {
     const r = parseReply('Spektakl o rodzinie.');
-    expect(r).toEqual({ category: null, description: 'Spektakl o rodzinie.' });
+    expect(r).toEqual({ category: null, description: 'Spektakl o rodzinie.', longDescription: null });
   });
 
   it('survives a missing category line', () => {
     expect(parseReply('DESCRIPTION: Koncert w piwnicy.')).toEqual({
       category: null,
       description: 'Koncert w piwnicy.',
+      longDescription: null,
     });
   });
 

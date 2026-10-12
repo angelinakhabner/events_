@@ -1,5 +1,5 @@
 import type {
-  NewsletterCategoryRule, NewsletterDelivery, NewsletterSendCadence, NewsletterWantToGo,
+  NewsletterCategoryRule, NewsletterDelivery, NewsletterDesign, NewsletterGrouping, NewsletterSendCadence, NewsletterWantToGo,
 } from '@afisz/shared';
 import { DEFAULT_WANT_TO_GO } from '@afisz/shared';
 import { pad } from './format';
@@ -49,6 +49,8 @@ export interface NewsletterFormState {
   email: string;
   recipientName: string;
   delivery: NewsletterDelivery;
+  /** Which layout the issue is drawn in. */
+  design: NewsletterDesign;
   name?: string;
   sendCadence: NewsletterSendCadence;
   sendHour: number;
@@ -56,6 +58,10 @@ export interface NewsletterFormState {
   sendWeekday: number;
   sendDayOfMonth: number;
   venueIds: string[];
+  /** One entry per title, or a block per venue (GOI-141). */
+  groupBy?: NewsletterGrouping;
+  /** The reader's venue order, by id (GOI-140). */
+  venueOrder?: string[];
   rules: NewsletterCategoryRule[];
   wantToGo: NewsletterWantToGo;
   enabled: boolean;
@@ -68,6 +74,7 @@ export function newsletterPayload(form: NewsletterFormState) {
     email: form.email.trim(),
     recipientName: form.recipientName.trim() || null,
     delivery: form.delivery,
+    design: form.design,
     folderId: null,
     name: form.name ?? 'Newsletter',
     sendCadence: form.sendCadence,
@@ -76,6 +83,8 @@ export function newsletterPayload(form: NewsletterFormState) {
     sendWeekday: form.sendCadence === 'weekly' ? form.sendWeekday : null,
     sendDayOfMonth: form.sendCadence === 'monthly' ? form.sendDayOfMonth : null,
     venueIds: form.venueIds,
+    groupBy: form.groupBy ?? 'event',
+    venueOrder: form.venueOrder ?? [],
     categoryRules: form.rules,
     wantToGo: form.wantToGo,
     enabled: form.enabled,
@@ -107,6 +116,7 @@ export const NEWSLETTER_FIELDS: ReadonlySet<string> = collectKeys(
     email: '',
     recipientName: '',
     delivery: 'email',
+    design: 'afiszka',
     sendCadence: 'weekly',
     sendHour: 0,
     sendMinute: 0,
@@ -120,6 +130,7 @@ export const NEWSLETTER_FIELDS: ReadonlySet<string> = collectKeys(
       detail: 'short',
       timeFilter: 'any',
       lookaheadDays: null,
+      museumContent: 'both',
       sortOrder: 0,
     }],
     wantToGo: DEFAULT_WANT_TO_GO,

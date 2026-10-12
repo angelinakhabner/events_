@@ -1,4 +1,5 @@
-import type { VenueFilterOption } from '@afisz/shared';
+import type { Category, Event, Venue, VenueFilterOption } from '@afisz/shared';
+import { venueFilterStatus, venueSlug } from '@afisz/shared';
 
 /**
  * Which venues are selected, remembered per category (GOI-76 §5).
@@ -61,4 +62,56 @@ export function slugsToSelection(slugs: string[], venues: VenueFilterOption[]): 
 export function parseSlugParam(value: string | null): string[] {
   if (!value) return [];
   return value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * /my → Events: the venue chips for one category, built from the reader's own
+ * venues (GOI-135).
+ *
+ * The public listing asks the server for these (`events.filterOptions`),
+ * because it has to count across every venue in the city. /my's list is the
+ * reader's own venues and arrives whole, so the same chips are counted here
+ * from the rows already on the page — no second query, and the counts cannot
+ * disagree with the listing under them.
+ *
+ * A venue is offered under a category when it is filed there, or when it has
+ * events in it: a museum whose film nights come through under Cinema is a
+ * place to pick on that tab too. `inCategory` is everything upcoming in the
+ * category, and decides whether a venue is empty; `inWindow` is what the day
+ * strip selected, and is the number on the chip.
+ */
+export function myVenueOptions(
+  venues: (Pick<Venue, 'id' | 'name' | 'url' | 'category'> & { probeErrorCode?: string | null })[],
+  category: Category,
+  inCategory: Pick<Event, 'venueId'>[],
+  inWindow: Pick<Event, 'venueId'>[],
+  now: Date = new Date(),
+): VenueFilterOption[] {
+  const tally = (rows: Pick<Event, 'venueId'>[]) => {
+    const counts = new Map<string, number>();
+    for (const e of rows) counts.set(e.venueId, (counts.get(e.venueId) ?? 0) + 1);
+    return counts;
+  };
+  const upcoming = tally(inCategory);
+  const inRange = tally(inWindow);
+
+  return venues
+    .filter((v) => v.category === category || upcoming.has(v.id))
+    .map((v) => {
+      const count = inRange.get(v.id) ?? 0;
+      return {
+        id: v.id,
+        slug: venueSlug(v.name),
+        name: v.name,
+        url: v.url,
+        category,
+        count,
+        status: venueFilterStatus(
+          { count, upcomingTotal: upcoming.get(v.id) ?? 0, probeErrorCode: v.probeErrorCode ?? null },
+          now,
+        ),
+        lastScrapedAt: null,
+      };
+    })
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }

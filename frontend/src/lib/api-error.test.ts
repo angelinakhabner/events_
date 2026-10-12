@@ -133,7 +133,7 @@ describe('a backend older than the page (GOI-105)', () => {
    */
   it('is not fooled by a stale field the stale API itself sent back', () => {
     const echoed = newsletterPayload({
-      email: 'ania@example.com', recipientName: '', delivery: 'email',
+      email: 'ania@example.com', recipientName: '', delivery: 'email', design: 'afiszka',
       sendCadence: 'weekly', sendHour: 8, sendMinute: 0, sendWeekday: 1,
       sendDayOfMonth: 1, venueIds: [],
       // What the pre-GOI-100 API returns, passed through untouched.

@@ -12,6 +12,8 @@ import {
   resolveBriefVenues,
   sendNewsletterBriefs,
   buildBriefSections,
+  carriesMuseumContent,
+  dropDuplicateEvents,
   dropFestivalRestatements,
   eventInCategory,
   briefSubject,
@@ -57,8 +59,11 @@ function makeSub(over: Partial<NewsletterSubscription> = {}): NewsletterSubscrip
     email: 'user@example.com',
     recipientName: null,
     delivery: 'email',
+    design: 'classic',
     sendCadence: 'daily',
     venueIds: [],
+    groupBy: 'event',
+    venueOrder: [],
     beforeHour: null,
     sendHour: 8,
     sendMinute: 0,
@@ -441,6 +446,29 @@ describe('buildBriefSections', () => {
       makeEvent({ id: 'film-next-week', category: 'cinema', startsAt: '2026-07-27T20:00:00+02:00' }),
     ];
   }
+
+  /** GOI-138: the double check — nothing reaches a section twice. */
+  it('drops the same showing stored twice, and an exhibition read twice', () => {
+    const sections = buildBriefSections(
+      [
+        makeEvent({ id: 'a', title: 'Dziady', startsAt: '2026-07-22T19:00:00+02:00' }),
+        makeEvent({ id: 'b', title: 'DZIADY', startsAt: '2026-07-22T17:00:00Z' }),
+        makeEvent({ id: 'a', title: 'Dziady', startsAt: '2026-07-22T19:00:00+02:00' }),
+        makeEvent({
+          id: 'run-1', title: 'Betty Q: Morte', kind: 'exhibition',
+          startsAt: '2026-06-01T00:00:00+02:00', endsAt: '2026-09-30T00:00:00+02:00',
+        }),
+        makeEvent({
+          id: 'run-2', title: 'Betty Q — Morte', kind: 'exhibition',
+          startsAt: '2026-07-01T00:00:00+02:00', endsAt: '2026-09-30T00:00:00+02:00',
+        }),
+      ],
+      makeSub({ sendCadence: 'weekly', categoryRules: [makeRule({ category: 'cinema' })] }),
+      VENUES,
+      NOW,
+    );
+    expect(sections[0]!.events.map((e) => e.id).sort()).toEqual(['a', 'run-1']);
+  });
 
   /** GOI-121, at the level a section is actually built. */
   it('orders every section earliest first, whatever order the fetch returned', () => {
@@ -846,5 +874,56 @@ describe('InMemoryNewsletterStore', () => {
 
     const subs = await store.listEnabled();
     expect(subs.map((s) => s.userId)).toEqual(['on']);
+  });
+});
+
+describe('dropDuplicateEvents (GOI-138)', () => {
+  it('keeps a play on different nights — those are dates, not duplicates', () => {
+    const out = dropDuplicateEvents([
+      makeEvent({ id: 'a', startsAt: '2026-07-22T19:00:00+02:00' }),
+      makeEvent({ id: 'b', startsAt: '2026-07-23T19:00:00+02:00' }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('keeps one title at the same minute at two venues', () => {
+    const out = dropDuplicateEvents([
+      makeEvent({ id: 'a' }),
+      makeEvent({ id: 'b', venueId: 'v2' }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+});
+
+/** GOI-146: a museums section can carry its runs, its events, or both. */
+describe('museums content (GOI-146)', () => {
+  const VENUES = [{ id: 'v1', tags: [] as string[] }] as Parameters<typeof buildBriefSections>[2];
+  const run = makeEvent({
+    id: 'run', category: 'exhibition', kind: 'exhibition', title: 'Kolekcja',
+    startsAt: '2026-07-01T00:00:00+02:00', endsAt: '2026-09-30T00:00:00+02:00',
+  });
+  const talk = makeEvent({
+    id: 'talk', category: 'exhibition', title: 'Oprowadzanie', startsAt: '2026-07-22T18:00:00+02:00',
+  });
+  const ids = (museumContent?: 'both' | 'exhibitions' | 'events') =>
+    buildBriefSections(
+      [run, talk],
+      makeSub({ categoryRules: [makeRule({ category: 'exhibition', museumContent })] }),
+      VENUES,
+      NOW,
+    )[0]?.events.map((e) => e.id) ?? [];
+
+  it('carries both by default', () => {
+    expect(ids().sort()).toEqual(['run', 'talk']);
+    expect(ids('both').sort()).toEqual(['run', 'talk']);
+  });
+
+  it('carries only the runs, or only the events, when asked', () => {
+    expect(ids('exhibitions')).toEqual(['run']);
+    expect(ids('events')).toEqual(['talk']);
+  });
+
+  it('is ignored by every other rule', () => {
+    expect(carriesMuseumContent(run, { category: 'cinema', museumContent: 'events' })).toBe(true);
   });
 });

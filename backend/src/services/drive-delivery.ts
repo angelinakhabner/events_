@@ -1,6 +1,7 @@
 import { googleDriveProvider } from './google-drive.js';
 import { defaultDriveStore, type DriveStore } from './drive-store.js';
-import { briefPdfFilename, renderBriefPdf, type BriefPdfContent } from './newsletter-pdf.js';
+import { briefPdfFilename } from './newsletter-pdf.js';
+import { renderNewsletterPdf, type NewsletterBrief } from './newsletter-design.js';
 import { DriveFolderMissingError } from './cloud-drive.js';
 import type { DriveProvider, DriveProviderId } from './cloud-drive.js';
 import { normalizeDriveFolderName, type NewsletterFrequency } from '@afisz/shared';
@@ -53,7 +54,7 @@ export interface DeliverOptions {
  */
 export async function deliverBriefToDrives(
   userId: string,
-  brief: BriefPdfContent,
+  brief: NewsletterBrief,
   frequency: NewsletterFrequency,
   opts: DeliverOptions = {},
 ): Promise<DriveDeliveryOutcome[]> {
@@ -73,7 +74,7 @@ export async function deliverBriefToDrives(
   // Rendered once, however many drives it goes to.
   let pdf: Buffer;
   try {
-    pdf = await renderBriefPdf({ ...brief, now });
+    pdf = await renderNewsletterPdf({ ...brief, now });
   } catch (e) {
     const reason = `could not render the PDF: ${message(e)}`;
     console.error(`[drive] ${reason}`);
@@ -93,10 +94,35 @@ export async function deliverBriefToDrives(
       continue;
     }
     outcomes.push(
-      await deliverOne(userId, provider, filename, pdf, store, now, opts.fetcher),
+      await deliverOne(userId, provider, filename, pdf, store, now, frequency, opts.fetcher),
     );
   }
   return outcomes;
+}
+
+/** What each cadence's subfolder is called (GOI-145). */
+const CADENCE_FOLDER: Record<NewsletterFrequency, string> = {
+  daily: 'Dzienne',
+  weekly: 'Tygodniowe',
+  monthly: 'Miesięczne',
+};
+
+/**
+ * Where a brief is filed inside the app's folder (GOI-145): the month it went
+ * out in, then its cadence — `["2026-10 październik", "Dzienne"]`.
+ *
+ * The month folder leads with `YYYY-MM` so a drive sorted by name lists the
+ * months in order, and carries the month's name so it reads at a glance. Both
+ * are Warsaw dates, as the brief's own masthead is.
+ */
+export function briefFolderPath(now: Date, frequency: NewsletterFrequency): string[] {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit',
+  }).formatToParts(now);
+  const year = parts.find((p) => p.type === 'year')!.value;
+  const month = parts.find((p) => p.type === 'month')!.value;
+  const name = new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', month: 'long' }).format(now);
+  return [`${year}-${month} ${name}`, CADENCE_FOLDER[frequency]];
 }
 
 /**
@@ -161,6 +187,7 @@ async function deliverOne(
   pdf: Buffer,
   store: DriveStore,
   now: Date,
+  frequency: NewsletterFrequency,
   fetcher?: typeof fetch,
 ): Promise<DriveDeliveryOutcome> {
   try {
@@ -179,9 +206,19 @@ async function deliverOne(
       await store.rememberFolder(userId, provider.id, folder.folderId);
     }
 
+    // GOI-145: filed by month, then by cadence, inside the app's folder.
+    const target = provider.ensurePath
+      ? await provider.ensurePath({
+        refreshToken: credentials.refreshToken,
+        parentId: folder.folderId,
+        path: briefFolderPath(now, frequency),
+        fetcher,
+      })
+      : folder.folderId;
+
     const result = await provider.upload({
       refreshToken: credentials.refreshToken,
-      folderId: folder.folderId,
+      folderId: target,
       file: { filename, contentType: 'application/pdf', body: pdf },
       fetcher,
     });

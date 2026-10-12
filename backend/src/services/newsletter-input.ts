@@ -28,6 +28,8 @@ export const newsletterCategoryRuleInput = z.object({
   /** Overrides the derived coverage window. 1-90: below a day it selects
    *  nothing, and beyond a quarter it is not a newsletter section. */
   lookaheadDays: z.number().int().min(1).max(90).nullable().default(null),
+  /** Museums only: runs, events, or both (GOI-146). */
+  museumContent: z.enum(['both', 'exhibitions', 'events']).default('both'),
   sortOrder: z.number().int().min(0).max(99).default(0),
 });
 
@@ -47,6 +49,10 @@ export const newsletterSaveInput = z
      * `no-drive` rather than treating the issue as sent.
      */
     delivery: z.enum(['email', 'drive', 'both']).default('email'),
+    /** Which layout the issue is drawn in: the classic brief, or the
+     *  AFISZ.KA redesign. Classic when absent, so a caller that predates the
+     *  choice keeps the look it has always had. */
+    design: z.enum(['classic', 'afiszka']).default('classic'),
     /** Which folder's venues this newsletter draws on. */
     folderId: z.string().uuid().nullable().default(null),
     name: z.string().trim().min(1).max(60).default('Newsletter'),
@@ -54,6 +60,10 @@ export const newsletterSaveInput = z
     sendCadence: sendCadence,
     /** Venues within the folder; empty = all of them. */
     venueIds: z.array(z.string()).default([]),
+    /** One entry per title, or a block per venue (GOI-141). */
+    groupBy: z.enum(['event', 'venue']).default('event'),
+    /** The reader's order of venues, by id (GOI-140). */
+    venueOrder: z.array(z.string()).max(500).default([]),
     beforeHour: z.number().int().min(0).max(23).nullable().optional(),
     /** Hour the issue is sent at. */
     sendHour: z.number().int().min(0).max(23).default(8),

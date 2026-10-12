@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,15 +6,19 @@ import type PDFKit from 'pdfkit';
 import type { Event, Festival, NewsletterFrequency } from '@afisz/shared';
 import { isExhibition } from '@afisz/shared';
 import {
-  collapsesAcrossDays, groupPicks, sectionLabel, splitByShape, venueLines,
+  groupPicks, pickWhen, sectionGroups, sectionLabel, venueLines,
   type BriefSection, type Pick,
 } from './newsletter-render.js';
 import {
   isEmptySection, type QueuedChange, type QueuedEvent, type WantToGoSection,
 } from './want-to-go-queue.js';
 import { env } from '../config.js';
+import { resolveFontDir } from './pdf-fonts.js';
+import { isDailyIssue, renderDailyPosterPdf } from './newsletter-poster-pdf.js';
+
+export { resolveFontDir } from './pdf-fonts.js';
 import {
-  PL, closingDate, dateRange, daySpan, festivalSpan, longDate, runSpan, shortDate,
+  PL, closingDate, dateRange, festivalSpan, runSpan,
   time, weekday,
 } from './newsletter-copy.js';
 
@@ -82,40 +86,6 @@ const BAND_PAD = 20;
 const FONT_REGULAR_FILE = 'DejaVuSans.subset.ttf';
 const FONT_BOLD_FILE = 'DejaVuSans-Bold.subset.ttf';
 
-/**
- * Where `backend/assets/fonts` actually is, found by walking up (GOI-96).
- *
- * It used to be `../../assets/fonts` from this module, which is right when
- * this file runs as TypeScript out of `backend/src/services` and wrong
- * everywhere else. `tsc` emits to `backend/dist/backend/src/services`, and
- * nothing copies `assets/` into `dist`, so in production that same relative
- * path pointed at `backend/dist/backend/assets/fonts` — a directory that has
- * never existed. The only symptom was the brief refusing to render, with
- * "ENOENT: no such file or directory" naming a path deep inside `dist` that
- * gives no hint the fonts are sitting unbuilt two levels above it.
- *
- * Walking up until the directory turns up is indifferent to how deep the
- * compiler nests its output, so dev, `dist`, and the test runner all resolve
- * to the one copy of the fonts in the repo instead of three guesses at it.
- */
-export function resolveFontDir(startDir: string): string {
-  let dir = startDir;
-  // `backend/dist/backend/src/services` is five levels below `backend/`, so
-  // the bound is generous rather than tight; the loop stops at the filesystem
-  // root regardless.
-  for (let i = 0; i < 8; i++) {
-    const candidate = path.join(dir, 'assets', 'fonts');
-    if (existsSync(path.join(candidate, FONT_REGULAR_FILE))) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(
-    `Could not find ${FONT_REGULAR_FILE}: no assets/fonts directory above ` +
-      `${startDir}. The brief needs the embedded DejaVu subset to set Polish text.`,
-  );
-}
-
 /** Read once, not per brief — the sweep renders one of these per subscriber. */
 let fontCache: { regular: Uint8Array; bold: Uint8Array } | null = null;
 
@@ -161,6 +131,14 @@ export interface BriefPdfContent {
   /** Festivals on now or opening soon — see `briefFestivals`. */
   festivals?: Festival[];
   now?: Date;
+  /**
+   * Ids of the events the reader saved. The daily poster lists today's under
+   * "Want to go"; the weekly brief carries its queue in `wantToGo` instead.
+   */
+  savedEventIds?: string[];
+  /** This config's running issue number, for the daily poster's masthead.
+   *  Left off when unknown (a preview), rather than guessed. */
+  issueNo?: number | null;
 }
 
 /**
@@ -191,6 +169,11 @@ function cadenceDays(frequency: NewsletterFrequency): number {
 }
 
 export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
+  // A daily issue is drawn as the poster (the "AFISZ.KA Daily" handoff): a
+  // front page of picks for today, then the whole day's listing. The list
+  // layout below stays for everything that spans more than one day.
+  if (isDailyIssue(content.sections)) return renderDailyPosterPdf(content);
+
   const now = content.now ?? new Date();
   const sections = content.sections;
   const events: Event[] = sections.flatMap((s) => s.events);
@@ -269,7 +252,7 @@ export function renderBriefPdf(content: BriefPdfContent): Promise<Buffer> {
 
 function countPicks(sections: BriefSection[]): number {
   return sections.reduce(
-    (n, s) => n + groupPicks(s.events, collapsesAcrossDays(s.category)).length,
+    (n, s) => n + groupPicks(s.events).length,
     0,
   );
 }
@@ -334,7 +317,7 @@ function drawSummary(
   rule(doc, C.ink, 2);
 }
 
-// ─── "Chcę iść" ──────────────────────────────────────────────────────────────
+// ─── "Want to go" ──────────────────────────────────────────────────────────────
 
 /**
  * The saved-events queue, above every category section (GOI-101).
@@ -476,9 +459,9 @@ function drawFestivals(doc: PDFKit.PDFDocument, festivals: Festival[]): void {
 // ─── Category sections ───────────────────────────────────────────────────────
 
 function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
-  // One card per title per day (GOI-36), or one per title across the window
-  // where the category collapses that way (GOI-120).
-  const picks = groupPicks(section.events, collapsesAcrossDays(section.category));
+  // One card per title across the section's window, every date on its venue
+  // lines (GOI-36, GOI-138).
+  const picks = groupPicks(section.events);
   if (picks.length === 0) return;
 
   // The heading is kept with the row it opens. A "TEATR" alone at the foot of
@@ -493,15 +476,15 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
     sectionHeading(doc, sectionLabel(section.category), rowHeight(doc, picks[0]!, section));
   }
 
-  // A museums section is listed in its two halves — runs, then what is on
-  // besides them (GOI-122).
-  for (const group of splitByShape(section, picks)) {
+  // The same arrangement the email draws: by event, a museums section in its
+  // two halves (GOI-122); by venue, a block per venue (GOI-141).
+  for (const group of sectionGroups(section)) {
     if (group.label) subHeading(doc, group.label);
     for (const pick of group.picks) {
       // An exhibition has no showtime worth putting in a gutter — it is on all
       // day for months — so it is dated by its run instead (GOI-67, GOI-122).
-      if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail);
-      else drawPick(doc, pick, section);
+      if (isExhibition(pick.lead)) drawExhibition(doc, pick, section.detail, !group.venue);
+      else drawPick(doc, pick, section, !group.venue);
     }
   }
 }
@@ -510,7 +493,8 @@ function drawSection(doc: PDFKit.PDFDocument, section: BriefSection): void {
 function blurbFor(pick: Pick, detail: BriefSection['detail']): string | null {
   const text = pick.lead.description;
   if (!text || detail === 'line') return null;
-  return detail === 'full' ? text : firstSentence(text);
+  // "Full" is the paragraph where the writer had more to say (GOI-139).
+  return detail === 'full' ? (pick.lead.longDescription || text) : firstSentence(text);
 }
 
 /**
@@ -528,7 +512,13 @@ function rowHeight(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): 
   const body = blurb ? doc.font('body').fontSize(9).heightOfString(blurb, { width }) : 0;
   if (exhibition) return title + body + 34;
   const dated = section.windowDays > 1 ? 12 : 0;
-  return title + body + pick.venues.length * 12 + dated + 30;
+  // Measured, not counted: a venue line listing every date (GOI-138) can wrap.
+  const venues = venueLines(pick).reduce(
+    (h, line) => h + 2 + doc.font('bold').fontSize(7.5)
+      .heightOfString(line.toUpperCase(), { width: BODY_WIDTH, characterSpacing: 0.8 }),
+    0,
+  );
+  return title + body + venues + dated + 30;
 }
 
 /**
@@ -539,7 +529,7 @@ function rowHeight(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): 
  * break — a title stranded at the foot of one page with its times at the head
  * of the next is the sort of thing that makes a generated PDF look generated.
  */
-function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): void {
+function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection, withVenueName = true): void {
   const title = pick.lead.title;
   const blurb = blurbFor(pick, section.detail);
   // A section spanning more than a day has to date each row; a single-day one
@@ -564,7 +554,7 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
   // One line per venue, so two cinemas showing the same film read as two
   // places rather than as one run-on string. Shared with the email so the two
   // renderings cannot disagree about what a venue line says.
-  for (const line of venueLines(pick)) {
+  for (const line of venueLines(pick, withVenueName)) {
     doc.font('bold').fontSize(7.5).fillColor(C.body)
       .text(line.toUpperCase(), BODY_X, doc.y + 2, { width: BODY_WIDTH, characterSpacing: 0.8 });
   }
@@ -580,27 +570,24 @@ function drawPick(doc: PDFKit.PDFDocument, pick: Pick, section: BriefSection): v
 }
 
 /**
- * The date over a row, as `pickWhen` decides it for the email.
- *
- * A collapsed pick is a film held over, so it is dated by its run rather than
- * by whichever showing happens to be first (GOI-120); a museum event is dated
- * "5 SIERPNIA, ŚRODA" (GOI-122), with the time still leading it in the gutter,
- * since that is what it asks a reader to turn up for. A run outranks the long
- * form: a row spanning days is a span whichever way it is written.
+ * The date over a row — the email's `pickWhen`, so the two cannot disagree: a
+ * pick spanning days is dated by its span (GOI-120), a museum event
+ * "5 SIERPNIA, ŚRODA" (GOI-122), anything else "WT 11 VIII".
  */
 function pickDateLine(pick: Pick, section: BriefSection): string {
-  if (pick.startsAt !== pick.lastStartsAt) return daySpan(pick.startsAt, pick.lastStartsAt);
-  return section.category === 'exhibition' ? longDate(pick.startsAt) : shortDate(pick.startsAt);
+  return pickWhen(pick, section.category === 'exhibition');
 }
 
 /** An exhibition: dated by its run, with no gutter time. */
-function drawExhibition(doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail']): void {
+function drawExhibition(
+  doc: PDFKit.PDFDocument, pick: Pick, detail: BriefSection['detail'], withVenueName = true,
+): void {
   const title = pick.lead.title;
   const blurb = blurbFor(pick, detail);
   // From when till when, not only till when (GOI-122): a reader deciding
   // whether to go this month wants both ends of the run.
   const run = runSpan(pick.lead.startsAt, pick.lead.endsAt ?? null);
-  const eyebrow = [run, pick.venues[0]?.name.toUpperCase()].filter(Boolean).join(' · ');
+  const eyebrow = [run, withVenueName ? pick.venues[0]?.name.toUpperCase() : null].filter(Boolean).join(' · ');
 
   ensureSpace(doc, rowHeight(doc, pick, { detail, windowDays: 1, category: '', events: [] }));
 

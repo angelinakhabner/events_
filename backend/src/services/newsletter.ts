@@ -1,13 +1,13 @@
 import type {
   Category, Event, Festival, NewsletterCategoryRule, NewsletterDetail, NewsletterFrequency,
-  NewsletterRuleCadence, NewsletterSendCadence,
+  NewsletterGrouping, NewsletterRuleCadence, NewsletterSendCadence,
 } from '@afisz/shared';
 import {
-  deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues, isExhibition,
-  sendCadenceDays, timeFilterHour,
+  collapseDuplicateExhibitions, deliversByEmail, deliversToDrive, deriveWindow, festivalsAtVenues,
+  isExhibition, sendCadenceDays, timeFilterHour, titleKey,
 } from '@afisz/shared';
 import { listFestivals } from '../data/festivals.js';
-import { renderBriefHtml } from './newsletter-render.js';
+import { renderNewsletterHtml } from './newsletter-design.js';
 import { defaultEventStore, FEED_CATEGORIES, type EventStore } from './event-store.js';
 import { defaultUserVenueStore, type UserVenue, type UserVenueStore } from './user-venue-store.js';
 import { newsletterFromEmail, sendEmail } from './email.js';
@@ -402,6 +402,48 @@ export interface BriefSection {
 }
 
 /**
+ * The candidate events with every duplicate taken out (GOI-138).
+ *
+ * The brief is assembled from a wide query plus per-category top-ups, over
+ * rows that different scrapes may have stored twice, so the same thing can
+ * arrive more than once under different ids: an exhibition read twice
+ * (GOI-133), or one performance stored under two keys. Aggregation then prints
+ * each title once with its dates, and a date listed twice there would be the
+ * same repetition one level down — so the double check happens here, before
+ * any section is built.
+ *
+ * Same id, or same venue, title (`titleKey`) and start instant, is one event.
+ */
+export function dropDuplicateEvents(events: Event[]): Event[] {
+  const seenIds = new Set<string>();
+  const seenShowings = new Set<string>();
+  return collapseDuplicateExhibitions(events).filter((e) => {
+    if (seenIds.has(e.id)) return false;
+    seenIds.add(e.id);
+    if (isExhibition(e)) return true;
+    const showing = `${e.venueId}|${titleKey(e.title)}|${Date.parse(e.startsAt)}`;
+    if (seenShowings.has(showing)) return false;
+    seenShowings.add(showing);
+    return true;
+  });
+}
+
+/**
+ * Whether a museums rule takes this event (GOI-146): its runs, its timed
+ * events, or both. Every other rule takes everything; the museums rule is the
+ * only one with two kinds of thing in it (GOI-122).
+ */
+export function carriesMuseumContent(
+  event: Event,
+  rule: Pick<NewsletterCategoryRule, 'category' | 'museumContent'>,
+): boolean {
+  if (rule.category !== 'exhibition') return true;
+  if (rule.museumContent === 'exhibitions') return isExhibition(event);
+  if (rule.museumContent === 'events') return !isExhibition(event);
+  return true;
+}
+
+/**
  * Split the candidate events into the sections due in this issue.
  *
  * With no rules the brief is one unnamed section covering everything on the
@@ -422,12 +464,17 @@ export function buildBriefSections(
     sendCadence: NewsletterSendCadence;
     categoryRules: NewsletterCategoryRule[];
     beforeHour?: number | null;
+    groupBy?: NewsletterGrouping;
+    venueOrder?: string[];
   },
   venues: UserVenue[],
   now: Date = new Date(),
 ): BriefSection[] {
+  // Carried on every section so both renderers arrange it alike (GOI-140/141).
+  const layout = { groupBy: sub.groupBy ?? 'event', venueOrder: sub.venueOrder ?? [] } as const;
   const venueIds = venues.map((v) => v.id);
   const venueTags = new Map(venues.map((v) => [v.id, v.tags]));
+  events = dropDuplicateEvents(events);
 
   if (sub.categoryRules.length === 0) {
     const picked = selectBriefEvents(
@@ -442,6 +489,7 @@ export function buildBriefSections(
             windowDays: sendCadenceDays(sub.sendCadence),
             detail: 'short',
             events: picked,
+            ...layout,
           },
         ]
       : [];
@@ -464,7 +512,8 @@ export function buildBriefSections(
       now,
     );
     const picked = inWindow.filter(
-      (e) => !taken.has(e.id) && eventInCategory(e, rule.category, venueTags),
+      (e) => !taken.has(e.id) && eventInCategory(e, rule.category, venueTags) &&
+        carriesMuseumContent(e, rule),
     );
     if (picked.length === 0) continue;
     for (const e of picked) taken.add(e.id);
@@ -473,6 +522,7 @@ export function buildBriefSections(
       windowDays,
       detail: rule.detail,
       events: picked,
+      ...layout,
     });
   }
   return sections;
@@ -519,7 +569,9 @@ export async function fetchBriefEvents(
   // An explicitly empty list means "no venues", not "all of them".
   if (venueIds.length === 0) return [];
   const until = new Date(now.getTime() + briefFetchWindowDays(sub, now) * 24 * 3_600_000);
-  const base = await events.listUpcoming({ venueIds, now, until, limit: BRIEF_FETCH_LIMIT });
+  const base = await events.listUpcoming({
+    venueIds, now, until, limit: BRIEF_FETCH_LIMIT, withLongDescriptions: true,
+  });
   if (base.length < BRIEF_FETCH_LIMIT) return base;
 
   const byId = new Map(base.map((e) => [e.id, e]));
@@ -530,7 +582,7 @@ export async function fetchBriefEvents(
     );
     for (const scope of ruleFetchScopes(rule.category, venues)) {
       const rows = await events.listUpcoming({
-        ...scope, now, until: ruleUntil, limit: SECTION_FETCH_LIMIT,
+        ...scope, now, until: ruleUntil, limit: SECTION_FETCH_LIMIT, withLongDescriptions: true,
       });
       for (const e of rows) if (!byId.has(e.id)) byId.set(e.id, e);
     }
@@ -796,6 +848,7 @@ export async function sendUrgentChanges(
       wantToGo: { reminders: [], changes: urgent },
       fallbackFrequency: sub.sendCadence,
       recipientName: sub.recipientName,
+      design: sub.design,
       now,
     };
     try {
@@ -803,7 +856,7 @@ export async function sendUrgentChanges(
         to: sub.email,
         from: newsletterFromEmail(),
         subject: urgentSubject(urgent),
-        html: renderBriefHtml(brief),
+        html: renderNewsletterHtml(brief),
       });
     } catch (e) {
       console.error(`[newsletter] urgent send failed for ${sub.email}:`, e);
@@ -952,8 +1005,9 @@ export async function sendNewsletterBriefs(
       // which meant a reader following no venues was skipped as `no-venues`
       // however much they had saved — the queue reads their saved events, not
       // a venue listing, and needs no venue to have something to say (GOI-125).
+      const wantToGoStore = opts.wantToGo ?? defaultWantToGoStore;
       const wantToGo = await buildWantToGoSection(
-        sub, store, opts.wantToGo ?? defaultWantToGoStore, now,
+        sub, store, wantToGoStore, now,
         { films: opts.films ?? defaultFilmStore, events: eventStore },
       );
 
@@ -1010,14 +1064,21 @@ export async function sendNewsletterBriefs(
         fallbackFrequency: plannedFrequency(sub),
         recipientName: sub.recipientName,
         festivals,
+        design: sub.design,
         now,
+        // The daily poster's "Want to go" and its masthead number. Only the
+        // filed PDF draws the poster, so an email-only reader costs no query.
+        savedEventIds: deliversToDrive(sub.delivery) && sub.wantToGo.enabled
+          ? (await wantToGoStore.list(sub.userId)).map((e) => e.id)
+          : [],
+        issueNo: (sub.issuesSent ?? 0) + 1,
       };
       if (deliversByEmail(sub.delivery)) {
         await (opts.send ?? sendEmail)({
           to: sub.email,
           from: newsletterFromEmail(),
           subject: briefSubject(sections),
-          html: renderBriefHtml(brief),
+          html: renderNewsletterHtml(brief),
         });
       }
 

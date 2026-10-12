@@ -234,6 +234,32 @@ describe('MyPage — newsletter end-to-end', () => {
     expect(within(section).queryByRole('button', { name: /send me a test/i })).not.toBeInTheDocument();
   });
 
+  it('saves a newsletter that exists by itself after each change (GOI-142)', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const email = (await screen.findByLabelText(/email address/i)) as HTMLInputElement;
+    const section = email.closest('section')!;
+    await waitFor(() => expect(email.value).toBe(USER_EMAIL));
+    // The button still saves at once — and creates one that does not exist.
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await within(section).findByText('Saved.');
+
+    // From then on, a change is saved without pressing anything.
+    await user.click(within(section).getByRole('radio', { name: /every day/i }));
+    await waitFor(async () => {
+      expect(await defaultNewsletterStore.get(userId)).toMatchObject({ sendCadence: 'daily' });
+    }, { timeout: 3000 });
+    expect(await within(section).findByText(/changes save automatically/i, {}, { timeout: 4000 })).toBeInTheDocument();
+
+    // An address that is not one yet is held back, and the form says so.
+    await user.clear(email);
+    await user.type(email, 'not-an-address');
+    expect(await within(section).findByText(/once the email address is valid/i)).toBeInTheDocument();
+    expect((await defaultNewsletterStore.get(userId))?.email).toBe(USER_EMAIL);
+  });
+
   it('weekly briefs let you pick the weekday, and Generate renders a preview', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -390,11 +416,11 @@ describe('MyPage — newsletter end-to-end', () => {
     expect((await defaultNewsletterStore.get(userId))!.categoryRules).toEqual([
       {
         category: 'cinema', cadence: 'every_issue', cadenceWeekday: null,
-        detail: 'short', timeFilter: 'after_18', lookaheadDays: null, sortOrder: 0,
+        detail: 'short', timeFilter: 'after_18', lookaheadDays: null, museumContent: 'both', sortOrder: 0,
       },
       {
         category: 'museums', cadence: 'monthly', cadenceWeekday: null,
-        detail: 'full', timeFilter: 'any', lookaheadDays: null, sortOrder: 1,
+        detail: 'full', timeFilter: 'any', lookaheadDays: null, museumContent: 'both', sortOrder: 1,
       },
     ]);
   });
@@ -564,13 +590,11 @@ describe('MyPage — newsletter end-to-end', () => {
 
     // Every issue of a daily newsletter covers a day…
     await user.selectOptions(cadence, 'every_issue');
-    expect(within(section).getByRole('button', { name: /set how far ahead museums looks/i }))
-      .toHaveTextContent('Look ahead: 1 days');
+    expect(within(section).getByText('Each issue shows the next 1 day of museums.')).toBeInTheDocument();
 
     // …and a monthly section of one covers a month.
     await user.selectOptions(cadence, 'monthly');
-    expect(within(section).getByRole('button', { name: /set how far ahead museums looks/i }))
-      .toHaveTextContent('Look ahead: 30 days');
+    expect(within(section).getByText('Each issue shows the next 30 days of museums.')).toBeInTheDocument();
   });
 
   /**
@@ -587,12 +611,17 @@ describe('MyPage — newsletter end-to-end', () => {
     await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
     const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
 
-    expect(within(section).getByText(/of museums in each issue/i)).toBeInTheDocument();
+    expect(within(section).getByText(/each issue shows the next \d+ days? of museums/i)).toBeInTheDocument();
 
     await user.click(
-      within(section).getByRole('button', { name: /set how far ahead museums looks/i }),
+      within(section).getByRole('button', { name: /change how many days of museums each issue shows/i }),
     );
-    expect(within(section).getByText(/days of museums each issue lists/i)).toBeInTheDocument();
+    // GOI-137: the field sits inside one plain sentence — no "Look ahead"
+    // label and no paragraph about spans and repeats under it.
+    const field = within(section).getByLabelText(/each issue shows the next/i);
+    expect(field).toHaveAttribute('type', 'number');
+    expect(within(section).queryByText(/look ahead/i)).not.toBeInTheDocument();
+    expect(within(section).queryByText(/no gaps and no repeats/i)).not.toBeInTheDocument();
   });
 
   it('says the venues are the reader\u2019s own, and what ticking one does', async () => {
@@ -795,6 +824,30 @@ describe('MyPage — newsletter end-to-end', () => {
     }
     await waitFor(async () => expect(await defaultNewsletterStore.list(userId)).toEqual([first]));
     await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe(first.name));
+  });
+
+  /** GOI-146: a museums section can carry only its runs, or only its events. */
+  it('lets a museums section carry only exhibitions, and saves it', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Newsletter' }));
+    const section = (await screen.findByLabelText(/email address/i)).closest('section')!;
+
+    if (!within(section).queryByLabelText(/^How often for Museums$/)) {
+      await user.selectOptions(await within(section).findByLabelText(/add a category/i), 'exhibition');
+    }
+    const choice = await within(section).findByLabelText(/^show$/i);
+    expect(choice).toHaveValue('both');
+    // Only the museums row has it.
+    expect(within(section).getAllByLabelText(/^show$/i)).toHaveLength(1);
+    await user.selectOptions(choice, 'exhibitions');
+
+    await user.click(within(section).getByRole('button', { name: /schedule newsletter/i }));
+    await waitFor(async () => {
+      const rules = (await defaultNewsletterStore.get(userId))?.categoryRules ?? [];
+      expect(rules.find((r) => r.category === 'exhibition')?.museumContent).toBe('exhibitions');
+    });
   });
 });
 
