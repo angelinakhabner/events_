@@ -1,0 +1,20 @@
+{
+  "name": "AFISZ",
+  "short_name": "AFISZ",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#eae6df",
+  "theme_color": "#141414",
+  "icons": [
+    { "src": "icons/afisz-app-icon-48.png", "sizes": "48x48", "type": "image/png" },
+    { "src": "icons/afisz-app-icon-120.png", "sizes": "120x120", "type": "image/png" },
+    { "src": "icons/afisz-app-icon-512.png", "sizes": "512x512", "type": "image/png" },
+    {
+      "src": "icons/afisz-app-icon-adaptive-432.png",
+      "sizes": "432x432",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
