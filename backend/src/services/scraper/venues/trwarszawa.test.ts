@@ -26,9 +26,14 @@ describe('parseHourRange', () => {
   });
 });
 
+const NOV_URL = 'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-11';
+
 describe('monthUrl', () => {
-  it('swaps the /kalendarz/YYYY/MM/ segment', () => {
-    expect(monthUrl(JULY_URL, '2026-09')).toBe('https://trwarszawa.pl/kalendarz/2026/09/?view=calendar');
+  it('swaps the trw_month of the redesigned calendar (GOI-150)', () => {
+    expect(monthUrl(NOV_URL, '2026-12')).toBe('https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-12');
+  });
+  it('rewrites an old /kalendarz/YYYY/MM/ URL to the new shape, since those 404 now', () => {
+    expect(monthUrl(JULY_URL, '2026-09')).toBe('https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-09');
   });
   it('returns null when the URL has no month segment', () => {
     expect(monthUrl('https://trwarszawa.pl/repertuar/', '2026-09')).toBeNull();
@@ -75,7 +80,7 @@ describe('scrapeTrWarszawa', () => {
     const fetched: string[] = [];
     const fakeFetch = (async (url: string | URL) => {
       fetched.push(String(url));
-      const body = String(url).includes('/2026/07/') ? july : '<html><body></body></html>';
+      const body = String(url).endsWith('trw_month=2026-07') ? july : '<html><body></body></html>';
       return new Response(body, { status: 200 });
     }) as unknown as typeof fetch;
 
@@ -87,10 +92,59 @@ describe('scrapeTrWarszawa', () => {
     });
 
     expect(fetched).toEqual([
-      'https://trwarszawa.pl/kalendarz/2026/07/?view=calendar',
-      'https://trwarszawa.pl/kalendarz/2026/08/?view=calendar',
+      'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-07',
+      'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-08',
     ]);
     expect(res.events.map((e) => e.starts_at.slice(0, 10))).toContain('2026-07-03');
-    expect(res.signature).toContain('/2026/07/');
+    expect(res.signature).toContain('trw_month=2026-07');
+  });
+
+  /** GOI-150: TR stopped scraping when the calendar moved and was rebuilt. */
+  it('reads the redesigned November and December pages', async () => {
+    const nov = await loadFixture('trwarszawa.pl-kalendarz-view-calendar-trw_month-2026-11.html');
+    const dec = await loadFixture('trwarszawa.pl-kalendarz-view-calendar-trw_month-2026-12.html');
+    const fetched: string[] = [];
+    const fakeFetch = (async (url: string | URL) => {
+      fetched.push(String(url));
+      const body = String(url).endsWith('2026-11') ? nov : String(url).endsWith('2026-12') ? dec : '';
+      return new Response(body, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await scrapeTrWarszawa({
+      baseUrl: NOV_URL,
+      today: new Date('2026-11-04T08:00:00.000Z'),
+      windowDays: 45,
+      fetcher: fakeFetch,
+    });
+
+    expect(fetched).toEqual([NOV_URL, 'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-12']);
+    expect(res.events.length).toBeGreaterThan(15);
+    expect(res.events.every((e) => e.starts_at >= '2026-11-04')).toBe(true);
+  });
+});
+
+describe('parseTrWarszawaListing — the November 2026 redesign (GOI-150)', () => {
+  it('reads each performance once, with its start, running time, stage and page', async () => {
+    const rows = parseTrWarszawaListing(
+      await loadFixture('trwarszawa.pl-kalendarz-view-calendar-trw_month-2026-11.html'),
+    );
+    expect(rows).toHaveLength(16);
+    expect(rows[0]).toMatchObject({
+      title: 'MŁODY TR / MAŁY TR warsztaty dla szkół',
+      starts_at: '2026-11-02T09:00:00+01:00',
+      duration_minutes: 300,
+      description: 'Warsztat — Scena: Marszałkowska 8',
+      source_url: 'https://trwarszawa.pl/program/mlody-tr-warsztaty-dla-szkol/',
+    });
+    // The page draws every tile twice (grid and list); each showing is one row.
+    expect(new Set(rows.map((r) => `${r.source_url}|${r.starts_at}`)).size).toBe(rows.length);
+  });
+
+  it('reads December too', async () => {
+    const rows = parseTrWarszawaListing(
+      await loadFixture('trwarszawa.pl-kalendarz-view-calendar-trw_month-2026-12.html'),
+    );
+    expect(rows.length).toBe(23);
+    expect(rows.every((r) => r.starts_at.startsWith('2026-12'))).toBe(true);
   });
 });

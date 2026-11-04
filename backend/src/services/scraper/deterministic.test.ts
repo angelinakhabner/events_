@@ -45,7 +45,7 @@ describe('getDeterministicScraper', () => {
   });
 
   it('returns undefined for hosts without a deterministic scraper', () => {
-    expect(getDeterministicScraper('some-uuid', 'https://teatrdramatyczny.pl/repertuar/')).toBeUndefined();
+    expect(getDeterministicScraper('some-uuid', 'https://polin.pl/en/kalendarium')).toBeUndefined();
     expect(getDeterministicScraper('some-uuid', 'not a url')).toBeUndefined();
     expect(getDeterministicScraper('some-uuid')).toBeUndefined();
   });
