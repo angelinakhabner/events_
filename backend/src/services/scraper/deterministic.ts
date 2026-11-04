@@ -14,6 +14,7 @@ import { parseZachetaCalendar, scrapeZacheta } from './venues/zacheta.js';
 import { parseMsnProgram, scrapeMsn } from './venues/msn.js';
 import { parseTeatrStudioMonth, scrapeTeatrStudio } from './venues/teatrstudio.js';
 import { parseZydowskiRepertoire, scrapeZydowski } from './venues/zydowski.js';
+import { parseDramatycznyTickets, scrapeDramatyczny } from './venues/dramatyczny.js';
 import { DEFAULT_VENUES } from '../../data/default-venues.js';
 import { ymdInTz } from './venues/datetime.js';
 
@@ -106,6 +107,15 @@ export const DETERMINISTIC_SCRAPERS: Record<string, DeterministicScraper> = {
     // htmlOverride of either page does the right thing (GOI-57).
     parse: (html, timezone) => parsePosterMuseum(html, timezone),
     scrape: (args) => scrapePosterMuseum(args),
+  },
+  // Read from the ticket office: the theatre's own site is behind a
+  // Cloudflare challenge nothing but Firecrawl got through (GOI-150).
+  'teatr-dramatyczny': {
+    parse: (html, timezone) => parseDramatycznyTickets(html, timezone),
+    scrape: (args) => scrapeDramatyczny(args),
+    // The office lists titles and stages only; the writer searches for the
+    // rest, as it does for any show with no page of its own.
+    enrich: true,
   },
   // Not a curated venue — readers add it themselves — so it is matched by
   // host below rather than by a seeded id (GOI-150).

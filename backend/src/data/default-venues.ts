@@ -79,6 +79,9 @@ export const DEFAULT_VENUES: Venue[] = [
   {
     id: 'teatr-dramatyczny',
     name: 'Teatr Dramatyczny',
+    // The venue's identity, and where each row links. The site itself sits
+    // behind a Cloudflare challenge, so the repertoire is read from the ticket
+    // office at bilety.teatrdramatyczny.pl instead (GOI-150).
     url: 'https://teatrdramatyczny.pl/repertuar/',
     category: 'theatre',
     ...PL,
