@@ -1,9 +1,14 @@
-404  287771  https://trwarszawa.pl/kalendarz/2026/11/?view=calendar
+200  456307  https://trwarszawa.pl/
+200  300239  https://trwarszawa.pl/repertuar/
+200  374471  https://trwarszawa.pl/kalendarz/
+404  287771  https://trwarszawa.pl/kalendarz/2026/11/
     body: <!DOCTYPE html><html lang="pl-PL" prefix="og: https://ogp.me/ns#"><head><script data-no-optimize="1">var litespeed_docref=sessionStorage.getItem("litespeed_docref");litespeed_docref&&(Object.defineProperty(document,"referrer",{get:function(){return litespeed_docref}}),sessionStorage.removeItem("lite
-404  287771  https://trwarszawa.pl/kalendarz/2026/12/?view=calendar
-    body: <!DOCTYPE html><html lang="pl-PL" prefix="og: https://ogp.me/ns#"><head><script data-no-optimize="1">var litespeed_docref=sessionStorage.getItem("litespeed_docref");litespeed_docref&&(Object.defineProperty(document,"referrer",{get:function(){return litespeed_docref}}),sessionStorage.removeItem("lite
-200  63501  https://www.teatr-zydowski.art.pl/
-200  60740  https://www.teatr-zydowski.art.pl/repertuar/
-403  5770  https://teatrdramatyczny.pl/repertuar/
+200  410251  https://trwarszawa.pl/en/
+403  5755  https://teatrdramatyczny.pl/feed/
     body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
+403  5764  https://teatrdramatyczny.pl/wp-json/
+    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
+403  5773  https://teatrdramatyczny.pl/sitemap.xml
+    body: <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal
+200  52059  https://www.teatr-zydowski.art.pl/repertuar/2026-12
 --- done ---
