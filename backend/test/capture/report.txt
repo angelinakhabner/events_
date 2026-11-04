@@ -1,4 +1,7 @@
-200  374471  https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-11
-200  392985  https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=2026-12
-200  374451  https://trwarszawa.pl/kalendarz/?view=list&trw_month=2026-11
+200  88275  https://bilety.teatrdramatyczny.pl/
+200  88275  https://bilety.teatrdramatyczny.pl/rezerwacja/termin.html
+200  88275  https://bilety.teatrdramatyczny.pl/termin.html
+200  8345  https://bilety.teatrdramatyczny.pl/repertuar.html
+200  8345  https://bilety.teatrdramatyczny.pl/rezerwacja/repertuar.html
+200  68245  https://bilety.trwarszawa.pl/termin.html
 --- done ---
