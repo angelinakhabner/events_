@@ -56,9 +56,11 @@ export const DEFAULT_VENUES: Venue[] = [
     id: 'tr-warszawa',
     name: 'TR Warszawa',
     // /repertuar/ is a JS shell; the month calendar pages are server-rendered
-    // and feed the deterministic scraper (which swaps the YYYY/MM segment for
-    // sibling months). NOTE: dark over the summer — July/August are sparse.
-    url: 'https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar',
+    // and feed the deterministic scraper (which swaps the month for sibling
+    // months). Moved to a `trw_month` query in November 2026 — the old
+    // /kalendarz/YYYY/MM/ paths 404 (GOI-150). The seed moves the stored row
+    // to this URL by name. NOTE: dark over the summer — July/August are sparse.
+    url: 'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month={{YYYY}}-{{MM}}',
     category: 'theatre',
     ...PL,
   },
