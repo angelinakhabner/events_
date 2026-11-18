@@ -1,7 +1,7 @@
 import { env } from '../config.js';
 import { PL, festivalSpan, time, weekday } from './newsletter-copy.js';
 import {
-  AFISZKA, barSpan, buildAfiszkaIssue, dateRun, dayNumber, describe, frontWhen, isReferenced,
+  AFISZKA, barSpan, buildAfiszkaIssue, dateRun, dayNumber, describe, entryDescription, frontWhen, isReferenced,
   entryWhen, metaLine, pickReasonLabel, monthAbbr, runLabel,
   type AfiszkaBlock, type AfiszkaContent, type AfiszkaEntry, type AfiszkaIssue, type AfiszkaSection,
 } from './newsletter-afiszka.js';
@@ -317,7 +317,7 @@ function cell(issue: AfiszkaIssue, entry: AfiszkaEntry, section: AfiszkaSection,
       (entry.pick ? label(pickReasonLabel(entry.pick), { color: PC.accent, size: 9 }) : '') +
       titleHtml(entry, 14) +
       `<div style="margin:4px 0 2px">${label([entry.venue, when].filter(Boolean).join(' · '), { size: 9 })}</div>` +
-      body(describe(entry.description, section.detail), 11) +
+      body(entryDescription(entry, section.detail), 11) +
     `</td>`
   );
 }
@@ -400,7 +400,7 @@ function block(issue: AfiszkaIssue, section: AfiszkaSection, b: AfiszkaBlock): s
         `</td>` +
       `</tr>` +
       `<tr><td colspan="${n + 1}" style="padding:0 0 10px;border-bottom:1px solid ${PC.n300}">` +
-        body(describe(e.description, section.detail), 11) +
+        body(entryDescription(e, section.detail), 11) +
       `</td></tr>`
     );
   }).join('');
@@ -428,7 +428,7 @@ function weekRow(issue: AfiszkaIssue, section: AfiszkaSection, e: AfiszkaEntry):
         titleHtml(e, 15) +
         `<div style="margin-top:3px">${label(e.venue, { size: 9 })}</div>` +
         body(dateRun(e.occurrences), 11, PC.n700) +
-        body(describe(e.description, section.detail), 12) +
+        body(entryDescription(e, section.detail), 12) +
       `</td>` +
       `<td valign="top" align="right" width="80" style="width:80px;padding:12px 0;border-bottom:1px solid ${PC.n300}">` +
         (e.pick ? `<span style="display:inline-block;background-color:${PC.accent100};padding:2px 6px">` +

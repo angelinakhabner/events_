@@ -19,9 +19,25 @@ import { toStartsAt, ymdInTz } from './datetime.js';
 // hour range. Parsing directly makes the LLM (and Firecrawl) unnecessary.
 // NOTE: the theatre goes dark over the summer — an empty July/August is
 // genuinely empty, not a scrape failure.
+//
+// November 2026 redesign (GOI-150): the month pages moved to
+// /kalendarz/?view=calendar&trw_month=YYYY-MM — the old /kalendarz/YYYY/MM/
+// paths now 404 — and the tiles were rebuilt. Each performance is now
+//
+//   <article class="trw-calendar-page-event">
+//     <a class="trw-calendar-page-event__main" href="…/program/…/">
+//       <span class="trw-calendar-page-event__place">Marszałkowska 8</span>
+//       <span class="trw-calendar-page-event__category">Spektakl</span>
+//       <time class="trw-calendar-page-event__time" datetime="2026-11-02T09:00">09:00-14:00</time>
+//       <h3 class="trw-calendar-page-event__title">…</h3>
+//
+// with the local start in `datetime`, so the day no longer has to be read off
+// a cell link. Both shapes are parsed: the old one still matches the pages the
+// fixtures captured, and nothing is lost if the site rolls back.
 
 const TZ_DEFAULT = 'Europe/Warsaw';
 const MONTH_SEGMENT_RE = /\/kalendarz\/\d{4}\/\d{2}\//;
+const TRW_MONTH_RE = /([?&]trw_month=)\d{4}-\d{2}/;
 
 export interface TrWarszawaRawEvent {
   title: string;
@@ -108,6 +124,38 @@ export function parseTrWarszawaListing(
     });
   });
 
+  // The redesigned calendar (GOI-150).
+  $('article.trw-calendar-page-event').each((_, el) => {
+    const $ev = $(el);
+    const title = clean($ev.find('.trw-calendar-page-event__title').first().text());
+    const $time = $ev.find('time.trw-calendar-page-event__time').first();
+    const dt = ($time.attr('datetime') ?? '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+    const href = $ev.find('a.trw-calendar-page-event__main').attr('href')?.trim();
+    if (!title || !dt || !href) return;
+    const starts_at = toStartsAt(dt[1]!, dt[2]!, timeZone);
+    if (!starts_at) return;
+    const hour = parseHourRange($time.text());
+
+    const place = clean($ev.find('.trw-calendar-page-event__place').first().text());
+    const category = clean($ev.find('.trw-calendar-page-event__category').first().text());
+    const description =
+      [category, place && `Scena: ${place}`].filter(Boolean).join(' — ') || null;
+
+    events.push({
+      title,
+      starts_at,
+      duration_minutes: hour?.durationMinutes ?? null,
+      language: null,
+      director: null,
+      cast: null,
+      description,
+      price_min: null,
+      price_max: null,
+      source_url: new URL(href, 'https://trwarszawa.pl').toString(),
+      source_id: null,
+    });
+  });
+
   return dedupe(events);
 }
 
@@ -127,11 +175,23 @@ function dedupe(events: TrWarszawaRawEvent[]): TrWarszawaRawEvent[] {
   return out;
 }
 
-/** Swap the /kalendarz/YYYY/MM/ segment of the listing URL ("YYYY-MM" input). */
+/**
+ * The listing URL for one month ("YYYY-MM" input).
+ *
+ * Since the November 2026 redesign (GOI-150) a month is
+ * `/kalendarz/?view=calendar&trw_month=YYYY-MM`. A URL in that shape has its
+ * month swapped; one still in the old `/kalendarz/YYYY/MM/` shape — a venue
+ * row the seed has not moved yet — is rewritten to the new one, since the old
+ * paths 404. Null for any other URL.
+ */
 export function monthUrl(baseUrl: string, ym: string): string | null {
   const [y, m] = ym.split('-');
-  if (!y || !m || !MONTH_SEGMENT_RE.test(baseUrl)) return null;
-  return baseUrl.replace(MONTH_SEGMENT_RE, `/kalendarz/${y}/${m}/`);
+  if (!y || !m) return null;
+  if (TRW_MONTH_RE.test(baseUrl)) return baseUrl.replace(TRW_MONTH_RE, `$1${y}-${m}`);
+  if (MONTH_SEGMENT_RE.test(baseUrl)) {
+    return `https://trwarszawa.pl/kalendarz/?view=calendar&trw_month=${y}-${m}`;
+  }
+  return null;
 }
 
 /** Inclusive list of YYYY-MM months from `from` through `to`. */

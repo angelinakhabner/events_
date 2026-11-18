@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { msUntilNextWarsawHour, msUntilNextWarsawTime, isRetryableScrapeError, readVenueGapMs, warsawWeekday } from './scheduler.js';
-import { needsDailySweep } from './scraper/extractor.js';
+import { msUntilNextWarsawHour, msUntilNextWarsawTime, isRetryableScrapeError, readVenueGapMs, warsawWeekday, warsawDayOfMonth, isDue } from './scheduler.js';
+import { needsDailySweep, refreshAfterDays } from './scraper/extractor.js';
 
 describe('isRetryableScrapeError', () => {
   it('retries on out-of-credits (the message the SDK surfaces for a 400)', () => {
@@ -179,5 +179,42 @@ describe('the weekly cadence still fires daily (GOI-107)', () => {
     // which is the case a UTC weekday would get wrong.
     expect(warsawWeekday(new Date('2026-09-07T12:00:00Z'))).toBe(1);
     expect(warsawWeekday(new Date('2026-09-07T23:30:00Z'))).toBe(2);
+  });
+});
+
+describe('monthly cadence (refreshAfterDays / isDue)', () => {
+  const now = new Date('2026-11-18T06:00:00Z'); // 07:00 Warsaw
+  const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000);
+
+  it('keeps cinemas daily and refreshes others a week before their window ends', () => {
+    expect(refreshAfterDays('cinema')).toBe(1);
+    expect(refreshAfterDays('comedy')).toBe(14);
+    expect(refreshAfterDays('theatre')).toBe(23);
+    // Above a month: the monthly full sweep is the only one they get.
+    expect(refreshAfterDays('music')).toBeGreaterThan(31);
+    expect(refreshAfterDays('exhibition')).toBeGreaterThan(31);
+  });
+
+  it('treats a venue that was never scraped as due', () => {
+    expect(isDue('exhibition', undefined, now)).toBe(true);
+  });
+
+  it('counts a run from a little after 07:00 yesterday as a day old', () => {
+    expect(isDue('cinema', new Date(daysAgo(1).getTime() + 20 * 60_000), now)).toBe(true);
+    expect(isDue('cinema', daysAgo(0.2), now)).toBe(false);
+  });
+
+  it('waits out the refresh interval for longer-horizon venues', () => {
+    expect(isDue('comedy', daysAgo(10), now)).toBe(false);
+    expect(isDue('comedy', daysAgo(14), now)).toBe(true);
+    expect(isDue('exhibition', daysAgo(30), now)).toBe(false);
+  });
+});
+
+describe('warsawDayOfMonth', () => {
+  it('uses the Warsaw date, not the UTC one', () => {
+    // 23:30 UTC on 31 Oct is already 1 Nov in Warsaw (CET, UTC+1).
+    expect(warsawDayOfMonth(new Date('2026-10-31T23:30:00Z'))).toBe(1);
+    expect(warsawDayOfMonth(new Date('2026-11-18T12:00:00Z'))).toBe(18);
   });
 });

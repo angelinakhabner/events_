@@ -14,7 +14,11 @@ serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
 // available on all plans). Enabled explicitly so dev/test servers don't scrape.
 // Cadence is daily unless SCRAPE_CRON_DAY_OF_WEEK pins it to a weekday.
 if (env.SCRAPE_CRON_ENABLED && env.DATABASE_URL) {
-  startScrapeScheduler({ hour: env.SCRAPE_CRON_HOUR, dayOfWeek: env.SCRAPE_CRON_DAY_OF_WEEK });
+  startScrapeScheduler({
+    hour: env.SCRAPE_CRON_HOUR,
+    dayOfWeek: env.SCRAPE_CRON_DAY_OF_WEEK,
+    dayOfMonth: env.SCRAPE_CRON_DAY_OF_MONTH,
+  });
 } else {
   console.log('[scheduler] disabled (set SCRAPE_CRON_ENABLED=true to enable)');
 }

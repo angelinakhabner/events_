@@ -96,6 +96,10 @@ export function descriptionStore(venueId: string): WrittenStore {
             format: sql`excluded.format`,
             contentCategory: sql`excluded.content_category`,
             searched: sql`excluded.searched`,
+            // Without this a row first written in another language keeps that
+            // label after being rewritten, so lookup never reads it back and
+            // every run pays for the show again.
+            lang: sql`excluded.lang`,
             writtenAt: sql`excluded.written_at`,
           },
         });

@@ -19,6 +19,7 @@
 
 import {
   ACCESS_BLOCKS,
+  ACCESS_LINKS,
   ACCESS_HEADING,
   CONTACT_BLOCKS,
   CONTACT_EMAIL,
@@ -143,7 +144,7 @@ export function landingHead({ noindex = false }: { noindex?: boolean } = {}): st
   ];
 }
 
-/** The page itself: masthead, what it is, the invitation note, contact, policy. */
+/** The page itself: masthead, what it is, the access note, contact, policy. */
 export function landingBody(): string {
   const policy = documentSections(POLICY_SECTIONS, 'privacy');
   const terms = documentSections(TERMS_SECTIONS, 'terms');
@@ -164,6 +165,11 @@ export function landingBody(): string {
         <section class="afisz-section afisz-note" id="access">
           <h2 class="afisz-h2">${escapeHtml(ACCESS_HEADING)}</h2>
           ${ACCESS_BLOCKS.map(paragraph).join('\n          ')}
+          <p class="afisz-cta">${ACCESS_LINKS.map(
+            // Relative on purpose: the same markup ships at "/" and under the
+            // "/dev/" preview, and a root-relative href would leave the latter.
+            (l) => `<a href="./${escapeHtml(l.path)}">${escapeHtml(l.label)}</a>`,
+          ).join(' ')}</p>
         </section>
 
         <section class="afisz-section" id="contact">
@@ -178,9 +184,9 @@ export function landingBody(): string {
         </section>
 
         <!-- GOI-95: the regulamin belongs on the page a stranger reads, not
-             only behind the invite. Art. 8(1)(1) UŚUDE requires it to be
+             only inside the app. Art. 8(1)(1) UŚUDE requires it to be
              available *before* the service is used, and for someone who has
-             not been invited yet, this page is before. -->
+             not used it yet, this page is before. -->
         <section class="afisz-section" id="terms">
           <h2 class="afisz-h2">${escapeHtml(TERMS_HEADING)}</h2>
           <p class="afisz-updated">Last updated ${escapeHtml(TERMS_UPDATED)}</p>
@@ -235,6 +241,13 @@ export const LANDING_CSS = `
 #${LANDING_ID} .afisz-note { background: var(--panel); border-left: 5px solid var(--accent); padding: 1.25rem 1.25rem 0.25rem; }
 #${LANDING_ID} .afisz-note .afisz-h2 { border-top: 0; padding-top: 0; color: var(--accent); }
 #${LANDING_ID} p { margin: 0 0 1rem; }
+#${LANDING_ID} .afisz-cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+#${LANDING_ID} .afisz-cta a {
+  display: inline-block; padding: 0.5rem 1rem; border: 3px solid var(--ink);
+  font-weight: 800; text-transform: uppercase; letter-spacing: 1px; font-size: 0.875rem; text-decoration: none;
+}
+#${LANDING_ID} .afisz-cta a:first-child { background: var(--ink); color: var(--paper); }
+#${LANDING_ID} .afisz-cta a:first-child:hover { background: var(--accent); border-color: var(--accent); }
 #${LANDING_ID} .afisz-updated { font-size: 0.75rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-top: -0.5rem; }
 #${LANDING_ID} .afisz-policy-section { margin: 1.75rem 0 0; }
 #${LANDING_ID} .afisz-policy-section h3 {

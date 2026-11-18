@@ -109,6 +109,12 @@ export interface AfiszkaEntry {
   venue: string;
   /** The longest description any merged row carried, verbatim. */
   description: string | null;
+  /**
+   * The paragraph about the work (GOI-139), longest across the merged rows,
+   * which a section set to "Full description" prints instead of the blurb.
+   * Optional so hand-built entries need not carry it; absent means none.
+   */
+  longDescription?: string | null;
   exhibition: boolean;
   /** Timed: every start, ascending. Exhibition: just its opening. */
   occurrences: string[];
@@ -296,6 +302,23 @@ export function describe(text: string | null, detail: NewsletterDetail, max = 16
   return `${atWord}…`;
 }
 
+/**
+ * An entry's description at its section's detail level. "Full" prints the
+ * paragraph about the work where the writer had more to say (GOI-139), the
+ * whole blurb otherwise — the same choice the classic design makes — so the
+ * per-category "Full description" setting means the same in both designs.
+ */
+export function entryDescription(
+  entry: Pick<AfiszkaEntry, 'description' | 'longDescription'>,
+  detail: NewsletterDetail,
+): string | null {
+  if (!entry.description && !entry.longDescription) return null;
+  return describe(
+    detail === 'full' ? entry.longDescription || entry.description : entry.description,
+    detail,
+  );
+}
+
 // ─── Dates for repeat shows (§2.6) ───────────────────────────────────────────
 
 /**
@@ -425,6 +448,9 @@ function toEntry(key: string, group: Event[], category: string, from: Date, days
   const description = sorted
     .map((e) => e.description?.trim() ?? '')
     .reduce((best, d) => (d.length > best.length ? d : best), '') || null;
+  const longDescription = sorted
+    .map((e) => e.longDescription?.trim() ?? '')
+    .reduce((best, d) => (d.length > best.length ? d : best), '') || null;
   const run = exhibition
     ? {
         opens: lead.startsAt,
@@ -439,6 +465,7 @@ function toEntry(key: string, group: Event[], category: string, from: Date, days
     category,
     venue: lead.venue?.name ?? '',
     description,
+    longDescription,
     exhibition,
     occurrences: exhibition ? [lead.startsAt] : [...new Set(sorted.map((e) => e.startsAt))],
     run,

@@ -90,6 +90,14 @@ const Env = z.object({
     (v) => (v === undefined || v === '' ? undefined : v),
     z.coerce.number().int().min(0).max(6).optional(),
   ),
+  // Day of the month (1–28, Europe/Warsaw) for a full monthly sweep. Takes
+  // precedence over SCRAPE_CRON_DAY_OF_WEEK. Between full sweeps the timer
+  // still fires daily but only scrapes venues whose window is running low
+  // (cinemas daily, comedy/theatre every 2–3 weeks) — see refreshAfterDays.
+  SCRAPE_CRON_DAY_OF_MONTH: z.preprocess(
+    (v) => (v === undefined || v === '' ? undefined : v),
+    z.coerce.number().int().min(1).max(28).optional(),
+  ),
   // Newsletter briefs (GOI-8). The tick is hourly; each subscription picks its
   // own send hour and (for weekly briefs) weekday — see GOI-28.
   NEWSLETTER_CRON_ENABLED: z

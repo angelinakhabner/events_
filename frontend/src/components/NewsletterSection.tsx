@@ -13,7 +13,7 @@ import { newsletterApiIsStale, OLDER_API, readableApiError } from '../lib/api-er
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
 import {
-  briefSummary, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
+  briefSummary, issueApiBase, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
 } from '../lib/newsletter';
 import { NewsletterLayout } from './NewsletterLayout';
 import { PanelHeading } from './PanelHeading';
@@ -109,7 +109,12 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
   const pick = (next: string | null) => {
     setSelected(next);
     setFormKey((k) => k + 1);
+    setDeleted(null);
   };
+  /** The newsletter just deleted, named once above the form (GOI-151) — the
+   *  form underneath is a different newsletter now, and without a word it
+   *  reads as if nothing happened. */
+  const [deleted, setDeleted] = useState<string | null>(null);
   const utils = trpc.useUtils();
   const list = trpc.my.newsletter.list.useQuery();
   const creating = selected === NEW;
@@ -160,7 +165,8 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
         utils.my.newsletter.get.setData({ id: created.id }, created);
         setSelected(created.id);
       }}
-      onDeleted={() => pick(null)}
+      onDeleted={(name) => { pick(null); setDeleted(name); }}
+      notice={deleted ? `Deleted “${deleted}”. Nothing more will be sent from it.` : null}
       picker={
         newsletters.length > 0 || creating ? (
           <NewsletterPicker
@@ -282,6 +288,7 @@ function NewsletterForm({
   picker,
   onCreated,
   onDeleted,
+  notice,
 }: {
   defaultEmail: string;
   saved: NewsletterSettings | null;
@@ -293,7 +300,9 @@ function NewsletterForm({
   picker?: React.ReactNode;
   /** A newsletter that did not exist has been saved; this is it. */
   onCreated?: (created: NewsletterSettings) => void;
-  onDeleted?: () => void;
+  onDeleted?: (name: string) => void;
+  /** One line above the form, e.g. what was just deleted (GOI-151). */
+  notice?: string | null;
 }) {
   const [name, setName] = useState(saved?.name ?? (picker ? 'New newsletter' : 'Newsletter'));
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
@@ -423,8 +432,14 @@ function NewsletterForm({
     onSuccess: async (created) => { saved_(); await refresh(); onCreated?.(created); },
   });
   const remove = trpc.my.newsletter.remove.useMutation({
-    onSuccess: async () => { await refresh(); onDeleted?.(); },
+    onSuccess: async () => { await refresh(); onDeleted?.(saved?.name ?? name); },
   });
+  const confirmDelete = () => {
+    if (!saved) return;
+    if (window.confirm(`Delete “${saved.name}”? Nothing more will be sent from it.`)) {
+      remove.mutate({ id: saved.id });
+    }
+  };
   // One status line for "did that save?", whichever of the two did the saving.
   const save = saved ? update : create;
   // GOI-45: generating also drops the brief on disk, ready to attach to
@@ -549,6 +564,9 @@ function NewsletterForm({
           at once and was an example of neither — a fixed "Kino Muranów …
           every day at 08:00" printed over a form set to 15:00. */}
       <PanelHeading title="Newsletter" blurb={NEWSLETTER_BLURB} rule={false} />
+      {notice ? (
+        <p role="status" className="mb-4 text-sm font-bold text-accent">{notice}</p>
+      ) : null}
       {picker}
       <p className={`${picker ? '' : '-mt-3 '}mb-5 md:mb-6 max-w-[520px] text-sm md:text-base font-semibold text-ink`}>
         <span className="label-form mr-2 text-faint">Yours</span>
@@ -568,15 +586,37 @@ function NewsletterForm({
           <label className="label-form mb-1.5" htmlFor="newsletter-title">
             Newsletter name
           </label>
-          <input
-            id="newsletter-title"
-            type="text"
-            maxLength={60}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Daily cinema"
-            className="field max-w-[20rem]"
-          />
+          <div className="flex flex-wrap items-center gap-3.5">
+            <input
+              id="newsletter-title"
+              type="text"
+              maxLength={60}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Daily cinema"
+              className="field max-w-[20rem]"
+            />
+            {/* GOI-151: beside the name of the thing it deletes, as a real
+                button. It used to be small grey text under the send buttons,
+                which read as no way to delete at all. Only a saved newsletter
+                has anything to delete; an unsaved one is abandoned by picking
+                another (GOI-126). */}
+            {saved ? (
+              <button
+                type="button"
+                disabled={remove.isPending}
+                onClick={confirmDelete}
+                className="act act-sm text-accent hover:text-accent"
+              >
+                {remove.isPending ? 'Deleting…' : 'Delete newsletter'}
+              </button>
+            ) : null}
+          </div>
+          {remove.error ? (
+            <p role="alert" className="mt-2 text-xs font-semibold text-accent">
+              {readableApiError(remove.error.message)}
+            </p>
+          ) : null}
         </div>
 
         <div className="px-5 pb-5 md:px-0">
@@ -904,27 +944,6 @@ function NewsletterForm({
               {preview.isPending ? 'Generating…' : 'Generate now'}
             </button>
           </div>
-          {/* Only a saved newsletter has anything to delete; an unsaved one
-              is abandoned by picking another (GOI-126). */}
-          {saved ? (
-            <button
-              type="button"
-              disabled={remove.isPending}
-              onClick={() => {
-                if (window.confirm(`Delete “${saved.name}”? Nothing more will be sent from it.`)) {
-                  remove.mutate({ id: saved.id });
-                }
-              }}
-              className="bg-transparent border-0 p-0 cursor-pointer text-xs font-bold uppercase tracking-[0.5px] text-muted hover:text-accent"
-            >
-              {remove.isPending ? 'Deleting…' : 'Delete this newsletter'}
-            </button>
-          ) : null}
-          {remove.error ? (
-            <p role="alert" className="text-xs font-semibold text-accent">
-              {readableApiError(remove.error.message)}
-            </p>
-          ) : null}
         </div>
 
         {/* GOI-102 §5: the screen used to give no sign that a dropdown change
@@ -947,6 +966,10 @@ function NewsletterForm({
       />
 
       <DriveCard />
+
+      {/* Keyed to the newsletter: a key shown in full belongs to the one it
+          was made for, and must not survive picking another (GOI-152). */}
+      <ApiAccessCard key={saved?.id ?? 'new'} newsletter={saved} />
     </section>
   );
 }
@@ -1685,6 +1708,126 @@ function DriveCard() {
       )}
 
       {error ? <p className="mt-3 text-sm text-accent">{error}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * An API key for this newsletter (GOI-152), so a service such as printed.sh
+ * can fetch its latest issue as a PDF or as JSON.
+ *
+ * The key is shown in full only straight after it is made — the server keeps a
+ * hash of it, nothing it could show again — so the copy button sits beside it
+ * and the note says so. Regenerating replaces the key; revoking removes it.
+ * Either way the old key stops working at once.
+ */
+function ApiAccessCard({ newsletter }: { newsletter: NewsletterSettings | null }) {
+  const id = newsletter?.id ?? '';
+  const utils = trpc.useUtils();
+  const status = trpc.my.newsletter.apiKey.status.useQuery({ id }, { enabled: !!newsletter });
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const generate = trpc.my.newsletter.apiKey.generate.useMutation({
+    onSuccess: async (data) => {
+      setFresh(data.key);
+      await utils.my.newsletter.apiKey.status.invalidate({ id });
+    },
+  });
+  const revoke = trpc.my.newsletter.apiKey.revoke.useMutation({
+    onSuccess: async () => {
+      setFresh(null);
+      await utils.my.newsletter.apiKey.status.invalidate({ id });
+    },
+  });
+
+  const base = issueApiBase(import.meta.env.VITE_API_URL, window.location.origin);
+  const copy = (label: string, text: string) => {
+    void navigator.clipboard?.writeText(text).then(() => setCopied(label), () => setCopied(null));
+  };
+  const error = generate.error?.message ?? revoke.error?.message ?? null;
+  const live = status.data?.key ?? null;
+
+  return (
+    <div className="mt-10 border-t-3 border-ink pt-6">
+      <h3 className="label-form">API access</h3>
+      <p className="mt-2 max-w-prose text-sm text-muted">
+        Let another service — printed.sh, for one — fetch this newsletter&rsquo;s latest issue,
+        as the PDF or as data it can lay out itself. It gets the same issue &ldquo;Generate
+        now&rdquo; shows, and fetching it doesn&rsquo;t change what you&rsquo;re sent.
+      </p>
+
+      {!newsletter ? (
+        <p className="mt-3 text-sm text-muted">Schedule this newsletter first, then make a key for it.</p>
+      ) : status.isLoading ? null : (
+        <div className="mt-4 border-3 border-ink p-4">
+          {fresh ? (
+            <>
+              <p className="text-sm font-bold">Your new key — copy it now, it won&rsquo;t be shown again:</p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <code className="break-all border-2 border-ink px-2 py-1 text-sm" data-testid="api-key">{fresh}</code>
+                <button type="button" className="act act-sm" onClick={() => copy('key', fresh)}>
+                  {copied === 'key' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </>
+          ) : live ? (
+            <p className="text-sm font-bold">
+              Key ending in <code>{live.lastFour}</code>
+              <span className="font-normal text-muted">
+                {' '}— made {new Date(live.createdAt).toLocaleDateString()}
+                {live.lastUsedAt
+                  ? `, last used ${new Date(live.lastUsedAt).toLocaleDateString()}`
+                  : ', not used yet'}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-muted">No key yet.</p>
+          )}
+
+          {live || fresh ? (
+            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+              <dt className="font-bold">PDF</dt>
+              <dd className="break-all"><code>{base}/latest.pdf</code></dd>
+              <dt className="font-bold">JSON</dt>
+              <dd className="break-all"><code>{base}/latest.json</code></dd>
+              <dt className="font-bold">Header</dt>
+              <dd className="break-all"><code>Authorization: Bearer &lt;key&gt;</code></dd>
+            </dl>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-3.5">
+            <button
+              type="button"
+              className={live ? 'act act-sm' : 'btn-outline text-center'}
+              disabled={generate.isPending}
+              onClick={() => {
+                if (!live || window.confirm('Make a new key? The current one stops working straight away.')) {
+                  generate.mutate({ id });
+                }
+              }}
+            >
+              {generate.isPending ? 'Generating…' : live ? 'Regenerate key' : 'Generate API key'}
+            </button>
+            {live ? (
+              <button
+                type="button"
+                className="act act-sm"
+                disabled={revoke.isPending}
+                onClick={() => {
+                  if (window.confirm('Revoke this key? Anything using it stops getting issues.')) {
+                    revoke.mutate({ id });
+                  }
+                }}
+              >
+                {revoke.isPending ? 'Revoking…' : 'Revoke'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {error ? <p role="alert" className="mt-3 text-sm text-accent">{readableApiError(error)}</p> : null}
     </div>
   );
 }
