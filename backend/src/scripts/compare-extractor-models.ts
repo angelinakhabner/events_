@@ -25,6 +25,28 @@ import { validateEvents } from '../services/scraper/validator.js';
 
 const MAX_TOKENS = 48_000;
 
+/** Standard $ per million tokens (input, output), for the cost column. Batch
+ *  runs in production pay half of this. */
+const PRICE_PER_MTOK: Record<string, [number, number]> = {
+  'claude-haiku-5-5': [0.1, 0.5],
+  'claude-haiku-4-5': [1, 5],
+  'claude-haiku-4-5-20251001': [1, 5],
+  'claude-sonnet-5-5': [2, 10],
+  'claude-sonnet-4-6': [3, 15],
+  'claude-opus-4-6': [5, 25],
+};
+
+function costUsd(r: Run): number | undefined {
+  const p = PRICE_PER_MTOK[r.model];
+  return p ? (r.inputTokens * p[0] + r.outputTokens * p[1]) / 1e6 : undefined;
+}
+
+/** Haiku 5.5 thinks by default, and a forced tool call does not combine with
+ *  thinking; extraction is transcription, so turn it off there. */
+function thinkingFor(model: string): { thinking?: { type: 'disabled' } } {
+  return model.startsWith('claude-haiku-5') ? { thinking: { type: 'disabled' } } : {};
+}
+
 interface Run {
   model: string;
   rows: Record<string, unknown>[];
@@ -54,6 +76,7 @@ async function runModel(
         system: prompt.system,
         tools: [eventTool()],
         tool_choice: { type: 'tool', name: 'record_events' },
+        ...thinkingFor(model),
         messages: [{ role: 'user', content: prompt.user }],
       })
       .finalMessage();
@@ -214,7 +237,7 @@ async function main(): Promise<void> {
     console.log(run.error ? `FAILED: ${run.error}` : `${run.rows.length} rows in ${run.ms}ms`);
   }
 
-  console.log('\n' + 'model'.padEnd(32) + 'rows  valid  invalid   in-tok   out-tok      ms');
+  console.log('\n' + 'model'.padEnd(32) + 'rows  valid  invalid   in-tok   out-tok      ms      cost');
   for (const r of runs) {
     console.log(
       r.model.padEnd(32) +
@@ -223,7 +246,8 @@ async function main(): Promise<void> {
       String(r.invalidCount).padStart(9) +
       String(r.inputTokens).padStart(9) +
       String(r.outputTokens).padStart(10) +
-      String(r.ms).padStart(8),
+      String(r.ms).padStart(8) +
+      (costUsd(r) === undefined ? '         ?' : `  $${costUsd(r)!.toFixed(4)}`.padStart(10)),
     );
   }
 

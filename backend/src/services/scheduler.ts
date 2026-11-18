@@ -3,7 +3,7 @@ import { getDb, schema } from '../db/index.js';
 import { env } from '../config.js';
 import { scrapeVenue } from './scraper/runner.js';
 import { scrapeVenuesBatched, DEFAULT_BATCH_CONCURRENCY } from './scraper/batch.js';
-import { defaultBatchClient, needsDailySweep } from './scraper/extractor.js';
+import { defaultBatchClient, needsDailySweep, refreshAfterDays } from './scraper/extractor.js';
 
 const TZ = 'Europe/Warsaw';
 
@@ -52,9 +52,13 @@ const RETRY_BACKOFFS_MIN = [30, 60, 120];
  * rate limited) are re-scraped on a backoff — only those venues, leaving the
  * ones that already succeeded untouched.
  */
-export function startScrapeScheduler(opts: { hour?: number; dayOfWeek?: number } = {}): { stop: () => void } {
+export function startScrapeScheduler(
+  opts: { hour?: number; dayOfWeek?: number; dayOfMonth?: number } = {},
+): { stop: () => void } {
   const hour = opts.hour ?? 7;
-  const dayOfWeek = opts.dayOfWeek;
+  const dayOfMonth = opts.dayOfMonth;
+  // A monthly cadence takes precedence over a weekly one.
+  const dayOfWeek = dayOfMonth === undefined ? opts.dayOfWeek : undefined;
   let dailyTimer: NodeJS.Timeout | null = null;
   let sleepTimer: NodeJS.Timeout | null = null;
   let wakeSleep: (() => void) | null = null;
@@ -78,14 +82,21 @@ export function startScrapeScheduler(opts: { hour?: number; dayOfWeek?: number }
     // short-horizon venues (GOI-107). `dayOfWeek` decides who is swept, not
     // whether the timer fires.
     const delay = msUntilNextWarsawTime(hour);
-    const cadence = dayOfWeek === undefined
-      ? 'daily'
-      : `weekly on ${WEEKDAY_NAME[dayOfWeek]}, short-horizon venues daily`;
+    const cadence = dayOfMonth !== undefined
+      ? `monthly on day ${dayOfMonth}, other venues as their window runs low`
+      : dayOfWeek === undefined
+        ? 'daily'
+        : `weekly on ${WEEKDAY_NAME[dayOfWeek]}, short-horizon venues daily`;
     console.log(`[scheduler] next scrape in ${(delay / 3_600_000).toFixed(1)}h (${cadence} at ${String(hour).padStart(2, '0')}:00 ${TZ})`);
     dailyTimer = setTimeout(async () => {
       try {
-        const full = dayOfWeek === undefined || warsawWeekday(new Date()) === dayOfWeek;
-        await scrapeAllVenues({ shortHorizonOnly: !full });
+        const now = new Date();
+        if (dayOfMonth !== undefined) {
+          await scrapeAllVenues(warsawDayOfMonth(now) === dayOfMonth ? {} : { dueOnly: true });
+        } else {
+          const full = dayOfWeek === undefined || warsawWeekday(now) === dayOfWeek;
+          await scrapeAllVenues({ shortHorizonOnly: !full });
+        }
         await runRetryPasses();
       } catch (e) {
         console.error('[scheduler] scrape sweep failed:', e);
@@ -151,17 +162,28 @@ export function readVenueGapMs(): number {
   return n;
 }
 
-export async function scrapeAllVenues(opts: { shortHorizonOnly?: boolean } = {}): Promise<void> {
+export async function scrapeAllVenues(
+  opts: { shortHorizonOnly?: boolean; dueOnly?: boolean } = {},
+): Promise<void> {
   const db = getDb();
   const total = await db.select({ id: schema.venues.id }).from(schema.venues);
   const all = await scrapeTargetVenues();
-  // The off-day pass of a weekly cadence: only the venues whose listings turn
-  // over faster than a week (GOI-107).
-  const targets = opts.shortHorizonOnly ? all.filter((v) => needsDailySweep(v.category)) : all;
+  let targets = all;
+  if (opts.dueOnly) {
+    // The off-day pass of a monthly cadence: venues whose last good scrape is
+    // older than their category allows (see refreshAfterDays).
+    const lastOk = await lastSuccessfulScrapes();
+    targets = all.filter((v) => isDue(v.category, lastOk.get(v.id), new Date()));
+  } else if (opts.shortHorizonOnly) {
+    // The off-day pass of a weekly cadence: only the venues whose listings
+    // turn over faster than a week (GOI-107).
+    targets = all.filter((v) => needsDailySweep(v.category));
+  }
   const skipped = total.length - all.length;
   console.log(
     `[scheduler] scraping ${targets.length}/${total.length} venue(s)` +
     (opts.shortHorizonOnly ? ' (short-horizon pass)' : '') +
+    (opts.dueOnly ? ' (due-venues pass)' : '') +
     (skipped > 0 ? ` (${skipped} only in inactive lists — skipped)` : '') + '...',
   );
   await scrapeVenues(targets);
@@ -247,6 +269,32 @@ async function scrapeVenues(venues: Pick<VenueRow, 'id' | 'name'>[]): Promise<vo
       await new Promise((r) => setTimeout(r, gapMs));
     }
   }
+}
+
+/**
+ * Whether a venue needs a scrape on a monthly cadence's off-day: never
+ * scraped, or last scraped successfully at least `refreshAfterDays` ago. Half
+ * a day of slack so a run that finished a little after 07:00 yesterday still
+ * counts as a day old today.
+ */
+export function isDue(category: string | undefined, lastOk: Date | undefined, now: Date): boolean {
+  if (!lastOk) return true;
+  const ageDays = (now.getTime() - lastOk.getTime()) / 86_400_000;
+  return ageDays + 0.5 >= refreshAfterDays(category);
+}
+
+/** When each venue last had a run that read its page successfully — a fresh
+ *  extraction, an empty page, or a page unchanged since the previous one. */
+export async function lastSuccessfulScrapes(): Promise<Map<string, Date>> {
+  const db = getDb();
+  const result = await db.execute(sql`
+    SELECT venue_id, max(started_at) AS last_ok
+    FROM scrape_runs
+    WHERE status IN ('success', 'success_empty', 'skipped_unchanged')
+    GROUP BY venue_id
+  `);
+  const rows = unwrapRows<{ venue_id: string; last_ok: string | Date }>(result);
+  return new Map(rows.map((r) => [r.venue_id, new Date(r.last_ok)]));
 }
 
 /**
@@ -389,6 +437,11 @@ export function lastWarsawTimeAtOrBefore(
 }
 
 /** Weekday of an instant in Europe/Warsaw, JS convention (0=Sun … 6=Sat). */
+/** Day of the month (1–31) in Europe/Warsaw. */
+export function warsawDayOfMonth(at: Date): number {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: 'numeric' }).format(at));
+}
+
 export function warsawWeekday(at: Date): number {
   const wd = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short' }).format(at);
   return WEEKDAY_NUM[wd] ?? at.getUTCDay();
