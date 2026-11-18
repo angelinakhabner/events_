@@ -24,9 +24,13 @@
 INSERT INTO user_venues (user_id, venue_id, name_override, category_override, window_days, list_id, tags, created_at)
 SELECT uv.user_id, keep.id, uv.name_override, uv.category_override, uv.window_days, uv.list_id, uv.tags, uv.created_at
   FROM (VALUES
-    -- b2a4c02, deterministic scrapers for the three theatres.
+    -- b2a4c02, deterministic scrapers for the three theatres; then TR's
+    -- November 2026 redesign moved the calendar again (GOI-150), so both
+    -- earlier TR spellings merge into the current one.
     ('https://trwarszawa.pl/repertuar/',
-     'https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar'),
+     'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month={{YYYY}}-{{MM}}'),
+    ('https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar',
+     'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month={{YYYY}}-{{MM}}'),
     ('https://nowyteatr.org/pl/repertuar',
      'https://nowyteatr.org/pl/kalendarz'),
     -- ad67b8a, Zachęta's calendar rather than its home page.
@@ -49,7 +53,9 @@ ON CONFLICT (user_id, venue_id) DO NOTHING;
 DELETE FROM venues v
  USING (VALUES
     ('https://trwarszawa.pl/repertuar/',
-     'https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar'),
+     'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month={{YYYY}}-{{MM}}'),
+    ('https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar',
+     'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month={{YYYY}}-{{MM}}'),
     ('https://nowyteatr.org/pl/repertuar',
      'https://nowyteatr.org/pl/kalendarz'),
     ('https://zacheta.art.pl/en',
@@ -70,7 +76,9 @@ UPDATE venues v
    SET url = s.current_url
   FROM (VALUES
     ('https://trwarszawa.pl/repertuar/',
-     'https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar'),
+     'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month={{YYYY}}-{{MM}}'),
+    ('https://trwarszawa.pl/kalendarz/{{YYYY}}/{{MM}}/?view=calendar',
+     'https://trwarszawa.pl/kalendarz/?view=calendar&trw_month={{YYYY}}-{{MM}}'),
     ('https://nowyteatr.org/pl/repertuar',
      'https://nowyteatr.org/pl/kalendarz'),
     ('https://zacheta.art.pl/en',

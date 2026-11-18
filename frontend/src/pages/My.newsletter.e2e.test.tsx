@@ -818,12 +818,19 @@ describe('MyPage — newsletter end-to-end', () => {
     await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe('Weekend'));
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     try {
-      await user.click(screen.getByRole('button', { name: /delete this newsletter/i }));
+      // GOI-151: a real button beside the name, not grey text under the
+      // send buttons.
+      const del = screen.getByRole('button', { name: /^delete newsletter$/i });
+      expect(del.closest('div')).toContainElement(screen.getByLabelText(/newsletter name/i));
+      await user.click(del);
+      expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Delete “Weekend”\?/));
     } finally {
       confirm.mockRestore();
     }
     await waitFor(async () => expect(await defaultNewsletterStore.list(userId)).toEqual([first]));
     await waitFor(() => expect((screen.getByLabelText(/newsletter name/i) as HTMLInputElement).value).toBe(first.name));
+    // …and says so, since the form underneath is now a different newsletter.
+    expect(screen.getByText('Deleted “Weekend”. Nothing more will be sent from it.')).toBeInTheDocument();
   });
 
   /** GOI-146: a museums section can carry only its runs, or only its events. */

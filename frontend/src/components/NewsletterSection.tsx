@@ -109,7 +109,12 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
   const pick = (next: string | null) => {
     setSelected(next);
     setFormKey((k) => k + 1);
+    setDeleted(null);
   };
+  /** The newsletter just deleted, named once above the form (GOI-151) — the
+   *  form underneath is a different newsletter now, and without a word it
+   *  reads as if nothing happened. */
+  const [deleted, setDeleted] = useState<string | null>(null);
   const utils = trpc.useUtils();
   const list = trpc.my.newsletter.list.useQuery();
   const creating = selected === NEW;
@@ -160,7 +165,8 @@ export function NewsletterSection({ defaultEmail }: { defaultEmail: string }) {
         utils.my.newsletter.get.setData({ id: created.id }, created);
         setSelected(created.id);
       }}
-      onDeleted={() => pick(null)}
+      onDeleted={(name) => { pick(null); setDeleted(name); }}
+      notice={deleted ? `Deleted “${deleted}”. Nothing more will be sent from it.` : null}
       picker={
         newsletters.length > 0 || creating ? (
           <NewsletterPicker
@@ -282,6 +288,7 @@ function NewsletterForm({
   picker,
   onCreated,
   onDeleted,
+  notice,
 }: {
   defaultEmail: string;
   saved: NewsletterSettings | null;
@@ -293,7 +300,9 @@ function NewsletterForm({
   picker?: React.ReactNode;
   /** A newsletter that did not exist has been saved; this is it. */
   onCreated?: (created: NewsletterSettings) => void;
-  onDeleted?: () => void;
+  onDeleted?: (name: string) => void;
+  /** One line above the form, e.g. what was just deleted (GOI-151). */
+  notice?: string | null;
 }) {
   const [name, setName] = useState(saved?.name ?? (picker ? 'New newsletter' : 'Newsletter'));
   const [email, setEmail] = useState(saved?.email ?? defaultEmail);
@@ -423,8 +432,14 @@ function NewsletterForm({
     onSuccess: async (created) => { saved_(); await refresh(); onCreated?.(created); },
   });
   const remove = trpc.my.newsletter.remove.useMutation({
-    onSuccess: async () => { await refresh(); onDeleted?.(); },
+    onSuccess: async () => { await refresh(); onDeleted?.(saved?.name ?? name); },
   });
+  const confirmDelete = () => {
+    if (!saved) return;
+    if (window.confirm(`Delete “${saved.name}”? Nothing more will be sent from it.`)) {
+      remove.mutate({ id: saved.id });
+    }
+  };
   // One status line for "did that save?", whichever of the two did the saving.
   const save = saved ? update : create;
   // GOI-45: generating also drops the brief on disk, ready to attach to
@@ -549,6 +564,9 @@ function NewsletterForm({
           at once and was an example of neither — a fixed "Kino Muranów …
           every day at 08:00" printed over a form set to 15:00. */}
       <PanelHeading title="Newsletter" blurb={NEWSLETTER_BLURB} rule={false} />
+      {notice ? (
+        <p role="status" className="mb-4 text-sm font-bold text-accent">{notice}</p>
+      ) : null}
       {picker}
       <p className={`${picker ? '' : '-mt-3 '}mb-5 md:mb-6 max-w-[520px] text-sm md:text-base font-semibold text-ink`}>
         <span className="label-form mr-2 text-faint">Yours</span>
@@ -568,15 +586,37 @@ function NewsletterForm({
           <label className="label-form mb-1.5" htmlFor="newsletter-title">
             Newsletter name
           </label>
-          <input
-            id="newsletter-title"
-            type="text"
-            maxLength={60}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Daily cinema"
-            className="field max-w-[20rem]"
-          />
+          <div className="flex flex-wrap items-center gap-3.5">
+            <input
+              id="newsletter-title"
+              type="text"
+              maxLength={60}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Daily cinema"
+              className="field max-w-[20rem]"
+            />
+            {/* GOI-151: beside the name of the thing it deletes, as a real
+                button. It used to be small grey text under the send buttons,
+                which read as no way to delete at all. Only a saved newsletter
+                has anything to delete; an unsaved one is abandoned by picking
+                another (GOI-126). */}
+            {saved ? (
+              <button
+                type="button"
+                disabled={remove.isPending}
+                onClick={confirmDelete}
+                className="act act-sm text-accent hover:text-accent"
+              >
+                {remove.isPending ? 'Deleting…' : 'Delete newsletter'}
+              </button>
+            ) : null}
+          </div>
+          {remove.error ? (
+            <p role="alert" className="mt-2 text-xs font-semibold text-accent">
+              {readableApiError(remove.error.message)}
+            </p>
+          ) : null}
         </div>
 
         <div className="px-5 pb-5 md:px-0">
@@ -904,27 +944,6 @@ function NewsletterForm({
               {preview.isPending ? 'Generating…' : 'Generate now'}
             </button>
           </div>
-          {/* Only a saved newsletter has anything to delete; an unsaved one
-              is abandoned by picking another (GOI-126). */}
-          {saved ? (
-            <button
-              type="button"
-              disabled={remove.isPending}
-              onClick={() => {
-                if (window.confirm(`Delete “${saved.name}”? Nothing more will be sent from it.`)) {
-                  remove.mutate({ id: saved.id });
-                }
-              }}
-              className="bg-transparent border-0 p-0 cursor-pointer text-xs font-bold uppercase tracking-[0.5px] text-muted hover:text-accent"
-            >
-              {remove.isPending ? 'Deleting…' : 'Delete this newsletter'}
-            </button>
-          ) : null}
-          {remove.error ? (
-            <p role="alert" className="text-xs font-semibold text-accent">
-              {readableApiError(remove.error.message)}
-            </p>
-          ) : null}
         </div>
 
         {/* GOI-102 §5: the screen used to give no sign that a dropdown change
