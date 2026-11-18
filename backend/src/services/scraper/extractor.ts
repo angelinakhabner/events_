@@ -408,6 +408,22 @@ export function needsDailySweep(category: string | undefined): boolean {
 
 const DAYS_PER_WEEK = 7;
 
+/**
+ * On a monthly cadence, how many days a venue's listings stay good before it
+ * needs another scrape between full sweeps.
+ *
+ * A monthly sweep alone leaves a venue blank once its window runs out:
+ * comedy (21d) for about ten days a month, theatre (30d) for a few. So each
+ * venue is re-scraped once the window it was last scraped with has a week or
+ * less to run. Short-horizon venues come out at 1 (daily, GOI-107); music
+ * (45d) and exhibitions (60d) come out above a month, so the monthly sweep
+ * is the only one they get.
+ */
+export function refreshAfterDays(category: string | undefined): number {
+  if (needsDailySweep(category)) return 1;
+  return Math.max(1, windowDaysForCategory(category) - DAYS_PER_WEEK);
+}
+
 export interface ExtractOptions {
   client?: ExtractorClient;
   hint?: string | null;
