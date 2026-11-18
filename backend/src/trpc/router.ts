@@ -22,13 +22,8 @@ import {
   type Category, type ProbeOutcome, type SharedWantToGoList, type SourceConfidence, type SourceMethod,
   type VenueFilterOption,
 } from '@afisz/shared';
-import {
-  briefFestivals, briefWindowDays, buildBriefSections, buildWantToGoSection,
-  dropFestivalRestatements, fetchBriefEvents,
-  plannedFrequency, resolveBriefVenues,
-} from '../services/newsletter.js';
+import { buildNewsletterIssue } from '../services/newsletter-issue.js';
 import { dedupe as dedupeSuggestions, suggestSimilarVenues } from '../services/venue-suggest.js';
-import { briefPdfFilename } from '../services/newsletter-pdf.js';
 import { renderNewsletterHtml, renderNewsletterPdf } from '../services/newsletter-design.js';
 import { googleDriveAuthUrl, googleDriveConfig } from '../services/google-drive.js';
 import { renameDriveFolder } from '../services/drive-delivery.js';
@@ -854,68 +849,9 @@ const my = router({
     preview: userProcedure
       .input(newsletterSaveInput)
       .mutation(async ({ ctx, input }) => {
-        const venues = await resolveBriefVenues(ctx.user.id, input.venueIds, ctx.userVenues);
-        // The same fetch the sweep makes, so what Generate shows is what would
-        // actually be sent — including its per-rule top-ups, without which a
-        // preview of a cinema-heavy folder showed cinema and nothing else.
-        const now = new Date();
-        const all = env.DATABASE_URL
-          ? await fetchBriefEvents(input, venues, now, defaultEventStore)
-          : [];
-        // The preview shows what would go out *now*, so a section whose
-        // cadence isn't due today is genuinely absent from it — same rule the
-        // sweep applies.
-        // Scoped like the send is (GOI-33), so Generate and the issue agree —
-        // unless the reader follows nothing yet, where scoping to an empty
-        // list would hide the band from the screen meant to show it.
-        const festivals = briefFestivals(
-          briefWindowDays(plannedFrequency(input)),
-          venues.length > 0 ? venues.map((v) => v.name) : undefined,
-          now,
-        );
-        // A row that only restates a festival the band names is the same fact
-        // printed twice in one issue (GOI-124).
-        const sections = dropFestivalRestatements(
-          buildBriefSections(all, input, venues, now),
-          festivals,
-        );
-        /**
-         * The saved-events queue, which the preview used to leave out entirely
-         * (GOI-110). It is the first block of a brief and the only one that
-         * asks the reader to do something, so a preview without it was missing
-         * the part of the design it was pressed to check.
-         *
-         * Built without send-state dedup — the substituted `sentStates`. A
-         * preview sends nothing, so it consumes no state; suppressing what a
-         * previous issue already announced would leave the reader looking at an
-         * empty block precisely because the feature has been working.
-         */
-        const wantToGo = await buildWantToGoSection(
-          { id: 'preview', userId: ctx.user.id, wantToGo: input.wantToGo, sendCadence: input.sendCadence },
-          {
-            sentStates: async () => new Set<string>(),
-            changesFor: (ids, since) => ctx.newsletter.changesFor(ids, since),
-          },
-          ctx.wantToGo,
-          now,
-          // A tracked title that has just been announced belongs in the
-          // preview for the same reason it belongs in the issue (GOI-112).
-          { films: ctx.films, events: defaultEventStore },
-        );
-        const brief = {
-          sections,
-          wantToGo,
-          fallbackFrequency: plannedFrequency(input),
-          recipientName: input.recipientName,
-          festivals,
-          design: input.design,
-          now,
-          // For a daily issue's poster PDF. Its issue number is left off: a
-          // preview is not an issue.
-          savedEventIds: input.wantToGo?.enabled === false
-            ? []
-            : (await ctx.wantToGo.list(ctx.user.id)).map((e) => e.id),
-        };
+        // Shared with the per-newsletter API (GOI-152), so what an outside
+        // service fetches is what Generate shows.
+        const issue = await buildNewsletterIssue(ctx.user.id, input, ctx);
         // The PDF rides along with the preview (GOI-45) so "Generate" can hand
         // the user a file to send by hand, and so what they download is
         // provably the same brief the modal is showing rather than a second
@@ -923,14 +859,46 @@ const my = router({
         // JSON; a brief is a few tens of KB, so the ~33% inflation is cheaper
         // than standing up a separate authenticated download route.
         return {
-          events: sections.flatMap((s) => s.events),
-          html: renderNewsletterHtml(brief),
+          events: issue.sections.flatMap((s) => s.events),
+          html: renderNewsletterHtml(issue.brief),
           pdf: {
-            filename: briefPdfFilename(now, plannedFrequency(input)),
-            base64: (await renderNewsletterPdf(brief)).toString('base64'),
+            filename: issue.pdfFilename,
+            base64: (await renderNewsletterPdf(issue.brief)).toString('base64'),
           },
         };
       }),
+
+    /**
+     * The newsletter's API key (GOI-152), which lets an outside service such
+     * as printed.sh fetch its latest issue as a PDF or JSON.
+     *
+     * `generate` returns the key in full, once; every other read shows only
+     * its last four characters. Generating again replaces the key, so the old
+     * one stops working at once. Each takes the newsletter's id and checks it
+     * is the reader's: an id they don't hold reads as not found.
+     */
+    apiKey: router({
+      status: userProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .query(async ({ ctx, input }) => {
+          await ownNewsletter(ctx, input.id);
+          return { key: await ctx.newsletterKeys.view(ctx.user.id, input.id) };
+        }),
+
+      generate: userProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          await ownNewsletter(ctx, input.id);
+          return ctx.newsletterKeys.issue(ctx.user.id, input.id);
+        }),
+
+      revoke: userProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ ctx, input }) => {
+          await ownNewsletter(ctx, input.id);
+          return { revoked: await ctx.newsletterKeys.revoke(ctx.user.id, input.id) };
+        }),
+    }),
 
     /**
      * Filing briefs on a cloud drive (GOI-91).
@@ -1133,6 +1101,16 @@ function mapStoreError(e: unknown): TRPCError {
   if (/not found/i.test(msg)) return new TRPCError({ code: 'NOT_FOUND', message: msg });
   if (/already have/i.test(msg)) return new TRPCError({ code: 'CONFLICT', message: msg });
   return new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: msg });
+}
+
+/** The reader's newsletter by id, or NOT_FOUND (GOI-152). */
+async function ownNewsletter(
+  ctx: { user: { id: string }; newsletter: { getById(userId: string, id: string): Promise<unknown> } },
+  id: string,
+): Promise<void> {
+  if (!(await ctx.newsletter.getById(ctx.user.id, id))) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'No such newsletter' });
+  }
 }
 
 /** An id that is not the reader's newsletter reads as not found, never as a

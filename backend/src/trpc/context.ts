@@ -7,6 +7,7 @@ import { defaultWantToGoStore, type WantToGoStore } from '../services/want-to-go
 import { defaultFilmStore, type FilmStore } from '../services/film-store.js';
 import { defaultNewsletterStore, type NewsletterStore } from '../services/newsletter-store.js';
 import { defaultDriveStore, type DriveStore } from '../services/drive-store.js';
+import { defaultNewsletterKeyStore, type NewsletterKeyStore } from '../services/newsletter-key-store.js';
 
 export interface AppContext {
   venues: IVenueStore;
@@ -18,6 +19,8 @@ export interface AppContext {
   newsletter: NewsletterStore;
   /** Connected cloud drives, where briefs get filed as PDFs (GOI-91). */
   drives: DriveStore;
+  /** Per-newsletter API keys, for services such as printed.sh (GOI-152). */
+  newsletterKeys: NewsletterKeyStore;
   deviceId: string | null;
   /** Logged-in user resolved from the Authorization bearer, when valid. */
   user: AuthUser | null;
@@ -39,6 +42,7 @@ export async function createContext(opts: FetchCreateContextFnOptions): Promise<
     films: defaultFilmStore,
     newsletter: defaultNewsletterStore,
     drives: defaultDriveStore,
+    newsletterKeys: defaultNewsletterKeyStore,
     deviceId: deviceId && deviceId.length > 0 ? deviceId : null,
     user,
     sessionToken,

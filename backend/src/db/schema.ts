@@ -433,6 +433,26 @@ export const newsletterSentEvents = pgTable(
 );
 
 /**
+ * A newsletter's API key (GOI-152), so an outside service such as printed.sh
+ * can fetch that one newsletter's latest issue as a PDF or JSON.
+ *
+ * One key per newsletter: regenerating replaces it, which is also how a leaked
+ * key is revoked without disturbing anything else. Only a SHA-256 of the key is
+ * stored — the reader sees the key once, when it is made — plus its last four
+ * characters so the settings screen can say which key is live.
+ */
+export const newsletterApiKeys = pgTable('newsletter_api_keys', {
+  configId: uuid('config_id')
+    .primaryKey()
+    .references(() => newsletterSubscriptions.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  keyHash: text('key_hash').notNull().unique(),
+  lastFour: text('last_four').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+});
+
+/**
  * Changes the scraper noticed to an event that already existed (GOI-101).
  *
  * Written when a re-scrape finds a stored event whose time, venue or

@@ -13,7 +13,7 @@ import { newsletterApiIsStale, OLDER_API, readableApiError } from '../lib/api-er
 import { downloadBase64, downloadText } from '../lib/download';
 import { categoryOrTagLabel, pad } from '../lib/format';
 import {
-  briefSummary, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
+  briefSummary, issueApiBase, newsletterPayload, NEWSLETTER_BLURB, NEWSLETTER_FIELDS,
 } from '../lib/newsletter';
 import { NewsletterLayout } from './NewsletterLayout';
 import { PanelHeading } from './PanelHeading';
@@ -947,6 +947,10 @@ function NewsletterForm({
       />
 
       <DriveCard />
+
+      {/* Keyed to the newsletter: a key shown in full belongs to the one it
+          was made for, and must not survive picking another (GOI-152). */}
+      <ApiAccessCard key={saved?.id ?? 'new'} newsletter={saved} />
     </section>
   );
 }
@@ -1685,6 +1689,126 @@ function DriveCard() {
       )}
 
       {error ? <p className="mt-3 text-sm text-accent">{error}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * An API key for this newsletter (GOI-152), so a service such as printed.sh
+ * can fetch its latest issue as a PDF or as JSON.
+ *
+ * The key is shown in full only straight after it is made — the server keeps a
+ * hash of it, nothing it could show again — so the copy button sits beside it
+ * and the note says so. Regenerating replaces the key; revoking removes it.
+ * Either way the old key stops working at once.
+ */
+function ApiAccessCard({ newsletter }: { newsletter: NewsletterSettings | null }) {
+  const id = newsletter?.id ?? '';
+  const utils = trpc.useUtils();
+  const status = trpc.my.newsletter.apiKey.status.useQuery({ id }, { enabled: !!newsletter });
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const generate = trpc.my.newsletter.apiKey.generate.useMutation({
+    onSuccess: async (data) => {
+      setFresh(data.key);
+      await utils.my.newsletter.apiKey.status.invalidate({ id });
+    },
+  });
+  const revoke = trpc.my.newsletter.apiKey.revoke.useMutation({
+    onSuccess: async () => {
+      setFresh(null);
+      await utils.my.newsletter.apiKey.status.invalidate({ id });
+    },
+  });
+
+  const base = issueApiBase(import.meta.env.VITE_API_URL, window.location.origin);
+  const copy = (label: string, text: string) => {
+    void navigator.clipboard?.writeText(text).then(() => setCopied(label), () => setCopied(null));
+  };
+  const error = generate.error?.message ?? revoke.error?.message ?? null;
+  const live = status.data?.key ?? null;
+
+  return (
+    <div className="mt-10 border-t-3 border-ink pt-6">
+      <h3 className="label-form">API access</h3>
+      <p className="mt-2 max-w-prose text-sm text-muted">
+        Let another service — printed.sh, for one — fetch this newsletter&rsquo;s latest issue,
+        as the PDF or as data it can lay out itself. It gets the same issue &ldquo;Generate
+        now&rdquo; shows, and fetching it doesn&rsquo;t change what you&rsquo;re sent.
+      </p>
+
+      {!newsletter ? (
+        <p className="mt-3 text-sm text-muted">Schedule this newsletter first, then make a key for it.</p>
+      ) : status.isLoading ? null : (
+        <div className="mt-4 border-3 border-ink p-4">
+          {fresh ? (
+            <>
+              <p className="text-sm font-bold">Your new key — copy it now, it won&rsquo;t be shown again:</p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <code className="break-all border-2 border-ink px-2 py-1 text-sm" data-testid="api-key">{fresh}</code>
+                <button type="button" className="act act-sm" onClick={() => copy('key', fresh)}>
+                  {copied === 'key' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </>
+          ) : live ? (
+            <p className="text-sm font-bold">
+              Key ending in <code>{live.lastFour}</code>
+              <span className="font-normal text-muted">
+                {' '}— made {new Date(live.createdAt).toLocaleDateString()}
+                {live.lastUsedAt
+                  ? `, last used ${new Date(live.lastUsedAt).toLocaleDateString()}`
+                  : ', not used yet'}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-muted">No key yet.</p>
+          )}
+
+          {live || fresh ? (
+            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+              <dt className="font-bold">PDF</dt>
+              <dd className="break-all"><code>{base}/latest.pdf</code></dd>
+              <dt className="font-bold">JSON</dt>
+              <dd className="break-all"><code>{base}/latest.json</code></dd>
+              <dt className="font-bold">Header</dt>
+              <dd className="break-all"><code>Authorization: Bearer &lt;key&gt;</code></dd>
+            </dl>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-3.5">
+            <button
+              type="button"
+              className={live ? 'act act-sm' : 'btn-outline text-center'}
+              disabled={generate.isPending}
+              onClick={() => {
+                if (!live || window.confirm('Make a new key? The current one stops working straight away.')) {
+                  generate.mutate({ id });
+                }
+              }}
+            >
+              {generate.isPending ? 'Generating…' : live ? 'Regenerate key' : 'Generate API key'}
+            </button>
+            {live ? (
+              <button
+                type="button"
+                className="act act-sm"
+                disabled={revoke.isPending}
+                onClick={() => {
+                  if (window.confirm('Revoke this key? Anything using it stops getting issues.')) {
+                    revoke.mutate({ id });
+                  }
+                }}
+              >
+                {revoke.isPending ? 'Revoking…' : 'Revoke'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {error ? <p role="alert" className="mt-3 text-sm text-accent">{readableApiError(error)}</p> : null}
     </div>
   );
 }
