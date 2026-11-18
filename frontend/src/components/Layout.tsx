@@ -29,13 +29,13 @@ export function Layout() {
         <nav className="hidden md:flex items-center gap-10">
           <HeaderLink to="/" end>Home</HeaderLink>
           <HeaderLink to="/my">/my</HeaderLink>
-          <LogoutButton />
+          <AccountAction />
         </nav>
 
-        {/* Mobile keeps only the log-out affordance up top; Home and /my live
-            in the bottom tab bar. */}
+        {/* Mobile keeps only the log-in / log-out affordance up top; Home and
+            /my live in the bottom tab bar. */}
         <div className="md:hidden">
-          <LogoutButton />
+          <AccountAction />
         </div>
       </header>
 
@@ -135,7 +135,21 @@ function TabLink({ to, end, children }: { to: string; end?: boolean; children: R
   );
 }
 
-/** Renders nothing for logged-out visitors — there is no session to end. */
+/**
+ * Log in for visitors, log out for members. The site is open to everyone, so
+ * the way in has to be on every page rather than discovered by opening /my —
+ * which is where it leads: logged out, /my renders the magic-link and Google
+ * sign-in card.
+ */
+function AccountAction() {
+  if (isLoggedIn()) return <LogoutButton />;
+  return (
+    <NavLink to="/my" className="btn-fill px-3 py-1.5 md:px-[18px] md:py-2.5">
+      Log in
+    </NavLink>
+  );
+}
+
 function LogoutButton() {
   const utils = trpc.useUtils();
   const logout = trpc.auth.logout.useMutation({
@@ -145,7 +159,6 @@ function LogoutButton() {
       window.location.assign('/');
     },
   });
-  if (!isLoggedIn()) return null;
   return (
     <button type="button" onClick={() => logout.mutate()} className="act act-sm md:text-sm">
       Log out

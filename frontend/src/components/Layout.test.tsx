@@ -72,3 +72,15 @@ describe('Layout wordmark', () => {
     expect(screen.getByText('DEV')).toBeInTheDocument();
   });
 });
+
+describe('Layout log in', () => {
+  // The site is open to everyone, so a logged-out visitor needs a visible way
+  // in from every page — desktop header and mobile header both carry it.
+  it('shows a Log in link to /my for a logged-out visitor', () => {
+    renderLayout();
+    const links = screen.getAllByRole('link', { name: /^log in$/i });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(link).toHaveAttribute('href', '/my');
+    expect(screen.queryByRole('button', { name: /log out/i })).not.toBeInTheDocument();
+  });
+});

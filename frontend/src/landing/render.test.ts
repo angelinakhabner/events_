@@ -29,10 +29,14 @@ describe('landing page markup', () => {
     expect(body).toContain(escapeHtml(DESCRIPTION));
   });
 
-  it('says access is by invitation, visibly', () => {
+  it('says the app is open and how to log in, visibly', () => {
     expect(body).toContain(ACCESS_HEADING);
-    expect(body).toMatch(/closed testing/i);
-    expect(body).toMatch(/no public sign-up/i);
+    expect(body).toMatch(/open to anyone/i);
+    const access = body.slice(body.indexOf('id="access"'), body.indexOf('id="contact"'));
+    expect(access).not.toMatch(/closed testing|no public sign-up|invitation/i);
+    // Relative links, so the /dev/ preview build stays inside /dev/.
+    expect(body).toContain('href="./my"');
+    expect(body).toContain('href="./"');
   });
 
   it('gives a contact address that can be clicked', () => {
