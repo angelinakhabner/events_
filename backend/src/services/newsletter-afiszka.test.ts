@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Event } from '@afisz/shared';
 import type { BriefSection } from './newsletter-render.js';
 import {
-  buildEntries, buildAfiszkaIssue, dateRun, describe as describeText, isReferenced, isTimeBanded,
+  buildEntries, buildAfiszkaIssue, dateRun, describe as describeText, entryDescription, isReferenced, isTimeBanded,
   scorePick, type AfiszkaEntry,
 } from './newsletter-afiszka.js';
 import { renderAfiszkaHtml } from './newsletter-afiszka-html.js';
@@ -79,6 +79,60 @@ describe('afiszka: descriptions (§2.5)', () => {
   it('a missing description collapses rather than printing a placeholder', () => {
     expect(describeText(null, 'full')).toBeNull();
     expect(describeText('   ', 'short')).toBeNull();
+  });
+});
+
+describe('afiszka: "Full description" per category', () => {
+  const blurb = 'Komedia o rodzinie. Druga linijka.';
+  const paragraph = 'Akapit o spektaklu: o czym jest, kto go zrobił i dlaczego warto pójść.';
+
+  it('full prints the paragraph about the work, like the classic design', () => {
+    expect(entryDescription({ description: blurb, longDescription: paragraph }, 'full')).toBe(paragraph);
+  });
+
+  it('full falls back to the whole blurb when there is no paragraph', () => {
+    expect(entryDescription({ description: blurb, longDescription: null }, 'full')).toBe(blurb);
+    expect(entryDescription({ description: blurb }, 'full')).toBe(blurb);
+  });
+
+  it('short and line ignore the paragraph', () => {
+    expect(entryDescription({ description: blurb, longDescription: paragraph }, 'short')).toBe('Komedia o rodzinie.');
+    expect(entryDescription({ description: blurb, longDescription: paragraph }, 'line')).toBeNull();
+    expect(entryDescription({ description: null, longDescription: null }, 'full')).toBeNull();
+  });
+
+  it('a merged show keeps the longest paragraph any performance carried', () => {
+    const events = [
+      ev({ title: 'Wesele', startsAt: at(8, '19:00'), venueId: 'ateneum', category: 'theatre', description: blurb, longDescription: 'Krótko.' }),
+      ev({ title: 'Wesele', startsAt: at(9, '19:00'), venueId: 'ateneum', category: 'theatre', description: blurb, longDescription: paragraph }),
+    ];
+    const [entry] = buildEntries(section(events, { category: 'theatre', windowDays: 14 }), NOW, 14);
+    expect(entry!.longDescription).toBe(paragraph);
+  });
+
+  it('the email prints the paragraph only in sections set to full', () => {
+    const play = (detail: BriefSection['detail']) => ({
+      sections: [section([
+        ev({ title: 'Wesele', startsAt: at(5, '19:00'), venueId: 'ateneum', category: 'theatre', description: blurb, longDescription: paragraph }),
+      ], { category: 'theatre', windowDays: 7, detail })],
+      fallbackFrequency: 'weekly' as const,
+      now: NOW,
+    });
+    expect(renderAfiszkaHtml(play('full'))).toContain(paragraph);
+    const short = renderAfiszkaHtml(play('short'));
+    expect(short).not.toContain(paragraph);
+    expect(short).toContain('Komedia o rodzinie.');
+  });
+
+  it('the PDF draws a full section without throwing', async () => {
+    const pdf = await renderAfiszkaPdf({
+      sections: [section([
+        ev({ title: 'Wesele', startsAt: at(5, '19:00'), venueId: 'ateneum', category: 'theatre', description: blurb, longDescription: paragraph.repeat(6) }),
+      ], { category: 'theatre', windowDays: 7, detail: 'full' })],
+      fallbackFrequency: 'weekly',
+      now: NOW,
+    });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });
 

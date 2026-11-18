@@ -3,7 +3,7 @@ import type PDFKit from 'pdfkit';
 import { PL, festivalSpan, time, weekday } from './newsletter-copy.js';
 import { loadFont } from './pdf-fonts.js';
 import {
-  AFISZKA, barSpan, buildAfiszkaIssue, dateRun, dayNumber, describe, frontWhen, isReferenced,
+  AFISZKA, barSpan, buildAfiszkaIssue, dateRun, dayNumber, describe, entryDescription, frontWhen, isReferenced,
   entryWhen, metaLine, pickReasonLabel, monthAbbr, runLabel,
   type AfiszkaBlock, type AfiszkaContent, type AfiszkaEntry, type AfiszkaIssue, type AfiszkaSection,
 } from './newsletter-afiszka.js';
@@ -508,7 +508,7 @@ function refText(lead: string, e: AfiszkaEntry): string {
 function cellHeight(s: Sheet, issue: AfiszkaIssue, sec: AfiszkaSection, e: AfiszkaEntry, w: number, showTime: boolean): number {
   if (isReferenced(issue, e)) return s.measure(refText(showTime ? time(e.first) : '', e), { size: px(11), weight: 'b', width: w });
   const meta = [e.venue, cellWhen(issue, e, showTime)].filter(Boolean).join(' · ');
-  const desc = describe(e.description, sec.detail);
+  const desc = entryDescription(e, sec.detail);
   return (e.pick ? s.measure(pickReasonLabel(e.pick), { ...CELL.meta, width: w }) + px(2) : 0)
     + s.measure(e.title, { ...CELL.title, width: w })
     + px(4) + s.measure(meta, { ...CELL.meta, width: w }) + px(5)
@@ -531,7 +531,7 @@ function drawCell(s: Sheet, issue: AfiszkaIssue, sec: AfiszkaSection, e: Afiszka
   y += s.text(e.title, x, y, { ...CELL.title, width: w, link: e.url }) + px(4);
   const meta = [e.venue, cellWhen(issue, e, showTime)].filter(Boolean).join(' · ');
   y += s.text(meta, x, y, { ...CELL.meta, width: w, color: C.n700 }) + px(5);
-  const desc = describe(e.description, sec.detail);
+  const desc = entryDescription(e, sec.detail);
   if (desc) s.text(desc, x, y, { ...CELL.desc, width: w });
 }
 
@@ -644,7 +644,7 @@ const WEEK = { dateW: px(76), tagW: px(90) };
 function weekRowHeight(s: Sheet, issue: AfiszkaIssue, sec: AfiszkaSection, e: AfiszkaEntry): number {
   const w = W - WEEK.dateW - px(18) - WEEK.tagW;
   if (isReferenced(issue, e)) return px(10) * 2 + Math.max(px(38) * 0.85 + px(14), s.measure(refText(time(e.first), e), { size: px(11), weight: 'b', width: w }));
-  const desc = describe(e.description, sec.detail);
+  const desc = entryDescription(e, sec.detail);
   const h = s.measure(e.title, { size: px(16), weight: 'b', width: w, lh: 1.12 }) + px(4)
     + s.measure(e.venue, { size: px(9), weight: 'b', track: 0.16, upper: true, width: w }) + px(3)
     + s.measure(dateRun(e.occurrences), { size: px(10), lh: 1.4, width: w }) + px(3)
@@ -669,7 +669,7 @@ function weekRow(s: Sheet, issue: AfiszkaIssue, sec: AfiszkaSection, e: AfiszkaE
     y += s.text(e.title, x, y, { size: px(16), weight: 'b', width: w, lh: 1.12, link: e.url }) + px(4);
     y += s.text(e.venue, x, y, { size: px(9), weight: 'b', track: 0.16, upper: true, color: C.n700, width: w }) + px(3);
     y += s.text(dateRun(e.occurrences), x, y, { size: px(10), lh: 1.4, width: w, color: C.n700 }) + px(3);
-    const desc = describe(e.description, sec.detail);
+    const desc = entryDescription(e, sec.detail);
     if (desc) s.text(desc, x, y, { size: px(11), lh: 1.4, width: w });
     if (e.pick) {
       const tag = pickReasonLabel(e.pick);
@@ -708,7 +708,7 @@ function timeline(s: Sheet, issue: AfiszkaIssue, sec: AfiszkaSection, b: Extract
   };
   const rowH = (e: AfiszkaEntry) => {
     if (isReferenced(issue, e)) return px(10) * 2 + s.measure(refText('', e), { size: px(11), weight: 'b', width: W });
-    const desc = describe(e.description, sec.detail);
+    const desc = entryDescription(e, sec.detail);
     return px(10) * 2
       + Math.max(
         s.measure(e.title, { size: px(13), weight: 'b', width: labelW - px(14), lh: 1.15 }) + px(3)
@@ -735,7 +735,7 @@ function timeline(s: Sheet, issue: AfiszkaIssue, sec: AfiszkaSection, b: Extract
       s.text(runLabel(e, issue.now, n), gx + from * dayW, barY + px(5), {
         size: px(9), weight: 'b', track: 0.16, upper: true, color: C.accent700, width: Math.max((to - from + 1) * dayW, px(140)),
       });
-      const desc = describe(e.description, sec.detail);
+      const desc = entryDescription(e, sec.detail);
       if (desc) {
         const dy = Math.max(ly, barY + px(20)) + px(6);
         s.text(desc, X0, dy, { size: px(11), lh: 1.4, width: W });
