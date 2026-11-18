@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { briefSummary, type BriefSummaryInput, NEWSLETTER_BLURB } from './newsletter';
+import { briefSummary, type BriefSummaryInput, issueApiBase, NEWSLETTER_BLURB } from './newsletter';
 
 const base: BriefSummaryInput = {
   venueNames: ['Kino Muranów', 'Kinoteka'],
@@ -116,5 +116,17 @@ describe('NEWSLETTER_BLURB', () => {
     expect(NEWSLETTER_BLURB).toMatch(/how far ahead/);
     expect(NEWSLETTER_BLURB).toMatch(/email/);
     expect(NEWSLETTER_BLURB).toMatch(/PDF/);
+  });
+});
+
+describe('issueApiBase (GOI-152)', () => {
+  it('uses the API origin when the SPA is served from elsewhere', () => {
+    expect(issueApiBase('https://api.example.com/', 'https://site.example.com'))
+      .toBe('https://api.example.com/api/v1/issue');
+  });
+
+  it('falls back to this origin when the API shares it', () => {
+    expect(issueApiBase('', 'https://site.example.com')).toBe('https://site.example.com/api/v1/issue');
+    expect(issueApiBase(undefined, 'https://site.example.com')).toBe('https://site.example.com/api/v1/issue');
   });
 });

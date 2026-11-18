@@ -252,3 +252,12 @@ function cadence({ frequency, sendWeekday }: BriefSummaryInput): string {
   if (frequency === 'monthly') return 'once a month';
   return `every ${WEEKDAY_NAMES[sendWeekday] ?? 'Monday'}`;
 }
+
+/**
+ * Where a newsletter's issue API lives (GOI-152), as an outside service must
+ * call it: the API's own origin when the SPA is served from elsewhere, else
+ * this one.
+ */
+export function issueApiBase(apiUrl: string | undefined, origin: string): string {
+  return `${(apiUrl || origin).replace(/\/+$/, '')}/api/v1/issue`;
+}

@@ -10,6 +10,7 @@ import { firecrawlScrape } from './services/scraper/fetcher.js';
 import { defaultAuthStore, loginWithVerifiedEmail } from './services/auth.js';
 import { newsletterConfigStatus, sendNewsletterBriefs } from './services/newsletter.js';
 import { createNewsletterApi } from './services/newsletter-api.js';
+import { createNewsletterIssueApi } from './services/newsletter-issue-api.js';
 import { newsletterFromEmail, sendEmail } from './services/email.js';
 import {
   exchangeGoogleCode,
@@ -68,6 +69,10 @@ export function createApp() {
   // invite cookie, so gating it would make it unusable. It carries its own
   // bearer-key auth and is inert until NEWSLETTER_API_KEY is set.
   app.route('/api/v1/newsletter', createNewsletterApi());
+  // One newsletter's issue, for a service such as printed.sh (GOI-152). Its
+  // key is per newsletter and made by the reader, so it is live whenever a
+  // reader has made one — no deployment switch.
+  app.route('/api/v1/issue', createNewsletterIssueApi());
 
   // ─── Invite gate (GOI-83) ─────────────────────────────────────────────────
   // Deny by default, at the router root, before every route below — including
