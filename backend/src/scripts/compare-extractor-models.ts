@@ -82,8 +82,11 @@ async function runModel(
       .finalMessage();
 
     const block = resp.content.find((c) => c.type === 'tool_use');
+    // A model sometimes passes `events` as a JSON string rather than an array;
+    // production parses that form too (toolResponseToJson), so do the same.
+    const events = block ? (block.input as { events?: unknown }).events : undefined;
     const rows = block
-      ? ((block.input as { events?: Record<string, unknown>[] }).events ?? [])
+      ? ((typeof events === 'string' ? parseJsonArray(events) : events ?? []) as Record<string, unknown>[])
       : (parseJsonArray(resp.content.map((c) => (c.type === 'text' ? c.text : '')).join('')) as Record<string, unknown>[]);
     const { valid, invalid } = validateEvents(rows, {
       category: venue.category,
@@ -211,7 +214,9 @@ async function main(): Promise<void> {
   const html = await readFile(fixturePath, 'utf8');
   const { cleaned, hint, structured } = preprocessForVenue(html, venue);
   const isStructured = isDeterministicallyParsable(structured);
-  const today = new Date();
+  // Fixtures are snapshots: COMPARE_TODAY=YYYY-MM-DD runs "as of" the day one
+  // was saved, so its events fall inside the scrape window.
+  const today = process.env.COMPARE_TODAY ? new Date(`${process.env.COMPARE_TODAY}T09:00:00+02:00`) : new Date();
   const prompt = buildExtractionPrompt(cleaned, venue, today, { hint });
 
   const chosen = models.length >= 2 ? models : [MODEL, 'claude-haiku-4-5-20251001'];
